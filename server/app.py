@@ -43,6 +43,9 @@ MAX_AUDIO_BYTES = 4 * 1024 * 1024
 MAX_AUDIO_DURATION_MS = 30_000
 MIN_AUDIO_DURATION_MS = 500
 AUDIO_TTL_MS = 30 * 60_000
+CLASSROOM_VOICE_TTL_MS = 30 * 60_000
+CLASSROOM_VOICE_RATE_WINDOW_MS = 60_000
+CLASSROOM_VOICE_RATE_LIMIT = 3
 
 JSON_HEADERS = {"Content-Type": "application/json; charset=utf-8"}
 SECURITY_HEADERS = {
@@ -192,6 +195,27 @@ class Store:
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
+            )"""
+        )
+        self.db.execute(
+            """CREATE TABLE IF NOT EXISTS classroom_voice_messages (
+                id TEXT PRIMARY KEY,
+                class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+                device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                audio_path TEXT,
+                audio_size INTEGER NOT NULL,
+                audio_duration_ms INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )"""
+        )
+        self.db.execute("CREATE INDEX IF NOT EXISTS idx_classroom_voice_class_time ON classroom_voice_messages(class_id, created_at DESC)")
+        self.db.execute(
+            """CREATE TABLE IF NOT EXISTS classroom_voice_receipts (
+                message_id TEXT NOT NULL REFERENCES classroom_voice_messages(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                played_at INTEGER NOT NULL,
+                PRIMARY KEY (message_id, user_id)
             )"""
         )
 
@@ -544,6 +568,19 @@ def delete_audio_file(db: Store, audio_root: Path, message_id: str) -> None:
     with suppress(FileNotFoundError, OSError):
         target.unlink()
     db.run("UPDATE shouts SET audio_path=NULL WHERE id=?", (message_id,))
+
+
+def delete_classroom_voice_file(db: Store, audio_root: Path, message_id: str) -> None:
+    row = db.one("SELECT audio_path FROM classroom_voice_messages WHERE id=?", (message_id,))
+    relative = row.get("audio_path") if row else None
+    if not isinstance(relative, str) or not relative:
+        return
+    target = (audio_root / relative).resolve()
+    if audio_root.resolve() not in target.parents:
+        return
+    with suppress(FileNotFoundError, OSError):
+        target.unlink()
+    db.run("UPDATE classroom_voice_messages SET audio_path=NULL WHERE id=?", (message_id,))
 
 
 def validate_wav(data: bytes) -> tuple[int, int] | None:
@@ -1115,6 +1152,127 @@ async def shout_audio(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(target, headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
 
 
+async def upload_classroom_voice(request: web.Request) -> web.Response:
+    device = authenticate_device(request)
+    if not device:
+        return json_response({"error": "教室身份验证失败。"}, 401)
+    if not request.headers.get("Content-Type", "").lower().startswith("multipart/form-data"):
+        return json_response({"error": "请上传录音文件。"}, 400)
+    try:
+        fields, audio_bytes = await read_multipart_shout(request)
+    except web.HTTPRequestEntityTooLarge:
+        return json_response({"error": "录音文件不能超过 4 MB。"}, 413)
+    if audio_bytes is None:
+        return json_response({"error": "没有收到录音文件。"}, 400)
+    validation = validate_wav(audio_bytes)
+    if validation is None:
+        return json_response({"error": "录音格式不正确，请使用 0.5 至 30 秒的单声道 WAV 录音。"}, 400)
+    db = store(request)
+    timestamp = now_ms()
+    recent = db.one(
+        "SELECT COUNT(*) count FROM classroom_voice_messages WHERE device_id=? AND created_at>?",
+        (device["id"], timestamp - CLASSROOM_VOICE_RATE_WINDOW_MS),
+    )
+    if int(recent["count"] if recent else 0) >= CLASSROOM_VOICE_RATE_LIMIT:
+        return json_response({"error": "发送太频繁，请稍后再试。"}, 429)
+    duration_ms, audio_size = validation
+    message_id = str(uuid.uuid4())
+    relative_path = f"classroom/{message_id}.wav"
+    audio_root = request.app[AUDIO_ROOT_KEY]
+    target = (audio_root / relative_path).resolve()
+    if audio_root.resolve() not in target.parents:
+        return json_response({"error": "录音保存位置无效。"}, 500)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(audio_bytes)
+    except OSError:
+        return json_response({"error": "录音暂存失败，请稍后重试。"}, 503)
+    try:
+        db.run(
+            """INSERT INTO classroom_voice_messages(id, class_id, device_id, audio_path, audio_size,
+               audio_duration_ms, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (message_id, device["class_id"], device["id"], relative_path, audio_size, duration_ms, timestamp, timestamp + CLASSROOM_VOICE_TTL_MS),
+        )
+    except Exception:
+        with suppress(OSError):
+            target.unlink()
+        raise
+    return json_response({"id": message_id, "status": "sent", "durationMs": duration_ms}, 202)
+
+
+async def list_classroom_voice(request: web.Request) -> web.Response:
+    user = require_user(request)
+    if isinstance(user, web.Response):
+        return user
+    class_id = request.query.get("classId", "")
+    db = store(request)
+    if class_id and not can_access_class(db, user, class_id, include_disabled=True):
+        return json_response({"error": "没有执行此操作的权限。"}, 403)
+    conditions = ["m.expires_at>?", "m.audio_path IS NOT NULL"]
+    params: list[Any] = [now_ms()]
+    if class_id:
+        conditions.append("m.class_id=?")
+        params.append(class_id)
+    if user["role"] != "superadmin":
+        conditions.append("EXISTS (SELECT 1 FROM teacher_classes tc WHERE tc.user_id=? AND tc.class_id=m.class_id)")
+        params.append(user["id"])
+    where = " AND ".join(conditions)
+    rows = db.all(
+        f"""SELECT m.id, m.class_id, c.name class_name, m.audio_duration_ms, m.created_at,
+               EXISTS (SELECT 1 FROM classroom_voice_receipts r WHERE r.message_id=m.id AND r.user_id=?) played_by_me
+               FROM classroom_voice_messages m JOIN classes c ON c.id=m.class_id
+               WHERE {where} ORDER BY m.created_at DESC LIMIT 100""",
+        (user["id"], *params),
+    )
+    for row in rows:
+        row["played_by_me"] = bool(row["played_by_me"])
+        row["audio_url"] = f"/api/classroom-voice/{row['id']}/audio"
+    return json_response({"messages": rows})
+
+
+async def classroom_voice_audio(request: web.Request) -> web.StreamResponse:
+    user = require_user(request)
+    if isinstance(user, web.Response):
+        return user
+    message_id = request.match_info["message_id"]
+    db = store(request)
+    row = db.one(
+        "SELECT id, class_id, audio_path FROM classroom_voice_messages WHERE id=? AND expires_at>?",
+        (message_id, now_ms()),
+    )
+    if not row or not row["audio_path"] or not can_access_class(db, user, row["class_id"], include_disabled=True):
+        return json_response({"error": "语音不存在、已清理或无权播放。"}, 404)
+    target = (request.app[AUDIO_ROOT_KEY] / str(row["audio_path"])).resolve()
+    if request.app[AUDIO_ROOT_KEY].resolve() not in target.parents or not target.is_file():
+        return json_response({"error": "语音文件不存在或已经清理。"}, 404)
+    db.run(
+        "INSERT OR IGNORE INTO classroom_voice_receipts(message_id, user_id, played_at) VALUES (?, ?, ?)",
+        (message_id, user["id"], now_ms()),
+    )
+    return web.FileResponse(target, headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
+
+
+async def delete_classroom_voice(request: web.Request) -> web.Response:
+    user = require_user(request)
+    if isinstance(user, web.Response):
+        return user
+    message_id = request.match_info["message_id"]
+    db = store(request)
+    row = db.one(
+        "SELECT id, class_id, audio_path FROM classroom_voice_messages WHERE id=?",
+        (message_id,),
+    )
+    if not row:
+        return json_response({"error": "语音留言不存在或已经删除。"}, 404)
+    if not can_access_class(db, user, row["class_id"], include_disabled=True):
+        return json_response({"error": "没有执行此操作的权限。"}, 403)
+    with db.transaction():
+        delete_classroom_voice_file(db, request.app[AUDIO_ROOT_KEY], message_id)
+        db.run("DELETE FROM classroom_voice_messages WHERE id=?", (message_id,))
+        audit(db, user["id"], "classroom_voice.delete", "classroom_voice", message_id, json.dumps({"classId": row["class_id"]}))
+    return json_response({"deleted": True, "id": message_id})
+
+
 def history_query(request: web.Request, export: bool = False) -> tuple[dict[str, Any], str, tuple[Any, ...]] | web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1183,6 +1341,27 @@ async def export_history(request: web.Request) -> web.Response:
         body=("\ufeff" + output.getvalue()).encode("utf-8"),
         headers={"Content-Type": "text/csv; charset=utf-8", "Content-Disposition": f'attachment; filename="shout-history-{now_ms()}.csv"'},
     )
+
+
+async def delete_history(request: web.Request) -> web.Response:
+    user = require_user(request)
+    if isinstance(user, web.Response):
+        return user
+    message_id = request.match_info["message_id"]
+    db = store(request)
+    row = db.one(
+        "SELECT id, class_id, audio_path FROM shouts WHERE id=?",
+        (message_id,),
+    )
+    if not row:
+        return json_response({"error": "喊话记录不存在或已经删除。"}, 404)
+    if not can_access_class(db, user, row["class_id"], include_disabled=True):
+        return json_response({"error": "没有执行此操作的权限。"}, 403)
+    with db.transaction():
+        delete_audio_file(db, request.app[AUDIO_ROOT_KEY], message_id)
+        db.run("DELETE FROM shouts WHERE id=?", (message_id,))
+        audit(db, user["id"], "history.delete", "shout", message_id, json.dumps({"classId": row["class_id"]}))
+    return json_response({"deleted": True, "id": message_id})
 
 
 def iso_time(value: Any) -> str:
@@ -1306,6 +1485,27 @@ async def cleanup(app: web.Application) -> None:
             db.run("DELETE FROM shouts WHERE created_at<?", (timestamp - HISTORY_DAYS * 86_400_000,))
     for message_id in stale_audio_ids:
         delete_audio_file(db, app[AUDIO_ROOT_KEY], message_id)
+    classroom_voice_ids = [
+        row["id"] for row in db.all(
+            """SELECT m.id FROM classroom_voice_messages m
+               WHERE m.audio_path IS NOT NULL AND (
+                   m.expires_at<=? OR NOT EXISTS (
+                       SELECT 1 FROM users u JOIN teacher_classes tc ON tc.user_id=u.id
+                       WHERE u.enabled=1 AND tc.class_id=m.class_id
+                         AND NOT EXISTS (
+                             SELECT 1 FROM classroom_voice_receipts r
+                             WHERE r.message_id=m.id AND r.user_id=u.id
+                         )
+                   )
+               )""",
+            (timestamp,),
+        )
+    ]
+    # Keep the short-lived metadata row only until its audio has expired and been removed.
+    for message_id in classroom_voice_ids:
+        delete_classroom_voice_file(db, app[AUDIO_ROOT_KEY], message_id)
+    with db.transaction():
+        db.run("DELETE FROM classroom_voice_messages WHERE expires_at<=? AND audio_path IS NULL", (timestamp,))
 
 
 async def cleanup_loop(app: web.Application) -> None:
@@ -1367,8 +1567,13 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app.router.add_patch("/api/devices/{device_id}", update_device)
     app.router.add_post("/api/shouts", send_shout)
     app.router.add_get("/api/shouts/{message_id}/audio", shout_audio)
+    app.router.add_post("/api/classroom-voice", upload_classroom_voice)
+    app.router.add_get("/api/classroom-voice", list_classroom_voice)
+    app.router.add_get("/api/classroom-voice/{message_id}/audio", classroom_voice_audio)
+    app.router.add_delete("/api/classroom-voice/{message_id}", delete_classroom_voice)
     app.router.add_get("/api/history", list_history)
     app.router.add_get("/api/history/export", export_history)
+    app.router.add_delete("/api/history/{message_id}", delete_history)
     app.router.add_get("/ws/device", device_socket)
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)

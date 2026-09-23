@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 
 namespace CloudRemoteShouter.Receiver;
 
@@ -17,6 +18,7 @@ public sealed class App : Application
     private NativeMenuItem? _updateMenuItem;
     private Bitmap? _trayIconBitmap;
     private EnrollmentWindow? _enrollmentWindow;
+    private StudentVoiceWindow? _studentVoiceWindow;
     private CancellationTokenSource? _automaticUpdateCancellation;
     private int _updateInProgress;
     private bool _exitRequested;
@@ -45,6 +47,8 @@ public sealed class App : Application
             StartupManager.SetEnabled(config.StartWithWindows);
             _ = _receiver.StartAsync(config);
             StartAutomaticUpdates(config);
+            // Keep the student entry point visible on classroom screens so nobody has to find the tray menu.
+            Dispatcher.UIThread.Post(ShowStudentVoice);
         }
         else
         {
@@ -64,6 +68,9 @@ public sealed class App : Application
         var setup = new NativeMenuItem { Header = "打开绑定设置" };
         setup.Click += (_, _) => ShowEnrollment();
         menu.Items.Add(setup);
+        var studentVoice = new NativeMenuItem { Header = "向老师语音留言" };
+        studentVoice.Click += (_, _) => ShowStudentVoice();
+        menu.Items.Add(studentVoice);
         var test = new NativeMenuItem { Header = "本机测试" };
         test.Click += async (_, _) => await TestAsync();
         menu.Items.Add(test);
@@ -75,7 +82,7 @@ public sealed class App : Application
         exit.Click += async (_, _) => await ExitAsync();
         menu.Items.Add(exit);
         _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeCream Shouter", Menu = menu, IsVisible = true };
-        _tray.Clicked += (_, _) => ShowEnrollment();
+        _tray.Clicked += (_, _) => ShowStudentVoice();
     }
 
     private void ShowEnrollment()
@@ -105,6 +112,24 @@ public sealed class App : Application
     {
         if (_receiver is null) return;
         await _receiver.ShowTestAsync();
+    }
+
+    private void ShowStudentVoice()
+    {
+        if (_studentVoiceWindow is not null)
+        {
+            _studentVoiceWindow.Activate();
+            return;
+        }
+        if (!ReceiverConfig.TryLoad(out var config))
+        {
+            ShowEnrollment();
+            return;
+        }
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")));
+        _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
+        _studentVoiceWindow.Show();
+        _studentVoiceWindow.Activate();
     }
 
     private async Task TestAudioAsync()
@@ -138,6 +163,7 @@ public sealed class App : Application
         _tray?.Dispose();
         _trayIconBitmap?.Dispose();
         if (_receiver is not null) await _receiver.StopAsync();
+        _studentVoiceWindow?.Close();
         _speech?.Dispose();
     }
 

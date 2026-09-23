@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Avalonia.Threading;
 
@@ -6,6 +7,7 @@ namespace CloudRemoteShouter.Receiver;
 
 public sealed class CloudReceiverService
 {
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(45) };
     private readonly SpeechService _speech;
     private readonly AudioPlaybackService _audio = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -65,6 +67,34 @@ public sealed class CloudReceiverService
             _audio.Stop();
         });
         await _audio.PlayTestToneAsync(CancellationToken.None);
+    }
+
+    public async Task SendStudentVoiceAsync(ReceiverConfig config, byte[] audio, CancellationToken cancellationToken = default)
+    {
+        if (audio.Length < 44) throw new InvalidOperationException("录音内容为空。");
+        var endpoint = new UriBuilder(config.Endpoint.TrimEnd('/') + "/api/classroom-voice")
+        {
+            Query = $"deviceId={Uri.EscapeDataString(config.DeviceId)}",
+        }.Uri;
+        using var content = new MultipartFormDataContent();
+        var audioContent = new ByteArrayContent(audio);
+        audioContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+        content.Add(audioContent, "audio", "student.wav");
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.DeviceToken);
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode) return;
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        try
+        {
+            using var document = JsonDocument.Parse(responseText);
+            var error = document.RootElement.TryGetProperty("error", out var value) ? value.GetString() : null;
+            throw new InvalidOperationException(error ?? $"云端返回错误（{(int)response.StatusCode}）。");
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException($"云端返回错误（{(int)response.StatusCode}）。");
+        }
     }
 
     private async Task ConnectLoopAsync(ReceiverConfig config, CancellationToken token)

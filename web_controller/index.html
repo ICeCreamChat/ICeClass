@@ -147,6 +147,15 @@
     .recent-item:first-child { border-top: 0; padding-top: 0; }
     .recent-item p { margin: 6px 0; overflow-wrap: anywhere; }
     .meta-row { color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+    .classroom-voice-list { display: grid; gap: 12px; }
+    .classroom-voice-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 17px 18px; background: var(--surface-solid); border: 1px solid rgba(0, 0, 0, .08); border-radius: 8px; box-shadow: 0 5px 20px rgba(0, 0, 0, .04); }
+    .classroom-voice-item h3 { margin: 0; font-size: 16px; }
+    .classroom-voice-item p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+    .classroom-voice-player { display: grid; gap: 7px; min-width: 230px; }
+    .classroom-voice-player .btn { min-width: 150px; }
+    .classroom-voice-player audio { width: min(360px, 100%); height: 40px; }
+    .classroom-voice-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+    .classroom-voice-actions .btn { flex: 1; }
 
     .table-wrap { overflow: auto; background: var(--surface-solid); border: 1px solid rgba(0, 0, 0, .08); border-radius: 8px; box-shadow: 0 5px 20px rgba(0, 0, 0, .04); }
     table { width: 100%; border-collapse: collapse; min-width: 790px; }
@@ -226,6 +235,10 @@
       .check-grid { grid-template-columns: 1fr; }
       .schedule-item { grid-template-columns: 1fr 1fr; }
       .schedule-item > .field:first-child { grid-column: 1 / -1; }
+      .classroom-voice-item { grid-template-columns: 1fr; }
+      .classroom-voice-player { min-width: 0; }
+      .classroom-voice-player audio { width: 100%; }
+      .classroom-voice-actions { width: 100%; }
       dialog { width: calc(100vw - 18px); }
       .dialog-actions { flex-wrap: wrap; }
       .dialog-actions .btn { flex: 1; }
@@ -273,6 +286,7 @@
     <aside class="sidebar">
       <nav id="mainNav" class="nav" aria-label="主要功能">
         <button data-view="console" class="active"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span><span data-label>喊话台</span></button>
+        <button data-view="classroom-voice"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>教室来音</span></button>
         <button data-view="history"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span data-label>历史记录</span></button>
         <button data-view="quiet"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><span data-label>禁言时间</span></button>
         <button data-view="classes" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span data-label>班级管理</span></button>
@@ -340,6 +354,14 @@
           <div class="toolbar"><div class="field"><label for="historyClass">班级</label><select id="historyClass"></select></div><button id="refreshHistory" class="btn">刷新</button><button id="exportHistory" class="btn">导出 CSV</button></div>
         </div>
         <div id="historyContainer"></div>
+      </section>
+
+      <section id="view-classroom-voice" class="view hidden">
+        <div class="view-head">
+          <div><h1>教室来音</h1><p>学生在教室端点击录音后，会出现在这里。点击播放即可听到原声，语音只保留 30 分钟或至授权教师听过。</p></div>
+          <div class="toolbar"><div class="field"><label for="classroomVoiceClass">班级</label><select id="classroomVoiceClass"></select></div><button id="refreshClassroomVoice" class="btn">刷新</button></div>
+        </div>
+        <div id="classroomVoiceContainer" class="classroom-voice-list"></div>
       </section>
 
       <section id="view-quiet" class="view hidden">
@@ -464,7 +486,7 @@
   <script nonce="__CSP_NONCE__">
     (() => {
       "use strict";
-      const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
+      const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
       const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "正在展示", failed: "处理失败" };
       const levelMeta = {
@@ -699,13 +721,15 @@
         $("userRole").textContent = user.role === "superadmin" ? "最高管理员" : "教师";
         document.querySelectorAll("[data-admin]").forEach(node => node.classList.toggle("hidden", user.role !== "superadmin"));
         await loadClasses();
-        await Promise.all([loadHistory(), loadRecent(), loadQuietHours(), user.role === "superadmin" ? Promise.all([loadTeachers(), loadDevices()]) : Promise.resolve()]);
+        await Promise.all([loadHistory(), loadRecent(), loadClassroomVoice(), loadQuietHours(), user.role === "superadmin" ? Promise.all([loadTeachers(), loadDevices()]) : Promise.resolve()]);
         $("settingsAccount").textContent = `${user.displayName}（${user.username}）`;
         updatePresence();
         clearInterval(state.presenceTimer);
         state.presenceTimer = setInterval(updatePresence, 15000);
         clearInterval(state.quietTimer);
         state.quietTimer = setInterval(() => loadQuietHours({ refreshEditor: false }).catch(() => {}), 60000);
+        clearInterval(state.classroomVoiceTimer);
+        state.classroomVoiceTimer = setInterval(() => loadClassroomVoice().catch(() => {}), 15000);
       }
 
       async function loadClasses() {
@@ -728,6 +752,13 @@
         const previousHistory = history.value; history.replaceChildren(new Option("全部班级", ""));
         for (const item of state.classes) history.append(new Option(Number(item.enabled) === 1 ? item.name : `${item.name}（已停用）`, item.id));
         if ([...history.options].some(option => option.value === previousHistory)) history.value = previousHistory;
+        const voiceClass = $("classroomVoiceClass");
+        if (voiceClass) {
+          const previousVoiceClass = voiceClass.value;
+          voiceClass.replaceChildren(new Option("全部班级", ""));
+          for (const item of active) voiceClass.append(new Option(item.name, item.id));
+          if ([...voiceClass.options].some(option => option.value === previousVoiceClass)) voiceClass.value = previousVoiceClass;
+        }
         if (!$("targetClass").value && active[0]) $("targetClass").value = active[0].id;
         renderClassChecks("newTeacherClasses", []);
       }
@@ -748,6 +779,74 @@
         const data = await api(`/api/history?classId=${encodeURIComponent(classId)}&limit=5`);
         state.recent = data.history;
         renderRecent();
+      }
+
+      async function loadClassroomVoice() {
+        const classId = $("classroomVoiceClass")?.value || "";
+        const data = await api(`/api/classroom-voice${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`);
+        state.classroomVoice = data.messages || [];
+        renderClassroomVoice();
+      }
+
+      function renderClassroomVoice() {
+        const container = $("classroomVoiceContainer");
+        if (!container) return;
+        container.replaceChildren();
+        if (!state.classroomVoice.length) return container.append(el("div", "empty", "暂时没有学生语音留言"));
+        for (const item of state.classroomVoice) {
+          const node = el("article", "classroom-voice-item");
+          const details = el("div");
+          details.append(el("h3", "", item.class_name));
+          details.append(el("p", "", `教室语音 · ${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒 · ${formatTime(item.created_at)}`));
+          if (item.played_by_me) details.append(el("p", "hint", "你已播放；语音会在教师都听过或 30 分钟后清理。"));
+          node.append(details);
+          const player = el("div", "classroom-voice-player");
+          const play = el("button", "btn primary", "播放语音");
+          play.type = "button";
+          const status = el("span", "hint", "尚未播放");
+          const audio = document.createElement("audio");
+          audio.controls = true; audio.preload = "none"; audio.className = "hidden";
+          play.addEventListener("click", async () => {
+            if (audio.src) {
+              try { status.textContent = "正在播放"; await audio.play(); return; } catch { audio.removeAttribute("src"); }
+            }
+            play.disabled = true;
+            play.textContent = "正在加载…";
+            status.textContent = "正在加载语音…";
+            try {
+              const response = await fetch(item.audio_url, { credentials: "same-origin", cache: "no-store" });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const blob = await response.blob();
+              audio.src = URL.createObjectURL(blob);
+              audio.classList.remove("hidden");
+              await audio.play();
+              play.textContent = "重新播放";
+              status.textContent = "正在播放";
+            } catch (error) {
+              toast("语音暂时无法播放，可能已清理或登录已过期。请刷新后重试。");
+              play.textContent = "播放语音";
+              status.textContent = "播放失败：语音已清理或登录已过期";
+            } finally { play.disabled = false; }
+          });
+          audio.addEventListener("ended", () => { play.textContent = "重新播放"; status.textContent = "播放完成"; });
+          const actions = el("div", "classroom-voice-actions");
+          const deleteButton = actionButton("删除留言", () => deleteClassroomVoice(item));
+          deleteButton.classList.add("danger");
+          actions.append(play, deleteButton);
+          player.append(actions, status, audio);
+          node.append(player);
+          container.append(node);
+        }
+      }
+
+      async function deleteClassroomVoice(item) {
+        if (!confirm(`确定删除 ${item.class_name} 的这条学生语音留言吗？删除后无法恢复。`)) return;
+        try {
+          await api(`/api/classroom-voice/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+          state.classroomVoice = state.classroomVoice.filter(message => message.id !== item.id);
+          renderClassroomVoice();
+          toast("语音留言已删除");
+        } catch (error) { toast(error.message); }
       }
 
       async function loadTeachers() {
@@ -861,7 +960,7 @@
       function renderHistory() {
         const container = $("historyContainer");
         if (!state.history.length) return renderEmpty(container, "还没有喊话记录");
-        const table = createTable(["时间", "班级", "发送教师", "通知级别", "类型", "内容", "结果"]);
+        const table = createTable(["时间", "班级", "发送教师", "通知级别", "类型", "内容", "结果", "操作"]);
         for (const item of state.history) {
           const row = table.tBodies[0].insertRow();
           addCell(row, formatTime(item.created_at));
@@ -875,6 +974,10 @@
           const cell = row.insertCell();
           cell.append(statusBadge(item.status));
           if (item.status_detail) cell.append(el("div", "hint", item.status_detail));
+          const actions = row.insertCell();
+          const deleteButton = actionButton("删除", () => deleteHistoryItem(item));
+          deleteButton.classList.add("danger");
+          actions.append(deleteButton);
         }
         const content = document.createDocumentFragment();
         content.append(wrapTable(table));
@@ -883,6 +986,16 @@
           more.classList.add("block", "load-more"); content.append(more);
         }
         container.replaceChildren(content);
+      }
+
+      async function deleteHistoryItem(item) {
+        if (!confirm(`确定删除 ${item.class_name} 的这条喊话记录吗？删除后无法恢复。`)) return;
+        try {
+          await api(`/api/history/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+          state.history = state.history.filter(message => message.id !== item.id);
+          renderHistory();
+          toast("喊话记录已删除");
+        } catch (error) { toast(error.message); }
       }
 
       function renderRecent() {
@@ -1165,6 +1278,7 @@
           document.querySelectorAll("main > .view").forEach(node => node.classList.add("hidden"));
           $(`view-${button.dataset.view}`).classList.remove("hidden");
           if (button.dataset.view === "history") loadHistory().catch(error => toast(error.message));
+          if (button.dataset.view === "classroom-voice") loadClassroomVoice().catch(error => toast(error.message));
           if (button.dataset.view === "quiet") loadQuietHours().catch(error => toast(error.message));
         });
         $("targetClass").addEventListener("change", () => { updatePresence(); loadRecent().catch(error => toast(error.message)); });
@@ -1193,6 +1307,8 @@
         $("historyClass").addEventListener("change", () => loadHistory().catch(error => toast(error.message)));
         $("refreshHistory").addEventListener("click", () => loadHistory().catch(error => toast(error.message)));
         $("exportHistory").addEventListener("click", () => { const classId = $("historyClass").value; location.href = `/api/history/export${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`; });
+        $("classroomVoiceClass").addEventListener("change", () => loadClassroomVoice().catch(error => toast(error.message)));
+        $("refreshClassroomVoice").addEventListener("click", () => loadClassroomVoice().catch(error => toast(error.message)));
         $("addQuietPeriod").addEventListener("click", () => { $("quietScheduleList").append(createScheduleItem()); setQuietScheduleDirty(); });
         $("quietScheduleList").addEventListener("input", () => setQuietScheduleDirty());
         $("quietScheduleList").addEventListener("change", () => setQuietScheduleDirty());

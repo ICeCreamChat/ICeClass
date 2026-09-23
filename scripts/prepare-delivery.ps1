@@ -60,6 +60,10 @@ $classroomReadme = @'
 通知声音
 
 普通通知只在右下角显示，不播放声音。重要通知显示顶部横幅并播放声音，紧急通知全屏显示并播放声音。
+
+学生向老师留言
+
+教室端启动后会直接打开“向老师语音留言”窗口；如果窗口被关闭，单击或双击托盘图标即可重新打开。点击“点击开始录音”，再次点击“点击结束并发送”，学生语音不会在教室端外放，教师在网页“教室来音”中点击“播放语音”。每段最多 30 秒。
 '@
 Set-Content -LiteralPath (Join-Path $classroom '一步使用说明.txt') -Value $classroomReadme -Encoding utf8
 
@@ -71,6 +75,7 @@ $teacherReadme = @'
 
 普通通知只显示静音弹窗；重要和紧急通知会播放声音。语音喊话只能使用重要或紧急。
 禁言上课时间内，网页会在发送前提醒；取消后教室端什么都不会出现，确认“仍然发送”后才会正常送达。
+教师可以在“教室来音”中播放学生从教室端发送的语音留言；录音最多保留 30 分钟或至授权教师听过。
 '@
 Set-Content -LiteralPath (Join-Path $delivery '教师端使用说明.txt') -Value $teacherReadme -Encoding utf8
 

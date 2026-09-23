@@ -132,6 +132,15 @@ class CloudRemoteShouterServerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history["history"][0]["status"], "displayed")
         await ws.close()
 
+        shout_id = sent["id"]
+        response, denied = await self.json_request("DELETE", f"/api/history/{shout_id}")
+        self.assertEqual(response.status, 403, denied)
+        response, deleted = await self.json_request("DELETE", f"/api/history/{shout_id}", csrf=True)
+        self.assertEqual(response.status, 200, deleted)
+        response, history = await self.json_request("GET", f"/api/history?classId={class_id}")
+        self.assertEqual(response.status, 200, history)
+        self.assertEqual(history["history"], [])
+
     async def test_csrf_and_teacher_permissions(self) -> None:
         await self.bootstrap_and_login()
         response, data = await self.json_request("POST", "/api/classes", {"name": "高二（1）班"})
@@ -183,6 +192,8 @@ class CloudRemoteShouterServerTest(unittest.IsolatedAsyncioTestCase):
     async def test_static_page_allows_local_recording_preview(self) -> None:
         response = await self.client.get("/")
         self.assertEqual(response.status, 200)
+        page = await response.text()
+        self.assertIn("教室来音", page)
         policy = response.headers.get("Content-Security-Policy", "")
         self.assertIn("media-src 'self' blob:", policy)
 
@@ -213,6 +224,9 @@ class CloudRemoteShouterServerTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(existing, {"text": "原有历史", "quiet_override": 0, "content_type": "text"})
             self.assertIsNotNone(
                 upgraded.one("SELECT name FROM sqlite_master WHERE type='table' AND name='quiet_periods'")
+            )
+            self.assertIsNotNone(
+                upgraded.one("SELECT name FROM sqlite_master WHERE type='table' AND name='classroom_voice_messages'")
             )
         finally:
             upgraded.close()
@@ -414,6 +428,58 @@ class CloudRemoteShouterServerTest(unittest.IsolatedAsyncioTestCase):
             await __import__("asyncio").sleep(0.01)
         self.assertEqual(response.status, 404)
         await ws.close()
+
+    async def test_classroom_voice_reaches_authorized_teacher_and_is_not_public(self) -> None:
+        device = await self.enroll_test_device()
+        class_id = device["classId"]
+        response, teacher = await self.json_request(
+            "POST", "/api/teachers",
+            {"username": "voice.teacher", "displayName": "语音教师", "password": "TeacherPassword123", "classIds": [class_id]},
+            csrf=True,
+        )
+        self.assertEqual(response.status, 201, teacher)
+        voice = self.wav_bytes(1200)
+        form = FormData()
+        form.add_field("audio", voice, filename="student.wav", content_type="audio/wav")
+        response = await self.client.post(
+            f"/api/classroom-voice?deviceId={device['deviceId']}",
+            data=form,
+            headers={"Authorization": f"Bearer {device['deviceToken']}"},
+        )
+        uploaded = await response.json()
+        self.assertEqual(response.status, 202, uploaded)
+
+        self.cookie = ""
+        self.csrf = ""
+        response, login = await self.json_request(
+            "POST", "/api/auth/login", {"username": "voice.teacher", "password": "TeacherPassword123"}
+        )
+        self.assertEqual(response.status, 200, login)
+        self.cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+        self.csrf = login["user"]["csrfToken"]
+        response, inbox = await self.json_request("GET", f"/api/classroom-voice?classId={class_id}")
+        self.assertEqual(response.status, 200, inbox)
+        self.assertEqual(len(inbox["messages"]), 1)
+        message = inbox["messages"][0]
+        self.assertFalse(message["played_by_me"])
+        response = await self.client.get(message["audio_url"], headers=self.headers())
+        self.assertEqual(response.status, 200)
+        self.assertEqual(await response.read(), voice)
+        response, inbox = await self.json_request("GET", f"/api/classroom-voice?classId={class_id}")
+        self.assertTrue(inbox["messages"][0]["played_by_me"])
+
+        response, denied = await self.json_request("DELETE", f"/api/classroom-voice/{message['id']}")
+        self.assertEqual(response.status, 403, denied)
+        response, deleted = await self.json_request(
+            "DELETE", f"/api/classroom-voice/{message['id']}", csrf=True
+        )
+        self.assertEqual(response.status, 200, deleted)
+        response, inbox = await self.json_request("GET", f"/api/classroom-voice?classId={class_id}")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(inbox["messages"], [])
+
+        response = await self.client.get(f"/api/classroom-voice/{message['id']}/audio")
+        self.assertEqual(response.status, 401)
 
 
 if __name__ == "__main__":

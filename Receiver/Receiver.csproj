@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeCreamShouter</AssemblyName>
     <RootNamespace>CloudRemoteShouter.Receiver</RootNamespace>
-    <Version>1.4.0</Version>
+    <Version>1.5.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
