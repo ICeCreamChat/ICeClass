@@ -47,6 +47,8 @@ AUDIO_TTL_MS = 30 * 60_000
 CLASSROOM_VOICE_TTL_MS = 30 * 60_000
 CLASSROOM_VOICE_RATE_WINDOW_MS = 60_000
 CLASSROOM_VOICE_RATE_LIMIT = 3
+STAFF_ROLES = {"teacher", "director", "principal"}
+SCHOOL_ROLES = {"superadmin", "principal"}
 
 JSON_HEADERS = {"Content-Type": "application/json; charset=utf-8"}
 SECURITY_HEADERS = {
@@ -172,7 +174,30 @@ class Store:
         self.db.execute("PRAGMA busy_timeout=5000")
         if not self._has_schema():
             self.db.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        self._ensure_staff_roles()
         self._ensure_feature_schema()
+
+    def _ensure_staff_roles(self) -> None:
+        definition = self.db.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]
+        if "'director'" in definition and "'principal'" in definition:
+            return
+        # Rebuild the parent table with foreign keys suspended, preserving child rows.
+        schema = SCHEMA_PATH.read_text(encoding="utf-8")
+        replacement = re.search(r"CREATE TABLE users \([\s\S]*?\n\);", schema).group(0)
+        extras = self.db.execute("SELECT sql FROM sqlite_master WHERE tbl_name='users' AND type IN ('index','trigger') AND sql IS NOT NULL").fetchall()
+        self.db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            with self.transaction():
+                self.db.execute(replacement.replace("CREATE TABLE users", "CREATE TABLE users_role_upgrade", 1))
+                self.db.execute("INSERT INTO users_role_upgrade SELECT * FROM users")
+                self.db.execute("DROP TABLE users")
+                self.db.execute("ALTER TABLE users_role_upgrade RENAME TO users")
+                for item in extras:
+                    self.db.execute(item[0])
+                if self.db.execute("PRAGMA foreign_key_check").fetchone():
+                    raise sqlite3.IntegrityError("账号升级后外键检查失败。")
+        finally:
+            self.db.execute("PRAGMA foreign_keys=ON")
 
     def _ensure_feature_schema(self) -> None:
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(shouts)").fetchall()}
@@ -556,7 +581,7 @@ async def update_quiet_hours(request: web.Request) -> web.Response:
 
 def can_access_class(db: Store, user: dict[str, Any], class_id: str, include_disabled: bool = False) -> bool:
     enabled = "" if include_disabled else " AND c.enabled=1"
-    if user["role"] == "superadmin":
+    if user["role"] in SCHOOL_ROLES:
         row = db.one(f"SELECT 1 ok FROM classes c WHERE c.id=?{enabled}", (class_id,))
     else:
         row = db.one(
@@ -753,7 +778,7 @@ async def list_classes(request: web.Request) -> web.Response:
     if isinstance(user, web.Response):
         return user
     db = store(request)
-    if user["role"] == "superadmin":
+    if user["role"] in SCHOOL_ROLES:
         rows = db.all(
             """SELECT c.*, (SELECT COUNT(*) FROM teacher_classes tc WHERE tc.class_id=c.id) teacher_count,
                (SELECT MAX(last_seen_at) FROM devices d WHERE d.class_id=c.id AND d.enabled=1) last_seen_at
@@ -914,7 +939,7 @@ async def list_teachers(request: web.Request) -> web.Response:
     if isinstance(user, web.Response):
         return user
     db = store(request)
-    teachers = db.all("SELECT id, username, display_name, enabled, created_at FROM users WHERE role='teacher' ORDER BY username")
+    teachers = db.all("SELECT id, username, display_name, role, enabled, created_at FROM users WHERE role!='superadmin' ORDER BY username")
     for teacher in teachers:
         teacher["classes"] = db.all(
             "SELECT c.id, c.name FROM teacher_classes tc JOIN classes c ON c.id=tc.class_id WHERE tc.user_id=? ORDER BY c.name",
@@ -940,10 +965,13 @@ async def create_teacher(request: web.Request) -> web.Response:
     body = await read_json(request) or {}
     username = str(body.get("username", "")).strip()
     display_name = str(body.get("displayName", "")).strip()
+    role = body.get("role", "teacher")
+    if not isinstance(role, str) or role not in STAFF_ROLES:
+        return json_response({"error": "请选择普通教师、主任或校长。"}, 400)
     if not USERNAME_RE.match(username):
         return json_response({"error": "用户名需为 3 至 64 位字母、数字或 ._@-。"}, 400)
     if not 1 <= len(display_name) <= 40:
-        return json_response({"error": "教师姓名应为 1 至 40 个字符。"}, 400)
+        return json_response({"error": "姓名应为 1 至 40 个字符。"}, 400)
     error = validate_password(body.get("password"))
     if error:
         return json_response({"error": error}, 400)
@@ -953,14 +981,14 @@ async def create_teacher(request: web.Request) -> web.Response:
     try:
         with db.transaction():
             db.run(
-                "INSERT INTO users(id, username, display_name, role, password_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, 'teacher', ?, 1, ?, ?)",
-                (teacher_id, username, display_name, hash_password(body["password"]), timestamp, timestamp),
+                "INSERT INTO users(id, username, display_name, role, password_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+                (teacher_id, username, display_name, role, hash_password(body["password"]), timestamp, timestamp),
             )
             replace_teacher_classes(db, teacher_id, body.get("classIds"))
             audit(db, user["id"], "teacher.create", "user", teacher_id, username)
     except sqlite3.IntegrityError:
         return json_response({"error": "用户名已经存在。"}, 409)
-    return json_response({"id": teacher_id, "username": username, "displayName": display_name}, 201)
+    return json_response({"id": teacher_id, "username": username, "displayName": display_name, "role": role}, 201)
 
 
 async def update_teacher(request: web.Request) -> web.Response:
@@ -969,19 +997,24 @@ async def update_teacher(request: web.Request) -> web.Response:
         return user
     teacher_id = request.match_info["teacher_id"]
     db = store(request)
-    existing = db.one("SELECT display_name, enabled FROM users WHERE id=? AND role='teacher'", (teacher_id,))
+    existing = db.one("SELECT display_name, role, enabled FROM users WHERE id=? AND role!='superadmin'", (teacher_id,))
     if not existing:
-        return json_response({"error": "教师账号不存在。"}, 404)
+        return json_response({"error": "账号不存在。"}, 404)
     body = await read_json(request) or {}
     display_name = str(body.get("displayName", existing["display_name"])).strip()
+    role = body.get("role", existing["role"])
+    if not isinstance(role, str) or role not in STAFF_ROLES:
+        return json_response({"error": "请选择普通教师、主任或校长。"}, 400)
     if not 1 <= len(display_name) <= 40:
-        return json_response({"error": "教师姓名应为 1 至 40 个字符。"}, 400)
+        return json_response({"error": "姓名应为 1 至 40 个字符。"}, 400)
     enabled = existing["enabled"] if "enabled" not in body else int(bool(body["enabled"]))
     with db.transaction():
-        db.run("UPDATE users SET display_name=?, enabled=?, updated_at=? WHERE id=?", (display_name, enabled, now_ms(), teacher_id))
-        if not enabled:
+        db.run("UPDATE users SET display_name=?, role=?, enabled=?, updated_at=? WHERE id=?", (display_name, role, enabled, now_ms(), teacher_id))
+        if "classIds" in body:
+            replace_teacher_classes(db, teacher_id, body["classIds"])
+        if not enabled or role != existing["role"]:
             db.run("DELETE FROM sessions WHERE user_id=?", (teacher_id,))
-        audit(db, user["id"], "teacher.update", "user", teacher_id, json.dumps({"displayName": display_name, "enabled": bool(enabled)}, ensure_ascii=False))
+        audit(db, user["id"], "teacher.update", "user", teacher_id, json.dumps({"displayName": display_name, "role": role, "enabled": bool(enabled)}, ensure_ascii=False))
     return json_response({"ok": True})
 
 
@@ -997,11 +1030,11 @@ async def reset_teacher_password(request: web.Request) -> web.Response:
     db = store(request)
     with db.transaction():
         cursor = db.run(
-            "UPDATE users SET password_hash=?, updated_at=? WHERE id=? AND role='teacher'",
+            "UPDATE users SET password_hash=?, updated_at=? WHERE id=? AND role!='superadmin'",
             (hash_password(body["password"]), now_ms(), teacher_id),
         )
         if cursor.rowcount != 1:
-            return json_response({"error": "教师账号不存在。"}, 404)
+            return json_response({"error": "账号不存在。"}, 404)
         db.run("DELETE FROM sessions WHERE user_id=?", (teacher_id,))
         audit(db, user["id"], "teacher.password_reset", "user", teacher_id, None)
     return json_response({"ok": True})
@@ -1013,8 +1046,8 @@ async def set_teacher_classes(request: web.Request) -> web.Response:
         return user
     teacher_id = request.match_info["teacher_id"]
     db = store(request)
-    if not db.one("SELECT id FROM users WHERE id=? AND role='teacher'", (teacher_id,)):
-        return json_response({"error": "教师账号不存在。"}, 404)
+    if not db.one("SELECT id FROM users WHERE id=? AND role!='superadmin'", (teacher_id,)):
+        return json_response({"error": "账号不存在。"}, 404)
     body = await read_json(request) or {}
     with db.transaction():
         replace_teacher_classes(db, teacher_id, body.get("classIds"))
@@ -1222,7 +1255,7 @@ async def list_classroom_voice(request: web.Request) -> web.Response:
     if class_id:
         conditions.append("m.class_id=?")
         params.append(class_id)
-    if user["role"] != "superadmin":
+    if user["role"] not in SCHOOL_ROLES:
         conditions.append("EXISTS (SELECT 1 FROM teacher_classes tc WHERE tc.user_id=? AND tc.class_id=m.class_id)")
         params.append(user["id"])
     where = " AND ".join(conditions)
@@ -1296,7 +1329,7 @@ def history_query(request: web.Request, export: bool = False) -> tuple[dict[str,
         conditions.append("s.class_id=?")
         params.append(class_id)
     join = ""
-    if user["role"] != "superadmin":
+    if user["role"] not in SCHOOL_ROLES:
         join = "JOIN teacher_classes tc ON tc.class_id=s.class_id"
         conditions.append("tc.user_id=?")
         params.append(user["id"])
@@ -1509,8 +1542,9 @@ async def cleanup(app: web.Application) -> None:
             """SELECT m.id FROM classroom_voice_messages m
                WHERE m.audio_path IS NOT NULL AND (
                    m.expires_at<=? OR NOT EXISTS (
-                       SELECT 1 FROM users u JOIN teacher_classes tc ON tc.user_id=u.id
-                       WHERE u.enabled=1 AND tc.class_id=m.class_id
+                       SELECT 1 FROM users u
+                       WHERE u.enabled=1 AND (u.role='principal' OR EXISTS (
+                           SELECT 1 FROM teacher_classes tc WHERE tc.user_id=u.id AND tc.class_id=m.class_id))
                          AND NOT EXISTS (
                              SELECT 1 FROM classroom_voice_receipts r
                              WHERE r.message_id=m.id AND r.user_id=u.id

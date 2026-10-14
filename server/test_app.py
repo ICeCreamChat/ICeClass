@@ -201,7 +201,9 @@ class ICeClassServerTest(ServerTestCase):
     async def test_existing_database_is_upgraded_without_losing_history(self) -> None:
         legacy_path = Path(self.temp.name) / "legacy.db"
         connection = sqlite3.connect(legacy_path)
-        connection.executescript(service.SCHEMA_PATH.read_text(encoding="utf-8"))
+        legacy_schema = service.SCHEMA_PATH.read_text(encoding="utf-8").replace(
+            "('superadmin', 'teacher', 'director', 'principal')", "('superadmin', 'teacher')")
+        connection.executescript(legacy_schema)
         connection.execute(
             "INSERT INTO users(id, username, display_name, role, password_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, 1, 1)",
             ("user-1", "legacy", "原有教师", "teacher", "unused"),
@@ -210,6 +212,8 @@ class ICeClassServerTest(ServerTestCase):
             "INSERT INTO classes(id, name, enabled, created_at, updated_at) VALUES (?, ?, 1, 1, 1)",
             ("class-1", "高一（1）班"),
         )
+        connection.execute("INSERT INTO teacher_classes VALUES('user-1','class-1')")
+        connection.execute("INSERT INTO sessions VALUES('session-1','user-1','csrf',9999999999999,1)")
         connection.execute(
             """INSERT INTO shouts(id, class_id, sender_id, sender_name, text, alert_level, tts_volume,
                tts_speed, display_duration_sec, status, created_at, expires_at)
@@ -223,6 +227,14 @@ class ICeClassServerTest(ServerTestCase):
         try:
             existing = upgraded.one("SELECT text, quiet_override, content_type FROM shouts WHERE id=?", ("shout-1",))
             self.assertEqual(existing, {"text": "原有历史", "quiet_override": 0, "content_type": "text"})
+            self.assertEqual(upgraded.one("SELECT password_hash FROM users WHERE id='user-1'")["password_hash"], "unused")
+            self.assertIsNotNone(upgraded.one("SELECT * FROM teacher_classes WHERE user_id='user-1'"))
+            self.assertIsNotNone(upgraded.one("SELECT * FROM sessions WHERE user_id='user-1'"))
+            self.assertEqual(upgraded.db.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertEqual(upgraded.db.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+            upgraded.run("UPDATE users SET role='director' WHERE id='user-1'")
+            with self.assertRaises(sqlite3.IntegrityError):
+                upgraded.run("INSERT INTO teacher_classes VALUES('missing-user','class-1')")
             self.assertIsNotNone(
                 upgraded.one("SELECT name FROM sqlite_master WHERE type='table' AND name='quiet_periods'")
             )
@@ -231,6 +243,57 @@ class ICeClassServerTest(ServerTestCase):
             )
         finally:
             upgraded.close()
+
+    async def test_staff_roles_scope_and_rule_permissions(self) -> None:
+        await self.bootstrap_and_login()
+        admin_cookie, admin_csrf = self.cookie, self.csrf
+        class_ids = []
+        for number in (1, 2):
+            response, result = await self.json_request("POST", "/api/classes", {"name": f"高一（{number}）班"}, csrf=True)
+            self.assertEqual(response.status, 201, result)
+            class_ids.append(result["id"])
+        staff = {}
+        for role in ("director", "principal"):
+            response, result = await self.json_request("POST", "/api/teachers", {
+                "username": role, "displayName": role, "password": "StaffPassword123",
+                "role": role, "classIds": [class_ids[0]] if role == "director" else []}, csrf=True)
+            self.assertEqual(response.status, 201, result)
+            staff[role] = result["id"]
+        response, result = await self.json_request("POST", "/api/teachers", {
+            "username": "second.admin", "displayName": "第二管理员", "password": "StaffPassword123", "role": "superadmin"}, csrf=True)
+        self.assertEqual(response.status, 400, result)
+        response, result = await self.json_request("GET", "/api/teachers")
+        self.assertEqual({row["role"] for row in result["teachers"]}, {"director", "principal"})
+        for role in ("director", "principal"):
+            response, result = await self.json_request("POST", "/api/auth/login", {"username": role, "password": "StaffPassword123"})
+            self.assertEqual(response.status, 200, result)
+            self.cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+            self.csrf = result["user"]["csrfToken"]
+            response, result = await self.json_request("GET", "/api/classes")
+            expected = {class_ids[0]} if role == "director" else set(class_ids)
+            self.assertEqual({row["id"] for row in result["classes"]}, expected)
+            response, result = await self.json_request("GET", "/api/reading/report")
+            self.assertEqual(response.status, 200, result)
+            self.assertEqual({row["classId"] for row in result["rows"]}, expected)
+            response, result = await self.json_request("PUT", "/api/reading/settings", {}, csrf=True)
+            self.assertEqual(response.status, 403, result)
+            response, result = await self.json_request("POST", "/api/classes", {"name": "高二（1）班"}, csrf=True)
+            self.assertEqual(response.status, 403, result)
+        principal_cookie = self.cookie
+        self.cookie, self.csrf = admin_cookie, admin_csrf
+        response, result = await self.json_request("PATCH", f"/api/teachers/{staff['principal']}", {
+            "role": "director", "classIds": [class_ids[0]]}, csrf=True)
+        self.assertEqual(response.status, 200, result)
+        self.cookie = principal_cookie
+        response, result = await self.json_request("GET", "/api/classes")
+        self.assertEqual(response.status, 401, result)
+        response, result = await self.json_request("POST", "/api/auth/login", {"username": "principal", "password": "StaffPassword123"})
+        self.cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+        self.csrf = result["user"]["csrfToken"]
+        response, result = await self.json_request("GET", "/api/classes")
+        self.assertEqual({row["id"] for row in result["classes"]}, {class_ids[0]})
+        response, result = await self.json_request("GET", f"/api/reading/report?classId={class_ids[1]}")
+        self.assertEqual(response.status, 403, result)
 
     async def test_quiet_hours_require_teacher_confirmation_and_mark_history(self) -> None:
         await self.bootstrap_and_login()

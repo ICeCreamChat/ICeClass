@@ -287,8 +287,8 @@
       </form>
 
       <form id="bootstrapForm" class="hidden">
-        <h1>初始化最高管理员</h1>
-        <p class="muted">系统将创建唯一的最高管理员账号 <strong>ICe</strong>。</p>
+        <h1>初始化超级管理员</h1>
+        <p class="muted">系统将创建唯一的超级管理员账号 <strong>ICe</strong>。</p>
         <div class="field"><label for="bootstrapToken">部署初始化密钥</label><input id="bootstrapToken" type="password" autocomplete="off" required></div>
         <div class="field"><label for="bootstrapPassword">设置 ICe 密码</label><input id="bootstrapPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
         <div class="field"><label for="bootstrapPasswordConfirm">再次输入密码</label><input id="bootstrapPasswordConfirm" type="password" autocomplete="new-password" required></div>
@@ -314,7 +314,7 @@
         <button data-view="history"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span data-label>历史记录</span></button>
         <button data-view="quiet"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><span data-label>禁言时间</span></button>
         <button data-view="classes" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span data-label>班级管理</span></button>
-        <button data-view="teachers" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span><span data-label>教师管理</span></button>
+        <button data-view="teachers" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span><span data-label>用户管理</span></button>
         <button data-view="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.5"/></svg></span><span data-label>账号与设备</span></button>
       </nav>
     </aside>
@@ -445,7 +445,7 @@
 
       <section id="view-classes" class="view hidden">
         <div class="view-head">
-          <div><h1>班级管理</h1><p>班级由最高管理员创建；停用班级仍保留历史记录。</p></div>
+          <div><h1>班级管理</h1><p>班级由超级管理员创建；停用班级仍保留历史记录。</p></div>
           <div class="toolbar"><div id="classGradeFilter" class="grade-filter" role="tablist" aria-label="年级筛选"><button type="button" data-grade-filter="all" class="active">全部</button><button type="button" data-grade-filter="高一">高一</button><button type="button" data-grade-filter="高二">高二</button><button type="button" data-grade-filter="高三">高三</button></div><button id="allClassesButton" class="btn primary">一键创建高中60班</button><button id="batchClassButton" class="btn">批量创建</button><button id="addClassButton" class="btn">创建班级</button></div>
         </div>
         <div id="classesContainer"></div>
@@ -453,8 +453,8 @@
 
       <section id="view-teachers" class="view hidden">
         <div class="view-head">
-          <div><h1>教师管理</h1><p>为教师创建账号并分配可以喊话的班级。</p></div>
-          <div class="toolbar"><button id="addTeacherButton" class="btn primary">创建教师</button></div>
+          <div><h1>用户管理</h1><p>管理普通教师、主任和校长账号，并设置各自的班级范围。</p></div>
+          <div class="toolbar"><button id="addTeacherButton" class="btn primary">创建用户</button></div>
         </div>
         <div id="teachersContainer"></div>
       </section>
@@ -516,12 +516,13 @@
 
   <dialog id="teacherDialog">
     <form id="teacherForm">
-      <div class="dialog-head"><h2>创建教师账号</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-head"><h2>创建用户账号</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
       <div class="dialog-body">
         <div class="field"><label for="teacherUsername">登录用户名</label><input id="teacherUsername" required maxlength="64" pattern="[A-Za-z0-9_.@-]{3,64}"></div>
-        <div class="field"><label for="teacherDisplayName">教师姓名</label><input id="teacherDisplayName" required maxlength="40"></div>
+        <div class="field"><label for="teacherDisplayName">姓名</label><input id="teacherDisplayName" required maxlength="40"></div>
+        <div class="field"><label for="teacherRole">身份</label><select id="teacherRole"><option value="teacher">普通教师</option><option value="director">主任</option><option value="principal">校长</option></select><p id="newStaffRoleHint" class="hint"></p></div>
         <div class="field"><label for="teacherPassword">初始密码</label><input id="teacherPassword" type="password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
-        <div class="field"><span class="label">授权班级</span><div id="newTeacherClasses" class="check-grid"></div></div>
+        <div id="newStaffScope" class="field"><span class="label">授权班级</span><div id="newTeacherClasses" class="check-grid"></div></div>
         <p id="teacherError" class="form-error"></p>
       </div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">创建账号</button></div>
@@ -530,15 +531,15 @@
 
   <dialog id="permissionDialog">
     <form id="permissionForm">
-      <div class="dialog-head"><h2>分配班级</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-      <div class="dialog-body"><p id="permissionTeacher"></p><div id="permissionClasses" class="check-grid"></div><input id="permissionTeacherId" type="hidden"></div>
+      <div class="dialog-head"><h2>身份与班级权限</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-body"><p id="permissionTeacher"></p><div class="field"><label for="permissionRole">身份</label><select id="permissionRole"><option value="teacher">普通教师</option><option value="director">主任</option><option value="principal">校长</option></select><p id="permissionRoleHint" class="hint"></p></div><div id="permissionScope" class="field"><span class="label">授权班级</span><div id="permissionClasses" class="check-grid"></div></div><input id="permissionTeacherId" type="hidden"></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存权限</button></div>
     </form>
   </dialog>
 
   <dialog id="passwordDialog">
     <form id="passwordForm">
-      <div class="dialog-head"><h2>重置教师密码</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-head"><h2>重置用户密码</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
       <div class="dialog-body"><p id="passwordTeacher"></p><div class="field"><label for="newTeacherPassword">新密码</label><input id="newTeacherPassword" type="password" required minlength="10" maxlength="128"></div><input id="passwordTeacherId" type="hidden"><p id="passwordError" class="form-error"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">重置密码</button></div>
     </form>
@@ -557,6 +558,7 @@
       "use strict";
       const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
+      const roleLabels = { superadmin: "超级管理员", teacher: "普通教师", director: "主任", principal: "校长" };
       const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "正在展示", failed: "处理失败" };
       const levelMeta = {
         info: { label: "普通", mode: "右下角静音弹窗", sound: false, duration: 8, className: "info" },
@@ -787,7 +789,7 @@
         $("authPage").classList.add("hidden");
         $("appShell").classList.remove("hidden");
         $("userDisplayName").textContent = user.displayName;
-        $("userRole").textContent = user.role === "superadmin" ? "最高管理员" : "教师";
+        $("userRole").textContent = roleLabels[user.role] || "普通教师";
         document.querySelectorAll("[data-admin]").forEach(node => node.classList.toggle("hidden", user.role !== "superadmin"));
         await loadClasses();
         window.dispatchEvent(new Event("iceclass-ready"));
@@ -1117,16 +1119,17 @@
       function renderTeachers() {
         const container = $("teachersContainer");
         if (!container || state.user?.role !== "superadmin") return;
-        if (!state.teachers.length) return renderEmpty(container, "尚未创建教师账号");
-        const table = createTable(["用户名", "教师姓名", "状态", "授权班级", "操作"]);
+        if (!state.teachers.length) return renderEmpty(container, "尚未创建用户账号");
+        const table = createTable(["用户名", "姓名", "身份", "状态", "班级范围", "操作"]);
         for (const teacher of state.teachers) {
           const row = table.tBodies[0].insertRow();
           addCell(row, teacher.username);
           addCell(row, teacher.display_name);
+          addCell(row, roleLabels[teacher.role] || "普通教师");
           row.insertCell().append(statusBadge(Number(teacher.enabled) === 1 ? "enabled" : "disabled", Number(teacher.enabled) === 1 ? "启用" : "已停用"));
-          addCell(row, teacher.classes.map(item => item.name).join("、") || "未分配");
+          addCell(row, teacher.role === "principal" ? "全校（自动包含新班级）" : teacher.classes.map(item => item.name).join("、") || "未分配");
           const actions = el("div", "row-actions");
-          actions.append(actionButton("分配班级", () => openPermissions(teacher)), actionButton("重置密码", () => openPassword(teacher)), actionButton(Number(teacher.enabled) === 1 ? "停用" : "启用", () => toggleTeacher(teacher)));
+          actions.append(actionButton("身份与权限", () => openPermissions(teacher)), actionButton("重置密码", () => openPassword(teacher)), actionButton(Number(teacher.enabled) === 1 ? "停用" : "启用", () => toggleTeacher(teacher)));
           row.insertCell().append(actions);
         }
         container.replaceChildren(wrapTable(table));
@@ -1254,10 +1257,20 @@
         node.replaceChildren(levelBadge(state.selectedShoutLevel || state.selectedLevel), el("strong", "", title || statusLabels[status] || "状态更新"), el("p", "hint", detail || ""));
       }
 
+      function updateStaffScope(editing = false) {
+        const role = $(editing ? "permissionRole" : "teacherRole").value;
+        $(editing ? "permissionScope" : "newStaffScope").classList.toggle("hidden", role === "principal");
+        $(editing ? "permissionRoleHint" : "newStaffRoleHint").textContent = role === "principal"
+          ? "校长可以查看全校早读统计、排名和通知；全校规则、账号与设备仍由 ICe 管理。"
+          : role === "director" ? "主任查看和使用下方授权班级，可选择整个年级。" : "普通教师仅查看和使用下方授权班级。";
+      }
+
       function openPermissions(teacher) {
         $("permissionTeacherId").value = teacher.id;
         $("permissionTeacher").textContent = `${teacher.display_name}（${teacher.username}）`;
         renderClassChecks("permissionClasses", teacher.classes.map(item => item.id));
+        $("permissionRole").value = teacher.role || "teacher";
+        updateStaffScope(true);
         $("permissionDialog").showModal();
       }
 
@@ -1312,7 +1325,7 @@
         try {
           await api(`/api/teachers/${encodeURIComponent(teacher.id)}`, { method: "PATCH", body: JSON.stringify({ enabled: Number(teacher.enabled) !== 1 }) });
           await loadTeachers();
-          toast(Number(teacher.enabled) === 1 ? "教师账号已停用" : "教师账号已启用");
+          toast(Number(teacher.enabled) === 1 ? "用户账号已停用" : "用户账号已启用");
         } catch (error) { toast(error.message); }
       }
 
@@ -1422,7 +1435,7 @@
              button.textContent = originalText;
            }
          });
-         $("addTeacherButton").addEventListener("click", () => { $("teacherForm").reset(); $("teacherError").textContent = ""; renderClassChecks("newTeacherClasses", []); $("teacherDialog").showModal(); });
+         $("addTeacherButton").addEventListener("click", () => { $("teacherForm").reset(); $("teacherError").textContent = ""; renderClassChecks("newTeacherClasses", []); updateStaffScope(); $("teacherDialog").showModal(); });
         $("classForm").addEventListener("submit", async event => {
           event.preventDefault(); $("classError").textContent = "";
           try { await api("/api/classes", { method: "POST", body: JSON.stringify({ name: $("className").value }) }); $("classDialog").close(); await loadClasses(); toast("班级已创建"); }
@@ -1438,16 +1451,18 @@
           try { await api(`/api/classes/${encodeURIComponent($("renameClassId").value)}`, { method: "PATCH", body: JSON.stringify({ name: $("renameClassName").value }) }); $("renameClassDialog").close(); await loadClasses(); toast("班级名称已修改"); }
           catch (error) { $("renameClassError").textContent = error.message; }
         });
+        $("teacherRole").addEventListener("change", () => updateStaffScope());
+        $("permissionRole").addEventListener("change", () => updateStaffScope(true));
         $("teacherForm").addEventListener("submit", async event => {
           event.preventDefault(); $("teacherError").textContent = "";
           try {
-            await api("/api/teachers", { method: "POST", body: JSON.stringify({ username: $("teacherUsername").value, displayName: $("teacherDisplayName").value, password: $("teacherPassword").value, classIds: checkedValues("newTeacherClasses") }) });
-            $("teacherDialog").close(); await loadTeachers(); toast("教师账号已创建");
+            await api("/api/teachers", { method: "POST", body: JSON.stringify({ username: $("teacherUsername").value, displayName: $("teacherDisplayName").value, password: $("teacherPassword").value, role: $("teacherRole").value, classIds: checkedValues("newTeacherClasses") }) });
+            $("teacherDialog").close(); await loadTeachers(); toast("用户账号已创建");
           } catch (error) { $("teacherError").textContent = error.message; }
         });
         $("permissionForm").addEventListener("submit", async event => {
           event.preventDefault();
-          try { await api(`/api/teachers/${encodeURIComponent($("permissionTeacherId").value)}/classes`, { method: "PUT", body: JSON.stringify({ classIds: checkedValues("permissionClasses") }) }); $("permissionDialog").close(); await loadTeachers(); toast("班级权限已保存"); }
+          try { await api(`/api/teachers/${encodeURIComponent($("permissionTeacherId").value)}`, { method: "PATCH", body: JSON.stringify({ role: $("permissionRole").value, classIds: checkedValues("permissionClasses") }) }); $("permissionDialog").close(); await loadTeachers(); toast("身份与班级权限已保存"); }
           catch (error) { toast(error.message); }
         });
         $("passwordForm").addEventListener("submit", async event => {
