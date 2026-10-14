@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl = 'http://127.0.0.1:8787',
     [string]$BootstrapToken = 'LOCAL_E2E_BOOTSTRAP_2026_STRONG',
     [string]$ReceiverPath = ''
@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not $ReceiverPath) {
-    $ReceiverPath = Join-Path (Get-Location) 'dist\receiver\ICeCreamShouter.exe'
+    $ReceiverPath = Join-Path (Get-Location) 'dist\receiver\ICeClass.exe'
 }
 
 function New-ApiClient {
@@ -38,7 +38,7 @@ function Invoke-Api {
         $content = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         if ($response.Headers.Contains('Set-Cookie')) {
             $setCookie = @($response.Headers.GetValues('Set-Cookie')) | Select-Object -First 1
-            if ($setCookie -match '(^|;\s*)(crs_session=[^;]*)') {
+            if ($setCookie -match '(^|;\s*)(iceclass_session=[^;]*)') {
                 [void]$Client.DefaultRequestHeaders.Remove('Cookie')
                 [void]$Client.DefaultRequestHeaders.TryAddWithoutValidation('Cookie', $Matches[2])
             }

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
 function Invoke-Checked {
@@ -34,10 +34,10 @@ if ($wranglerText.Contains('REPLACE_WITH_D1_DATABASE_ID')) {
     $listOutput = (& npx wrangler d1 list --json 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) { throw 'Cloudflare database list could not be read.' }
     $databases = $listOutput | ConvertFrom-Json
-    $database = @($databases) | Where-Object { $_.name -eq 'cloud-remote-shouter' } | Select-Object -First 1
+    $database = @($databases) | Where-Object { $_.name -eq 'iceclass' } | Select-Object -First 1
     $databaseId = if ($database) { if ($database.uuid) { $database.uuid } else { $database.id } } else { $null }
     if (-not $databaseId) {
-        $createOutput = (& npx wrangler d1 create cloud-remote-shouter --location apac 2>&1 | Out-String)
+        $createOutput = (& npx wrangler d1 create iceclass --location apac 2>&1 | Out-String)
         Write-Host $createOutput
         if ($LASTEXITCODE -ne 0) { throw 'Cloudflare database creation failed.' }
         $match = [regex]::Match($createOutput, '(?im)database_id\s*=\s*"([0-9a-f-]{36})"')
@@ -51,7 +51,7 @@ if ($wranglerText.Contains('REPLACE_WITH_D1_DATABASE_ID')) {
 }
 
 Write-Host '[5/8] Creating database tables...' -ForegroundColor Cyan
-Invoke-Checked npx @('wrangler', 'd1', 'migrations', 'apply', 'cloud-remote-shouter', '--remote')
+Invoke-Checked npx @('wrangler', 'd1', 'migrations', 'apply', 'iceclass', '--remote')
 
 Write-Host '[6/8] Creating the Worker...' -ForegroundColor Cyan
 Invoke-Checked npx @('wrangler', 'deploy')
@@ -64,7 +64,7 @@ $secret = [Convert]::ToBase64String($secretBytes).TrimEnd('=').Replace('+', '-')
 $secret | & npx wrangler secret put BOOTSTRAP_TOKEN
 if ($LASTEXITCODE -ne 0) { throw 'Failed to save the initialization secret.' }
 
-Write-Host '[8/8] Publishing the final ICeCream Shouter version...' -ForegroundColor Cyan
+Write-Host '[8/8] Publishing the final ICeClass · 班伴 version...' -ForegroundColor Cyan
 $deployOutput = (& npx wrangler deploy 2>&1 | Out-String)
 Write-Host $deployOutput
 if ($LASTEXITCODE -ne 0) { throw 'Cloud deployment failed.' }

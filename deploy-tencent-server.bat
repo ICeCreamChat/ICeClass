@@ -1,10 +1,10 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title ICeCream Shouter Tencent Cloud Deployment
+title ICeClass Tencent Cloud Deployment
 
 echo ============================================================
-echo   ICeCream Shouter - Tencent Cloud one-click deployment
+echo   ICeClass - Tencent Cloud one-click deployment
 echo ============================================================
 echo.
 echo Before continuing, the server must be Ubuntu Server 24.04 LTS.

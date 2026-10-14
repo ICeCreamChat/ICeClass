@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class ReceiverUpdateService
 {
@@ -47,8 +47,8 @@ public sealed class ReceiverUpdateService
 
         var updateDirectory = Path.Combine(AppContext.BaseDirectory, ".updates");
         Directory.CreateDirectory(updateDirectory);
-        var temporaryPath = Path.Combine(updateDirectory, $"ICeCreamShouter-{manifest.Version}.download");
-        var readyPath = Path.Combine(updateDirectory, $"ICeCreamShouter-{manifest.Version}.exe");
+        var temporaryPath = Path.Combine(updateDirectory, $"ICeClass-{manifest.Version}.download");
+        var readyPath = Path.Combine(updateDirectory, $"ICeClass-{manifest.Version}.exe");
         TryDelete(temporaryPath);
 
         try

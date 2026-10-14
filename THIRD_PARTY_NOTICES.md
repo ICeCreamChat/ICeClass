@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-ICeCream Shouter 是 ICeCreamChat 进行大幅重构和二次开发的项目。产品构想及部分早期客户端实现参考了以下开源项目：
+ICeClass · 班伴由 ICeCreamChat 在原 ICeCreamShouter 通知平台基础上扩展。产品构想及部分早期客户端实现参考了以下开源项目：
 
 - OpenRemoteShouter
 - 项目地址：<https://github.com/YU322142/OpenRemoteShouter>
@@ -32,5 +32,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## 早读陪伴
+
+早读陪伴由项目所有者提供并授权集成。原网页自带的字体、笔画数据、图标、Three.js 许可文本保留在 `web_controller/reading/index.html` 的 `third-party-licenses` 数据块中，同时提取到 `docs/licenses/` 便于查阅。
+
+早读素材随原应用提供并保留；第三方字体、笔画数据和图标分别遵循各自许可，不因平台代码使用 MIT 而改变。
 
 其余第三方依赖分别遵循各自软件包附带的许可证。本文件仅用于履行第三方开源许可义务，不改变 ICeCreamChat 对本项目新增和修改部分所享有的权利。

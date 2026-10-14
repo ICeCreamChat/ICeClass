@@ -5,7 +5,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class App : Application
 {
@@ -71,6 +71,14 @@ public sealed class App : Application
         var studentVoice = new NativeMenuItem { Header = "向老师语音留言" };
         studentVoice.Click += (_, _) => ShowStudentVoice();
         menu.Items.Add(studentVoice);
+        var reading = new NativeMenuItem { Header = "打开早读陪伴" };
+        reading.Click += async (_, _) =>
+        {
+            if (!ReceiverConfig.TryLoad(out var current)) { ShowEnrollment(); return; }
+            try { await ClassroomControlService.OpenReadingAsync(current); }
+            catch (Exception error) { AppLog.Error("Open reading failed", error); ShowStudentVoice(); }
+        };
+        menu.Items.Add(reading);
         var test = new NativeMenuItem { Header = "本机测试" };
         test.Click += async (_, _) => await TestAsync();
         menu.Items.Add(test);
@@ -81,7 +89,7 @@ public sealed class App : Application
         var exit = new NativeMenuItem { Header = "退出" };
         exit.Click += async (_, _) => await ExitAsync();
         menu.Items.Add(exit);
-        _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeCream Shouter", Menu = menu, IsVisible = true };
+        _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass · 班伴", Menu = menu, IsVisible = true };
         _tray.Clicked += (_, _) => ShowStudentVoice();
     }
 
@@ -126,7 +134,7 @@ public sealed class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")));
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config));
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
         _studentVoiceWindow.Show();
         _studentVoiceWindow.Activate();

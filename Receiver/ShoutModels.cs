@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class ShoutPayload
 {

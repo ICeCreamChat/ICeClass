@@ -1,4 +1,4 @@
-﻿name = "cloud-remote-shouter"
+name = "iceclass"
 main = "cloud/src/index.ts"
 compatibility_date = "2026-09-01"
 
@@ -9,8 +9,8 @@ run_worker_first = ["/*"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "cloud-remote-shouter"
-database_id = "26ad21ac-a07b-4c05-a8a3-f5b920472b46"
+database_name = "iceclass"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
 migrations_dir = "cloud/migrations"
 
 [[durable_objects.bindings]]
@@ -22,7 +22,7 @@ tag = "v1"
 new_sqlite_classes = ["ClassRoom"]
 
 [vars]
-APP_NAME = "ICeCream Shouter"
+APP_NAME = "ICeClass · 班伴"
 SESSION_DAYS = "14"
 HISTORY_DAYS = "0"
 

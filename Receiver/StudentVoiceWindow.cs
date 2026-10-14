@@ -5,7 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using NAudio.Wave;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 /// <summary>Classroom-side voice message window. It uploads voice to the assigned class only.</summary>
 public sealed class StudentVoiceWindow : Window
@@ -22,12 +22,12 @@ public sealed class StudentVoiceWindow : Window
     private bool _recording;
     private bool _sending;
 
-    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send)
+    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null)
     {
         _send = send;
-        Title = $"向老师语音留言 · {config.ClassName}";
+        Title = $"班伴 · {config.ClassName}";
         Width = 520;
-        Height = 330;
+        Height = 405;
         MinWidth = 420;
         MinHeight = 280;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -69,6 +69,16 @@ public sealed class StudentVoiceWindow : Window
         footer.Children.Add(_status);
         footer.Children.Add(_duration);
 
+        var reading = new Button { Content = "打开早读陪伴", Height = 48, HorizontalAlignment = HorizontalAlignment.Stretch };
+        reading.Click += async (_, _) =>
+        {
+            if (openReading is null) return;
+            reading.IsEnabled = false;
+            try { await openReading(); _status.Text = "早读陪伴已打开，活动自动归到本班。"; }
+            catch (Exception error) { _status.Text = error.Message; }
+            finally { reading.IsEnabled = true; }
+        };
+
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         _timer.Tick += (_, _) =>
         {
@@ -84,7 +94,7 @@ public sealed class StudentVoiceWindow : Window
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(28),
-            Child = new StackPanel { Spacing = 16, Children = { title, note, _recordButton, footer } },
+            Child = new StackPanel { Spacing = 16, Children = { title, note, _recordButton, footer, reading } },
         };
         Closed += (_, _) => StopRecorder();
     }

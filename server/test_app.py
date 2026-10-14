@@ -16,14 +16,14 @@ from aiohttp.test_utils import TestClient, TestServer
 import app as service
 
 
-class CloudRemoteShouterServerTest(unittest.IsolatedAsyncioTestCase):
+class ServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         service.BOOTSTRAP_TOKEN = "test-bootstrap-token"
         self.release_bytes = b"test receiver executable"
         release_root = Path(self.temp.name) / "receiver_release"
         release_root.mkdir()
-        (release_root / "ICeCreamShouter.exe").write_bytes(self.release_bytes)
+        (release_root / "ICeClass.exe").write_bytes(self.release_bytes)
         (release_root / "manifest.json").write_text(json.dumps({
             "version": "1.1.0",
             "sha256": hashlib.sha256(self.release_bytes).hexdigest(),
@@ -78,6 +78,7 @@ class CloudRemoteShouterServerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200, device)
         return device
 
+class ICeClassServerTest(ServerTestCase):
     async def test_complete_teacher_and_device_flow(self) -> None:
         await self.bootstrap_and_login()
 

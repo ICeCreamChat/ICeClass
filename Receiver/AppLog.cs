@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 internal static class AppLog
 {
@@ -8,7 +8,7 @@ internal static class AppLog
     private static readonly object Sync = new();
     private static readonly string LogDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "CloudRemoteShouter",
+        "ICeClass",
         "logs");
     private static readonly string LogPath = Path.Combine(LogDirectory, "receiver.log");
 

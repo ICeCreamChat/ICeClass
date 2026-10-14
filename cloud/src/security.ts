@@ -53,7 +53,7 @@ export async function createSession(env: Env, userId: string): Promise<{ token: 
 }
 
 export async function getSessionUser(request: Request, env: Env): Promise<SessionUser | null> {
-  const token = readCookie(request, "crs_session");
+  const token = readCookie(request, "iceclass_session");
   if (!token) return null;
   const row = await env.DB.prepare(
     `SELECT u.id, u.username, u.display_name, u.role, u.enabled, s.csrf_token
@@ -70,11 +70,11 @@ export function requireCsrf(request: Request, user: SessionUser): boolean {
 }
 
 export function sessionCookie(token: string, expiresAt: number): string {
-  return `crs_session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Expires=${new Date(expiresAt).toUTCString()}`;
+  return `iceclass_session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Expires=${new Date(expiresAt).toUTCString()}`;
 }
 
 export function expiredSessionCookie(): string {
-  return "crs_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0";
+  return "iceclass_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0";
 }
 
 export function readCookie(request: Request, name: string): string | null {

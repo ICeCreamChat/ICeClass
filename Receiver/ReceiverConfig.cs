@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Security.Cryptography;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class ReceiverConfig
 {

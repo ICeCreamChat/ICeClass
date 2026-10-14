@@ -170,7 +170,7 @@ async function login(request: Request, env: Env): Promise<Response> {
 
 async function logout(request: Request, env: Env, user: SessionUser): Promise<Response> {
   if (!requireCsrf(request, user)) return json({ error: "页面凭证已失效。" }, 403);
-  const token = readCookie(request, "crs_session");
+  const token = readCookie(request, "iceclass_session");
   if (token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(token)).run();
   return json({ ok: true }, 200, { "Set-Cookie": expiredSessionCookie() });
 }

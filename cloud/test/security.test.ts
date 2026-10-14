@@ -41,9 +41,9 @@ describe("security helpers", () => {
 
   it("reads cookies without confusing similarly named cookies", () => {
     const request = new Request("https://example.test", {
-      headers: { Cookie: "other=1; crs_session=abc.def; crs_session_old=no" },
+      headers: { Cookie: "other=1; iceclass_session=abc.def; iceclass_session_old=no" },
     });
-    expect(readCookie(request, "crs_session")).toBe("abc.def");
+    expect(readCookie(request, "iceclass_session")).toBe("abc.def");
     expect(readCookie(request, "missing")).toBeNull();
   });
 

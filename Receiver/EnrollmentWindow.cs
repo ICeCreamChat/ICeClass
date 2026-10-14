@@ -5,7 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class EnrollmentWindow : Window
 {
@@ -26,7 +26,7 @@ public sealed class EnrollmentWindow : Window
     public EnrollmentWindow(ReceiverConfig? existing)
     {
         _existing = existing;
-        Title = "教室接收端设置";
+        Title = "ICeClass · 班伴教室端设置";
         Width = 580;
         MinWidth = 420;
         Height = 660;
@@ -63,7 +63,7 @@ public sealed class EnrollmentWindow : Window
         var defaultEndpoint = existing?.Endpoint ?? ReceiverConfig.TryLoadDefaultEndpoint();
         _endpointWasPreconfigured = existing is null && !string.IsNullOrWhiteSpace(defaultEndpoint);
         _endpoint.Text = defaultEndpoint ?? "";
-        _endpoint.Watermark = "例如：https://icecreamchat.top";
+        _endpoint.Watermark = "输入管理员提供的班伴平台网址";
         _deviceName.Text = existing?.DeviceName ?? Environment.MachineName;
         _deviceName.MaxLength = 80;
         _code.Watermark = existing is null ? "输入网页生成的一次性绑定码" : "重新绑定其他班级时才需要填写";
@@ -282,7 +282,7 @@ public sealed class EnrollmentWindow : Window
         }
         catch (UnauthorizedAccessException)
         {
-            _error.Text = "无法保存配置。请把 EXE 移到可写目录（例如 D:\\ICeCreamShouter）后重新运行。";
+            _error.Text = "无法保存配置。请把 EXE 移到可写目录（例如 D:\\ICeClass）后重新运行。";
         }
         catch (IOException)
         {

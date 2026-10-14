@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 if ($PSScriptRoot) { Set-Location (Split-Path -Parent $PSScriptRoot) }
 
 function Read-WithDefault([string]$Prompt, [string]$Default) {
@@ -48,9 +48,9 @@ foreach ($command in @('ssh.exe', 'scp.exe', 'tar.exe')) {
     }
 }
 
-$domain = Read-WithDefault '请输入正式域名' 'icecreamchat.top'
+$domain = (Read-Host '请输入班伴平台的新域名（需要已解析到服务器）').Trim()
 if ($domain -notmatch '^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$') { throw '域名格式不正确。' }
-$serverIp = Read-WithDefault '请输入腾讯云服务器公网 IP' '175.27.212.68'
+$serverIp = (Read-Host '请输入腾讯云服务器公网 IP').Trim()
 if ($serverIp -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { throw '公网 IP 格式不正确。' }
 $sshUser = Read-WithDefault '请输入服务器登录用户名' 'ubuntu'
 if ($sshUser -notmatch '^[A-Za-z_][A-Za-z0-9_-]*$') { throw '服务器登录用户名格式不正确。' }
@@ -63,8 +63,12 @@ if ($addresses -notcontains $serverIp) {
 $bootstrapRequired = $true
 try {
     $bootstrapStatus = Invoke-RestMethod -Method Get -Uri "https://$domain/api/bootstrap" -TimeoutSec 15
+    if ($bootstrapStatus.platform -ne 'ICeClass') {
+        throw '该域名已指向其他平台。请为班伴使用独立域名，避免替换现有网站。'
+    }
     $bootstrapRequired = [bool]$bootstrapStatus.required
 } catch {
+    if ($_.Exception.Message -like '该域名已指向其他平台*') { throw }
     Write-Host '暂时无法读取服务器初始化状态，将按首次部署流程继续。' -ForegroundColor Yellow
 }
 
@@ -77,22 +81,22 @@ if ($bootstrapRequired) {
 
 Write-Host ''
 Write-Host '正在构建新版教室端 EXE...' -ForegroundColor Cyan
-$env:CRS_NO_PAUSE = '1'
+$env:ICECLASS_NO_PAUSE = '1'
 & (Join-Path (Get-Location) 'build.bat')
 if ($LASTEXITCODE -ne 0) { throw '教室端 EXE 构建失败。' }
 
-$receiverProject = [xml](Get-Content -LiteralPath (Join-Path (Get-Location) 'Receiver\Receiver.csproj') -Raw)
+$receiverProject = [xml](Get-Content -LiteralPath (Join-Path (Get-Location) 'Receiver\Receiver.csproj') -Raw -Encoding UTF8)
 $receiverVersion = [string]$receiverProject.Project.PropertyGroup.Version
 if ($receiverVersion -notmatch '^\d+(\.\d+){1,3}$') { throw 'Receiver.csproj 中的版本号格式不正确。' }
-$receiverExecutable = Join-Path (Get-Location) 'dist\receiver\ICeCreamShouter.exe'
+$receiverExecutable = Join-Path (Get-Location) 'dist\receiver\ICeClass.exe'
 if (-not (Test-Path -LiteralPath $receiverExecutable)) { throw '构建完成后没有找到教室端 EXE。' }
 $receiverFile = Get-Item -LiteralPath $receiverExecutable
 $receiverHash = Get-Sha256Hex $receiverExecutable
 
 $bootstrapToken = New-RandomToken
-$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ("cloud-remote-shouter-" + [Guid]::NewGuid().ToString('N'))
+$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ("iceclass-" + [Guid]::NewGuid().ToString('N'))
 $packageRoot = Join-Path $temporaryRoot 'package'
-$archive = Join-Path $temporaryRoot 'cloud-remote-shouter.tar.gz'
+$archive = Join-Path $temporaryRoot 'iceclass.tar.gz'
 New-Item -ItemType Directory -Path $packageRoot | Out-Null
 
 try {
@@ -103,15 +107,18 @@ try {
     }
     foreach ($relativeFile in @(
         'server\app.py',
+        'server\reading.py',
         'server\requirements.txt',
         'server\install-ubuntu.sh',
         'web_controller\index.html',
         'web_controller\favicon.svg',
+        'web_controller\reading-admin.js',
         'cloud\migrations\0001_initial.sql'
     )) {
         Copy-Item -LiteralPath (Join-Path (Get-Location) $relativeFile) -Destination (Join-Path $packageRoot $relativeFile) -Force
     }
-    Copy-Item -LiteralPath $receiverExecutable -Destination (Join-Path $packageRoot 'receiver_release\ICeCreamShouter.exe') -Force
+    Copy-Item -LiteralPath (Join-Path (Get-Location) 'web_controller\reading') -Destination (Join-Path $packageRoot 'web_controller') -Recurse -Force
+    Copy-Item -LiteralPath $receiverExecutable -Destination (Join-Path $packageRoot 'receiver_release\ICeClass.exe') -Force
     $manifest = [ordered]@{
         version = $receiverVersion
         sha256 = $receiverHash
@@ -128,10 +135,10 @@ try {
     Write-Host ''
     Write-Host "接下来会要求输入服务器 $sshUser 的登录密码。输入时屏幕不会显示字符，这是正常现象。" -ForegroundColor Yellow
     Write-Host '第一次用于上传，第二次用于安装。' -ForegroundColor Yellow
-    & scp.exe -o StrictHostKeyChecking=accept-new $archive "${sshUser}@${serverIp}:/tmp/cloud-remote-shouter.tar.gz"
+    & scp.exe -o StrictHostKeyChecking=accept-new $archive "${sshUser}@${serverIp}:/tmp/iceclass.tar.gz"
     if ($LASTEXITCODE -ne 0) { throw "安装包上传失败。请确认 $sshUser 登录密码和腾讯云防火墙的 SSH（22端口）。" }
 
-    $remote = "rm -rf /tmp/cloud-remote-shouter-install && mkdir -p /tmp/cloud-remote-shouter-install && tar -xzf /tmp/cloud-remote-shouter.tar.gz -C /tmp/cloud-remote-shouter-install && sudo bash /tmp/cloud-remote-shouter-install/server/install-ubuntu.sh '$domain' '$bootstrapToken'"
+    $remote = "rm -rf /tmp/iceclass-install && mkdir -p /tmp/iceclass-install && tar -xzf /tmp/iceclass.tar.gz -C /tmp/iceclass-install && sudo bash /tmp/iceclass-install/server/install-ubuntu.sh '$domain' '$bootstrapToken'"
     & ssh.exe -t -o StrictHostKeyChecking=accept-new "${sshUser}@${serverIp}" $remote
     if ($LASTEXITCODE -ne 0) { throw '服务器安装没有完成。请查看上方最后一条错误。' }
 

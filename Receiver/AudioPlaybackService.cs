@@ -1,7 +1,7 @@
 using System.Text;
 using NAudio.Wave;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 /// <summary>Downloads and plays one temporary classroom voice message at a time.</summary>
 public sealed class AudioPlaybackService : IDisposable
@@ -18,7 +18,7 @@ public sealed class AudioPlaybackService : IDisposable
     public async Task PlayAsync(Uri uri, string deviceToken, CancellationToken cancellationToken)
     {
         if (!uri.IsAbsoluteUri) throw new InvalidOperationException("语音地址无效。");
-        var temporaryPath = Path.Combine(Path.GetTempPath(), $"ICeCreamShouter-{Guid.NewGuid():N}.wav");
+        var temporaryPath = Path.Combine(Path.GetTempPath(), $"ICeClass-{Guid.NewGuid():N}.wav");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         RegisterPlayback(linked);
         try
@@ -58,7 +58,7 @@ public sealed class AudioPlaybackService : IDisposable
     /// <summary>Plays a short locally generated tone so a classroom can verify its speakers without the cloud.</summary>
     public async Task PlayTestToneAsync(CancellationToken cancellationToken)
     {
-        var temporaryPath = Path.Combine(Path.GetTempPath(), $"ICeCreamShouter-test-{Guid.NewGuid():N}.wav");
+        var temporaryPath = Path.Combine(Path.GetTempPath(), $"ICeClass-test-{Guid.NewGuid():N}.wav");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         RegisterPlayback(linked);
         try

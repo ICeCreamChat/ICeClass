@@ -1,5 +1,5 @@
 {
-  "Endpoint": "https://cloud-remote-shouter.example.workers.dev",
+  "Endpoint": "https://class.example.com",
   "DeviceId": "GENERATED_AFTER_ENROLLMENT",
   "DeviceToken": "PROTECTED_BY_WINDOWS_AFTER_ENROLLMENT",
   "ClassId": "GENERATED_AFTER_ENROLLMENT",

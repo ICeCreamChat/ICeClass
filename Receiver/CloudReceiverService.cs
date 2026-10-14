@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Avalonia.Threading;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class CloudReceiverService
 {
@@ -144,9 +144,40 @@ public sealed class CloudReceiverService
 
     private static async Task HeartbeatAsync(ClientWebSocket socket, SemaphoreSlim sendLock, CancellationToken token)
     {
+        await SendDeviceStatusAsync(socket, sendLock, token);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
         while (await timer.WaitForNextTickAsync(token))
+        {
             await SendAsync(socket, sendLock, new { type = "heartbeat" }, token);
+            await SendDeviceStatusAsync(socket, sendLock, token);
+        }
+    }
+
+    private static Task SendDeviceStatusAsync(ClientWebSocket socket, SemaphoreSlim sendLock, CancellationToken token) =>
+        SendAsync(socket, sendLock, new { type = "device_status", outputVolume = ClassroomControlService.ReadVolume(),
+            version = ReceiverUpdateService.CurrentVersionText, capabilities = new[] { "reading", "volume" } }, token);
+
+    private static async Task HandleCommandAsync(JsonElement command, ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
+    {
+        if (!command.TryGetProperty("commandId", out var id) || id.ValueKind != JsonValueKind.String || id.GetString()?.Length > 100 ||
+            !command.TryGetProperty("action", out var actionNode) || actionNode.ValueKind != JsonValueKind.String) return;
+        var action = actionNode.GetString();
+        if (action is not ("set_volume" or "open_reading")) return;
+        try
+        {
+            if (action == "set_volume")
+            {
+                if (!command.TryGetProperty("volume", out var value) || !value.TryGetInt32(out var volume) || volume is < 0 or > 100) return;
+                ClassroomControlService.SetVolume(volume);
+            }
+            else await ClassroomControlService.OpenReadingAsync(config, token);
+            await SendAsync(socket, sendLock, new { type = "device_command_ack", commandId = id.GetString(), action, success = true, outputVolume = ClassroomControlService.ReadVolume() }, token);
+        }
+        catch (Exception error)
+        {
+            AppLog.Error("Classroom control failed", error);
+            await SendAsync(socket, sendLock, new { type = "device_command_ack", commandId = id.GetString(), action, success = false, error = error.Message, outputVolume = ClassroomControlService.ReadVolume() }, token);
+        }
     }
 
     private async Task ReceiveAsync(ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
@@ -164,6 +195,16 @@ public sealed class CloudReceiverService
                 message.Write(buffer, 0, result.Count);
             } while (!result.EndOfMessage);
 
+            try
+            {
+                using var command = JsonDocument.Parse(message.ToArray());
+                if (command.RootElement.ValueKind == JsonValueKind.Object && command.RootElement.TryGetProperty("type", out var kind) && kind.GetString() == "device_command")
+                {
+                    await HandleCommandAsync(command.RootElement, socket, sendLock, config, token);
+                    continue;
+                }
+            }
+            catch (JsonException) { continue; }
             ShoutPayload? payload;
             try { payload = JsonSerializer.Deserialize<ShoutPayload>(message.ToArray(), JsonOptions); }
             catch (JsonException) { continue; }

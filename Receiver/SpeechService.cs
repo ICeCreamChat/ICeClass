@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 public sealed class SpeechService : IDisposable
 {
@@ -17,7 +17,7 @@ public sealed class SpeechService : IDisposable
         _thread = new Thread(Run)
         {
             IsBackground = true,
-            Name = "CloudRemoteShouter.Speech",
+            Name = "ICeClass.Speech",
         };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();

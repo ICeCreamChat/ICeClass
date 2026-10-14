@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 internal static class AppIconFactory
 {

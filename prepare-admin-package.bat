@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo This will build the classroom EXE and create the delivery package.
-set "CRS_NO_PAUSE=1"
+set "ICECLASS_NO_PAUSE=1"
 call "%~dp0build.bat"
 if errorlevel 1 (
   echo.

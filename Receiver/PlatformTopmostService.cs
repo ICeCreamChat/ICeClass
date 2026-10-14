@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 internal static class PlatformTopmostService
 {

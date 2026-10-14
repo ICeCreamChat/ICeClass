@@ -1,12 +1,14 @@
 {
-  "name": "icecream-shouter",
-  "version": "1.0.0",
+  "name": "iceclass",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:local": "wrangler d1 migrations apply cloud-remote-shouter --local",
-    "db:remote": "wrangler d1 migrations apply cloud-remote-shouter --remote",
+    "dev": "python server/preview.py",
+    "dev:cloud-legacy": "wrangler dev",
+    "deploy": "deploy-tencent-server.bat",
+    "deploy:cloud-legacy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply iceclass --local",
+    "db:remote": "wrangler d1 migrations apply iceclass --remote",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

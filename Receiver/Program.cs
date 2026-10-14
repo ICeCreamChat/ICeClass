@@ -1,6 +1,6 @@
 using Avalonia;
 
-namespace CloudRemoteShouter.Receiver;
+namespace ICeClass.Receiver;
 
 internal static class Program
 {
@@ -9,7 +9,7 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        _singleInstance = new Mutex(true, "CloudRemoteShouter.Receiver.SingleInstance", out var isFirstInstance);
+        _singleInstance = new Mutex(true, "ICeClass.Receiver.SingleInstance", out var isFirstInstance);
         if (!isFirstInstance) return;
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         _singleInstance.ReleaseMutex();

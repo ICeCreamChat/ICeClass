@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""China-hosted CloudRemoteShouter service for a single Tencent Cloud server."""
+"""ICeClass classroom learning and management service."""
 
 from __future__ import annotations
 
@@ -26,19 +26,20 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import WSMsgType, web
+from reading import install_reading
 
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_ROOT = ROOT / "web_controller"
 RECEIVER_RELEASE_ROOT = ROOT / "receiver_release"
-RECEIVER_EXECUTABLE_NAME = "ICeCreamShouter.exe"
+RECEIVER_EXECUTABLE_NAME = "ICeClass.exe"
 SCHEMA_PATH = ROOT / "cloud" / "migrations" / "0001_initial.sql"
-DATABASE_PATH = Path(os.environ.get("CRS_DATABASE_PATH", ROOT / "data" / "cloud-remote-shouter.db"))
-BOOTSTRAP_TOKEN = os.environ.get("CRS_BOOTSTRAP_TOKEN", "").strip()
-SESSION_DAYS = max(1, min(30, int(os.environ.get("CRS_SESSION_DAYS", "14"))))
-HISTORY_DAYS = max(0, min(3650, int(os.environ.get("CRS_HISTORY_DAYS", "0"))))
-HOST = os.environ.get("CRS_HOST", "127.0.0.1")
-PORT = int(os.environ.get("CRS_PORT", "8765"))
+DATABASE_PATH = Path(os.environ.get("ICECLASS_DATABASE_PATH", ROOT / "data" / "iceclass.db"))
+BOOTSTRAP_TOKEN = os.environ.get("ICECLASS_BOOTSTRAP_TOKEN", "").strip()
+SESSION_DAYS = max(1, min(30, int(os.environ.get("ICECLASS_SESSION_DAYS", "14"))))
+HISTORY_DAYS = max(0, min(3650, int(os.environ.get("ICECLASS_HISTORY_DAYS", "0"))))
+HOST = os.environ.get("ICECLASS_HOST", "127.0.0.1")
+PORT = int(os.environ.get("ICECLASS_PORT", "8865"))
 MAX_AUDIO_BYTES = 4 * 1024 * 1024
 MAX_AUDIO_DURATION_MS = 30_000
 MIN_AUDIO_DURATION_MS = 500
@@ -251,6 +252,7 @@ class Rooms:
         self.store = store
         self.audio_root = audio_root
         self.sockets: dict[str, dict[web.WebSocketResponse, str]] = defaultdict(dict)
+        self.reading = None
 
     def online(self, class_id: str) -> bool:
         return any(not ws.closed for ws in self.sockets.get(class_id, {}))
@@ -291,12 +293,16 @@ class Rooms:
         self.sockets[class_id][socket] = device_id
         await socket.send_json({"type": "connected", "timestamp": now_ms()})
         try:
+            if self.reading:
+                await self.reading.on_connect(socket, class_id)
             async for message in socket:
                 if message.type != WSMsgType.TEXT or len(message.data) > 4096:
                     continue
                 try:
                     parsed = json.loads(message.data)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(parsed, dict):
                     continue
                 if parsed.get("type") == "heartbeat":
                     timestamp = now_ms()
@@ -307,6 +313,8 @@ class Rooms:
                     await socket.send_json({"type": "heartbeat_ack", "timestamp": timestamp})
                 elif parsed.get("type") == "ack":
                     self._record_ack(class_id, parsed)
+                elif self.reading and parsed.get("type") in {"device_status", "device_command_ack"}:
+                    self.reading.telemetry(device_id, parsed)
         finally:
             self.sockets[class_id].pop(socket, None)
             if not self.sockets[class_id]:
@@ -386,7 +394,8 @@ def load_receiver_release(request: web.Request) -> tuple[dict[str, Any], Path] |
     executable_path = release_root / RECEIVER_EXECUTABLE_NAME
     if not executable_path.is_file():
         # Keep reading an older release while a deployment is being upgraded.
-        executable_path = release_root / "CloudRemoteShouter.exe"
+        executable_path = next((release_root / name for name in ("ICeCreamShouter.exe", "CloudRemoteShouter.exe")
+                                if (release_root / name).is_file()), executable_path)
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         if not isinstance(manifest, dict):
@@ -411,7 +420,7 @@ def load_receiver_release(request: web.Request) -> tuple[dict[str, Any], Path] |
 
 
 def current_user(request: web.Request) -> dict[str, Any] | None:
-    token = request.cookies.get("crs_session")
+    token = request.cookies.get("iceclass_session")
     if not token:
         return None
     row = store(request).one(
@@ -629,7 +638,7 @@ async def read_multipart_shout(request: web.Request) -> tuple[dict[str, str], by
 
 async def bootstrap_status(request: web.Request) -> web.Response:
     row = store(request).one("SELECT COUNT(*) count FROM users")
-    return json_response({"required": int(row["count"] if row else 0) == 0})
+    return json_response({"required": int(row["count"] if row else 0) == 0, "platform": "ICeClass"})
 
 
 async def bootstrap(request: web.Request) -> web.Response:
@@ -694,7 +703,7 @@ async def login(request: web.Request) -> web.Response:
         "role": account["role"], "csrfToken": csrf,
     }})
     response.set_cookie(
-        "crs_session", token, path="/", httponly=True, secure=True, samesite="Strict",
+        "iceclass_session", token, path="/", httponly=True, secure=True, samesite="Strict",
         max_age=SESSION_DAYS * 86_400,
     )
     return response
@@ -709,11 +718,11 @@ async def logout(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
         return user
-    token = request.cookies.get("crs_session")
+    token = request.cookies.get("iceclass_session")
     if token:
         store(request).run("DELETE FROM sessions WHERE token_hash=?", (sha256(token),))
     response = json_response({"ok": True})
-    response.del_cookie("crs_session", path="/", secure=True, httponly=True, samesite="Strict")
+    response.del_cookie("iceclass_session", path="/", secure=True, httponly=True, samesite="Strict")
     return response
 
 
@@ -735,7 +744,7 @@ async def change_password(request: web.Request) -> web.Response:
         db.run("DELETE FROM sessions WHERE user_id=?", (user["id"],))
         audit(db, user["id"], "user.password_change", "user", user["id"], None)
     response = json_response({"ok": True})
-    response.del_cookie("crs_session", path="/", secure=True, httponly=True, samesite="Strict")
+    response.del_cookie("iceclass_session", path="/", secure=True, httponly=True, samesite="Strict")
     return response
 
 
@@ -1423,6 +1432,8 @@ async def device_socket(request: web.Request) -> web.StreamResponse:
 
 async def static_file(request: web.Request) -> web.Response:
     relative = request.match_info.get("path", "") or "index.html"
+    if relative in {"reading", "reading/"}:
+        relative = "reading/index.html"
     if relative == "favicon.svg":
         target = WEB_ROOT / "favicon.svg"
     elif relative == "index.html":
@@ -1439,13 +1450,21 @@ async def static_file(request: web.Request) -> web.Response:
         body = target.read_text(encoding="utf-8").replace("__CSP_NONCE__", nonce).encode("utf-8")
         content_type = "text/html"
     else:
-        body = target.read_bytes()
+        return web.FileResponse(target, headers={**SECURITY_HEADERS, "Content-Type": content_type})
     response = web.Response(body=body, content_type=content_type)
     response.headers.update(SECURITY_HEADERS)
     response.headers["Content-Security-Policy"] = (
         f"default-src 'self'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; img-src 'self' data:; "
         "media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
+    if relative == "reading/index.html":
+        # The bundled companion uses trusted inline scripts/styles and srcdoc game frames.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self'; "
+            "frame-src 'self' blob:; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+        )
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
     return response
 
 
@@ -1538,7 +1557,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app[STORE_KEY] = Store(resolved_database)
     app[AUDIO_ROOT_KEY] = audio_root
     app[ROOMS_KEY] = Rooms(app[STORE_KEY], audio_root)
-    app[LOGGER_KEY] = logging.getLogger("cloud-remote-shouter")
+    app[LOGGER_KEY] = logging.getLogger("iceclass")
     app[RECEIVER_RELEASE_ROOT_KEY] = receiver_release_root or RECEIVER_RELEASE_ROOT
 
     app.router.add_get("/api/bootstrap", bootstrap_status)
@@ -1575,6 +1594,9 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app.router.add_get("/api/history/export", export_history)
     app.router.add_delete("/api/history/{message_id}", delete_history)
     app.router.add_get("/ws/device", device_socket)
+    install_reading(app, app[STORE_KEY], app[ROOMS_KEY], user=require_user, admin=require_admin,
+                    authenticate=authenticate_device, access=can_access_class, reply=json_response,
+                    clock=lambda: now_ms(), digest=sha256)
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
