@@ -16,6 +16,9 @@ from reading import DEFAULT, SHANGHAI, local_day
 def create_preview():
     database = Path(__file__).resolve().parent.parent / '.tools' / 'preview' / 'demo.db'
     app = service.create_app(database)
+    async def identify_preview(request, response):
+        response.headers['X-ICeClass-Preview'] = '1'
+    app.on_response_prepare.append(identify_preview)
     db = app[service.STORE_KEY]
     if db.one("SELECT id FROM users WHERE username='ICe'"):
         return app
@@ -45,6 +48,10 @@ def create_preview():
                 for i in range(4 if number == 1 else 2):
                     db.run('INSERT INTO reading_events VALUES(?,?,?,?,?,?,?,1)', (str(uuid.uuid4()), sid, cid, local_day(now), base * 1000 + i * 1000,
                            'carrots' if number == 1 else 'poems', '演示完成量'))
+        for grade, count in [('高一', 16), ('高二', 14), ('高三', 14)]:
+            for number in range(1, count + 1):
+                db.run('INSERT OR IGNORE INTO classes(id,name,enabled,created_at,updated_at) VALUES(?,?,1,?,?)',
+                       (str(uuid.uuid4()), f'{grade}（{number}）班', now, now))
         config = {**DEFAULT, 'enabled': True, 'periods': [{'weekdays': [1, 2, 3, 4, 5, 6, 7], 'start': 0, 'end': 1440}]}
         db.run('UPDATE reading_settings SET value=? WHERE id=1', (json.dumps(config),))
     return app

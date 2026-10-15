@@ -7,9 +7,12 @@ internal static class StartupManager
     private const string RunKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     private const string ValueName = "ICeClass";
 
-    public static void SetEnabled(bool enabled)
+    public static void SetEnabled(ReceiverConfig config)
     {
         if (!OperatingSystem.IsWindows()) return;
+        // A localhost review copy must not replace or remove a school's startup entry.
+        if (Uri.TryCreate(config.Endpoint, UriKind.Absolute, out var endpoint) && endpoint.IsLoopback) return;
+        var enabled = config.StartWithWindows;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true) ?? Registry.CurrentUser.CreateSubKey(RunKey);

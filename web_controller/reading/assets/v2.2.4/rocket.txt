@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>早读火箭升空</title>
+    <style>
+        :root {
+            --theme-color: #ff9f43; /* 萝卜橙 */
+            --theme-green: #1dd1a1; /* 萝卜叶绿 */
+            --panel-bg: rgba(255, 255, 255, 0.85);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        body {
+            margin: 0; padding: 0; overflow: hidden;
+            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+            background-color: #87ceeb;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; width: 100vw;
+        }
+
+        /* 视频图层 */
+        .video-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 1; pointer-events: none;
+        }
+        #final-video { display: none; z-index: 2; }
+
+        /* 左上角控制面板 */
+        #dashboard {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
+            background: var(--panel-bg); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 20px; box-shadow: var(--shadow);
+            width: 320px; border: 2px solid rgba(255,255,255,0.6);
+            display: none; flex-direction: column; gap: 15px;
+        }
+
+        .dash-title { margin: 0; font-size: 22px; color: var(--theme-color); font-weight: 900; text-shadow: 1px 1px 0 #fff;}
+
+        /* 分贝条与进度条复用样式 */
+        .dash-row { display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: #555; margin-bottom: 5px; font-size: 14px;}
+        .bar-container { height: 15px; width: 100%; background: #e0e0e0; border-radius: 10px; position: relative; overflow: hidden; border: inset 1px rgba(0,0,0,0.1); box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);}
+        
+        #vol-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #1dd1a1, #feca57, #ff6b6b); transition: width 0.1s; }
+        #vol-line { position: absolute; top: 0; bottom: 0; width: 3px; background: red; z-index: 10; }
+        
+        #progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #84fab0, #1dd1a1); transition: width 0.3s ease; box-shadow: inset 0 0 5px rgba(255,255,255,0.5);}
+
+        /* 数据统计框 */
+        .stats-box { 
+            background: #fff; border-radius: 12px; padding: 12px; 
+            border: 2px dashed var(--theme-color); 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .stat-item { text-align: center; width: 48%;}
+        .stat-label { font-size: 13px; color: #888; font-weight: bold; margin-bottom: 2px;}
+        .stat-value { font-size: 26px; font-weight: 900; color: #ff4757; }
+        .stat-divider { width: 2px; height: 30px; background: #eee; }
+
+        /* 操作按钮组 (2x2布局) */
+        .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+        .dash-btn {
+            flex: 1 1 45%; padding: 10px 5px; border: none; border-radius: 10px; font-size: 13px; font-weight: bold;
+            cursor: pointer; color: white; transition: all 0.2s; text-align: center;
+        }
+        .dash-btn:hover { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1);}
+        .dash-btn:active { transform: translateY(0); }
+        .dash-btn:disabled { cursor: not-allowed; opacity: 0.4; transform: none !important; filter: none !important;}
+        
+        #audio-btn { background: #a4b0be; color: #333; }
+        #audio-btn.on { background: #ff4757; color: white; }
+        #pause-btn { background: #ff9f43; }
+        #settings-btn { background: #54a0ff; }
+        #fullscreen-btn { background: #9b59b6; }
+
+        /* 中央提示文字跃出动画 */
+        #settlement-text {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) scale(0);
+            font-size: clamp(28px, 4vw, 55px); font-weight: 900; color: #fff;
+            text-shadow: 3px 3px 0 #ff9f43, -2px -2px 0 #ff9f43, 2px -2px 0 #ff9f43, -2px 2px 0 #ff9f43, 0 10px 20px rgba(0,0,0,0.5);
+            z-index: 50; text-align: center; width: 100%; pointer-events: none; opacity: 0; line-height: 1.4;
+        }
+        .text-jump { animation: jumpAnim 2.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes jumpAnim {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+            15% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            85% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+        }
+        .highlight-num { color: #ff4757; font-size: 1.4em; text-shadow: 2px 2px 0 #fff; margin: 0 5px; }
+
+        /* 开始游戏遮罩 */
+        #start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 200;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(5px);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;
+        }
+        #big-start-btn {
+            padding: 15px 40px; font-size: 24px; font-weight: bold; border-radius: 50px; cursor: pointer;
+            border: 4px solid white; background: var(--theme-color); color: white;
+            box-shadow: 0 0 20px rgba(255, 159, 67, 0.8); transition: transform 0.2s;
+        }
+        #big-start-btn:hover { transform: scale(1.05); }
+
+        /* 设置模态框 */
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 2000; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        .modal.visible { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background: #fff; border-radius: 20px; padding: 25px; width: 90%; max-width: 420px;
+            box-shadow: var(--shadow); transform: scale(0.8); transition: transform 0.3s;
+        }
+        .modal.visible .modal-content { transform: scale(1); }
+        .modal h2 { margin-top: 0; color: var(--theme-color); border-bottom: 2px solid #eee; padding-bottom: 10px;}
+        .slider-group { margin-bottom: 20px; }
+        .slider-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #555;}
+        .slider-group span { color: var(--theme-color); font-size: 18px; }
+        input[type=range] { width: 100%; accent-color: var(--theme-color); }
+        .help { font-size: 12px; color: #888; margin-top: 5px; }
+
+        /* 单选按钮排版 */
+        .radio-options { display: flex; gap: 10px; margin-top: 5px; }
+        .radio-options label {
+            flex: 1; background: #f1f2f6; padding: 8px 5px; text-align: center; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: normal; border: 2px solid transparent; transition: all 0.2s;
+        }
+        .radio-options input[type="radio"] { display: none; }
+        .radio-options input[type="radio"]:checked + span { color: var(--theme-color); font-weight: bold;}
+        .radio-options label:has(input[type="radio"]:checked) { border-color: var(--theme-color); background: #fff5e6; box-shadow: 0 2px 5px rgba(255,159,67,0.2);}
+
+        .save-btn { width: 100%; padding: 12px; font-size: 16px; font-weight: bold; border: none; border-radius: 10px; background: var(--theme-green); color: white; cursor: pointer;}
+    </style>
+<style>:root {
+  --theme-color: #df8c30; --theme-green: #487f62;
+  --panel-bg: #fffdf7; --shadow: 0 8px 24px rgb(46 61 36 / 10%);
+  --ink: #283f35; --muted: #637568; --line: #dce5d9;
+  color: var(--ink); font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+}
+* { box-sizing: border-box; }
+body { background: #eff3e9; font-family: "Microsoft YaHei", "微软雅黑", sans-serif; }
+button, input { font-family: "Microsoft YaHei", "微软雅黑", sans-serif; -webkit-tap-highlight-color: transparent; }
+button { touch-action: manipulation; }
+:focus-visible { outline: 3px solid #77a78c; outline-offset: 3px; }
+.video-layer { object-fit: cover; }
+#dashboard {
+  top: 24px; left: 24px; width: 320px; gap: 19px; padding: 24px;
+  border: 1px solid #e2e8dc; border-radius: 16px;
+  background: var(--panel-bg); backdrop-filter: none; box-shadow: var(--shadow);
+}
+.dash-title { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 700; color: var(--ink); text-shadow: none; margin: 0 0 3px; }
+.carrot-mark { width: 29px; height: 29px; flex: 0 0 auto; }
+.dash-row { color: var(--muted); font-weight: 700; font-size: 14px; margin-bottom: 11px; }
+#status-label { color: var(--theme-green) !important; font-size: 12px; padding: 4px 9px; background: #edf5ed; border-radius: 6px; }
+#db-val, #progress-val { color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.bar-container { height: 8px; background: #e4eadf; border: 0; border-radius: 4px; box-shadow: none; }
+#vol-bar, #progress-fill { box-shadow: none; transition: transform .14s linear; transform-origin: left center; }
+#vol-bar { background: var(--theme-green); }
+#progress-fill { background: #eeaa55; }
+#vol-line { background: var(--theme-color); width: 2px; }
+.stats-box { background: #fff3df; border: 1px solid #f1dec0; border-radius: 10px; padding: 16px 0; }
+.stat-label { font-size: 13px; color: #7c674b; font-weight: 700; margin-bottom: 7px; }
+.stat-value, #target-num-display { color: var(--ink) !important; font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#pulled-num { color: #b97024 !important; }
+.stat-divider { height: 46px; width: 1px; background: #e8d5b8; }
+.btn-group { gap: 10px; }
+.dash-btn, #audio-btn, #audio-btn.on, #pause-btn, #settings-btn, #fullscreen-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 12px 7px; color: var(--ink) !important; background: #f8fbf6 !important;
+  border: 1px solid #cdddcf; border-radius: 8px; font-size: 14px; font-weight: 700;
+  transition: background .12s; box-shadow: none;
+}
+#pause-btn { background: #f7b45e !important; border-color: #efab53; color: #47331e !important; }
+#audio-btn.on { background: #e4f0e4 !important; border-color: #84aa8b; }
+.dash-btn:hover { filter: none; transform: none; box-shadow: none; background: #eaf2e7 !important; }
+#pause-btn:hover { background: #f3a948 !important; }
+.dash-btn:active { transform: none; }
+.dash-btn::before { content: ""; width: 18px; height: 18px; flex: 0 0 auto; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }
+#audio-btn::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4zM17 9l5 6m0-6-5 6'/%3E%3C/svg%3E"); }
+#audio-btn.on::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4zM17 8c3 2 3 6 0 8m3-11c5 4 5 10 0 14'/%3E%3C/svg%3E"); }
+#pause-btn::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4h4v16H6zM14 4h4v16h-4z'/%3E%3C/svg%3E"); }
+#pause-btn[data-paused="true"]::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m7 3 14 9-14 9z'/%3E%3C/svg%3E"); }
+#settings-btn::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='m10 3-1 3-3 1-2 3 2 2-1 3 3 3 3-1 2 2 3-1 1-3 3-2-1-3-3-1-1-3z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E"); }
+#fullscreen-btn::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'/%3E%3C/svg%3E"); }
+#settlement-text {
+  top: auto; bottom: 32px; width: auto; max-width: calc(100% - 48px);
+  padding: 14px 26px; border: 1px solid #e4e9db; border-radius: 10px;
+  transform: translateX(-50%); background: var(--panel-bg); color: var(--ink);
+  font-size: 19px; line-height: 1.7; font-weight: 700; text-shadow: none;
+  transition: opacity .18s; opacity: 0; animation: none; box-shadow: var(--shadow);
+}
+#settlement-text.is-visible { opacity: 1; }
+#start-overlay { background: rgb(27 49 33 / 22%); color: var(--ink); backdrop-filter: none; padding: 24px; }
+.welcome-card { width: min(480px, 100%); padding: 36px 40px; text-align: center; background: var(--panel-bg); border: 1px solid #e9ecdc; border-radius: 18px; box-shadow: 0 14px 40px rgb(31 50 32 / 16%); }
+.welcome-emblem { width: 64px; height: 64px; margin: 0 auto 20px; background: #fff0d8; border-radius: 16px; display: flex; align-items: center; justify-content: center; }
+.welcome-emblem .carrot-mark { width: 39px; height: 39px; }
+#start-overlay h1 { font-size: clamp(30px, 4vw, 38px) !important; font-weight: 700; text-shadow: none !important; margin: 0 0 17px !important; }
+#start-overlay p { font-size: 16px !important; color: var(--muted) !important; margin: 0 0 27px !important; text-align: center; line-height: 1.9; font-weight: 700; }
+#big-start-btn, .save-btn { width: 100%; min-height: 52px; padding: 14px 24px; font-size: 17px; font-weight: 700; background: #487f62; color: #fff; border: 1px solid #487f62; border-radius: 8px; box-shadow: none; transition: background .12s; }
+#big-start-btn:hover, .save-btn:hover { transform: none; background: #3b6e53; }
+.welcome-footnote { display: block; margin-top: 17px; color: #798579; font-size: 12px; line-height: 1.8; }
+.modal { background: rgb(28 46 33 / 35%); backdrop-filter: none; transition: none; visibility: hidden; }
+.modal.visible { visibility: visible; }
+.modal-content { max-width: 460px; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 28px; border: 1px solid #dde7d9; border-radius: 14px; background: var(--panel-bg); box-shadow: var(--shadow); transform: none; transition: none; }
+.modal h2 { color: var(--ink); font-weight: 700; font-size: 24px; padding: 0; margin: 0 0 26px; border: 0; }
+.slider-group { margin-bottom: 23px; }
+.slider-group label { color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 11px; }
+.slider-group span { color: var(--theme-green); font-size: 17px; font-weight: 700; }
+.slider-stepper { display: flex; align-items: center; gap: 12px; }
+.slider-stepper input { min-width: 0; flex: 1; }
+.step-button { width: 46px; min-width: 46px; height: 46px; border: 1px solid #cbdccd; border-radius: 8px; background: #f1f6ec; color: var(--ink); font-size: 24px; font-weight: 700; }
+input[type="range"] { height: 46px; margin: 0; accent-color: var(--theme-green); }
+input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
+.help { color: var(--muted); font-size: 12px; line-height: 1.8; margin-top: 9px; }
+#speed-warning { color: var(--muted) !important; }
+.radio-options { gap: 9px; }
+.radio-options label { min-height: 50px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; padding: 11px 5px; background: #f5f8ef; margin: 0; font-weight: 700; transition: none; }
+.radio-options span { font-size: 14px; color: var(--muted); }
+.radio-options input[type="radio"]:checked + span { color: #735025; font-weight: 700; }
+.radio-options label:has(input[type="radio"]:checked) { border-color: #ddab65; background: #fff1d9; box-shadow: none; }
+.radio-options label:focus-within { outline: 3px solid #77a78c; outline-offset: 3px; }
+.radio-options input[type="radio"] { display: block; position: absolute; width: 1px; height: 1px; opacity: 0; }
+#copyright-container { display: none !important; }
+@media (max-width: 650px) { #dashboard { width: 260px; padding: 18px; top: 16px; left: 16px; gap: 13px; } .dash-title { font-size: 21px; } .welcome-card { padding: 30px 26px; } .dash-btn { font-size: 13px; } }
+@media (max-height: 550px) { #dashboard { top: 12px; left: 12px; padding: 16px; gap: 10px; } .stats-box { padding: 10px 0; } .welcome-card { padding: 20px 30px; } .welcome-emblem { margin-bottom: 12px; height: 48px; width: 48px; } }
+@media (prefers-reduced-motion: reduce) { #vol-bar, #progress-fill, #settlement-text, .dash-btn, #big-start-btn { transition: none; } }
+</style><style>body { background: #101c2c; }
+.video-layer { object-fit: cover; }
+#dashboard { max-height: calc(100dvh - 48px); overflow-y: auto; scrollbar-width: thin; transition: opacity .18s, transform .18s; }
+body[data-immersive="true"] #dashboard { top: 88px; max-height: calc(100dvh - 112px); }
+body[data-immersive="true"] .modal { top: 64px; height: calc(100% - 64px); }
+body[data-immersive="true"] .modal-content { max-height: calc(100dvh - 96px); }
+body[data-controls-visible="false"] #dashboard { opacity: 0; transform: translateX(-15px); pointer-events: none; }
+#rocket-reveal { position: absolute; z-index: 110; top: 64px; bottom: 0; left: 0; width: 30px; padding: 0; border: 0; background: transparent; cursor: default; }
+body[data-controls-visible="true"] #rocket-reveal { width: 0; pointer-events: none; }
+#start-overlay { background: rgb(20 35 44 / 25%); }
+.welcome-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
+#settlement-text { max-width: min(640px, calc(100% - 48px)); font-size: clamp(15px, 1.7vw, 19px); }
+@media (max-width: 650px) {
+  #dashboard { top: auto; bottom: 16px; left: 16px; width: calc(100% - 32px); max-height: min(52dvh, 380px); }
+  body[data-immersive="true"] #dashboard { top: auto; max-height: min(52dvh, calc(100dvh - 96px)); }
+  .dash-title { font-size: 21px; }
+  .stats-box { padding: 10px 0; }
+  .stat-value, #target-num-display { font-size: 30px; }
+  body[data-controls-visible="false"] #dashboard { transform: translateY(15px); }
+  #settlement-text { bottom: 20px; padding: 12px 18px; }
+}
+@media (max-height: 550px) and (min-width: 651px) { #dashboard { max-height: calc(100dvh - 24px); } }
+@media (prefers-reduced-motion: reduce) { #dashboard { transition: none; } }
+</style></head>
+<body>
+
+    <div id="start-overlay">
+        <h1 style="font-size: 48px; margin-bottom: 10px; text-shadow: 0 4px 10px rgba(0,0,0,0.5);">🥕 早读拔萝卜</h1>
+        <p style="font-size: 18px; margin-bottom: 40px; color: #ddd;">声音越大，小兔子拔得越快！</p>
+        <button id="big-start-btn">▶️ 开始拔萝卜</button>
+    </div>
+
+    <!-- 视频 -->
+    <video id="main-video" class="video-layer" src="早读陪伴素材/rocket.mp4" playsinline preload="auto" muted></video>
+    <video id="final-video" class="video-layer" src="早读陪伴素材/rocket-final.mp4" playsinline preload="auto"></video>
+
+    <!-- 文本跃出层 -->
+    <div id="settlement-text"></div>
+
+    <!-- 控制面板 -->
+    <div id="dashboard">
+        <h3 class="dash-title">🥕 早读拔萝卜</h3>
+        
+        <div>
+            <!-- 分贝条 -->
+            <div class="dash-row">
+                <span>🔊 分贝: <span id="db-val" style="color:var(--theme-green)">0</span></span>
+                <span id="status-label" style="color:#ff6b6b">监听中...</span>
+            </div>
+            <div class="bar-container">
+                <div id="vol-bar"></div>
+                <div id="vol-line" style="left: 30%;"></div>
+            </div>
+        </div>
+
+        <div>
+            <!-- 新的单独进度条 -->
+            <div class="dash-row">
+                <span>🎯 进度: <span id="progress-val" style="color:#1dd1a1">0%</span></span>
+            </div>
+            <div class="bar-container">
+                <div id="progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- 放大的数据统计 -->
+        <div class="stats-box">
+            <div class="stat-item">
+                <div class="stat-label">🥕已拔 (颗)</div>
+                <div class="stat-value" id="pulled-num">0</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-label">🥕目标 (颗)</div>
+                <div class="stat-value" id="target-num-display" style="color:#ff9f43">10</div>
+            </div>
+        </div>
+
+        <!-- 2x2 按钮区 -->
+        <div class="btn-group">
+            <button class="dash-btn" id="audio-btn">🔇 开启音效</button>
+            <button class="dash-btn" id="pause-btn">⏸️ 暂停</button>
+            <button class="dash-btn" id="settings-btn">⚙️ 设置</button>
+            <button class="dash-btn" id="fullscreen-btn">📺 全屏</button>
+        </div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <h2>⚙️ 拔萝卜设置</h2>
+            
+            <div class="slider-group">
+                <label>触发分贝阈值: <span id="set-threshold-val">30</span></label>
+                <input type="range" id="input-threshold" min="5" max="90" value="30">
+                <div class="help">声音高于数值兔子才会用力拔</div>
+            </div>
+
+            <div class="slider-group">
+                <label>拔1颗萝卜所需时长 (决定倍速)</label>
+                <div class="radio-options">
+                    <label><input type="radio" name="duration" value="8"> <span>8秒 (极快)</span></label>
+                    <label><input type="radio" name="duration" value="16" checked> <span>16秒 (标准)</span></label>
+                    <label><input type="radio" name="duration" value="32"> <span>32秒 (缓慢)</span></label>
+                </div>
+                <div class="help" style="color:#ff4757; display:none;" id="speed-warning">提示：8秒速度过快，没有音效，如果卡顿请改成16秒</div>
+            </div>
+
+            <div class="slider-group">
+                <label>目标挑战数量: <span id="set-target-val">10</span> 颗</label>
+                <input type="range" id="input-target" min="1" max="180" value="10">
+                <div class="help">拔够此数量后才算成功，触发感谢动画</div>
+            </div>
+
+            <div id="copyright-container"></div>
+            <button class="save-btn" id="save-settings-btn">✅ 保存并继续</button>
+        </div>
+    </div>
+
+    
+<script>(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const host = window.parent.ReadingRocketBridge, requester = window.frameElement;
+  const mainVideo = $('main-video'), finalVideo = $('final-video'), dashboard = $('dashboard');
+  const modal = $('settings-modal'), startOverlay = $('start-overlay'), pauseButton = $('pause-btn');
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const storageKey = 'reading_rocket_v1';
+  let stored;
+  try { stored = JSON.parse(localStorage.getItem(storageKey)); } catch {}
+  const durations = [30, 60, 120], oldDurations = [8, 16, 32];
+  const savedDuration = oldDurations.includes(stored?.duration)
+    ? durations[oldDurations.indexOf(stored.duration)] : stored?.duration;
+  const config = {
+    threshold: Number.isFinite(stored?.threshold) ? clamp(Math.round(stored.threshold), 5, 90) : 30,
+    duration: durations.includes(savedDuration) ? savedDuration : 60,
+    targetCount: Number.isFinite(stored?.targetCount) ? clamp(Math.round(stored.targetCount), 1, 180) : 10
+  };
+  // Carry the teacher's chosen pace into the slower classroom timings once.
+  if (oldDurations.includes(stored?.duration)) {
+    try { localStorage.setItem(storageKey, JSON.stringify(config)); } catch {}
+  }
+  let readingRun = 0;
+  let phase = 'ready', charge = 0, cellProgress = 0, audio = null, epoch = 0, disposed = false;
+  let timer = null, toastTimer = null, lastSample = 0, lastPaint = 0, smoothVolume = 0;
+  let signalOn = false, riseSince = null, quietSince = null;
+  const playPromises = new WeakMap();
+  let soundOn = false, settingsOpen = false, pointerInside = false, hiddenLaunch = false;
+  const icon = '<svg class="carrot-mark rocket-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="m11 23 5 8 5-8" fill="#f3ac48"/><path d="M10 23V12c0-5 3-9 6-11 3 2 6 6 6 11v11Z" fill="#fffdf7" stroke="#55736b" stroke-width="1.6"/><path d="m10 16-5 8 5-2m12-6 5 8-5-2" fill="#76988d" stroke="#55736b" stroke-width="1.4"/><circle cx="16" cy="12" r="3" fill="#b2d5dc" stroke="#55736b" stroke-width="1.3"/><path d="M11 7h10m-11 13h12" stroke="#dc9c52" stroke-width="2"/></svg>';
+  document.querySelector('.dash-title').innerHTML = icon + '<span>早读火箭升空</span>';
+  startOverlay.querySelector('h1').textContent = '早读火箭升空';
+  startOverlay.querySelector('p').textContent = '一起朗读，为火箭积蓄升空的能量。';
+  $('big-start-btn').textContent = '开始蓄能';
+  const welcome = document.createElement('div'); welcome.className = 'welcome-card';
+  welcome.innerHTML = '<div class="welcome-emblem">' + icon + '</div>';
+  while (startOverlay.firstChild) welcome.append(startOverlay.firstChild);
+  const footnote = document.createElement('small'); footnote.className = 'welcome-footnote';
+  footnote.textContent = '点击开始，自动全屏并连接麦克风。首次使用请允许麦克风。';
+  welcome.append(footnote); startOverlay.append(welcome);
+  $('db-val').parentElement.firstChild.textContent = '相对声量：';
+  $('progress-val').parentElement.firstChild.textContent = '当前能量格：';
+  document.querySelectorAll('.stat-label').forEach((label, index) => { label.textContent = index ? '发射目标 / 格' : '已蓄能 / 格'; });
+  $('audio-btn').textContent = '开启音效'; pauseButton.textContent = '暂停';
+  $('settings-btn').textContent = '设置'; $('fullscreen-btn').textContent = '全屏';
+  modal.querySelector('h2').textContent = '火箭升空设置';
+  const labels = modal.querySelectorAll('.slider-group > label');
+  labels[0].firstChild.textContent = '声音门槛：'; labels[0].htmlFor = 'input-threshold';
+  labels[1].textContent = '每格能量的蓄能时长';
+  labels[2].firstChild.textContent = '发射所需能量：'; labels[2].lastChild.textContent = ' 格'; labels[2].htmlFor = 'input-target';
+  $('input-threshold').nextElementSibling.textContent = '相对数值，会随麦克风与摆放位置变化；短暂停顿不会立刻停住。';
+  $('input-target').nextElementSibling.textContent = '蓄满目标能量后，自动点火并播放完整升空片段。';
+  $('speed-warning').hidden = true;
+  $('save-settings-btn').textContent = '保存并继续';
+  $('copyright-container').replaceChildren(); $('copyright-container').hidden = true;
+  modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', '火箭升空设置');
+  modal.inert = true; modal.setAttribute('aria-hidden', 'true');
+  $('settlement-text').setAttribute('role', 'status');
+  for (const [index, value] of durations.entries()) {
+    const input = document.querySelector(`input[name="duration"][value="${oldDurations[index]}"]`);
+    input.value = value;
+    input.nextElementSibling.textContent = `${['快速', '普通', '慢速'][index]} · ${value} 秒`;
+  }
+  const paceNote = document.createElement('div'); paceNote.className = 'help';
+  paceNote.textContent = '时间越长，蓄能越慢。声音达标后按设定速度推进。';
+  labels[1].closest('.slider-group').append(paceNote);
+  for (const id of ['input-threshold', 'input-target']) {
+    const input = $(id), wrapper = document.createElement('div'); wrapper.className = 'slider-stepper';
+    input.before(wrapper); wrapper.append(input);
+    for (const step of [-1, 1]) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'step-button'; button.textContent = step < 0 ? '−' : '＋';
+      button.setAttribute('aria-label', `${step < 0 ? '减少' : '增加'}${id === 'input-threshold' ? '声音门槛' : '目标能量'}`);
+      button.addEventListener('click', () => { input.value = clamp(Number(input.value) + step, Number(input.min), Number(input.max)); input.dispatchEvent(new Event('input', { bubbles: true })); });
+      if (step < 0) wrapper.prepend(button); else wrapper.append(button);
+    }
+  }
+  const reveal = document.createElement('button'); reveal.id = 'rocket-reveal'; reveal.type = 'button'; reveal.setAttribute('aria-label', '显示火箭操作'); document.body.append(reveal);
+  function resetSignal() { signalOn = false; riseSince = quietSince = null; }
+  function isLaunch() { return ['launching', 'launch-paused', 'complete'].includes(phase); }
+  function activeVideo() { return isLaunch() ? finalVideo : mainVideo; }
+  function paintState() {
+    document.body.dataset.phase = phase;
+    $('pulled-num').textContent = charge; $('target-num-display').textContent = config.targetCount;
+    const progress = isLaunch() ? 1 : cellProgress;
+    document.body.dataset.progress = progress.toFixed(6);
+    $('progress-val').textContent = Math.floor(progress * 100) + '%';
+    $('progress-fill').style.width = '100%'; $('progress-fill').style.transform = `scaleX(${progress})`;
+    $('vol-bar').style.width = '100%'; $('vol-bar').style.transform = `scaleX(${smoothVolume / 100})`;
+    $('db-val').textContent = Math.round(smoothVolume); $('vol-line').style.left = config.threshold + '%';
+    pauseButton.dataset.paused = String(['paused', 'launch-paused'].includes(phase));
+    pauseButton.textContent = phase === 'complete' ? '再来一轮' : ['paused', 'launch-paused'].includes(phase) ? '继续' : '暂停';
+    pauseButton.disabled = phase === 'opening';
+    $('big-start-btn').disabled = phase === 'opening';
+    $('big-start-btn').textContent = phase === 'opening' ? '正在准备…' : '开始蓄能';
+    $('status-label').textContent = {
+      ready: '准备发射', opening: '正在准备', paused: '已暂停', 'launch-paused': '已暂停', launching: '点火升空', complete: '升空成功'
+    }[phase] || (settingsOpen ? '设置中' : signalOn ? '朗读蓄能中' : '等待朗读');
+    syncControls();
+  }
+  function toast(text) {
+    $('settlement-text').textContent = text; $('settlement-text').classList.add('is-visible');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => $('settlement-text').classList.remove('is-visible'), 2600);
+  }
+  function stopAudio() {
+    const old = audio; audio = null;
+    old?.source.disconnect(); old?.stream.getTracks().forEach(track => track.stop()); old?.context.close().catch(() => {});
+    host.release(requester); smoothVolume = 0; resetSignal();
+  }
+  async function connectAudio(token) {
+    const stream = await host.capture({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }, requester);
+    if (disposed || token !== epoch) { stream.getTracks().forEach(track => track.stop()); throw new DOMException('cancelled', 'AbortError'); }
+    let context, source;
+    try {
+      context = new (window.AudioContext || window.webkitAudioContext)(); source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser(); analyser.fftSize = 256; analyser.minDecibels = -100; analyser.maxDecibels = -30; analyser.smoothingTimeConstant = .8;
+      source.connect(analyser); audio = { stream, context, source, analyser, spectrum: new Uint8Array(analyser.frequencyBinCount) };
+      await context.resume(); if (disposed || token !== epoch) throw new DOMException('cancelled', 'AbortError');
+      stream.getAudioTracks().forEach(track => track.addEventListener('ended', () => {
+        if (token !== epoch || phase !== 'running') return;
+        pause(); host.fail('麦克风已断开。请检查连接后点“继续”。', requester);
+      }));
+    } catch (error) {
+      source?.disconnect(); stream.getTracks().forEach(track => track.stop()); context?.close().catch(() => {});
+      if (audio?.context === context) audio = null; throw error;
+    }
+  }
+  const mediaWaits = new Set();
+  function waitForMedia(video) {
+    if (video.readyState >= 2 && !video.error) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => finish(new Error('video-timeout')), 12000);
+      function ready() { if (video.readyState >= 2) finish(); }
+      function failed() { if (video.dataset.failed === 'true') finish(new Error('video-unavailable')); }
+      function cancel() { finish(new DOMException('cancelled', 'AbortError')); }
+      function finish(error) {
+        clearTimeout(timeout); video.removeEventListener('loadeddata', ready); video.removeEventListener('canplay', ready); video.removeEventListener('error', failed); mediaWaits.delete(cancel);
+        if (error) reject(error); else resolve();
+      }
+      mediaWaits.add(cancel); video.addEventListener('loadeddata', ready); video.addEventListener('canplay', ready); video.addEventListener('error', failed);
+      if (video.dataset.failed === 'true') failed();
+    });
+  }
+  function safePlay(video) {
+    if (video.readyState < 2 || video.seeking || video.error || !video.paused || playPromises.has(video)) return;
+    const opening = video.play(); playPromises.set(video, opening);
+    opening?.catch(error => {
+      if (disposed || error.name === 'AbortError') return;
+      if (phase === 'running' || phase === 'launching') pause();
+      host.fail('视频暂时无法播放，请点“继续”重试。', requester);
+    }).finally(() => { if (playPromises.get(video) === opening) playPromises.delete(video); });
+  }
+  async function start(resuming = false) {
+    if (disposed || !['ready', 'paused', 'complete'].includes(phase)) return;
+    const previousPhase = phase, token = ++epoch;
+    phase = 'opening'; paintState(); host.clearMessage();
+    try {
+      await host.enterFullscreen(); if (disposed || token !== epoch) return;
+      await Promise.all([connectAudio(token), waitForMedia(mainVideo), waitForMedia(finalVideo)]);
+      if (disposed || token !== epoch) return;
+      if (!resuming) { ++readingRun; charge = 0; cellProgress = 0; mainVideo.currentTime = 0; finalVideo.pause(); finalVideo.currentTime = 0; }
+      mainVideo.style.display = 'block'; finalVideo.style.display = 'none';
+      startOverlay.style.display = 'none'; dashboard.style.display = 'flex';
+      phase = 'running'; lastSample = performance.now(); lastPaint = 0; resetSignal();
+      host.clearMessage(); paintState(); timer = requestAnimationFrame(tick);
+    } catch (error) {
+      if (disposed || token !== epoch) return;
+      ++epoch; stopAudio(); phase = previousPhase; paintState();
+      if (error.message?.startsWith('video-')) host.fail('火箭视频未能加载。请确认素材文件夹中的 rocket.mp4 和 rocket-final.mp4 均在原位，再点“返回开始”重试。', requester);
+      else if (['NotAllowedError', 'PermissionDeniedError'].includes(error.name)) host.fail(`未获麦克风权限。请在 Edge 允许使用麦克风，再点“${previousPhase === 'paused' ? '继续' : '开始蓄能'}”重试。`, requester);
+      else if (previousPhase === 'paused') host.fail('麦克风未能连接。请检查连接与权限后点“继续”。', requester);
+      else host.fail('麦克风未能连接。请检查连接与浏览器权限，再点“开始蓄能”重试。', requester);
+    }
+  }
+  function launch() {
+    if (phase !== 'running') return;
+    mainVideo.pause(); cancelAnimationFrame(timer); timer = null; ++epoch; stopAudio();
+    window.parent.ReadingIntegration.completed('launches', '火箭发射');
+    phase = 'launching'; mainVideo.style.display = 'none'; finalVideo.style.display = 'block'; finalVideo.currentTime = 0;
+    finalVideo.muted = !soundOn; finalVideo.playbackRate = 1;
+    paintState(); toast('能量已满，向星空出发！'); safePlay(finalVideo);
+  }
+  function completeCharge() {
+    if (phase !== 'running' || settingsOpen || document.hidden) return;
+    ++charge; window.parent.ReadingIntegration.completed('energy', '能量格');
+    if (charge >= config.targetCount) { launch(); return; }
+    cellProgress = 0; paintState(); toast(`已蓄满 ${charge} 格能量，继续朗读。`);
+  }
+  function tick(now) {
+    if (disposed || phase !== 'running') return;
+    timer = requestAnimationFrame(tick);
+    if (now - lastSample < 1000 / 30) return;
+    const dt = Math.min(100, now - lastSample); lastSample = now;
+    let volume = 0;
+    if (!document.hidden && audio?.context.state === 'running') {
+      audio.analyser.getByteFrequencyData(audio.spectrum);
+      let sum = 0; for (const n of audio.spectrum) sum += n;
+      volume = Math.min(100, sum / audio.spectrum.length / 80 * 100);
+    }
+    smoothVolume += (volume - smoothVolume) * (1 - Math.exp(-dt / 120));
+    if (document.hidden || settingsOpen || !audio?.stream.active) { resetSignal(); mainVideo.pause(); }
+    else {
+      if (charge >= config.targetCount) { launch(); return; }
+      if (signalOn) {
+        riseSince = null;
+        if (smoothVolume < Math.max(0, config.threshold - 4)) { quietSince ??= now; if (now - quietSince >= 650) { signalOn = false; quietSince = null; } }
+        else quietSince = null;
+      } else {
+        quietSince = null;
+        if (smoothVolume >= config.threshold) { riseSince ??= now; if (now - riseSince >= 120) { signalOn = true; riseSince = null; } }
+        else riseSince = null;
+      }
+      if (signalOn) {
+        // A 24 fps clip stretched to 60 seconds presents only 4 fps. Keep
+        // preparation motion at native speed; time each energy cell separately.
+        cellProgress = Math.min(1, cellProgress + dt / (config.duration * 1000));
+        if (cellProgress >= 1) completeCharge();
+        else safePlay(mainVideo);
+      } else mainVideo.pause();
+    }
+    if (now - lastPaint >= 125) { lastPaint = now; paintState(); }
+  }
+  function pause() {
+    if (!['running', 'launching'].includes(phase)) return;
+    const launching = phase === 'launching'; activeVideo().pause();
+    phase = launching ? 'launch-paused' : 'paused';
+    cancelAnimationFrame(timer); timer = null; ++epoch; stopAudio(); paintState();
+  }
+  function togglePause() {
+    if (phase === 'complete') start();
+    else if (phase === 'paused') start(true);
+    else if (phase === 'launch-paused') { phase = 'launching'; paintState(); if (!document.hidden) safePlay(finalVideo); }
+    else pause();
+  }
+  function updatePinned() {
+    const focus = dashboard.contains(document.activeElement) && document.activeElement.matches(':focus-visible');
+    document.body.dataset.controlsPinned = String(settingsOpen || pointerInside || focus);
+  }
+  function syncControls() {
+    const immersive = Boolean(window.parent.document.fullscreenElement);
+    const visible = window.parent.document.getElementById('classic-view').dataset.panelVisible === 'true';
+    if (!visible) { pointerInside = false; updatePinned(); }
+    document.body.dataset.immersive = String(immersive);
+    document.body.dataset.controlsVisible = String(visible); dashboard.inert = !visible; dashboard.setAttribute('aria-hidden', String(!visible));
+    $('fullscreen-btn').textContent = immersive ? '退出全屏' : '全屏';
+    reveal.hidden = document.body.dataset.panelManaged === 'true' || visible || ['ready', 'opening'].includes(phase);
+  }
+  function openSettings() {
+    if (phase === 'opening') return;
+    settingsOpen = true; resetSignal(); activeVideo().pause();
+    $('input-threshold').value = config.threshold; $('set-threshold-val').textContent = config.threshold;
+    $('input-target').value = config.targetCount; $('set-target-val').textContent = config.targetCount;
+    document.querySelector(`input[name="duration"][value="${config.duration}"]`).checked = true;
+    modal.classList.add('visible'); modal.inert = false; modal.setAttribute('aria-hidden', 'false'); updatePinned();
+    host.controls('mouse', true); $('input-threshold').focus(); paintState();
+  }
+  function saveSettings() {
+    if (!settingsOpen) return;
+    config.threshold = Number($('input-threshold').value); config.targetCount = Number($('input-target').value);
+    config.duration = Number(document.querySelector('input[name="duration"]:checked').value);
+    try { localStorage.setItem(storageKey, JSON.stringify(config)); } catch {}
+    settingsOpen = false; modal.classList.remove('visible'); modal.inert = true; modal.setAttribute('aria-hidden', 'true');
+    if (phase === 'launching' && !document.hidden) safePlay(finalVideo);
+    $('settings-btn').focus(); updatePinned(); paintState(); host.hideControls();
+  }
+  $('big-start-btn').addEventListener('click', () => start()); pauseButton.addEventListener('click', togglePause);
+  $('settings-btn').addEventListener('click', openSettings); $('save-settings-btn').addEventListener('click', saveSettings);
+  $('fullscreen-btn').addEventListener('click', () => host.fullscreen());
+  $('audio-btn').addEventListener('click', () => {
+    soundOn = !soundOn; mainVideo.muted = finalVideo.muted = !soundOn;
+    $('audio-btn').textContent = soundOn ? '关闭音效' : '开启音效'; $('audio-btn').classList.toggle('on', soundOn); $('audio-btn').setAttribute('aria-pressed', String(soundOn));
+  });
+  $('audio-btn').setAttribute('aria-pressed', 'false'); mainVideo.muted = finalVideo.muted = true;
+  mainVideo.loop = true; mainVideo.playbackRate = 1;
+  for (const [id, valueId] of [['input-threshold', 'set-threshold-val'], ['input-target', 'set-target-val']]) $(id).addEventListener('input', () => { $(valueId).textContent = $(id).value; });
+  finalVideo.addEventListener('canplay', () => { if (phase === 'launching' && !settingsOpen && !document.hidden) safePlay(finalVideo); });
+  finalVideo.addEventListener('seeked', () => { if (phase === 'launching' && !settingsOpen && !document.hidden) safePlay(finalVideo); });
+  finalVideo.addEventListener('ended', () => {
+    if (!['launching', 'launch-paused'].includes(phase)) return;
+    phase = 'complete'; paintState(); toast('升空成功，每一声朗读都算数。');
+  });
+  for (const video of [mainVideo, finalVideo]) {
+    let fallback = false;
+    video.addEventListener('error', () => {
+      if (disposed) return;
+      if (!fallback) { fallback = true; video.src = video === mainVideo ? 'rocket.mp4' : 'rocket-final.mp4'; video.load(); return; }
+      video.dataset.failed = 'true'; pause(); host.fail('火箭视频没有找到。请保留“早读陪伴素材”文件夹中的 rocket.mp4 和 rocket-final.mp4，再点“返回开始”重试。', requester);
+    });
+  }
+  reveal.addEventListener('pointermove', event => { if (event.pointerType !== 'touch') host.controls(event.pointerType); });
+  reveal.addEventListener('pointerdown', event => { event.preventDefault(); host.controls(event.pointerType); });
+  reveal.addEventListener('focus', () => { if (reveal.matches(':focus-visible')) { host.controls('keyboard', true); pauseButton.focus(); } });
+  dashboard.addEventListener('pointermove', event => { if (event.pointerType !== 'touch') { pointerInside = true; updatePinned(); host.controls(event.pointerType, true); } });
+  dashboard.addEventListener('pointerleave', () => { pointerInside = false; updatePinned(); host.hideControls(); });
+  dashboard.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') host.controls('touch'); });
+  dashboard.addEventListener('focusin', updatePinned); dashboard.addEventListener('focusout', () => { setTimeout(() => { updatePinned(); host.hideControls(); }, 0); });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); if (settingsOpen) saveSettings(); else host.exitFullscreen(); }
+    if (event.code === 'Space' && !['INPUT', 'BUTTON'].includes(event.target.tagName) && !settingsOpen) { event.preventDefault(); togglePause(); }
+    if (event.key === 'Tab' && settingsOpen) {
+      const elements = [...modal.querySelectorAll('button,input')].filter(el => !el.disabled), first = elements[0], last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    resetSignal();
+    if (document.hidden) { mainVideo.pause(); hiddenLaunch = phase === 'launching' && !finalVideo.paused; finalVideo.pause(); }
+    else if (hiddenLaunch && phase === 'launching' && !settingsOpen) { hiddenLaunch = false; safePlay(finalVideo); }
+  });
+  const controlObserver = new MutationObserver(syncControls);
+  controlObserver.observe(window.parent.document.getElementById('classic-view'), { attributes: true, attributeFilter: ['data-panel-visible', 'class'] });
+  window.disposeReadingRocket = () => {
+    if (disposed) return;
+    disposed = true; ++epoch; cancelAnimationFrame(timer); clearTimeout(toastTimer); controlObserver.disconnect();
+    for (const cancel of [...mediaWaits]) cancel();
+    mainVideo.pause(); finalVideo.pause(); stopAudio();
+  };
+  window.addEventListener('pagehide', window.disposeReadingRocket);
+  paintState(); syncControls();
+  window.ReadingMonitor = { getState() {
+    const targetLabel = document.getElementById('target-num-display');
+    if (targetLabel) targetLabel.textContent = config.targetCount;
+    const thresholdLine = document.getElementById('vol-line');
+    if (thresholdLine) thresholdLine.style.left = config.threshold + '%';
+    const thresholdLabel = document.getElementById('set-threshold-val');
+    if (thresholdLabel) thresholdLabel.textContent = config.threshold;
+    const targetSetting = document.getElementById('set-target-val');
+    if (targetSetting) targetSetting.textContent = config.targetCount;
+
+    return { mode: 'rocket', run: readingRun, active: phase === 'running' && !settingsOpen, volume: smoothVolume };
+  } };
+})();
+</script><script>
+</script></body>
+</html>

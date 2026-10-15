@@ -16,7 +16,7 @@ SHANGHAI = timezone(timedelta(hours=8))
 MODES = {"classic", "carving", "particle", "rocket"}
 EVENTS = {"carrots", "poems", "badges", "launches", "energy"}
 COOKIE = "iceclass_reading"
-DEFAULT = {"enabled": False, "threshold": 30, "periods": [],
+DEFAULT = {"enabled": False, "reminderEnabled": True, "threshold": 30, "periods": [],
            "classic": {"duration": 15, "targetCount": 10},
            "rocket": {"duration": 15, "targetCount": 10},
            "carving": {"speed": 1}, "particle": {"speed": 1}}
@@ -52,6 +52,8 @@ def inside_period(timestamp: int, config: dict) -> bool:
 def validate_config(body: dict) -> dict:
     if not isinstance(body.get("enabled"), bool):
         raise ValueError("请选择是否启用统计。")
+    if not isinstance(body.get("reminderEnabled", True), bool):
+        raise ValueError("请选择是否启用到点提醒。")
     threshold = body.get("threshold")
     if isinstance(threshold, bool) or not isinstance(threshold, int) or not 5 <= threshold <= 90:
         raise ValueError("声量门槛需要在 5 至 90 之间。")
@@ -70,7 +72,7 @@ def validate_config(body: dict) -> dict:
         normalized.append({"weekdays": sorted(set(days)), "start": start, "end": end})
     if body["enabled"] and not normalized:
         raise ValueError("请先添加早读统计时段。")
-    result = {"enabled": body["enabled"], "threshold": threshold, "periods": normalized}
+    result = {"enabled": body["enabled"], "reminderEnabled": body.get("reminderEnabled", True), "threshold": threshold, "periods": normalized}
     for mode in MODES:
         value = body.get(mode, DEFAULT[mode])
         if not isinstance(value, dict):
@@ -105,7 +107,7 @@ class ReadingFeature:
         return {"config": config, "serverTime": now, "inPeriod": inside_period(now, config)}
 
     async def get_settings(self, request):
-        user = self.user(request)
+        user = self.admin(request)
         return user if isinstance(user, web.Response) else self.reply(self.payload())
 
     async def save_settings(self, request):
@@ -114,11 +116,24 @@ class ReadingFeature:
             return user
         try:
             body = await request.json()
-            config = validate_config(body if isinstance(body, dict) else {})
+            # Gameplay stays in the companion's local controls; this endpoint only changes statistics.
+            previous = self.config()
+            fields = {key: body[key] for key in ('enabled', 'reminderEnabled', 'threshold', 'periods') if key in body} if isinstance(body, dict) else {}
+            config = validate_config({**{mode: previous[mode] for mode in MODES}, 'reminderEnabled': previous.get('reminderEnabled', True), **fields})
         except (ValueError, TypeError):
-            return self.reply({"error": "请检查声量门槛、星期、起止时间和陪伴参数。"}, 400)
+            return self.reply({"error": "请检查声量门槛、星期和起止时间。"}, 400)
         self.db.run("UPDATE reading_settings SET value=? WHERE id=1", (json.dumps(config),))
         return self.reply(self.payload())
+
+    async def schedule(self, request):
+        device = self.authenticate(request)
+        if not device:
+            return self.reply({"error": "教室设备未绑定或已停用。"}, 401)
+        config = self.config()
+        classroom = self.db.one("SELECT name FROM classes WHERE id=?", (device["class_id"],))
+        return self.reply({"enabled": config["enabled"], "reminderEnabled": config.get("reminderEnabled", True),
+                           "periods": config["periods"], "serverTime": self.clock(),
+                           "classId": device["class_id"], "className": classroom["name"]})
 
     async def launch(self, request):
         device = self.authenticate(request)
@@ -328,12 +343,15 @@ class ReadingFeature:
         user = self.admin(request)
         if isinstance(user, web.Response):
             return user
+        from management import device_summary
         rows = self.db.all("""SELECT d.id,d.class_id,c.name class_name,d.name,d.enabled,d.last_seen_at,
+            d.computer_name,d.os_version,d.local_addresses,d.identity_seen_at,d.binding_note,d.verified_at,
             cc.volume desired_volume,cc.command_id desired_command,t.volume actual_volume,t.receiver_version,t.capabilities,t.command_id,t.command_error,t.reported_at
             FROM devices d JOIN classes c ON c.id=d.class_id LEFT JOIN classroom_controls cc ON cc.class_id=c.id
-            LEFT JOIN device_telemetry t ON t.device_id=d.id ORDER BY c.name,d.name""")
+            LEFT JOIN device_telemetry t ON t.device_id=d.id WHERE d.deleted_at IS NULL ORDER BY c.name,d.name""")
+        counts = {r['class_id']: r['n'] for r in self.db.all('SELECT class_id,COUNT(*) n FROM devices WHERE enabled=1 AND deleted_at IS NULL GROUP BY class_id')}
         for row in rows:
-            row["online"] = any(did == row["id"] and not ws.closed for ws, did in self.rooms.sockets.get(row["class_id"], {}).items())
+            device_summary(row, self.rooms, counts)
             row["capabilities"] = json.loads(row["capabilities"] or "[]")
         return self.reply({"devices": rows})
 
@@ -344,6 +362,8 @@ class ReadingFeature:
         class_id = request.match_info["class_id"]
         if not self.access(self.db, user, class_id):
             return self.reply({"error": "班级不存在或已停用。"}, 404)
+        if not self.db.one("SELECT id FROM devices WHERE class_id=? AND enabled=1 AND deleted_at IS NULL", (class_id,)):
+            return self.reply({"error": "该班级尚未绑定启用的教室设备。"}, 409)
         try:
             body = await request.json()
         except ValueError:
@@ -390,6 +410,7 @@ def install_reading(app, db, rooms, **callbacks):
     rooms.reading = feature
     app.router.add_get("/api/reading/settings", feature.get_settings)
     app.router.add_put("/api/reading/settings", feature.save_settings)
+    app.router.add_get("/api/reading/schedule", feature.schedule)
     app.router.add_post("/api/reading/launch", feature.launch)
     app.router.add_post("/api/reading/device/connect", feature.connect_browser)
     app.router.add_get("/api/reading/device/settings", feature.device_settings)

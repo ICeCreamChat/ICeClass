@@ -9,6 +9,7 @@ import csv
 import sqlite3
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 from aiohttp import FormData
 from aiohttp.test_utils import TestClient, TestServer
@@ -79,6 +80,44 @@ class ServerTestCase(unittest.IsolatedAsyncioTestCase):
         return device
 
 class ICeClassServerTest(ServerTestCase):
+    async def test_login_reports_remaining_attempts_blocks_at_ten_and_expires(self) -> None:
+        await self.bootstrap_and_login()
+        timestamp = service.now_ms()
+        wrong = {"username": "ice", "password": "IncorrectPassword"}
+        correct = {"username": "ICE", "password": "AdminPassword123"}
+        with patch.object(service, "now_ms", return_value=timestamp):
+            for count in range(1, 10):
+                response, data = await self.json_request("POST", "/api/auth/login", wrong)
+                self.assertEqual(response.status, 401, data)
+                self.assertIn(f"已连续输错 {count} 次", data["error"])
+                self.assertIn(f"还可尝试 {10 - count} 次", data["error"])
+            response, data = await self.json_request("POST", "/api/auth/login", wrong)
+            self.assertEqual(response.status, 429, data)
+            self.assertIn("已连续输错 10 次", data["error"])
+            self.assertIn("5 分钟", data["error"])
+            self.assertEqual(response.headers["Retry-After"], "300")
+        with patch.object(service, "now_ms", return_value=timestamp + 65_000):
+            response, data = await self.json_request("POST", "/api/auth/login", correct)
+            self.assertEqual(response.status, 429, data)
+            self.assertEqual(data["retryAfterSeconds"], 235)
+            self.assertIn("3 分 55 秒", data["error"])
+        with patch.object(service, "now_ms", return_value=timestamp + 300_000):
+            response, data = await self.json_request("POST", "/api/auth/login", correct)
+            self.assertEqual(response.status, 200, data)
+        self.assertEqual(self.app[service.STORE_KEY].all("SELECT * FROM login_failures"), [])
+
+    async def test_login_accepts_old_five_attempt_block_and_success_resets_count(self) -> None:
+        await self.bootstrap_and_login()
+        wrong = {"username": "ice", "password": "IncorrectPassword"}
+        await self.json_request("POST", "/api/auth/login", wrong)
+        db = self.app[service.STORE_KEY]
+        db.run("UPDATE login_failures SET failures=5, blocked_until=?", (service.now_ms() + 300_000,))
+        response, data = await self.json_request("POST", "/api/auth/login", {"username": "ICe", "password": "AdminPassword123"})
+        self.assertEqual(response.status, 200, data)
+        response, data = await self.json_request("POST", "/api/auth/login", wrong)
+        self.assertEqual(response.status, 401, data)
+        self.assertIn("已连续输错 1 次，还可尝试 9 次", data["error"])
+
     async def test_complete_teacher_and_device_flow(self) -> None:
         await self.bootstrap_and_login()
 

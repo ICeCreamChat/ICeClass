@@ -1,13 +1,25 @@
 (() => {
   'use strict';
   const defaults = { threshold: 30, enabled: false, periods: [], classic: { duration: 15, targetCount: 10 }, rocket: { duration: 15, targetCount: 10 }, carving: { speed: 1 }, particle: { speed: 1 } };
-  let connected = false, preview = false, offset = 0, current = null, starting = false;
+  let connected = false, preview = false, offset = 0, current = null, starting = false, leaving = false;
   let status, clockLabel, localSeconds = 0, lastSecond = -1, waitingEvents = [], lastError = '';
+  async function request(url, body) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(url, { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+        headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+      const data = await response.json();
+      if (!response.ok) throw Object.assign(new Error(data.error || '连接暂时中断。'), { status: response.status });
+      return data;
+    } catch (error) {
+      if (error.name === 'AbortError') throw new Error('连接超时，请检查网络后重试。');
+      if (error instanceof TypeError || error instanceof SyntaxError) throw new Error('暂时连接不上平台，请检查网络后重试。');
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
   const api = async (path, body) => {
-    const response = await fetch('/api/reading/' + path, { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
-      headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
-    const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error(data.error || '连接暂时中断。'), { status: response.status });
+    const data = await request('/api/reading/' + path, body);
     if (data.serverTime) offset = data.serverTime - Date.now();
     if (data.config) window.ReadingIntegration.settings = data.config;
     return data;
@@ -24,6 +36,11 @@
   };
   window.ReadingIntegration = {
     settings: defaults,
+    async flushNow() {
+      leaving = true;
+      if (current?.pending) await current.pending;
+      if (current) await flush(current);
+    },
     completed(kind, title) {
       if (!connected || preview || document.hidden) return;
       const sample = state();
@@ -33,7 +50,13 @@
       else waitingEvents.push({ key, event });
     }
   };
-  async function flush(session) {
+  function flush(session) {
+    if (session?.pending) return session.pending;
+    const work = sendBatch(session);
+    if (session) session.pending = work.finally(() => { session.pending = null; });
+    return session?.pending || work;
+  }
+  async function sendBatch(session) {
     if (!session || session.busy || (!session.samples.length && !session.events.length)) return;
     session.busy = true;
     const samples = session.samples.splice(0, 90), events = session.events.splice(0, 100);
@@ -48,11 +71,6 @@
       if (error.status === 401) connected = false;
     } finally { session.busy = false; }
   }
-  function lockControls(doc = document) {
-    doc.querySelectorAll('[data-carving-speed-slider],[data-carving-threshold-slider],[data-carving-speed-step],[data-carving-threshold-step],[data-particle-speed-slider],[data-particle-threshold-slider],[data-particle-speed-step],[data-particle-threshold-step]').forEach(node => { node.disabled = true; });
-    doc.querySelectorAll('[data-carving-speed-settings],[data-particle-speed-settings]').forEach(node => { node.hidden = true; });
-    doc.querySelectorAll('#input-threshold,#input-target,#input-duration,#settings-btn').forEach(node => { node.disabled = true; });
-  }
   function updateStatus(sample) {
     if (!status) return;
     const label = preview ? '预览 · 活动不计入成绩' : !connected ? (lastError || '请从已绑定的教室端打开，活动才能计入本班成绩')
@@ -64,10 +82,8 @@
   }
   async function tick() {
     const sample = state();
-    lockControls();
-    document.querySelectorAll('iframe').forEach(frame => { try { lockControls(frame.contentDocument); } catch {} });
     updateStatus(sample);
-    if (!connected || preview || document.hidden || !sample.active) return;
+    if (leaving || !connected || preview || document.hidden || !sample.active) return;
     const key = sample.mode + ':' + sample.run;
     if (current?.key !== key) {
       if (starting) return;
@@ -81,7 +97,7 @@
       } catch (error) { lastError = error.message; }
       finally { starting = false; }
     }
-    if (!current || current.key !== key) return;
+    if (leaving || !current || current.key !== key) return;
     const at = now(), second = Math.floor(at / 1000);
     if (second === lastSecond) return;
     lastSecond = second;
@@ -91,28 +107,57 @@
     updateStatus(sample);
   }
   async function init() {
+    if (document.getElementById('reading-session-status')) return;
     const panel = document.createElement('div'); panel.id = 'reading-session-status';
     const classLabel = document.createElement('strong'); status = document.createElement('span'); status.setAttribute('role', 'status');
     clockLabel = document.createElement('span'); clockLabel.setAttribute('aria-live', 'off');
-    panel.append(classLabel, status, clockLabel); document.body.append(panel);
+    const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = '重新连接'; retry.hidden = true;
+    panel.append(classLabel, status, clockLabel, retry); document.body.append(panel);
     const fragment = new URLSearchParams(location.hash.slice(1)), ticket = fragment.get('launch');
     history.replaceState(null, '', location.pathname + location.search);
     preview = new URLSearchParams(location.search).get('preview') === '1';
-    try {
-      const data = preview ? await fetch('/api/reading/settings', { cache: 'no-store' }).then(async r => { if (!r.ok) throw new Error('请先登录管理端再打开预览。'); return r.json(); })
-        : ticket ? await api('device/connect', { launchToken: ticket }) : await api('device/settings');
-      if (data.config) window.ReadingIntegration.settings = data.config;
-      if (data.serverTime) offset = data.serverTime - Date.now();
-      connected = !preview; classLabel.textContent = preview ? '早读预览' : data.className;
-    } catch (error) { lastError = error.message; classLabel.textContent = '早读陪伴'; }
-    document.body.classList.remove('reading-loading');
-    state(); lockControls(); updateStatus(state());
+    let connecting = false, first = true;
+    async function connect() {
+      if (connecting || leaving) return;
+      connecting = true; retry.disabled = true;
+      status.textContent = '正在连接本班…';
+      try {
+        // A timed-out ticket may already have established the device cookie.
+        let data;
+        if (preview) data = await previewSettings();
+        else if (first && ticket) data = await api('device/connect', { launchToken: ticket });
+        else {
+          try { data = await api('device/settings'); }
+          catch (error) { if (error.status !== 401 || !ticket) throw error; data = await api('device/connect', { launchToken: ticket }); }
+        }
+        if (!window.ReadingMonitor) throw new Error('活动页面未能载入，请重新打开。');
+        if (data.config) window.ReadingIntegration.settings = data.config;
+        if (data.serverTime) offset = data.serverTime - Date.now();
+        connected = !preview; lastError = ''; classLabel.textContent = preview ? '早读预览' : data.className;
+        retry.hidden = true;
+        window.ICeClassDesktop?.send('reading-ready');
+      } catch (error) {
+        connected = false; lastError = error.message; classLabel.textContent = '连接未完成'; retry.hidden = false;
+        window.ICeClassDesktop?.send('reading-error');
+      } finally {
+        first = false; connecting = false; retry.disabled = false;
+        document.body.classList.remove('reading-loading');
+        window.ReadingIntegration.connectionReady = connected || preview && !lastError;
+        updateStatus(state());
+      }
+    }
+    retry.addEventListener('click', () => {
+      if (window.ICeClassDesktop?.connectionHandshake) window.ICeClassDesktop.send('reading-retry');
+      else void connect();
+    });
+    await connect();
+    state(); updateStatus(state());
     setInterval(() => void tick(), 250);
     setInterval(() => { if (current) void flush(current); }, 5000);
     setInterval(async () => {
-      if (preview) return;
+      if (preview || connecting || !connected) return;
       try { const data = await api('device/settings'); connected = true; classLabel.textContent = data.className; lastError = ''; }
-      catch (error) { lastError = error.message; if (error.status === 401) connected = false; }
+      catch (error) { lastError = error.message; if (error.status === 401) { connected = false; retry.hidden = false; } }
     }, 15000);
     window.addEventListener('pagehide', () => {
       if (current && connected) {
@@ -121,5 +166,12 @@
       }
     });
   }
-  document.addEventListener('DOMContentLoaded', () => void init());
+  async function previewSettings() {
+    const session = await request('/api/session');
+    if (!session.authenticated) throw new Error('请先登录班伴再打开预览。');
+    if (session.user.role !== 'superadmin') return {config:defaults};
+    return request('/api/reading/settings');
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => void init(), { once: true });
+  else void init();
 })();

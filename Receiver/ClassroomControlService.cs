@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using NAudio.CoreAudioApi;
@@ -30,7 +29,10 @@ public static class ClassroomControlService
         return (int)Math.Round(endpoint.AudioEndpointVolume.MasterVolumeLevelScalar * 100);
     }
 
-    public static async Task OpenReadingAsync(ReceiverConfig config, CancellationToken cancellationToken = default)
+    public static Task OpenReadingAsync(ReceiverConfig config, CancellationToken cancellationToken = default)
+        => ReadingExperience.OpenAsync(config, cancellationToken);
+
+    internal static async Task<Uri> CreateReadingLaunchAsync(ReceiverConfig config, CancellationToken cancellationToken = default)
     {
         var endpoint = config.Endpoint.TrimEnd('/');
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint + "/api/reading/launch?deviceId=" + Uri.EscapeDataString(config.DeviceId));
@@ -42,6 +44,7 @@ public static class ClassroomControlService
             throw new InvalidOperationException(body.RootElement.TryGetProperty("error", out var error) ? error.GetString() : "早读陪伴暂时无法连接，请检查网络。");
         var ticket = body.RootElement.GetProperty("launchToken").GetString();
         if (string.IsNullOrWhiteSpace(ticket)) throw new InvalidOperationException("未取得早读打开链接，请重试。");
-        Process.Start(new ProcessStartInfo(endpoint + "/reading/#launch=" + Uri.EscapeDataString(ticket)) { UseShellExecute = true });
+        cancellationToken.ThrowIfCancellationRequested();
+        return new Uri(endpoint + "/reading/#launch=" + Uri.EscapeDataString(ticket));
     }
 }

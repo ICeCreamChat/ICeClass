@@ -19,6 +19,7 @@ public sealed class CloudReceiverService
 
     public CloudReceiverService(SpeechService speech) => _speech = speech;
     public event EventHandler<ReceiverConnectionState>? ConnectionStateChanged;
+    public event EventHandler<ReceiverConfig>? BindingChanged;
 
     public Task StartAsync(ReceiverConfig config)
     {
@@ -155,7 +156,7 @@ public sealed class CloudReceiverService
 
     private static Task SendDeviceStatusAsync(ClientWebSocket socket, SemaphoreSlim sendLock, CancellationToken token) =>
         SendAsync(socket, sendLock, new { type = "device_status", outputVolume = ClassroomControlService.ReadVolume(),
-            version = ReceiverUpdateService.CurrentVersionText, capabilities = new[] { "reading", "volume" } }, token);
+            version = ReceiverUpdateService.CurrentVersionText, capabilities = new[] { "reading", "volume" }, computer = ComputerIdentity.Snapshot() }, token);
 
     private static async Task HandleCommandAsync(JsonElement command, ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
     {
@@ -198,7 +199,30 @@ public sealed class CloudReceiverService
             try
             {
                 using var command = JsonDocument.Parse(message.ToArray());
-                if (command.RootElement.ValueKind == JsonValueKind.Object && command.RootElement.TryGetProperty("type", out var kind) && kind.GetString() == "device_command")
+                if (command.RootElement.ValueKind == JsonValueKind.Object && command.RootElement.TryGetProperty("type", out var kind) && kind.GetString() is "connected" or "binding_updated")
+                {
+                    var binding = command.RootElement;
+                    if (binding.TryGetProperty("classId", out var classId) && classId.ValueKind == JsonValueKind.String &&
+                        binding.TryGetProperty("className", out var className) && className.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(classId.GetString()) && classId.GetString()!.Length <= 80 &&
+                        !string.IsNullOrWhiteSpace(className.GetString()) && className.GetString()!.Length <= 40)
+                    {
+                        var name = config.DeviceName;
+                        if (binding.TryGetProperty("deviceName", out var deviceName) && deviceName.ValueKind == JsonValueKind.String &&
+                            !string.IsNullOrWhiteSpace(deviceName.GetString()) && deviceName.GetString()!.Length <= 80) name = deviceName.GetString()!;
+                        var changed = config.ClassId != classId.GetString() || config.ClassName != className.GetString() || config.DeviceName != name;
+                        config.ClassId = classId.GetString()!; config.ClassName = className.GetString()!; config.DeviceName = name;
+                        if (changed)
+                        {
+                            try { ReceiverConfig.Save(config, updateStartup: false); }
+                            catch (Exception error) { AppLog.Error("Save updated classroom binding failed", error); }
+                        }
+                        BindingChanged?.Invoke(this, config);
+                        SetState(true, $"已连接：{config.ClassName}");
+                    }
+                    continue;
+                }
+                if (command.RootElement.ValueKind == JsonValueKind.Object && command.RootElement.TryGetProperty("type", out kind) && kind.GetString() == "device_command")
                 {
                     await HandleCommandAsync(command.RootElement, socket, sendLock, config, token);
                     continue;

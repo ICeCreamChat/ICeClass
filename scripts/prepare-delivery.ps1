@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Endpoint = '',
+    [string]$Endpoint = 'https://iceclass.icecreamchat.top',
     [switch]$Unconfigured,
     [string]$OutputDirectory = ''
 )
@@ -43,14 +43,18 @@ $delivery = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } e
 $classroom = Join-Path $delivery '教室端'
 New-Item -ItemType Directory -Force -Path $classroom | Out-Null
 Copy-Item -LiteralPath $receiver -Destination (Join-Path $classroom 'ICeClass.exe') -Force
-if ($Endpoint) {
-    Set-Content -LiteralPath (Join-Path $delivery 'cloud-url.txt') -Value $Endpoint -Encoding utf8
+if ($Endpoint -and $Endpoint -ne 'https://iceclass.icecreamchat.top') {
     Set-Content -LiteralPath (Join-Path $classroom 'cloud-url.txt') -Value $Endpoint -Encoding utf8
+} else {
+    Remove-Item -LiteralPath (Join-Path $classroom 'cloud-url.txt') -Force -ErrorAction SilentlyContinue
+}
+Remove-Item -LiteralPath (Join-Path $delivery 'cloud-url.txt') -Force -ErrorAction SilentlyContinue
+if ($Endpoint) {
 
 $shortcut = @"
 [InternetShortcut]
 URL=$Endpoint
-IconFile=$Endpoint/favicon.svg
+IconFile=$Endpoint/favicon.ico?v=4
 IconIndex=0
 "@
 Set-Content -LiteralPath (Join-Path $delivery '教师端.url') -Value $shortcut -Encoding ascii
@@ -66,20 +70,25 @@ $classroomReadme = @'
 1. 把这个文件夹复制到教室电脑的固定位置，例如 D:\ICeClass。
 2. 双击 ICeClass.exe。
 3. 若未预置网址，先输入管理员提供的班伴 HTTPS 网址。
-4. 在 ICe 管理网页的“班级管理”中生成该班的一次性绑定码，并在窗口中输入。
-5. 点击“绑定并开始接收”。以后电脑开机后会自动在后台连接平台。
+4. 输入管理员开放的全校绑定码（本次为 mas22），点击“读取班级”，依次下拉选择年级、本教室班级。无需管理员逐班生成绑定码。
+5. 点击“绑定并开始陪伴”。以后电脑开机后会自动在后台连接平台。
+6. 首次运行自动创建“班伴教室端”桌面快捷图标，同时显示系统托盘图标。点窗口“×”只收起到托盘，仍然接收通知；再点桌面图标可打开已有窗口。托盘菜单“退出”才真正退出。
 
 早读陪伴
 
-点击教室工具窗口或托盘菜单中的“打开早读陪伴”，允许浏览器使用麦克风，选择模式后开始。
-管理员统一设置早读时段和玩法参数。只有指定时段内、页面可见且正在运行的活动计入统计。
+点击教室首页“开始早读陪伴”或托盘菜单“打开早读陪伴”，内容直接在班伴内铺满屏幕，全屏时隐藏两层顶栏。选择模式并点击开始，首次使用时允许麦克风。没有键盘时，在屏幕空白处长按 2 秒退出全屏，按住显示圆环进度，松手取消；滑动、双指、按钮和滑块不会触发退出。退出全屏后早读继续，点窗口里的“全屏”可恢复；点“返回”才会结束采音并返回教室首页，通知接收继续。键盘 Esc 仍可退出全屏。
+Windows 10/11 64 位电脑需有 Microsoft Edge WebView2；大多数电脑已安装。缺少时会给出“安装运行组件”入口，安装后重新打开班伴即可。早读内容从平台加载，需要联网。
+ICe 可在后台启用到点提醒。晨读时段内，新版教室端弹出“开始晨读 / 暂不开始”；同一时段只提醒一次，关闭提醒不会退出程序。开始后仍需选择模式并允许麦克风，提醒本身不计成绩。
+ICe 在后台设置统计时段和统计声量门槛。目标、时长、速度等玩法设置仍由原本地操作面板保存，后台不会覆盖。只有指定时段内、页面可见且正在运行的活动计入统计。
 
-每个绑定码只能使用一次，15 分钟后失效。不要把 config.json 或绑定码发到公开群聊。
+全校码可在管理员设定的有效期内供多间教室使用；单班一次性码是备选，有效 15 分钟。不要把 config.json 或绑定码发到公开群聊。ICe 可在后台核实电脑名称、设备编号和实际位置，并远程改绑班级。
 
 以后更新
 
+学校初始预设：高一 16 班、高二 14 班、高三 14 班。班级名单来自后台，增减或更名后在绑定页点击“刷新班级”，不需要重装 EXE。
+
 管理员更新服务器后，教室端会在后台自动检查并安装新版。也可以右键系统托盘图标，点击“检查更新”，或在设置窗口点击同名按钮。
-更新不会删除本机 config.json、班级绑定或开机自启动设置。更新过程中程序会自动重启，通常不需要重新绑定。
+班级绑定保存到本机用户数据目录，更新和替换 EXE 会保留。旧版 config.json 首次迁移成功后自动移走；不要手动先删旧配置。更新过程中程序会自动重启，通常不需要重新绑定。
 
 通知声音
 
@@ -87,7 +96,7 @@ $classroomReadme = @'
 
 学生向老师留言
 
-教室端启动后会直接打开“向老师语音留言”窗口；如果窗口被关闭，单击或双击托盘图标即可重新打开。点击“点击开始录音”，再次点击“点击结束并发送”，学生语音不会在教室端外放，教师在网页“教室来音”中点击“播放语音”。每段最多 30 秒。
+教室端启动后打开教室首页；从首页点击“开始语音留言”，再次点击“点击结束并发送”，学生语音不会在教室端外放，教师在网页“教室来音”中点击“播放语音”。每段最多 30 秒。收起后可从桌面图标或托盘重新打开。
 '@
 Set-Content -LiteralPath (Join-Path $classroom '一步使用说明.txt') -Value $classroomReadme -Encoding utf8
 
@@ -98,7 +107,7 @@ $teacherReadme = @'
 手机可在浏览器中打开同一网址，再选择“添加到主屏幕”。
 
 登录后可在“早读统计”查看授权班级的每天使用次数、有效发声时长和各模式完成量。
-比赛按管理员时段内的有效发声时长排序；教师可以选择模式和内容，但不能调整声量门槛与目标参数。
+比赛按 ICe 统计时段内的有效发声时长排序。后台统计规则只供 ICe 查看和调整；教师继续在早读陪伴原本地操作面板中设置玩法目标、时长、速度等参数。
 
 普通通知只显示静音弹窗；重要和紧急通知会播放声音。语音喊话只能使用重要或紧急。
 禁言上课时间内，网页会在发送前提醒；取消后教室端什么都不会出现，确认“仍然发送”后才会正常送达。
@@ -109,20 +118,19 @@ Set-Content -LiteralPath (Join-Path $delivery '教师端使用说明.txt') -Valu
 $adminReadme = @'
 ICeClass · 班伴 交付包
 
-教室端：把“教室端”文件夹复制到每间教室电脑，双击 EXE，只需输入一次管理员生成的绑定码。
+教室端：把“教室端”文件夹复制到每间教室电脑，双击 EXE，输入全校绑定码并选择本班。首次运行创建桌面快捷图标；窗口关闭后常驻托盘，仍接收通知。
 教师端：打开管理员提供的网址或“教师端.url”，登录后可查看统计、通知和学生留言。
 早读：从已绑定的教室端打开，四种模式共用管理员统计规则。
 远程控制：ICe 可设置白板播放音量 30%/50%，或远程打开在线教室的早读页面。
-通用发布包未配置正式地址，需要管理员完成部署后提供网址。
+客户端已内置班伴正式网址；其他平台可在连接设置中修改。
 
 管理员保留本文件夹，不要公开发送部署初始化密钥、账号密码或教室端 config.json。
 最高管理员 ICe 可在网页“禁言时间”中维护全校公共时间表，教师只能查看。
+ICe 可创建、停用和删除账号；维护班级年度升班、更名、删除；核实电脑、改绑班级、停用和删除设备；按日期清理班级记录。升班保留原编号及历史，换教室时单独改绑电脑。
 '@
 Set-Content -LiteralPath (Join-Path $delivery '交付说明.txt') -Value $adminReadme -Encoding utf8
 Copy-Item -LiteralPath (Join-Path (Get-Location) 'docs') -Destination $delivery -Recurse -Force
-foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
-    Copy-Item -LiteralPath (Join-Path (Get-Location) $name) -Destination $delivery -Force
-}
+# Application and dependency notices are embedded in the EXE and available from “关于班伴”.
 
 Write-Host ''
 Write-Host '交付包已生成：' -ForegroundColor Green
@@ -130,4 +138,4 @@ Write-Host "  $delivery"
 if ($receiverVersion) { Write-Host "已包含教室端版本：$receiverVersion" }
 Write-Host '教室电脑只需复制“教室端”文件夹并双击 EXE。'
 if ($Endpoint) { Write-Host '教师只需双击“教师端.url”并登录。' }
-else { Write-Host '这是未配置地址的通用包，首次绑定需要管理员提供班伴平台网址。' }
+else { Write-Host '客户端内置班伴正式网址，也可在连接设置中修改。' }

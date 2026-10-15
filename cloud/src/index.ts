@@ -15,6 +15,10 @@ import type { Env, SessionUser, ShoutPayload, UserRecord } from "./types";
 
 export { ClassRoom };
 
+const LOGIN_FAILURE_LIMIT = 10;
+const LOGIN_FAILURE_WINDOW_MS = 300_000;
+const LOGIN_BLOCK_MS = 300_000;
+
 const jsonHeaders = { "Content-Type": "application/json; charset=utf-8" };
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -134,6 +138,16 @@ async function bootstrap(request: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+function loginBlockedResponse(blockedUntil: number, now: number): Response {
+  const retrySeconds = Math.max(1, Math.ceil((blockedUntil - now) / 1000));
+  const minutes = Math.floor(retrySeconds / 60), seconds = retrySeconds % 60;
+  const wait = minutes && seconds ? `${minutes} 分 ${seconds} 秒` : minutes ? `${minutes} 分钟` : `${seconds} 秒`;
+  return json({
+    error: `已连续输错 ${LOGIN_FAILURE_LIMIT} 次，登录暂时受限，请在 ${wait} 后重试。`,
+    retryAfterSeconds: retrySeconds,
+  }, 429, { "Retry-After": String(retrySeconds) });
+}
+
 async function login(request: Request, env: Env): Promise<Response> {
   const body = await readJson<{ username?: string; password?: string }>(request);
   const username = body?.username?.trim().slice(0, 64) ?? "";
@@ -143,20 +157,23 @@ async function login(request: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const failure = await env.DB.prepare("SELECT failures, window_started_at, blocked_until FROM login_failures WHERE key = ?")
     .bind(failureKey).first<{ failures: number; window_started_at: number; blocked_until: number | null }>();
-  if (failure?.blocked_until && failure.blocked_until > now) return json({ error: "登录尝试过多，请稍后再试。" }, 429);
+  if (failure && failure.failures >= LOGIN_FAILURE_LIMIT && failure.blocked_until && failure.blocked_until > now) {
+    return loginBlockedResponse(failure.blocked_until, now);
+  }
 
   const user = await env.DB.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE")
     .bind(username).first<UserRecord>();
   const valid = Boolean(user && user.enabled === 1 && await verifyPassword(password, user.password_hash));
   if (!valid || !user) {
-    const windowStart = failure && now - failure.window_started_at < 300_000 ? failure.window_started_at : now;
+    const windowStart = failure && now - failure.window_started_at < LOGIN_FAILURE_WINDOW_MS ? failure.window_started_at : now;
     const failures = failure && windowStart === failure.window_started_at ? failure.failures + 1 : 1;
-    const blockedUntil = failures >= 5 ? now + 300_000 : null;
+    const blockedUntil = failures >= LOGIN_FAILURE_LIMIT ? now + LOGIN_BLOCK_MS : null;
     await env.DB.prepare(
       `INSERT INTO login_failures(key, failures, window_started_at, blocked_until) VALUES (?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET failures=excluded.failures, window_started_at=excluded.window_started_at, blocked_until=excluded.blocked_until`,
     ).bind(failureKey, failures, windowStart, blockedUntil).run();
-    return json({ error: "用户名或密码错误。" }, 401);
+    if (blockedUntil) return loginBlockedResponse(blockedUntil, now);
+    return json({ error: `用户名或密码错误，已连续输错 ${failures} 次，还可尝试 ${LOGIN_FAILURE_LIMIT - failures} 次。` }, 401);
   }
 
   await env.DB.prepare("DELETE FROM login_failures WHERE key = ?").bind(failureKey).run();

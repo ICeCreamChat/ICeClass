@@ -108,16 +108,24 @@ try {
     foreach ($relativeFile in @(
         'server\app.py',
         'server\reading.py',
+        'server\management.py',
         'server\requirements.txt',
         'server\install-ubuntu.sh',
         'web_controller\index.html',
+        'web_controller\favicon.ico',
         'web_controller\favicon.svg',
         'web_controller\reading-admin.js',
+        'web_controller\reading-calendar.js',
+        'web_controller\reading-calendar.css',
+        'web_controller\ui.css',
+        'web_controller\ui.js',
+        'web_controller\management.js',
         'cloud\migrations\0001_initial.sql'
     )) {
         Copy-Item -LiteralPath (Join-Path (Get-Location) $relativeFile) -Destination (Join-Path $packageRoot $relativeFile) -Force
     }
     Copy-Item -LiteralPath (Join-Path (Get-Location) 'web_controller\reading') -Destination (Join-Path $packageRoot 'web_controller') -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path (Get-Location) 'web_controller\assets') -Destination (Join-Path $packageRoot 'web_controller') -Recurse -Force
     Copy-Item -LiteralPath $receiverExecutable -Destination (Join-Path $packageRoot 'receiver_release\ICeClass.exe') -Force
     $manifest = [ordered]@{
         version = $receiverVersion

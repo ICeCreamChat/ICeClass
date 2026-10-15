@@ -1,6 +1,28 @@
-.reading-loading .mode-choices { pointer-events: none; opacity: .45; }
-#reading-session-status { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 100; max-width: calc(100vw - 24px); padding: 8px 15px; border: 1px solid #cbdccd; border-radius: 9px; background: rgba(255,253,247,.94); color: #2f5a42; display: flex; gap: 16px; align-items: center; font: 13px/1.5 "Microsoft YaHei",sans-serif; pointer-events: none; box-shadow: 0 2px 10px #00000012; }
+/* Connection state is explicit; keep the activity cards legible on whiteboards. */
+#reading-session-status button { pointer-events: auto; touch-action: manipulation; border: 1px solid #b1cae8; border-radius: 9px; min-height: 44px; padding: 8px 14px; background: #e7f1ff; color: #075cad; font: inherit; font-weight: 600; cursor: pointer; }
+#reading-session-status button[hidden] { display: none; }
+#reading-session-status button:focus-visible { outline: 3px solid #0071e3; outline-offset: 3px; }
+#reading-session-status { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 100; max-width: calc(100vw - 24px); padding: 10px 18px; border: 1px solid #d2d2d7; border-radius: 12px; background: rgba(255,255,255,.96); color: #355d89; display: flex; gap: 16px; align-items: center; font: 15px/1.6 "Microsoft YaHei UI","PingFang SC",sans-serif; pointer-events: none; box-shadow: 0 2px 12px #00000012; }
 #reading-session-status strong { white-space: nowrap; }
 #reading-session-status [aria-live] { white-space: nowrap; font-variant-numeric: tabular-nums; }
 #reading-session-status[data-warning="true"] { color: #8a4c16; border-color: #d4b38e; }
-@media(max-width:700px) { #reading-session-status { gap: 5px 10px; width: max-content; flex-wrap: wrap; justify-content: center; font-size: 11px; bottom: 5px; padding: 5px 9px; } }
+@media(max-width:700px) { #reading-session-status { gap: 5px 10px; width: max-content; flex-wrap: wrap; justify-content: center; font-size: 14px; bottom: 5px; padding: 7px 10px; } }
+
+:root { --paper:#f5f5f7; --ink:#1d1d1f; --muted:#636366; --line:#e5e5ea; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Microsoft YaHei UI","PingFang SC",sans-serif; }
+.classic-toolbar { background:#ffffffee; backdrop-filter:blur(20px); }
+.brand span, .home-note, .library-note, .settings-note, .poem-option small { font-size:14px; }
+.quiet-button { background:#fff; border-color:#d2d2d7; border-radius:11px; font-size:16px; font-weight:500; }
+.quiet-button:hover { background:#f0f0f5; }
+.primary-button, .choice-action, .rabbit-choice .choice-action { background:#0071e3; border-color:#0071e3; color:#fff; border-radius:12px; font-weight:600; }
+.primary-button:hover { background:#0067cf; }
+.mode-choice { background:#fff; border:1px solid #e5e5ea; border-radius:22px; box-shadow:0 4px 24px #00000004; }
+.mode-choice:hover { border-color:#78afe5; box-shadow:0 8px 24px #0071e310; }
+.home-heading h1 { font-weight:600; letter-spacing:-.5px; }
+.mode-copy h2 { font-size:26px; font-weight:600; }
+.mode-copy p { color:#636366; font-size:17px; }
+.rabbit-art { background:#edf4fc; }
+.poem-library { background:#eef0f3; }
+.book-tabs button { background:#fff; color:#515154; border-color:#d2d2d7; border-radius:10px; }
+.book-tabs button[aria-pressed="true"] { background:#0071e3; border-color:#0071e3; }
+.poem-option[aria-pressed="true"] { background:#fff; border-color:#9fc4ed; box-shadow:inset 4px 0 #0071e3; }
+.poem-option:hover { background:#e5eaf2; }

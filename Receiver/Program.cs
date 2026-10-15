@@ -10,7 +10,7 @@ internal static class Program
     public static void Main(string[] args)
     {
         _singleInstance = new Mutex(true, "ICeClass.Receiver.SingleInstance", out var isFirstInstance);
-        if (!isFirstInstance) return;
+        if (!isFirstInstance) { InstanceActivation.NotifyRunningInstance(); _singleInstance.Dispose(); return; }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         _singleInstance.ReleaseMutex();
         _singleInstance.Dispose();

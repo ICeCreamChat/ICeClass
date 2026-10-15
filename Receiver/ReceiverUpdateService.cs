@@ -62,30 +62,33 @@ public sealed class ReceiverUpdateService
                 throw new InvalidOperationException("更新文件长度与服务器记录不一致。");
 
             await using var source = await response.Content.ReadAsStreamAsync(token);
-            await using var destination = new FileStream(
+            await using (var destination = new FileStream(
                 temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 128,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            var buffer = new byte[1024 * 128];
-            long total = 0;
-            while (true)
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                var read = await source.ReadAsync(buffer, token);
-                if (read == 0) break;
-                total += read;
-                if (total > manifest.Size || total > MaximumDownloadBytes)
-                    throw new InvalidOperationException("更新文件超过服务器声明的大小。");
-                await destination.WriteAsync(buffer.AsMemory(0, read), token);
-                hash.AppendData(buffer, 0, read);
-                progress?.Report((int)Math.Clamp(total * 100 / manifest.Size, 0, 100));
+                using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                var buffer = new byte[1024 * 128];
+                long total = 0;
+                while (true)
+                {
+                    var read = await source.ReadAsync(buffer, token);
+                    if (read == 0) break;
+                    total += read;
+                    if (total > manifest.Size || total > MaximumDownloadBytes)
+                        throw new InvalidOperationException("更新文件超过服务器声明的大小。");
+                    await destination.WriteAsync(buffer.AsMemory(0, read), token);
+                    hash.AppendData(buffer, 0, read);
+                    progress?.Report((int)Math.Clamp(total * 100 / manifest.Size, 0, 100));
+                }
+                await destination.FlushAsync(token);
+                if (total != manifest.Size)
+                    throw new InvalidOperationException("更新下载不完整，请稍后重试。");
+                var actualHash = Convert.ToHexString(hash.GetHashAndReset());
+                if (!actualHash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("更新文件校验失败，请稍后重试。");
             }
-            await destination.FlushAsync(token);
-            if (total != manifest.Size)
-                throw new InvalidOperationException("更新下载不完整，请稍后重试。");
-            var actualHash = Convert.ToHexString(hash.GetHashAndReset());
-            if (!actualHash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("更新文件校验失败，请稍后重试。");
 
+            // Windows cannot rename the download while its exclusive write handle is open.
             File.Move(temporaryPath, readyPath, true);
             return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
         }
@@ -192,10 +195,13 @@ param(
 $ErrorActionPreference = 'Stop'
 try { Wait-Process -Id $OldProcessId -Timeout 120 -ErrorAction SilentlyContinue } catch { }
 $newProcess = $null
+$originalMoved = $false
 try {
+  if (Get-Process -Id $OldProcessId -ErrorAction SilentlyContinue) { throw 'Receiver is still running.' }
   Remove-Item -LiteralPath $MarkerPath -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $BackupExecutable -Force -ErrorAction SilentlyContinue
   Move-Item -LiteralPath $CurrentExecutable -Destination $BackupExecutable -Force
+  $originalMoved = $true
   Move-Item -LiteralPath $DownloadedExecutable -Destination $CurrentExecutable -Force
   $argument = '--update-marker="' + $MarkerPath + '"'
   $newProcess = Start-Process -FilePath $CurrentExecutable -ArgumentList $argument -PassThru
@@ -210,8 +216,8 @@ try {
   Remove-Item -LiteralPath $BackupExecutable -Force -ErrorAction SilentlyContinue
 } catch {
   if ($newProcess -and -not $newProcess.HasExited) { Stop-Process -Id $newProcess.Id -Force -ErrorAction SilentlyContinue }
-  Remove-Item -LiteralPath $CurrentExecutable -Force -ErrorAction SilentlyContinue
-  if (Test-Path -LiteralPath $BackupExecutable) {
+  if ($originalMoved -and (Test-Path -LiteralPath $BackupExecutable)) {
+    Remove-Item -LiteralPath $CurrentExecutable -Force -ErrorAction SilentlyContinue
     Move-Item -LiteralPath $BackupExecutable -Destination $CurrentExecutable -Force
     Start-Process -FilePath $CurrentExecutable
   }

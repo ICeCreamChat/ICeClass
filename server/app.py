@@ -17,6 +17,7 @@ import re
 import secrets
 import signal
 import sqlite3
+import sys
 import time
 import uuid
 import wave
@@ -27,6 +28,7 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 from reading import install_reading
+from management import install_management, check_school_code, record_computer_info, device_summary
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,6 +49,9 @@ AUDIO_TTL_MS = 30 * 60_000
 CLASSROOM_VOICE_TTL_MS = 30 * 60_000
 CLASSROOM_VOICE_RATE_WINDOW_MS = 60_000
 CLASSROOM_VOICE_RATE_LIMIT = 3
+LOGIN_FAILURE_LIMIT = 10
+LOGIN_FAILURE_WINDOW_MS = 300_000
+LOGIN_BLOCK_MS = 300_000
 STAFF_ROLES = {"teacher", "director", "principal"}
 SCHOOL_ROLES = {"superadmin", "principal"}
 
@@ -316,7 +321,9 @@ class Rooms:
         class_id = str(device["class_id"])
         device_id = str(device["id"])
         self.sockets[class_id][socket] = device_id
-        await socket.send_json({"type": "connected", "timestamp": now_ms()})
+        binding = self.store.one('SELECT d.name,c.name class_name FROM devices d JOIN classes c ON c.id=d.class_id WHERE d.id=?', (device_id,))
+        await socket.send_json({"type": "connected", "timestamp": now_ms(), "deviceId": device_id,
+                                "classId": class_id, "className": binding['class_name'], "deviceName": binding['name']})
         try:
             if self.reading:
                 await self.reading.on_connect(socket, class_id)
@@ -339,6 +346,8 @@ class Rooms:
                 elif parsed.get("type") == "ack":
                     self._record_ack(class_id, parsed)
                 elif self.reading and parsed.get("type") in {"device_status", "device_command_ack"}:
+                    if parsed.get('type') == 'device_status':
+                        record_computer_info(self.store, device_id, parsed.get('computer'), now_ms())
                     self.reading.telemetry(device_id, parsed)
         finally:
             self.sockets[class_id].pop(socket, None)
@@ -691,6 +700,16 @@ async def bootstrap(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+def login_blocked_response(blocked_until: int, timestamp: int) -> web.Response:
+    retry_seconds = max(1, (blocked_until - timestamp + 999) // 1000)
+    minutes, seconds = divmod(retry_seconds, 60)
+    wait = f"{minutes} 分 {seconds} 秒" if minutes and seconds else f"{minutes} 分钟" if minutes else f"{seconds} 秒"
+    return json_response({
+        "error": f"已连续输错 {LOGIN_FAILURE_LIMIT} 次，登录暂时受限，请在 {wait} 后重试。",
+        "retryAfterSeconds": retry_seconds,
+    }, 429, {"Retry-After": str(retry_seconds)})
+
+
 async def login(request: web.Request) -> web.Response:
     body = await read_json(request) or {}
     username = str(body.get("username", "")).strip()[:64]
@@ -700,21 +719,26 @@ async def login(request: web.Request) -> web.Response:
     timestamp = now_ms()
     db = store(request)
     failure = db.one("SELECT failures, window_started_at, blocked_until FROM login_failures WHERE key=?", (failure_key,))
-    if failure and failure["blocked_until"] and int(failure["blocked_until"]) > timestamp:
-        return json_response({"error": "登录尝试过多，请稍后再试。"}, 429)
+    if (failure and failure["failures"] >= LOGIN_FAILURE_LIMIT
+            and failure["blocked_until"] and int(failure["blocked_until"]) > timestamp):
+        return login_blocked_response(int(failure["blocked_until"]), timestamp)
     account = db.one("SELECT * FROM users WHERE username=? COLLATE NOCASE", (username,))
     valid = bool(account and account["enabled"] == 1 and verify_password(password, account["password_hash"]))
     if not valid:
-        window_start = failure["window_started_at"] if failure and timestamp - failure["window_started_at"] < 300_000 else timestamp
+        window_start = failure["window_started_at"] if failure and timestamp - failure["window_started_at"] < LOGIN_FAILURE_WINDOW_MS else timestamp
         failures = failure["failures"] + 1 if failure and window_start == failure["window_started_at"] else 1
-        blocked_until = timestamp + 300_000 if failures >= 5 else None
+        blocked_until = timestamp + LOGIN_BLOCK_MS if failures >= LOGIN_FAILURE_LIMIT else None
         db.run(
             """INSERT INTO login_failures(key, failures, window_started_at, blocked_until) VALUES (?, ?, ?, ?)
                ON CONFLICT(key) DO UPDATE SET failures=excluded.failures, window_started_at=excluded.window_started_at,
                blocked_until=excluded.blocked_until""",
             (failure_key, failures, window_start, blocked_until),
         )
-        return json_response({"error": "用户名或密码错误。"}, 401)
+        if blocked_until:
+            return login_blocked_response(blocked_until, timestamp)
+        return json_response({
+            "error": f"用户名或密码错误，已连续输错 {failures} 次，还可尝试 {LOGIN_FAILURE_LIMIT - failures} 次。",
+        }, 401)
     db.run("DELETE FROM login_failures WHERE key=?", (failure_key,))
     token = random_token()
     csrf = random_token(24)
@@ -864,6 +888,8 @@ async def update_class(request: web.Request) -> web.Response:
     audit(db, user["id"], "class.update", "class", class_id, json.dumps({"name": name, "enabled": bool(enabled)}, ensure_ascii=False))
     if enabled == 0 and existing["enabled"] != 0:
         await rooms(request).disconnect_all(class_id)
+    elif name != existing['name']:
+        await rooms(request).broadcast(class_id, {'type': 'binding_updated', 'classId': class_id, 'className': name})
     return json_response({"ok": True})
 
 
@@ -903,34 +929,58 @@ async def enroll_device(request: web.Request) -> web.Response:
     device_name = str(body.get("deviceName", "")).strip()[:80] or "教室电脑"
     if not code:
         return json_response({"error": "请输入绑定码。"}, 400)
+    school_class_id = body.get("classId")
+    if school_class_id is not None:
+        denied = check_school_code(request, sys.modules[__name__], code)
+        if denied is not None:
+            return denied
     db = store(request)
     timestamp = now_ms()
     code_hash = sha256(code)
     token = random_token()
     device_id = str(uuid.uuid4())
+    previous = None
     try:
         db.run("BEGIN IMMEDIATE")
-        row = db.one(
-            """SELECT e.class_id, c.name class_name FROM enrollment_codes e JOIN classes c ON c.id=e.class_id
-               WHERE e.code_hash=? AND e.expires_at>? AND c.enabled=1""",
-            (code_hash, timestamp),
-        )
+        replacement = body.get('replaceDeviceId')
+        if replacement is not None:
+            authorization = request.headers.get('Authorization', '')
+            previous = db.one('SELECT id,class_id,enabled FROM devices WHERE id=? AND token_hash=? AND deleted_at IS NULL',
+                              (str(replacement), sha256(authorization[7:]) if authorization.startswith('Bearer ') else ''))
+            if not previous or not previous['enabled']:
+                db.run('ROLLBACK')
+                return json_response({'error': '原设备身份无效或已被管理员停用。'}, 403)
+            device_id = previous['id']
+        row = (db.one("SELECT id class_id, name class_name FROM classes WHERE id=? AND enabled=1", (str(school_class_id),))
+               if school_class_id is not None else db.one(
+                   """SELECT e.class_id, c.name class_name FROM enrollment_codes e JOIN classes c ON c.id=e.class_id
+                      WHERE e.code_hash=? AND e.expires_at>? AND c.enabled=1""", (code_hash, timestamp)))
         if not row:
             db.run("ROLLBACK")
             return json_response({"error": "绑定码无效或已过期。"}, 404)
-        deleted = db.run("DELETE FROM enrollment_codes WHERE code_hash=? AND expires_at>?", (code_hash, timestamp))
-        if deleted.rowcount != 1:
+        deleted = (db.run("DELETE FROM enrollment_codes WHERE code_hash=? AND expires_at>?", (code_hash, timestamp))
+                   if school_class_id is None else None)
+        if deleted is not None and deleted.rowcount != 1:
             db.run("ROLLBACK")
             return json_response({"error": "绑定码已被使用，请重新生成。"}, 409)
-        db.run(
-            "INSERT INTO devices(id, class_id, name, token_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
-            (device_id, row["class_id"], device_name, sha256(token), timestamp, timestamp),
-        )
+        if previous:
+            db.run('UPDATE devices SET class_id=?,name=?,token_hash=?,verified_at=NULL,updated_at=? WHERE id=?',
+                   (row['class_id'], device_name, sha256(token), timestamp, device_id))
+            for table in ('reading_launches', 'reading_browser_sessions'):
+                db.run(f'DELETE FROM {table} WHERE device_id=?', (device_id,))
+        else:
+            db.run(
+                "INSERT INTO devices(id, class_id, name, token_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                (device_id, row["class_id"], device_name, sha256(token), timestamp, timestamp),
+            )
+        record_computer_info(db, device_id, body.get('computer'), timestamp)
         db.run("COMMIT")
     except Exception:
         with suppress(sqlite3.Error):
             db.run("ROLLBACK")
         raise
+    if previous:
+        await rooms(request).disconnect_device(previous['class_id'], device_id)
     return json_response({"deviceId": device_id, "deviceToken": token, "classId": row["class_id"], "className": row["class_name"]})
 
 
@@ -939,7 +989,7 @@ async def list_teachers(request: web.Request) -> web.Response:
     if isinstance(user, web.Response):
         return user
     db = store(request)
-    teachers = db.all("SELECT id, username, display_name, role, enabled, created_at FROM users WHERE role!='superadmin' ORDER BY username")
+    teachers = db.all("SELECT id, username, display_name, role, enabled, created_at FROM users WHERE role!='superadmin' AND deleted_at IS NULL ORDER BY username")
     for teacher in teachers:
         teacher["classes"] = db.all(
             "SELECT c.id, c.name FROM teacher_classes tc JOIN classes c ON c.id=tc.class_id WHERE tc.user_id=? ORDER BY c.name",
@@ -967,7 +1017,7 @@ async def create_teacher(request: web.Request) -> web.Response:
     display_name = str(body.get("displayName", "")).strip()
     role = body.get("role", "teacher")
     if not isinstance(role, str) or role not in STAFF_ROLES:
-        return json_response({"error": "请选择普通教师、主任或校长。"}, 400)
+        return json_response({"error": "请选择教师、主任或校长。"}, 400)
     if not USERNAME_RE.match(username):
         return json_response({"error": "用户名需为 3 至 64 位字母、数字或 ._@-。"}, 400)
     if not 1 <= len(display_name) <= 40:
@@ -997,14 +1047,14 @@ async def update_teacher(request: web.Request) -> web.Response:
         return user
     teacher_id = request.match_info["teacher_id"]
     db = store(request)
-    existing = db.one("SELECT display_name, role, enabled FROM users WHERE id=? AND role!='superadmin'", (teacher_id,))
+    existing = db.one("SELECT display_name, role, enabled FROM users WHERE id=? AND role!='superadmin' AND deleted_at IS NULL", (teacher_id,))
     if not existing:
         return json_response({"error": "账号不存在。"}, 404)
     body = await read_json(request) or {}
     display_name = str(body.get("displayName", existing["display_name"])).strip()
     role = body.get("role", existing["role"])
     if not isinstance(role, str) or role not in STAFF_ROLES:
-        return json_response({"error": "请选择普通教师、主任或校长。"}, 400)
+        return json_response({"error": "请选择教师、主任或校长。"}, 400)
     if not 1 <= len(display_name) <= 40:
         return json_response({"error": "姓名应为 1 至 40 个字符。"}, 400)
     enabled = existing["enabled"] if "enabled" not in body else int(bool(body["enabled"]))
@@ -1030,7 +1080,7 @@ async def reset_teacher_password(request: web.Request) -> web.Response:
     db = store(request)
     with db.transaction():
         cursor = db.run(
-            "UPDATE users SET password_hash=?, updated_at=? WHERE id=? AND role!='superadmin'",
+            "UPDATE users SET password_hash=?, updated_at=? WHERE id=? AND role!='superadmin' AND deleted_at IS NULL",
             (hash_password(body["password"]), now_ms(), teacher_id),
         )
         if cursor.rowcount != 1:
@@ -1046,7 +1096,7 @@ async def set_teacher_classes(request: web.Request) -> web.Response:
         return user
     teacher_id = request.match_info["teacher_id"]
     db = store(request)
-    if not db.one("SELECT id FROM users WHERE id=? AND role!='superadmin'", (teacher_id,)):
+    if not db.one("SELECT id FROM users WHERE id=? AND role!='superadmin' AND deleted_at IS NULL", (teacher_id,)):
         return json_response({"error": "账号不存在。"}, 404)
     body = await read_json(request) or {}
     with db.transaction():
@@ -1060,10 +1110,14 @@ async def list_devices(request: web.Request) -> web.Response:
     if isinstance(user, web.Response):
         return user
     rows = store(request).all(
-        """SELECT d.id, d.class_id, c.name class_name, d.name, d.enabled, d.last_seen_at, d.created_at
-           FROM devices d JOIN classes c ON c.id=d.class_id ORDER BY c.name, d.created_at DESC"""
+        """SELECT d.id, d.class_id, c.name class_name, d.name, d.enabled, d.last_seen_at, d.created_at,
+           d.computer_name,d.os_version,d.local_addresses,d.identity_seen_at,d.binding_note,d.verified_at
+           FROM devices d JOIN classes c ON c.id=d.class_id WHERE d.deleted_at IS NULL ORDER BY c.name, d.created_at DESC"""
     )
     rows.sort(key=lambda row: (*class_sort_key(row.get("class_name")), -int(row.get("created_at") or 0)))
+    counts = {r['class_id']: r['n'] for r in store(request).all('SELECT class_id,COUNT(*) n FROM devices WHERE enabled=1 AND deleted_at IS NULL GROUP BY class_id')}
+    for row in rows:
+        device_summary(row, rooms(request), counts)
     return json_response({"devices": rows})
 
 
@@ -1072,18 +1126,41 @@ async def update_device(request: web.Request) -> web.Response:
     if isinstance(user, web.Response):
         return user
     body = await read_json(request) or {}
-    if not isinstance(body.get("enabled"), bool):
-        return json_response({"error": "设备状态不正确。"}, 400)
+    if not any(key in body for key in ('enabled', 'classId', 'name', 'note', 'verified')):
+        return json_response({"error": "请选择需要修改的设备信息。"}, 400)
+    for key in ('enabled', 'verified'):
+        if key in body and not isinstance(body[key], bool):
+            return json_response({"error": "设备状态不正确。"}, 400)
     device_id = request.match_info["device_id"]
     db = store(request)
-    device = db.one("SELECT id, class_id, name FROM devices WHERE id=?", (device_id,))
+    device = db.one("SELECT id,class_id,name,enabled,binding_note,verified_at FROM devices WHERE id=? AND deleted_at IS NULL", (device_id,))
     if not device:
         return json_response({"error": "设备不存在。"}, 404)
+    cid = body.get('classId', device['class_id'])
+    if not isinstance(cid, str) or (cid != device['class_id'] and not db.one('SELECT id FROM classes WHERE id=? AND enabled=1', (cid,))):
+        return json_response({'error': '请选择启用的目标班级。'}, 400)
+    name, note = body.get('name', device['name']), body.get('note', device['binding_note'])
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80 or not isinstance(note, str) or len(note.strip()) > 120:
+        return json_response({'error': '设备名称应为 1 至 80 个字符，位置备注最多 120 个字符。'}, 400)
+    verified = device['verified_at'] if cid == device['class_id'] else None
+    if 'verified' in body:
+        verified = now_ms() if body['verified'] else None
+    enabled = int(body.get('enabled', bool(device['enabled'])))
     with db.transaction():
-        db.run("UPDATE devices SET enabled=?, updated_at=? WHERE id=?", (int(body["enabled"]), now_ms(), device_id))
-        audit(db, user["id"], "device.update", "device", device_id, json.dumps({"enabled": body["enabled"]}))
-    if not body["enabled"]:
+        db.run('UPDATE devices SET class_id=?,name=?,binding_note=?,verified_at=?,enabled=?,updated_at=? WHERE id=?',
+               (cid, name.strip(), note.strip(), verified, enabled, now_ms(), device_id))
+        if cid != device['class_id']:
+            for table in ('reading_launches', 'reading_browser_sessions'):
+                db.run(f'DELETE FROM {table} WHERE device_id=?', (device_id,))
+        audit(db, user['id'], 'device.update', 'device', device_id,
+              json.dumps({'previousClassId': device['class_id'], 'classId': cid, 'name': name.strip(), 'enabled': bool(enabled), 'verified': bool(verified)}, ensure_ascii=False))
+    if not enabled or cid != device['class_id']:
         await rooms(request).disconnect_device(device["class_id"], device_id)
+    elif name.strip() != device['name']:
+        class_name = db.one('SELECT name FROM classes WHERE id=?', (cid,))['name']
+        for ws, did in list(rooms(request).sockets.get(cid, {}).items()):
+            if did == device_id and not ws.closed:
+                await ws.send_json({'type': 'binding_updated', 'classId': cid, 'className': class_name, 'deviceName': name.strip()})
     return json_response({"ok": True})
 
 
@@ -1483,7 +1560,11 @@ async def static_file(request: web.Request) -> web.Response:
         body = target.read_text(encoding="utf-8").replace("__CSP_NONCE__", nonce).encode("utf-8")
         content_type = "text/html"
     else:
-        return web.FileResponse(target, headers={**SECURITY_HEADERS, "Content-Type": content_type})
+        headers = {**SECURITY_HEADERS, "Content-Type": content_type}
+        if relative.startswith("reading/assets/v2.2.4/"):
+            # Only versioned, public activity resources can be reused offline/in later sessions.
+            headers["Cache-Control"] = "public, max-age=86400"
+        return web.FileResponse(target, headers=headers)
     response = web.Response(body=body, content_type=content_type)
     response.headers.update(SECURITY_HEADERS)
     response.headers["Content-Security-Policy"] = (
@@ -1631,6 +1712,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_reading(app, app[STORE_KEY], app[ROOMS_KEY], user=require_user, admin=require_admin,
                     authenticate=authenticate_device, access=can_access_class, reply=json_response,
                     clock=lambda: now_ms(), digest=sha256)
+    install_management(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)

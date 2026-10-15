@@ -13,6 +13,8 @@ node_modules/
 .tools/
 dist/
 test-results/
+.playwright-cli/
+ICeClass.code-workspace
 data/
 __pycache__/
 *.py[cod]

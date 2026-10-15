@@ -22,7 +22,7 @@ try {
     foreach ($directory in @('server', 'cloud\migrations', 'receiver_release')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $serverRoot $directory) | Out-Null
     }
-    foreach ($name in @('app.py', 'reading.py', 'requirements.txt', 'install-ubuntu.sh')) {
+    foreach ($name in @('app.py', 'reading.py', 'management.py', 'requirements.txt', 'install-ubuntu.sh')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot "server\$name") -Destination (Join-Path $serverRoot "server\$name")
     }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'web_controller') -Destination $serverRoot -Recurse
@@ -30,7 +30,7 @@ try {
     Copy-Item -LiteralPath $receiver -Destination (Join-Path $serverRoot 'receiver_release\ICeClass.exe')
     $manifest = [ordered]@{ version = $version; sha256 = (Get-FileHash -LiteralPath $receiver -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item -LiteralPath $receiver).Length } | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $serverRoot 'receiver_release\manifest.json'), $manifest, (New-Object Text.UTF8Encoding($false)))
-    foreach ($name in @('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'docs')) {
+    foreach ($name in @('README.md', 'LICENSE', 'docs')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination $serverRoot -Recurse
     }
     $windowsZip = Join-Path $releaseRoot "ICeClass-$version-windows-x64.zip"

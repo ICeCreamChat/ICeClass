@@ -109,6 +109,8 @@ class ReadingTest(ServerTestCase):
         self.csrf = user['user']['csrfToken']
         response, _ = await self.json_request('PUT', '/api/reading/settings', config, csrf=True)
         self.assertEqual(response.status, 403)
+        response, _ = await self.json_request('GET', '/api/reading/settings')
+        self.assertEqual(response.status, 403)
         response, _ = await self.json_request('GET', '/api/classroom-controls')
         self.assertEqual(response.status, 403)
         response, _ = await self.json_request('POST', '/api/classes/' + device['classId'] + '/control', {'action': 'set_volume','volume': 50}, csrf=True)
@@ -121,6 +123,39 @@ class ReadingTest(ServerTestCase):
         self.assertEqual(response.status, 200)
         self.assertIn('高一（1）班', await response.text())
         self.assertNotIn('高一（2）班', await response.text())
+
+    async def test_classroom_reminder_schedule_authorization_and_live_settings(self):
+        clock = [timestamp(7, 30)]
+        with patch.object(service, 'now_ms', side_effect=lambda: clock[0]):
+            device = await self.enroll_test_device()
+            path = '/api/reading/schedule?deviceId=' + device['deviceId']
+            response, _ = await self.json_request('GET', path)
+            self.assertEqual(response.status, 401)  # A web login is not a device binding.
+            headers = {'Authorization': 'Bearer ' + device['deviceToken']}
+            config = await self.configure(start=450, end=473)
+            response = await self.client.get(path, headers=headers)
+            schedule = await response.json()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(schedule, {'enabled': True, 'reminderEnabled': True,
+                'periods': config['periods'], 'serverTime': clock[0], 'classId': device['classId'], 'className': '高一（1）班'})
+            response, _ = await self.json_request('PUT', '/api/reading/settings', {**config, 'reminderEnabled': 'yes'}, csrf=True)
+            self.assertEqual(response.status, 400)
+            response, _ = await self.json_request('PUT', '/api/reading/settings', {**config, 'reminderEnabled': False}, csrf=True)
+            self.assertEqual(response.status, 200)
+            # Saving with an older editor does not silently re-enable reminders.
+            old_editor = {k: v for k, v in config.items() if k != 'reminderEnabled'}
+            response, data = await self.json_request('PUT', '/api/reading/settings', old_editor, csrf=True)
+            self.assertFalse(data['config']['reminderEnabled'])
+            response = await self.client.get(path, headers=headers)
+            self.assertFalse((await response.json())['reminderEnabled'])
+            session, _ = await self.open_reading(device)
+            await self.client.post('/api/reading/device/pulse', json={'sessionId': session,
+                'samples': [{'at': clock[0], 'volume': 70, 'active': True}]})
+            _, report = await self.json_request('GET', '/api/reading/report?start=2026-10-14&end=2026-10-14')
+            self.assertEqual(report['rows'][0]['effectiveSeconds'], 1)  # Reminders and statistics are independent.
+            await self.json_request('PATCH', '/api/devices/' + device['deviceId'], {'enabled': False}, csrf=True)
+            response = await self.client.get(path, headers=headers)
+            self.assertEqual(response.status, 401)
 
     async def test_volume_command_ack_offline_persistence_and_open_reading(self):
         device = await self.enroll_test_device()

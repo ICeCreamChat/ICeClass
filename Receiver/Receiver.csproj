@@ -7,21 +7,34 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.0.1</Version>
+    <Version>2.2.4</Version>
     <Product>ICeClass · 班伴</Product>
     <Title>ICeClass · 班伴教室端</Title>
     <Description>班级伴学与管理平台</Description>
     <Company>ICeCreamChat</Company>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\branding\app.ico" LogicalName="ICeClass.Branding.app.ico" />
+    <EmbeddedResource Include="..\branding\app-icon.png" LogicalName="ICeClass.Branding.app-icon.png" />
+    <EmbeddedResource Include="..\LICENSE" LogicalName="ICeClass.Notices.LICENSE" />
+    <EmbeddedResource Include="..\docs\licenses\THIRD_PARTY_NOTICES.md" LogicalName="ICeClass.Notices.THIRD_PARTY_NOTICES.md" />
+    <EmbeddedResource Include="..\docs\licenses\WebView2-LICENSE.txt" LogicalName="ICeClass.Notices.WebView2-LICENSE.txt" />
+    <EmbeddedResource Include="..\docs\licenses\WebView2-NOTICE.txt" LogicalName="ICeClass.Notices.WebView2-NOTICE.txt" />
     <PackageReference Include="Avalonia" Version="11.2.5" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.5" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.5" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
+  <Target Name="UseWebViewCoreOnly" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
+    </ItemGroup>
+  </Target>
 </Project>
