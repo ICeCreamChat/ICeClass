@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ICeClass.Desktop.App" RequestedThemeVariant="Light">
+  <Application.Resources>
+    <FontFamily x:Key="ContentControlThemeFontFamily">Microsoft YaHei UI, Microsoft YaHei, Segoe UI</FontFamily>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://ICeClass.Desktop/Shared/NativeControls.axaml" />
+  </Application.Styles>
+</Application>

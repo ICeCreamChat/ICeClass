@@ -13,8 +13,8 @@ import app as service
 from reading import DEFAULT, SHANGHAI, local_day
 
 
-def create_preview():
-    database = Path(__file__).resolve().parent.parent / '.tools' / 'preview' / 'demo.db'
+def create_preview(database=None):
+    database = database or Path(__file__).resolve().parent.parent / '.tools' / 'preview' / 'demo.db'
     app = service.create_app(database)
     async def identify_preview(request, response):
         response.headers['X-ICeClass-Preview'] = '1'
@@ -54,15 +54,17 @@ def create_preview():
                        (str(uuid.uuid4()), f'{grade}（{number}）班', now, now))
         config = {**DEFAULT, 'enabled': True, 'periods': [{'weekdays': [1, 2, 3, 4, 5, 6, 7], 'start': 0, 'end': 1440}]}
         db.run('UPDATE reading_settings SET value=? WHERE id=1', (json.dumps(config),))
+        app[service.ROOMS_KEY].reading.offline.save_rule(config)
     return app
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ICeClass localhost demonstration')
     parser.add_argument('--port', type=int, default=8837)
+    parser.add_argument('--database', type=Path, help='Use a separate local demonstration database')
     args = parser.parse_args()
     print(f'ICeClass preview: http://127.0.0.1:{args.port}/', flush=True)
     print('Demo administrator: ICe / LocalDemo2026', flush=True)
     print('Demo teacher: teacher1 / LocalTeacher2026', flush=True)
     print('The sample classes and scores are fictional. This server listens only on localhost.', flush=True)
-    web.run_app(create_preview(), host='127.0.0.1', port=args.port)
+    web.run_app(create_preview(args.database), host='127.0.0.1', port=args.port)

@@ -2,12 +2,6 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const mobile = matchMedia('(max-width: 880px)');
-  const kickers = { reading: '晨读有声 · 成长有迹', console: '连接课堂 · 传递关心', 'classroom-voice': '来自教室 · 听见同学', controls: '你的教室 · 随时连接', history: '每一次通知 · 都有回应', quiet: '留一份安静 · 给专注的课堂', classes: '班级空间 · 一起成长', teachers: '校园协同 · 各司其职', settings: '账号与设备 · 安心相伴' };
-  for (const [view, text] of Object.entries(kickers)) {
-    const heading = $(`view-${view}`)?.querySelector('.view-head > div');
-    if (!heading) continue;
-    const kicker = document.createElement('span'); kicker.className = 'page-kicker'; kicker.textContent = text; heading.prepend(kicker);
-  }
   $('topbarDate').textContent = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long'}).format(new Date());
   function closeNav(returnFocus = false) {
     document.body.classList.remove('nav-open'); $('menuToggle').setAttribute('aria-expanded', 'false');
@@ -20,7 +14,32 @@
   };
   $('sidebarClose').onclick = () => closeNav(true);
   $('navBackdrop').onclick = () => closeNav(true);
+  document.addEventListener('click', event => {
+    document.querySelectorAll('.action-menu[open]').forEach(menu => {
+      if (!menu.contains(event.target) || event.target.closest('.action-menu-content button')) menu.open = false;
+    });
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    document.querySelectorAll('.action-menu[open]').forEach(menu => {
+      event.preventDefault(); menu.open = false; menu.querySelector('summary').focus();
+    });
+  });
   mobile.addEventListener('change', () => closeNav());
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const dialog = [...document.querySelectorAll('dialog[open]')].at(-1);
+    if (!dialog) return;
+    const items = [...dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
+      .filter(item => item.tabIndex >= 0 && !item.disabled && item.getClientRects().length && getComputedStyle(item).visibility !== 'hidden');
+    const first = items[0], last = items.at(-1);
+    if (!first) { event.preventDefault(); return; }
+    if (!dialog.contains(document.activeElement) || event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); (event.shiftKey ? last : first).focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first.focus();
+    }
+  });
   document.addEventListener('keydown', event => {
     if (!mobile.matches || !document.body.classList.contains('nav-open')) return;
     if (event.key === 'Escape') { event.preventDefault(); closeNav(true); }
@@ -50,14 +69,26 @@
     $('loginPasswordToggle').setAttribute('aria-pressed', String(visible));
     $('loginPasswordToggle').setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
   };
+  function avatarLabel(user) {
+    const username = (user.username || '').trim(), name = (user.displayName || username).trim();
+    if (/^ice$/i.test(username)) return 'ICe';
+    if (/^\p{Script=Han}/u.test(name)) {
+      const compound = ['欧阳', '司马', '上官', '诸葛', '东方', '皇甫', '尉迟', '公孙', '慕容', '司徒', '司空', '夏侯', '令狐', '长孙', '宇文', '轩辕'];
+      return compound.find(surname => name.startsWith(surname)) || [...name][0];
+    }
+    const initials = name.split(/\s+/).filter(Boolean);
+    return initials.length > 1 ? initials.slice(0, 2).map(part => [...part][0]).join('').toUpperCase() : [...name].slice(0, 3).join('') || '师';
+  }
   window.addEventListener('iceclass-ready', async () => {
-    $('userAvatar').textContent = window.ICeClass.state.user.username.slice(0, 2).toUpperCase();
+    const user = window.ICeClass.state.user;
+    $('userAvatar').textContent = avatarLabel(user);
+    $('userAvatar').title = user.displayName + '（' + user.username + '）';
     syncNavigation();
     try {
       const response = await fetch('/api/session', {cache:'no-store'});
       if (response.headers.get('X-ICeClass-Preview') === '1' && !document.getElementById('previewNotice')) {
         const notice = document.createElement('p'); notice.id = 'previewNotice'; notice.className = 'preview-notice';
-        notice.textContent = '本地验收 · 此处的班级、设备与成绩为演示数据，用于检查界面和功能。';
+        notice.textContent = '本地验收 · 当前展示演示数据。';
         $('mainContent').prepend(notice);
       }
     } catch {}

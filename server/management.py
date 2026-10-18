@@ -239,6 +239,7 @@ class Management:
         paths, count = [], 0
         with self.db.transaction():
             if kind == 'reading':
+                self.db.run('INSERT INTO reading_record_resets VALUES(?,?,?,?)', (cid, start, end, self.service.now_ms()))
                 for table in ('reading_events', 'reading_buckets'):
                     count += self.db.run(f'DELETE FROM {table} WHERE class_id=? AND day BETWEEN ? AND ?', (cid, start, end)).rowcount
                 self.db.run('DELETE FROM reading_session_days WHERE day BETWEEN ? AND ? AND session_id IN (SELECT id FROM reading_sessions WHERE class_id=?)', (start, end, cid))
@@ -253,6 +254,8 @@ class Management:
                     condition, params = 'class_id=? AND created_at>=? AND created_at<?', (cid, first, last)
                 paths = [r['audio_path'] for r in self.db.all(f'SELECT audio_path FROM {table} WHERE {condition}', params)]
                 count = self.db.run(f'DELETE FROM {table} WHERE {condition}', params).rowcount
+                if kind == 'voice':
+                    self.db.run('DELETE FROM classroom_voice_totals WHERE class_id=? AND day BETWEEN ? AND ?', (cid, start, end))
             self.service.audit(self.db, user['id'], 'class.records_clear', 'class', cid, json.dumps({'kind': kind, 'start': start, 'end': end, 'count': count}))
         self.unlink_audio(paths)
         return self.service.json_response({'cleared': True, 'count': count})

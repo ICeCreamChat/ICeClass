@@ -1,0 +1,257 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Shared by the classroom and teacher shells. Explicit template selectors
+       also cover Fluent's hover/disabled states, which override control brushes. -->
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="Microsoft YaHei UI, Microsoft YaHei, Segoe UI" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Foreground" Value="#243349" />
+  </Style>
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="Microsoft YaHei UI, Microsoft YaHei, Segoe UI" />
+  </Style>
+  <Style Selector="Button.native-button">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="16,7" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="White" />
+    <Setter Property="Foreground" Value="#36516E" />
+    <Setter Property="BorderBrush" Value="#D8E1EC" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FocusAdorner">
+      <Template>
+        <Border BorderThickness="2" CornerRadius="8" Margin="1"
+                BorderBrush="#397CC6" IsHitTestVisible="False" />
+      </Template>
+    </Setter>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="PART_ContentPresenter"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          Padding="{TemplateBinding Padding}"
+                          Background="{TemplateBinding Background}"
+                          Foreground="{TemplateBinding Foreground}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                          RecognizesAccessKey="True" />
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.native-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#F2F7FD" />
+    <Setter Property="BorderBrush" Value="#BCD0E8" />
+    <Setter Property="Foreground" Value="#175DAD" />
+  </Style>
+  <Style Selector="Button.native-button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#E6EFFB" />
+    <Setter Property="Foreground" Value="#16549A" />
+  </Style>
+  <Style Selector="Button.native-primary">
+    <Setter Property="Background" Value="#0071E3" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#0071E3" />
+  </Style>
+  <Style Selector="Button.native-primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#0067CF" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#0067CF" />
+  </Style>
+  <Style Selector="Button.native-primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#005BB8" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#005BB8" />
+  </Style>
+  <Style Selector="Button.native-quiet">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="#697586" />
+  </Style>
+  <Style Selector="Button.classroom-recording">
+    <Setter Property="Background" Value="#B74C43" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#B74C43" />
+  </Style>
+  <Style Selector="Button.classroom-recording:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#A53D36" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#A53D36" />
+  </Style>
+  <Style Selector="Button.classroom-recording:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#90352F" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#90352F" />
+  </Style>
+  <Style Selector="Button.native-document">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="#697586" />
+  </Style>
+  <Style Selector="Button.native-document.selected">
+    <Setter Property="Background" Value="White" />
+    <Setter Property="BorderBrush" Value="#DCE6F2" />
+    <Setter Property="Foreground" Value="#0066CC" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.native-document.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="White" />
+    <Setter Property="BorderBrush" Value="#BDD3EE" />
+  </Style>
+  <Style Selector="Button.native-button:disabled">
+    <Setter Property="Opacity" Value="0.5" />
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="White" />
+    <Setter Property="Foreground" Value="#243349" />
+    <Setter Property="BorderBrush" Value="#D8E1EC" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FocusAdorner">
+      <Template>
+        <Border BorderThickness="2" CornerRadius="7" Margin="1"
+                BorderBrush="#397CC6" IsHitTestVisible="False" />
+      </Template>
+    </Setter>
+  </Style>
+  <Style Selector="TextBox /template/ Border#PART_BorderElement">
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="#0071E3" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="White" />
+    <Setter Property="Foreground" Value="#243349" />
+    <Setter Property="PlaceholderForeground" Value="#697586" />
+    <Setter Property="BorderBrush" Value="#D8E1EC" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ComboBox:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="#F9FBFE" />
+    <Setter Property="BorderBrush" Value="#AFC6E2" />
+  </Style>
+  <Style Selector="ComboBox:pressed /template/ Border#Background">
+    <Setter Property="Background" Value="#F0F6FF" />
+    <Setter Property="BorderBrush" Value="#0071E3" />
+  </Style>
+  <Style Selector="ComboBox:focus-visible /template/ Border#HighlightBackground">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="#0071E3" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="ComboBox:disabled /template/ Border#Background">
+    <Setter Property="Background" Value="#F4F6F9" />
+    <Setter Property="BorderBrush" Value="#E2E8F0" />
+  </Style>
+  <Style Selector="ComboBox:disabled /template/ TextBlock#PlaceholderTextBlock">
+    <Setter Property="Foreground" Value="#7C8797" />
+  </Style>
+  <Style Selector="ComboBox:disabled /template/ ContentControl#ContentPresenter">
+    <Setter Property="Foreground" Value="#7C8797" />
+  </Style>
+  <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="10" />
+    <Setter Property="Foreground" Value="#697586" />
+  </Style>
+  <Style Selector="ComboBox /template/ TextBlock#PlaceholderTextBlock">
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="ComboBox /template/ Border#PopupBorder">
+    <Setter Property="Background" Value="White" />
+    <Setter Property="BorderBrush" Value="#D8E1EC" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="4" />
+  </Style>
+  <Style Selector="ComboBoxItem">
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="MinHeight" Value="40" />
+  </Style>
+  <!-- Fluent pins the 32px indicator container to the top. Our 40px hit
+       target needs the indicator and label centered in the same row. -->
+  <Style Selector="CheckBox:unchecked /template/ Grid#RootGrid > Grid,
+                   CheckBox:checked /template/ Grid#RootGrid > Grid,
+                   CheckBox:indeterminate /template/ Grid#RootGrid > Grid">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Expander">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="#243349" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="40" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader /template/ Border#ToggleButtonBackground">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader /template/ Border#ExpandCollapseChevronBorder">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Margin" Value="12,0,0,0" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader /template/ Path#ExpandCollapseChevron">
+    <Setter Property="Stroke" Value="#697586" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader:pointerover /template/ Border#ExpandCollapseChevronBorder">
+    <Setter Property="Background" Value="#EDF4FD" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader:pressed /template/ Border#ExpandCollapseChevronBorder">
+    <Setter Property="Background" Value="#DFEBFA" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+  <Style Selector="Expander:expanded:down /template/ Border#ExpanderContent">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0,10,0,0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+</Styles>

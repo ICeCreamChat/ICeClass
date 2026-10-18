@@ -22,7 +22,7 @@ tag = "v1"
 new_sqlite_classes = ["ClassRoom"]
 
 [vars]
-APP_NAME = "ICeClass · 班伴"
+APP_NAME = "ICeClass 班伴"
 SESSION_DAYS = "14"
 HISTORY_DAYS = "0"
 

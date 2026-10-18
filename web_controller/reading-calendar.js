@@ -9,7 +9,7 @@
   const level = s => !s ? 0 : s < 300 ? 1 : s < 600 ? 2 : s < 1200 ? 3 : 4;
   const dateLabel = day => new Intl.DateTimeFormat('zh-CN', { timeZone: 'UTC', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date(stamp(day)));
   function node(tag, text, cls) { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; }
-  let initialized = false, generation = 0, loadedKey = '', inFlightKey = '', selected = '', focusDay = '', lastFetched = 0;
+  let initialized = false, generation = 0, loadedKey = '', inFlightKey = '', inFlight = null, navigation = 0, selected = '', focusDay = '', lastFetched = 0;
   let daily = new Map(), buttons = new Map(), tooltip, activeTip = null;
   const key = () => $('calendarClass').value + '/' + $('calendarYear').value;
   const count = (r, name) => Number(r?.[name]) || 0;
@@ -102,15 +102,17 @@
     if (rebuild) requestAnimationFrame(() => scrollToDay(selected));
     if (activeTip) showTip(activeTip);
   }
-  async function refresh(force = false) {
+  function refresh(force = false) {
     if (!initialized || !$('calendarClass').value) return;
     const requestedKey = key();
-    if (inFlightKey === requestedKey || !force && requestedKey === loadedKey && Date.now() - lastFetched < 14000) return;
+    if (inFlightKey === requestedKey) return inFlight;
+    if (!force && requestedKey === loadedKey && Date.now() - lastFetched < 14000) return;
     const request = ++generation, changed = requestedKey !== loadedKey;
     inFlightKey = requestedKey;
+    $('calendarClassCaption').textContent = $('calendarClass').selectedOptions[0].textContent + ' · 全年早读记录';
     if (changed) { hideTip(); daily = new Map(); $('calendarBody').classList.add('hidden'); $('calendarSummary').replaceChildren(); message('正在读取全年记录…'); }
     $('readingCalendar').setAttribute('aria-busy', 'true');
-    try {
+    inFlight = (async () => { try {
       const year = $('calendarYear').value;
       const data = await window.ICeClass.api('/api/reading/report?' + new URLSearchParams({ start: year + '-01-01', end: year + '-12-31', classId: $('calendarClass').value }));
       if (request !== generation || key() !== requestedKey) return;
@@ -118,8 +120,9 @@
     } catch (error) {
       if (request === generation) message('日历暂时无法更新：' + error.message, true);
     } finally {
-      if (request === generation) { inFlightKey = ''; $('readingCalendar').setAttribute('aria-busy', 'false'); }
-    }
+      if (request === generation) { inFlightKey = ''; inFlight = null; $('readingCalendar').setAttribute('aria-busy', 'false'); }
+    } })();
+    return inFlight;
   }
   function syncClasses() {
     if (!initialized) return;
@@ -130,6 +133,30 @@
     if (!select.options.length) {
       ++generation; inFlightKey = loadedKey = ''; hideTip(); $('calendarBody').classList.add('hidden'); $('calendarSummary').replaceChildren();
       $('readingCalendar').setAttribute('aria-busy', 'false'); message('还没有获授权的班级。');
+      $('calendarClassCaption').textContent = '把每天的朗读，连成一年的坚持。';
+    }
+  }
+  async function showClass(classId, day) {
+    initialize();
+    const select = $('calendarClass');
+    if (![...select.options].some(option => option.value === String(classId))) {
+      window.ICeClass.toast('该班级已不在您的授权范围内，请刷新班级列表。'); return;
+    }
+    select.value = classId;
+    const requestedDay = day > today() ? today() : day, year = String(requestedDay || '').slice(0, 4);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(requestedDay || '') && Number(year) >= 1970) {
+      if (![...$('calendarYear').options].some(option => option.value === year)) $('calendarYear').append(new Option(year + ' 年', year));
+      $('calendarYear').value = year; selected = requestedDay;
+    }
+    hideTip();
+    const request = ++navigation, loading = refresh(true);
+    window.dispatchEvent(new CustomEvent('iceclass-calendar-selected', { detail: { classId: String(classId) } }));
+    $('readingCalendarTitle').focus({ preventScroll: true });
+    $('readingCalendar').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+    await loading;
+    if (request === navigation && select.value === String(classId) && document.activeElement === $('readingCalendarTitle')) {
+      // Reposition after the calendar expands, without stealing focus from a newer selection.
+      $('readingCalendar').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
     }
   }
   function initialize() {
@@ -139,7 +166,10 @@
     for (let y = year; y >= year - 8; --y) $('calendarYear').append(new Option(y + ' 年', y));
     tooltip = node('div', undefined, 'calendar-tooltip hidden'); tooltip.setAttribute('aria-hidden', 'true'); document.body.append(tooltip);
     syncClasses();
-    ['calendarClass', 'calendarYear'].forEach(id => $(id).addEventListener('change', () => void refresh(true)));
+    ['calendarClass', 'calendarYear'].forEach(id => $(id).addEventListener('change', () => {
+      void refresh(true);
+      if (id === 'calendarClass') window.dispatchEvent(new CustomEvent('iceclass-calendar-selected', { detail: { classId: $('calendarClass').value } }));
+    }));
     $('calendarRetry').onclick = () => void refresh(true);
     $('calendarDate').onchange = () => { selectDay($('calendarDate').value); scrollToDay(selected); };
     const grid = $('calendarGrid');
@@ -158,7 +188,7 @@
     window.addEventListener('scroll', hideTip, { passive: true }); window.addEventListener('resize', hideTip);
     void refresh();
   }
-  window.ICeClassCalendar = { initialize, syncClasses, refresh };
+  window.ICeClassCalendar = { initialize, syncClasses, refresh, showClass };
   window.addEventListener('iceclass-ready', initialize);
   initialize();
 })();

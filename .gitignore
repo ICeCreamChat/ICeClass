@@ -23,5 +23,7 @@ __pycache__/
 *.db-wal
 *.log
 config.json
+banban-settings.json
 receiver_release/
+desktop_release/
 .updates/

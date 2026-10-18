@@ -4,26 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f5f5f7">
-  <link rel="icon" href="/favicon.ico?v=4" type="image/x-icon">
-  <link rel="icon" href="/assets/favicon.png?v=4" type="image/png" sizes="32x32">
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=4">
-  <title>ICeClass · 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=5">
+  <link rel="icon" href="/favicon.ico?v=5" type="image/x-icon">
+  <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
+  <title>ICeClass 班伴</title>
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=7">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=1">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=2">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=11">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=28">
 </head>
 <body>
   <div id="loading" class="app-loading"><div class="spinner" aria-label="正在加载"></div></div>
 
   <section id="authPage" class="auth-page hidden">
-    <aside class="auth-story" aria-label="班伴介绍"><div class="brand-lockup"><img src="/assets/app-icon.png?v=4" alt="" width="48" height="48"><div><strong>班伴<span class="sr-only"> ICeClass</span></strong><small>ICeClass · 班级陪伴</small></div></div>
+    <aside class="auth-story" aria-label="ICeClass 班伴介绍"><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>班级陪伴</small></div></div>
       <h2>班级的每一天，<br>都有好陪伴。</h2>
-      <p>从一声晨读，到一次温暖的回应。<br>陪伴课堂，也连接你与每一个班级。</p>
-      <img class="auth-art" src="/assets/app-icon.png?v=4" alt="班级陪伴：三位同学在黑板前一起学习" width="512" height="512">
+      <p>从一声晨读，到一次温暖的回应。<br>陪伴课堂，也连接您与每一个班级。</p>
+      <img class="auth-art" src="/assets/app-icon.png?v=5" alt="班级陪伴：老师和同学们在黑板前相伴学习" width="512" height="512">
       <div class="auth-features"><span>早读陪伴</span><span>课堂连接</span><span>校园协同</span></div>
     </aside>
-    <div class="auth-card"><div class="brand-lockup"><img src="/assets/app-icon.png?v=4" alt="" width="48" height="48"><div><strong>班伴<span class="sr-only"> ICeClass</span></strong><small>ICeClass · 班级陪伴</small></div></div>      <form id="loginForm" class="hidden">
-        <p class="auth-kicker">欢迎回来</p><h1>登录班伴</h1>
-        <p class="muted">使用学校分配的账号，进入你的班级工作台。</p>
+    <div class="auth-card"><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>班级陪伴</small></div></div>      <form id="loginForm" class="hidden">
+        <p class="auth-kicker">欢迎回来</p><h1>登录 ICeClass 班伴</h1>
+        <p class="muted">使用学校分配的账号，进入您的班级工作台。</p>
         <div class="field"><label for="loginUsername">用户名</label><input id="loginUsername" autocomplete="username" required maxlength="64"></div>
         <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" type="password" autocomplete="current-password" required maxlength="128"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false">显示</button></div></div>
         <p id="loginError" class="form-error" role="alert"></p>
@@ -46,43 +49,43 @@
   <div id="appShell" class="shell hidden">
     <header class="topbar">
       <button id="menuToggle" class="btn icon menu-toggle" type="button" aria-label="打开功能菜单" aria-controls="appSidebar" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-      <span class="mobile-brand">ICeClass · 班伴</span>
+      <span class="mobile-brand">ICeClass 班伴</span>
       <div class="breadcrumb"><span>校园工作台</span><span aria-hidden="true">/</span><strong id="breadcrumbView">早读统计</strong></div>
       <div class="spacer"></div><span id="topbarDate" class="topbar-date"></span>
-      <div class="user-block"><div id="userAvatar" class="user-avatar" aria-hidden="true">IC</div><div class="user-meta"><strong id="userDisplayName"></strong><span id="userRole"></span></div></div>
+      <div class="user-block"><div id="userAvatar" class="user-avatar" aria-hidden="true">ICe</div><div class="user-meta"><strong id="userDisplayName"></strong><span id="userRole"></span></div></div>
       <button id="logoutButton" class="btn" type="button">退出</button>
     </header>
     <button id="navBackdrop" class="nav-backdrop" type="button" tabindex="-1" aria-label="关闭功能菜单"></button>
     <aside id="appSidebar" class="sidebar">
-      <button id="sidebarClose" class="btn icon sidebar-close" type="button" aria-label="关闭功能菜单">×</button><div class="brand-lockup"><img src="/assets/app-icon.png?v=4" alt="" width="48" height="48"><div><strong>班伴<span class="sr-only"> ICeClass</span></strong><small>ICeClass · 班级陪伴</small></div></div>      <nav id="mainNav" class="nav" aria-label="主要功能"><span class="nav-group-label">陪伴与连接</span>
+      <button id="sidebarClose" class="btn icon sidebar-close" type="button" aria-label="关闭功能菜单">×</button><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>教师工作台</small></div></div>      <nav id="mainNav" class="nav" aria-label="主要功能"><span class="nav-group-label">班级工作</span>
         <button data-view="reading" class="active"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6c-2-2-5-3-9-2v15c4-1 7 0 9 2 2-2 5-3 9-2V4c-4-1-7 0-9 2ZM12 6v15"/></svg></span><span data-label>早读统计</span></button>
         <button data-view="console"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span><span data-label>班级通知</span></button>
         <button data-view="classroom-voice"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>教室来音</span></button>
         <button data-view="controls" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.5"/></svg></span><span data-label>教室控制</span></button>
-        <button data-view="history"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span data-label>历史记录</span></button>
+        <button data-view="history"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span data-label>通知记录</span></button>
         <button data-view="quiet"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><span data-label>禁言时间</span></button>
         <span class="nav-group-label" data-admin>校园管理</span>
         <button data-view="classes" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span data-label>班级管理</span></button>
         <button data-view="teachers" data-admin><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span><span data-label>用户管理</span></button>
-        <button data-view="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.5"/></svg></span><span data-label>账号与设备</span></button>
+        <button data-view="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.5"/></svg></span><span data-label>账号设置</span></button>
       </nav>
-      <div class="sidebar-note"><span class="note-leaf" aria-hidden="true">✧</span><strong>今天，也陪班级走一程。</strong><p>早读 · 通知 · 课堂管理</p></div>
+      <div class="sidebar-note"><span class="note-leaf" aria-hidden="true">✧</span><strong>陪伴每个班级的日常</strong><p>早读 · 通知 · 班班</p></div>
     </aside>
     <main id="mainContent" tabindex="-1">
       <section id="view-console" class="view hidden">
-        <div class="view-head"><div><h1>班级通知</h1><p>选择通知类型，消息会立即送达对应班级。</p></div></div>
+        <div class="view-head"><div><h1>班级通知</h1><p>向所选班级发送文字或语音通知，并查看送达状态。</p></div></div>
         <div class="console-layout">
           <form id="shoutForm" class="compose">
             <div class="target-row">
-              <div class="field"><label for="targetClass">目标班级</label><select id="targetClass" required></select></div>
+              <div class="field"><label for="targetClass">接收班级</label><select id="targetClass" required></select></div>
               <div id="presence" class="presence"><span class="dot"></span><span>正在检查</span></div>
             </div>
-            <div class="mode-picker" role="tablist" aria-label="喊话方式">
-              <button id="textModeButton" class="mode-button selected" type="button" role="tab" aria-selected="true">文字喊话</button>
-              <button id="voiceModeButton" class="mode-button" type="button" role="tab" aria-selected="false">语音喊话</button>
+            <div class="mode-picker" role="tablist" aria-label="通知方式">
+              <button id="textModeButton" class="mode-button selected" type="button" role="tab" aria-selected="true">文字通知</button>
+              <button id="voiceModeButton" class="mode-button" type="button" role="tab" aria-selected="false">语音通知</button>
             </div>
             <div id="textComposer">
-              <div class="field"><label for="shoutText">喊话内容</label><textarea id="shoutText" maxlength="500" required placeholder="输入要在教室大屏显示和播报的内容"></textarea><p class="hint"><span id="charCount">0</span>/500</p></div>
+              <div class="field"><label for="shoutText">通知内容</label><textarea id="shoutText" maxlength="500" required placeholder="输入要在教室大屏显示的通知"></textarea><p class="hint"><span id="charCount">0</span>/500</p></div>
             </div>
             <div id="voiceComposer" class="voice-composer hidden" aria-live="polite">
               <button id="recordButton" class="record-button" type="button">按住说话</button>
@@ -110,37 +113,48 @@
                 <div class="field"><label for="displayDuration">显示时长</label><select id="displayDuration"><option value="8" selected>8 秒</option><option value="10">10 秒</option><option value="12">12 秒</option><option value="15">15 秒</option><option value="20">20 秒</option></select></div>
               </div>
             </details>
-            <button id="sendButton" class="btn send block" type="submit">发送喊话</button>
+            <button id="sendButton" class="btn send block" type="submit">发送通知</button>
           </form>
           <aside class="side-panel">
             <section class="plain-section">
-              <h2>本次送达</h2>
-              <div id="deliveryState" class="delivery"><strong>尚未发送</strong><p class="hint">选择班级并输入喊话内容。</p></div>
+              <h2>送达状态</h2>
+              <div id="deliveryState" class="delivery"><strong>尚未发送</strong><p class="hint">发送后在此查看处理结果。</p></div>
             </section>
-            <section class="plain-section"><h2>最近喊话</h2><div id="recentList" class="recent-list"><p class="muted">暂无记录</p></div></section>
+            <section class="plain-section"><h2>最近通知</h2><div id="recentList" class="recent-list"><p class="muted">暂无记录</p></div></section>
           </aside>
         </div>
       </section>
 
       <section id="view-reading" class="view">
-        <div class="view-head"><div><h1>早读统计</h1><p>听见晨读的声音，也看见每个班的坚持。</p></div><div class="toolbar"><button id="readingExport" class="btn" type="button">↓ 导出报表</button><a class="btn primary" id="readingPreview" href="/reading/?preview=1" target="_blank" rel="noopener">预览早读陪伴 <span aria-hidden="true">↗</span></a></div></div>
+        <div class="view-head"><div><h1>早读统计</h1><p>查看晨读成绩、比较班级表现，并回顾每日记录。</p></div><div class="toolbar"><button id="readingExport" class="btn" type="button">↓ 导出 XLSX</button><a class="btn primary" id="readingPreview" href="/reading/?preview=1" target="_blank" rel="noopener">预览早读陪伴 <span aria-hidden="true">↗</span></a></div></div>
         <div class="toolbar reading-filter">
           <div class="field"><label for="readingStart">开始日期</label><input id="readingStart" type="date" required></div>
           <div class="field"><label for="readingEnd">结束日期</label><input id="readingEnd" type="date" required></div>
           <div class="field"><label for="readingClass">班级</label><select id="readingClass"></select></div>
           <div class="period-shortcuts"><button id="readingToday" class="btn active" type="button">今天</button><button id="readingWeek" class="btn" type="button">本周</button></div>
           <button id="readingRefresh" class="btn primary" type="button">查询</button>
+          <div class="reading-grade-filter">
+            <span class="reading-grade-label">年级对比</span>
+            <div id="readingGradeFilter" class="reading-grade-options" role="group" aria-label="年级范围，可多选">
+              <button type="button" data-reading-grade="all" aria-pressed="true">全部年级</button>
+              <button type="button" data-reading-grade="高一" aria-pressed="false">高一</button>
+              <button type="button" data-reading-grade="高二" aria-pressed="false">高二</button>
+              <button type="button" data-reading-grade="高三" aria-pressed="false">高三</button>
+              <button type="button" data-reading-grade="其他" aria-pressed="false" class="hidden">其他</button>
+            </div>
+            <span id="readingGradeScope" class="reading-grade-hint" role="status">可多选，一起比较</span>
+          </div>
         </div>
         <div id="readingOverview" class="reading-overview" aria-label="早读成绩概览"><div class="metric">正在读取成绩…</div></div>
         <p id="readingRuleStatus" data-admin class="reading-rule-status hidden" role="status">正在读取统计规则…</p>
-        <section class="reading-panel" aria-labelledby="rankingTitle">
-          <div class="panel-heading"><div><h2 id="rankingTitle">班级排行榜</h2><p>按有效发声时长排名 · 同时长并列</p></div><span id="readingReportStatus">正在读取…</span></div>
-          <div id="readingRanking"></div>
-          <p class="report-note">仅累计统计时段内的有效发声。各模式完成量分别展示；未使用表示没有软件记录。</p>
+        <section class="reading-panel ranking-panel" aria-labelledby="rankingTitle">
+          <div class="panel-heading ranking-heading"><div><span class="ranking-eyebrow">MORNING READING</span><h2 id="rankingTitle">班级排行榜</h2><p>按有效发声时长排名 · 同时长并列</p></div><div class="ranking-heading-end"><div class="ranking-switch" role="group" aria-label="排行榜显示方式"><button type="button" id="rankingChartView" aria-pressed="true" aria-controls="rankingChart">成绩图</button><button type="button" id="rankingTableView" aria-pressed="false" aria-controls="rankingTable">数据表</button></div><span id="readingReportStatus" role="status">正在读取…</span></div></div>
+          <div id="readingRanking" aria-busy="true"><div class="empty">正在读取班级成绩…</div></div>
+          <p class="report-note">仅累计统计时段内的有效发声，各模式完成量分别展示。弱网记录联网后补齐，结算前请确认同步完成。</p>
         </section>
         <section id="readingCalendar" class="reading-panel reading-calendar" aria-labelledby="readingCalendarTitle">
           <div class="panel-heading calendar-heading">
-            <div><h2 id="readingCalendarTitle">班级早读日历</h2><p>把每天的朗读，连成一年的坚持。</p></div>
+            <div><h2 id="readingCalendarTitle" tabindex="-1">班级早读日历</h2><p id="calendarClassCaption" aria-live="polite">把每天的朗读，连成一年的坚持。</p></div>
             <div class="calendar-filters">
               <div class="field"><label for="calendarClass">查看班级</label><select id="calendarClass"></select></div>
               <div class="field"><label for="calendarYear">年份</label><select id="calendarYear"></select></div>
@@ -176,6 +190,7 @@
             <label class="reading-reminder-toggle"><input id="readingReminderEnabled" type="checkbox" checked> 到点提醒教室开始晨读</label>
             <p class="reading-note">启用后，已绑定且正在运行的新版教室端会在时段开始时弹出提醒。教师可以选择“开始晨读”或“暂不开始”；同一时段只提醒一次，晚开机则在剩余时段内提醒，结束后自动收起。</p>
             <p class="reading-note">时间按北京时间计算。时段之外仍能使用陪伴，成绩只累计时段内的活动。结束时间 00:00 表示当天结束。</p>
+            <p class="reading-note">新版教室端支持离线活动，联网后自动补传。补传按活动发生时的日期和当时生效的规则计算；断网期间显示的达标时长为暂估。比赛排名以已同步记录为准，待补传或待核实的班级请先确认数据完整。</p>
             <div id="readingPeriods"></div><button id="readingAddPeriod" class="btn" type="button">添加统计时段</button>
             <p id="readingSettingsError" class="form-error" role="alert"></p>
             <button class="btn primary" type="submit">保存早读规则</button>
@@ -197,7 +212,7 @@
 
       <section id="view-history" class="view hidden">
         <div class="view-head">
-          <div><h1>历史记录</h1><p>记录发送人、目标班级和教室处理结果。</p></div>
+          <div><h1>通知记录</h1><p>查看已发送的通知、接收班级与处理状态。</p></div>
           <div class="toolbar"><div class="field"><label for="historyClass">班级</label><select id="historyClass"></select></div><button id="refreshHistory" class="btn">刷新</button><button id="exportHistory" class="btn">导出 CSV</button></div>
         </div>
         <div id="historyContainer"></div>
@@ -205,14 +220,14 @@
 
       <section id="view-classroom-voice" class="view hidden">
         <div class="view-head">
-          <div><h1>教室来音</h1><p>学生在教室端点击录音后，会出现在这里。点击播放即可听到原声，语音只保留 30 分钟或至授权教师听过。</p></div>
+          <div><h1>教室来音</h1><p>收听学生从教室端发来的语音。录音有效期为 30 分钟，相关教师播放后可能提前清理。</p></div>
           <div class="toolbar"><div class="field"><label for="classroomVoiceClass">班级</label><select id="classroomVoiceClass"></select></div><button id="refreshClassroomVoice" class="btn">刷新</button></div>
         </div>
         <div id="classroomVoiceContainer" class="classroom-voice-list"></div>
       </section>
 
       <section id="view-quiet" class="view hidden">
-        <div class="view-head"><div><h1>公共禁言时间</h1><p>全校教师共同查看；时段内发送前会再次提醒，由班主任决定是否继续。</p></div><button id="saveQuietSchedule" class="btn primary" type="button" data-admin>保存时间表</button></div>
+        <div class="view-head"><div><h1>禁言时间</h1><p>全校共用的提醒时段。时段内发送通知时，需由发送教师再次确认。</p></div><button id="saveQuietSchedule" class="btn primary" type="button" data-admin>保存时间表</button></div>
         <div id="quietCurrentStatus" class="quiet-status"><strong>正在读取当前状态</strong><span>时间统一按北京时间计算。</span></div>
         <section class="plain-section">
           <div class="view-head"><div><h2>每周时间表</h2><p>普通通知始终静音；重要和紧急通知会播放声音。</p></div><button id="addQuietPeriod" class="btn" type="button" data-admin>添加时段</button></div>
@@ -224,7 +239,11 @@
       <section id="view-classes" class="view hidden">
         <div class="view-head">
           <div><h1>班级管理</h1><p>管理班级与教室绑定；停用保留记录，删除前请仔细核对。</p></div>
-          <div class="toolbar"><div id="classGradeFilter" class="grade-filter" role="tablist" aria-label="年级筛选"><button type="button" data-grade-filter="all" class="active">全部</button><button type="button" data-grade-filter="高一">高一</button><button type="button" data-grade-filter="高二">高二</button><button type="button" data-grade-filter="高三">高三</button></div><button id="classRolloverButton" class="btn" type="button">年度升班</button><button id="schoolEnrollmentButton" class="btn" type="button">全校快捷绑定</button><button id="allClassesButton" class="btn primary">创建预设44班</button><button id="batchClassButton" class="btn">批量创建</button><button id="addClassButton" class="btn">创建班级</button></div>
+          <button id="addClassButton" class="btn primary" type="button">创建班级</button>
+        </div>
+        <div class="class-toolbar" aria-label="班级筛选与工具">
+          <div id="classGradeFilter" class="grade-filter" role="tablist" aria-label="年级筛选"><button type="button" data-grade-filter="all" class="active">全部</button><button type="button" data-grade-filter="高一">高一</button><button type="button" data-grade-filter="高二">高二</button><button type="button" data-grade-filter="高三">高三</button></div>
+          <div class="class-tools"><button id="batchClassButton" class="btn" type="button">批量创建</button><details class="action-menu"><summary class="btn">更多操作</summary><div class="action-menu-content"><button id="classRolloverButton" class="btn" type="button">年度升班</button><button id="schoolEnrollmentButton" class="btn" type="button">全校快捷绑定</button><button id="allClassesButton" class="btn" type="button">创建预设班级</button></div></details></div>
         </div>
         <div id="classesContainer"></div>
       </section>
@@ -238,20 +257,20 @@
       </section>
 
       <section id="view-settings" class="view hidden">
-        <div class="view-head"><div><h1>账号与设备</h1><p>修改当前登录密码，并管理已绑定的教室电脑。</p></div></div>
+        <div class="view-head"><div><h1>账号设置</h1><p>查看当前账号，并修改登录密码。</p></div></div>
         <div class="console-layout">
           <form id="ownPasswordForm" class="compose">
-            <h2>修改我的密码</h2>
+            <h2>修改密码</h2>
             <div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password" required maxlength="128"></div>
             <div class="field"><label for="ownNewPassword">新密码</label><input id="ownNewPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
             <div class="field"><label for="ownNewPasswordConfirm">再次输入新密码</label><input id="ownNewPasswordConfirm" type="password" autocomplete="new-password" required maxlength="128"></div>
             <p id="ownPasswordError" class="form-error"></p>
             <button class="btn primary" type="submit">修改密码</button>
           </form>
-          <section class="plain-section"><h2>当前账号</h2><p id="settingsAccount"></p><p class="hint">修改密码后，所有已登录浏览器会退出，需要使用新密码重新登录。</p></section>
+          <section class="plain-section"><h2>当前账号</h2><p id="settingsAccount"></p><p class="hint">修改密码后，网页和教师端均需使用新密码重新登录。</p></section>
         </div>
         <section id="deviceSection" class="settings-device-section" data-admin>
-          <div class="view-head"><div><h2>教室电脑</h2><p>停用后，该设备会立即断开且不能再接收喊话。</p></div><button id="refreshDevices" class="btn" type="button">刷新设备</button></div>
+          <div class="view-head"><div><h2>教室电脑</h2><p>查看教室设备的连接与绑定状态。停用后，设备将无法接收通知。</p></div><button id="refreshDevices" class="btn" type="button">刷新设备</button></div>
           <div id="devicesContainer"></div>
         </section>
       </section>
@@ -260,7 +279,7 @@
 
   <dialog id="confirmDialog">
     <div class="dialog-head"><h2 id="confirmTitle">确认发送</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-    <div class="dialog-body"><div class="confirm-summary"><p id="confirmTarget"></p><p id="confirmLevel"></p><p id="confirmMode"></p><p id="confirmText"></p></div><div id="quietWarning" class="quiet-warning hidden"><strong id="quietWarningTitle"></strong><p id="quietWarningDetail"></p></div><p class="danger-text">新喊话将立即中断该教室正在播放的上一条内容。</p></div>
+    <div class="dialog-body"><div class="confirm-summary"><p id="confirmTarget"></p><p id="confirmLevel"></p><p id="confirmMode"></p><p id="confirmText"></p></div><div id="quietWarning" class="quiet-warning hidden"><strong id="quietWarningTitle"></strong><p id="quietWarningDetail"></p></div><p class="danger-text">教室收到新通知后，会中断正在播放的上一条通知。</p></div>
     <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button id="confirmSend" class="btn send" type="button">确认发送</button></div>
   </dialog>
 
@@ -364,7 +383,7 @@
         $("textPhrases").classList.toggle("hidden", voice);
         $("voiceComposer").classList.toggle("hidden", !voice);
         $("shoutText").required = !voice;
-        $("sendButton").textContent = voice ? "发送语音喊话" : "发送喊话";
+        $("sendButton").textContent = voice ? "发送语音通知" : "发送通知";
         const infoInput = document.querySelector('input[name="alertLevel"][value="info"]');
         infoInput.disabled = voice;
         infoInput.closest(".level-option")?.classList.toggle("disabled", voice);
@@ -648,7 +667,7 @@
           const details = el("div");
           details.append(el("h3", "", item.class_name));
           details.append(el("p", "", `教室语音 · ${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒 · ${formatTime(item.created_at)}`));
-          if (item.played_by_me) details.append(el("p", "hint", "你已播放；语音会在教师都听过或 30 分钟后清理。"));
+          if (item.played_by_me) details.append(el("p", "hint", "您已播放，录音会按保留规则自动清理。"));
           node.append(details);
           const player = el("div", "classroom-voice-player");
           const play = el("button", "btn primary", "播放语音");
@@ -763,8 +782,8 @@
         const active = schedule.activePeriod;
         status.classList.toggle("active", Boolean(active));
         status.replaceChildren(
-          el("strong", "", active ? "当前是禁言上课时间" : "当前不在禁言时间"),
-          el("span", "", active ? `${active.name} ${active.startTime}–${active.endTime}；发送时会提醒教师再次确认。` : "教师可正常发送；进入表内时段后，发送前会出现提醒。"),
+          el("strong", "", active ? "当前处于禁言时间" : "当前不在禁言时间"),
+          el("span", "", active ? `${active.name} ${active.startTime}–${active.endTime}；发送时会提醒教师再次确认。` : "发送通知前无需额外确认。进入下方时段后，将再次提醒。"),
         );
       }
 
@@ -773,7 +792,7 @@
         const list = $("quietScheduleList");
         list.replaceChildren();
         if (!schedule.periods?.length && state.user?.role !== "superadmin") {
-          list.append(el("div", "empty", "管理员尚未设置公共禁言时间"));
+          list.append(el("div", "empty", "尚未设置禁言时间"));
           return;
         }
         for (const period of schedule.periods || []) list.append(createScheduleItem(period));
@@ -802,14 +821,14 @@
         try {
           state.quietSchedule = await api("/api/quiet-hours", { method: "PUT", body: JSON.stringify({ periods: collectQuietPeriods() }) });
           setQuietScheduleDirty(false);
-          renderQuietSchedule(); toast("公共禁言时间表已保存");
+          renderQuietSchedule(); toast("禁言时间已保存");
         } catch (error) { $("quietScheduleError").textContent = error.message; }
         finally { button.disabled = false; }
       }
 
       function renderHistory() {
         const container = $("historyContainer");
-        if (!state.history.length) return renderEmpty(container, "还没有喊话记录");
+        if (!state.history.length) return renderEmpty(container, "还没有通知记录");
         const table = createTable(["时间", "班级", "发送教师", "通知级别", "类型", "内容", "结果", "操作"]);
         for (const item of state.history) {
           const row = table.tBodies[0].insertRow();
@@ -818,7 +837,7 @@
           addCell(row, item.sender_name);
           const levelCell = row.insertCell();
           levelCell.append(levelBadge(item.alert_level));
-          if (Number(item.quiet_override) === 1) levelCell.append(el("div", "hint", "禁言时段确认发送"));
+          if (Number(item.quiet_override) === 1) levelCell.append(el("div", "hint", "禁言时间内确认发送"));
           addCell(row, item.content_type === "audio" ? `语音（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : "文字");
           addCell(row, item.content_type === "audio" ? "教师原声" : item.text);
           const cell = row.insertCell();
@@ -839,12 +858,12 @@
       }
 
       async function deleteHistoryItem(item) {
-        if (!confirm(`确定删除 ${item.class_name} 的这条喊话记录吗？删除后无法恢复。`)) return;
+        if (!confirm(`确定删除 ${item.class_name} 的这条通知记录吗？删除后无法恢复。`)) return;
         try {
           await api(`/api/history/${encodeURIComponent(item.id)}`, { method: "DELETE" });
           state.history = state.history.filter(message => message.id !== item.id);
           renderHistory();
-          toast("喊话记录已删除");
+          toast("通知记录已删除");
         } catch (error) { toast(error.message); }
       }
 
@@ -857,8 +876,8 @@
           const meta = el("div", "meta-row");
           meta.append(el("span", "", item.class_name), el("span", "", formatTime(item.created_at, true)));
           node.append(meta, levelBadge(item.alert_level));
-          if (Number(item.quiet_override) === 1) node.append(el("div", "hint", "禁言时段确认发送"));
-          node.append(el("p", "", item.content_type === "audio" ? `语音喊话（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : item.text), statusBadge(item.status));
+          if (Number(item.quiet_override) === 1) node.append(el("div", "hint", "禁言时间内确认发送"));
+          node.append(el("p", "", item.content_type === "audio" ? `语音通知（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : item.text), statusBadge(item.status));
           list.append(node);
         }
       }
@@ -1012,12 +1031,12 @@
         const warning = $("quietWarning");
         warning.classList.toggle("hidden", !quietPeriod);
         if (quietPeriod) {
-          $("quietWarningTitle").textContent = `当前是禁言上课时间：${quietPeriod.name}`;
+          $("quietWarningTitle").textContent = `当前处于禁言时间：${quietPeriod.name}`;
           $("quietWarningDetail").textContent = meta.sound
             ? `${quietPeriod.startTime}–${quietPeriod.endTime}。发送后教室会显示通知并播放声音，是否仍然发送？`
             : `${quietPeriod.startTime}–${quietPeriod.endTime}。发送后教室只显示静音弹窗，是否仍然发送？`;
         }
-        $("confirmTitle").textContent = quietPeriod ? "当前是禁言上课时间" : level === "urgent" ? "确认发送紧急通知" : "确认发送通知";
+        $("confirmTitle").textContent = quietPeriod ? "当前处于禁言时间" : level === "urgent" ? "确认发送紧急通知" : "确认发送通知";
         $("confirmSend").textContent = quietPeriod ? "仍然发送" : level === "urgent" ? "确认发送紧急通知" : "确认发送";
         if (!$("confirmDialog").open) $("confirmDialog").showModal();
       }
@@ -1193,12 +1212,12 @@
           event.preventDefault();
           const level = selectedAlertLevel();
           if (isVoiceMode() && !state.voiceBlob) return toast("请先录制一段语音。");
-          if (isVoiceMode() && level === "info") return toast("语音喊话请选择“重要”或“紧急”。");
-          if (!isVoiceMode() && !$("shoutText").value.trim()) return toast("请输入喊话内容。");
+          if (isVoiceMode() && level === "info") return toast("语音通知请选择“重要”或“紧急”。");
+          if (!isVoiceMode() && !$("shoutText").value.trim()) return toast("请输入通知内容。");
           try {
             const schedule = await loadQuietHours({ refreshEditor: false });
             showSendConfirmation(schedule.activePeriod);
-          } catch (error) { toast(`无法确认禁言时间：${error.message}`); }
+          } catch (error) { toast(`无法读取禁言时间：${error.message}`); }
         });
         $("confirmSend").addEventListener("click", performSend);
          $("addClassButton").addEventListener("click", () => { $("classForm").reset(); $("classError").textContent = ""; $("classDialog").showModal(); });
@@ -1282,7 +1301,20 @@
       function actionButton(label, handler) { const button = el("button", "btn", label); button.type = "button"; button.addEventListener("click", handler); return button; }
       function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
       function formatTime(value, short = false) { if (!value) return "-"; return new Intl.DateTimeFormat("zh-CN", short ? { hour: "2-digit", minute: "2-digit" } : { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(Number(value))); }
-      function toast(message) { const node = el("div", "toast", message); $("toastRegion").append(node); setTimeout(() => node.remove(), 3500); }
+      const toastTimers = new Map();
+      function toast(message) {
+        const region = $("toastRegion"), text = String(message);
+        let node = [...region.children].find(item => item.textContent === text);
+        if (node) clearTimeout(toastTimers.get(node));
+        else {
+          node = el("div", "toast", text); region.append(node);
+          while (region.childElementCount > 3) {
+            const oldest = region.firstElementChild;
+            clearTimeout(toastTimers.get(oldest)); toastTimers.delete(oldest); oldest.remove();
+          }
+        }
+        toastTimers.set(node, setTimeout(() => { toastTimers.delete(node); node.remove(); }, 3500));
+      }
 
       window.ICeClass = { state, api, toast, refreshManagement: async () => {
         await Promise.all([loadClasses(), loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
@@ -1293,9 +1325,13 @@
       start();
     })();
   </script>
-  <script nonce="__CSP_NONCE__" src="/ui.js?v=3" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=1" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ui.js?v=7" defer></script>
+  <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=3" defer></script>
+  <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=6" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=3" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban.js?v=35" defer></script>
 </body>
 </html>

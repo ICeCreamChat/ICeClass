@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -47,8 +47,8 @@ internal static class DesktopStyle
             Math.Clamp(window.Position.X, work.X, Math.Max(work.X, work.Right - width)),
             Math.Clamp(window.Position.Y, work.Y, Math.Max(work.Y, work.Bottom - height)));
     }
-    public static IBrush Ink => Brush("#1D1D1F");
-    public static IBrush Muted => Brush("#636366");
+    public static IBrush Ink => Brush("#243349");
+    public static IBrush Muted => Brush("#697586");
     public static IBrush Blue => Brush("#0071E3");
     public static IBrush Brush(string hex) => new SolidColorBrush(Color.Parse(hex));
     public static TextBlock Text(string text, double size = 16, bool bold = false, bool muted = false) => new()
@@ -63,24 +63,30 @@ internal static class DesktopStyle
     };
     public static Border Card(Control child, double padding = 24) => new()
     {
-        Background = Brushes.White, BorderBrush = Brush("#E5E5EA"), BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(18), Padding = new Thickness(padding), Child = child,
+        Background = Brushes.White, BorderBrush = Brush("#E2E8F0"), BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(14), Padding = new Thickness(padding), Child = child,
+    };
+    public static Border DialogFooter(Control child, double horizontalPadding = 24) => new()
+    {
+        Classes = { "native-dialog-footer" }, Background = Brushes.White,
+        BorderBrush = Brush("#E1E7EF"), BorderThickness = new Thickness(0, 1, 0, 0),
+        Padding = new Thickness(horizontalPadding, 8), Child = child,
     };
     public static StackPanel Field(string label, Control input) => new()
     {
         Spacing = 8, Children = { Text(label, 16, true), input },
     };
-    public static Button Button(string text, bool primary = false) => new()
+    public static Button Button(string text, bool primary = false)
     {
-        Content = text, MinHeight = 46, FontSize = 16, Padding = new Thickness(18, 10),
-        Background = primary ? Blue : Brushes.White, Foreground = primary ? Brushes.White : Ink,
-        BorderBrush = primary ? Blue : Brush("#D2D2D7"), BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(12), HorizontalAlignment = HorizontalAlignment.Stretch,
-    };
+        var button = new Button { Content = text, HorizontalAlignment = HorizontalAlignment.Stretch };
+        button.Classes.Add("native-button");
+        if (primary) button.Classes.Add("native-primary");
+        return button;
+    }
     public static Grid Brand(string subtitle)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
-        var words = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Children = { Text("班伴", 24, true), Text(subtitle, 14, muted: true) } };
+        var words = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Children = { Text("ICeClass 班伴", 24, true), Text(subtitle, 14, muted: true) } };
         grid.Children.Add(Logo()); Grid.SetColumn(words, 1); grid.Children.Add(words);
         return grid;
     }

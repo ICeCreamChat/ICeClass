@@ -14,18 +14,30 @@ internal static class DesktopShortcut
             if (executable is null || !string.Equals(Path.GetFileName(executable), "ICeClass.exe", StringComparison.OrdinalIgnoreCase)) return;
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             if (string.IsNullOrWhiteSpace(desktop) || !Directory.Exists(desktop)) return;
-            var path = Path.Combine(desktop, "班伴教室端.lnk");
+            var path = Path.Combine(desktop, "ICeClass 班伴 教室端.lnk");
             var type = Type.GetTypeFromProgID("WScript.Shell");
             if (type is null) return;
             shell = Activator.CreateInstance(type);
             if (shell is null) return;
+            var previousPath = Path.Combine(desktop, "班伴教室端.lnk");
+            if (!File.Exists(path) && File.Exists(previousPath))
+            {
+                var previous = ((dynamic)shell).CreateShortcut(previousPath);
+                try
+                {
+                    var target = (string)previous.TargetPath;
+                    if (!string.IsNullOrWhiteSpace(target) && string.Equals(Path.GetFullPath(target), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase))
+                        File.Move(previousPath, path);
+                }
+                finally { if (Marshal.IsComObject(previous)) Marshal.FinalReleaseComObject(previous); }
+            }
             shortcut = ((dynamic)shell).CreateShortcut(path);
             // A similarly named shortcut for another application belongs to the user.
             var original = (string)((dynamic)shortcut).TargetPath;
             if (!string.IsNullOrWhiteSpace(original) && !string.Equals(Path.GetFileName(original), "ICeClass.exe", StringComparison.OrdinalIgnoreCase)) return;
             ((dynamic)shortcut).TargetPath = executable;
             ((dynamic)shortcut).WorkingDirectory = AppContext.BaseDirectory;
-            ((dynamic)shortcut).Description = "班伴教室白板客户端 · 早读陪伴与班级通知";
+            ((dynamic)shortcut).Description = "ICeClass 班伴 · 教室端 · 早读陪伴与班级通知";
             ((dynamic)shortcut).IconLocation = GetShortcutIcon(executable);
             ((dynamic)shortcut).Save();
         }

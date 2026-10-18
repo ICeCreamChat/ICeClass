@@ -1,6 +1,7 @@
 {
   "name": "iceclass",
-  "version": "2.2.4",
+  "version": "2.3.0",
+  "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "scripts": {
     "dev": "python server/preview.py",

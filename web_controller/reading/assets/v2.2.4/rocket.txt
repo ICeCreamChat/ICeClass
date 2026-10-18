@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>早读火箭升空</title>
+    <title>火箭升空</title>
     <style>
         :root {
             --theme-color: #ff9f43; /* 萝卜橙 */
@@ -200,14 +200,14 @@ button { touch-action: manipulation; }
 .welcome-emblem .carrot-mark { width: 39px; height: 39px; }
 #start-overlay h1 { font-size: clamp(30px, 4vw, 38px) !important; font-weight: 700; text-shadow: none !important; margin: 0 0 17px !important; }
 #start-overlay p { font-size: 16px !important; color: var(--muted) !important; margin: 0 0 27px !important; text-align: center; line-height: 1.9; font-weight: 700; }
-#big-start-btn, .save-btn { width: 100%; min-height: 52px; padding: 14px 24px; font-size: 17px; font-weight: 700; background: #487f62; color: #fff; border: 1px solid #487f62; border-radius: 8px; box-shadow: none; transition: background .12s; }
+#big-start-btn, .save-btn { width: 100%; min-height: 44px; padding: 10px 24px; font-size: 17px; font-weight: 700; background: #487f62; color: #fff; border: 1px solid #487f62; border-radius: 8px; box-shadow: none; transition: background .12s; }
 #big-start-btn:hover, .save-btn:hover { transform: none; background: #3b6e53; }
 .welcome-footnote { display: block; margin-top: 17px; color: #798579; font-size: 12px; line-height: 1.8; }
 .modal { background: rgb(28 46 33 / 35%); backdrop-filter: none; transition: none; visibility: hidden; }
 .modal.visible { visibility: visible; }
-.modal-content { max-width: 460px; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 28px; border: 1px solid #dde7d9; border-radius: 14px; background: var(--panel-bg); box-shadow: var(--shadow); transform: none; transition: none; }
-.modal h2 { color: var(--ink); font-weight: 700; font-size: 24px; padding: 0; margin: 0 0 26px; border: 0; }
-.slider-group { margin-bottom: 23px; }
+.modal-content { max-width: 460px; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 20px; border: 1px solid #dde7d9; border-radius: 14px; background: var(--panel-bg); box-shadow: var(--shadow); transform: none; transition: none; }
+.modal h2 { color: var(--ink); font-weight: 700; font-size: 22px; padding: 0; margin: 0 0 16px; border: 0; }
+.slider-group { margin-bottom: 16px; }
 .slider-group label { color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 11px; }
 .slider-group span { color: var(--theme-green); font-size: 17px; font-weight: 700; }
 .slider-stepper { display: flex; align-items: center; gap: 12px; }
@@ -218,7 +218,7 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
 .help { color: var(--muted); font-size: 12px; line-height: 1.8; margin-top: 9px; }
 #speed-warning { color: var(--muted) !important; }
 .radio-options { gap: 9px; }
-.radio-options label { min-height: 50px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; padding: 11px 5px; background: #f5f8ef; margin: 0; font-weight: 700; transition: none; }
+.radio-options label { min-height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 5px; background: #f5f8ef; margin: 0; font-weight: 700; transition: none; }
 .radio-options span { font-size: 14px; color: var(--muted); }
 .radio-options input[type="radio"]:checked + span { color: #735025; font-weight: 700; }
 .radio-options label:has(input[type="radio"]:checked) { border-color: #ddab65; background: #fff1d9; box-shadow: none; }
@@ -377,8 +377,8 @@ body[data-controls-visible="true"] #rocket-reveal { width: 0; pointer-events: no
   const playPromises = new WeakMap();
   let soundOn = false, settingsOpen = false, pointerInside = false, hiddenLaunch = false;
   const icon = '<svg class="carrot-mark rocket-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="m11 23 5 8 5-8" fill="#f3ac48"/><path d="M10 23V12c0-5 3-9 6-11 3 2 6 6 6 11v11Z" fill="#fffdf7" stroke="#55736b" stroke-width="1.6"/><path d="m10 16-5 8 5-2m12-6 5 8-5-2" fill="#76988d" stroke="#55736b" stroke-width="1.4"/><circle cx="16" cy="12" r="3" fill="#b2d5dc" stroke="#55736b" stroke-width="1.3"/><path d="M11 7h10m-11 13h12" stroke="#dc9c52" stroke-width="2"/></svg>';
-  document.querySelector('.dash-title').innerHTML = icon + '<span>早读火箭升空</span>';
-  startOverlay.querySelector('h1').textContent = '早读火箭升空';
+  document.querySelector('.dash-title').innerHTML = icon + '<span>火箭升空</span>';
+  startOverlay.querySelector('h1').textContent = '火箭升空';
   startOverlay.querySelector('p').textContent = '一起朗读，为火箭积蓄升空的能量。';
   $('big-start-btn').textContent = '开始蓄能';
   const welcome = document.createElement('div'); welcome.className = 'welcome-card';
@@ -671,10 +671,7 @@ body[data-controls-visible="true"] #rocket-reveal { width: 0; pointer-events: no
     if (targetLabel) targetLabel.textContent = config.targetCount;
     const thresholdLine = document.getElementById('vol-line');
     if (thresholdLine) thresholdLine.style.left = config.threshold + '%';
-    const thresholdLabel = document.getElementById('set-threshold-val');
-    if (thresholdLabel) thresholdLabel.textContent = config.threshold;
-    const targetSetting = document.getElementById('set-target-val');
-    if (targetSetting) targetSetting.textContent = config.targetCount;
+    // Keep statistics polling separate from the settings dialog's draft.
 
     return { mode: 'rocket', run: readingRun, active: phase === 'running' && !settingsOpen, volume: smoothVolume };
   } };

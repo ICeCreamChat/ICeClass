@@ -64,7 +64,7 @@ $secret = [Convert]::ToBase64String($secretBytes).TrimEnd('=').Replace('+', '-')
 $secret | & npx wrangler secret put BOOTSTRAP_TOKEN
 if ($LASTEXITCODE -ne 0) { throw 'Failed to save the initialization secret.' }
 
-Write-Host '[8/8] Publishing the final ICeClass · 班伴 version...' -ForegroundColor Cyan
+Write-Host '[8/8] Publishing the final ICeClass 班伴 version...' -ForegroundColor Cyan
 $deployOutput = (& npx wrangler deploy 2>&1 | Out-String)
 Write-Host $deployOutput
 if ($LASTEXITCODE -ne 0) { throw 'Cloud deployment failed.' }

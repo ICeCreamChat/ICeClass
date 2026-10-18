@@ -33,7 +33,7 @@ if ($LASTEXITCODE -ne 0) {
     & $previewPython -m pip install --disable-pip-version-check -r server\requirements.txt
     if ($LASTEXITCODE -ne 0) { throw '本地演示依赖安装失败，请检查网络。' }
 }
-Write-Host '班伴本地演示：示例数据只存放在 .tools\preview\demo.db，不使用正式数据库。' -ForegroundColor Cyan
+Write-Host 'ICeClass 班伴本地演示：示例数据只存放在 .tools\preview\demo.db，不使用正式数据库。' -ForegroundColor Cyan
 Write-Host '管理员：ICe / LocalDemo2026    教师：teacher1 / LocalTeacher2026'
 Write-Host '关闭本窗口即可停止演示。'
 if (-not $NoBrowser) { Start-Process "http://127.0.0.1:$Port/" }

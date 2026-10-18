@@ -6,6 +6,8 @@ import io
 import json
 import math
 import secrets
+import re
+import unicodedata
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -16,6 +18,7 @@ SHANGHAI = timezone(timedelta(hours=8))
 MODES = {"classic", "carving", "particle", "rocket"}
 EVENTS = {"carrots", "poems", "badges", "launches", "energy"}
 COOKIE = "iceclass_reading"
+GRADES = ("高一", "高二", "高三", "其他")
 DEFAULT = {"enabled": False, "reminderEnabled": True, "threshold": 30, "periods": [],
            "classic": {"duration": 15, "targetCount": 10},
            "rocket": {"duration": 15, "targetCount": 10},
@@ -38,6 +41,12 @@ CREATE TABLE IF NOT EXISTS device_telemetry(device_id TEXT PRIMARY KEY REFERENCE
 
 def local_day(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp / 1000, SHANGHAI).date().isoformat()
+
+
+def class_grade(name: str) -> str:
+    name = ''.join(unicodedata.normalize('NFKC', str(name)).split())
+    match = re.match(r'^高([一二三123])(?=[^0-9]|$)', name)
+    return '高' + {'1': '一', '2': '二', '3': '三'}.get(match[1], match[1]) if match else '其他'
 
 
 def inside_period(timestamp: int, config: dict) -> bool:
@@ -91,12 +100,15 @@ def validate_config(body: dict) -> dict:
 
 
 class ReadingFeature:
-    def __init__(self, db, rooms, *, user, admin, authenticate, access, reply, clock, digest):
+    def __init__(self, db, rooms, *, user, admin, authenticate, access, reply, clock, digest, class_sort=None):
         self.db, self.rooms = db, rooms
         self.user, self.admin, self.authenticate, self.access = user, admin, authenticate, access
         self.reply, self.clock, self.digest = reply, clock, digest
+        self.class_sort = class_sort or (lambda name: name)
         db.db.executescript(SCHEMA)
         db.run("INSERT OR IGNORE INTO reading_settings VALUES(1,?)", (json.dumps(DEFAULT),))
+        from offline_reading import OfflineReading
+        self.offline = OfflineReading(self)
 
     def config(self):
         return json.loads(self.db.one("SELECT value FROM reading_settings WHERE id=1")["value"])
@@ -122,7 +134,9 @@ class ReadingFeature:
             config = validate_config({**{mode: previous[mode] for mode in MODES}, 'reminderEnabled': previous.get('reminderEnabled', True), **fields})
         except (ValueError, TypeError):
             return self.reply({"error": "请检查声量门槛、星期和起止时间。"}, 400)
-        self.db.run("UPDATE reading_settings SET value=? WHERE id=1", (json.dumps(config),))
+        with self.db.transaction():
+            self.db.run("UPDATE reading_settings SET value=? WHERE id=1", (json.dumps(config),))
+            self.offline.save_rule(config)
         return self.reply(self.payload())
 
     async def schedule(self, request):
@@ -249,7 +263,7 @@ class ReadingFeature:
             self.db.run("UPDATE reading_sessions SET last_seen_at=? WHERE id=?", (now, session["id"]))
         return self.reply({"accepted": accepted, "effective": effective, **self.payload()})
 
-    def query_report(self, request, user):
+    def query_report(self, request, user, *, class_access=None):
         today = local_day(self.clock())
         start, end = request.query.get("start", today), request.query.get("end", today)
         try:
@@ -259,12 +273,17 @@ class ReadingFeature:
         except ValueError:
             raise ValueError("请选择有效日期范围，最长一年。")
         class_id = request.query.get("classId", "")
-        classes = self.db.all("SELECT id,name,enabled FROM classes ORDER BY name")
-        rows = {c["id"]: {"classId": c["id"], "className": c["name"], "enabled": c["enabled"], "activeSeconds": 0, "effectiveSeconds": 0,
-                         "sessions": 0, "days": 0, "modes": [], "completed": {k: 0 for k in sorted(EVENTS)}}
-                for c in classes if (not class_id or c["id"] == class_id) and self.access(self.db, user, c["id"], include_disabled=True)}
-        if class_id and class_id not in rows:
+        grades = set(request.query.get('grades', '').split(',')) - {''}
+        if not grades.issubset(GRADES):
+            raise ValueError('请选择有效的年级范围。')
+        access = self.access if class_access is None else class_access
+        classes = [c for c in self.db.all("SELECT id,name,enabled FROM classes ORDER BY name")
+                   if access(self.db, user, c['id'], include_disabled=True)]
+        if class_id and not any(c['id'] == class_id for c in classes):
             raise PermissionError()
+        rows = {c["id"]: {"classId": c["id"], "className": c["name"], "grade": class_grade(c['name']), "enabled": c["enabled"], "activeSeconds": 0, "effectiveSeconds": 0,
+                         "sessions": 0, "days": 0, "modes": [], "completed": {k: 0 for k in sorted(EVENTS)}}
+                for c in classes if (not class_id or c["id"] == class_id) and (not grades or class_grade(c['name']) in grades)}
         daily = {}
         def day_row(class_id, day):
             return daily.setdefault((class_id, day), {"className": rows[class_id]["className"], "day": day,
@@ -298,14 +317,16 @@ class ReadingFeature:
                 day_row(item["class_id"], item["day"])["completed"][item["kind"]] = item["amount"]
         for class_id_key, row in rows.items():
             row["days"] = len({day for (cid, day), record in daily.items() if cid == class_id_key and record["activeSeconds"]})
-        result = sorted(rows.values(), key=lambda row: (-row["effectiveSeconds"], row["className"]))
+            row["sync"] = self.offline.report_status(class_id_key)
+        result = sorted(rows.values(), key=lambda row: (-row["effectiveSeconds"], self.class_sort(row["className"])))
         previous, rank = None, 0
         for index, row in enumerate(result):
             if row["effectiveSeconds"] != previous:
                 rank, previous = index + 1, row["effectiveSeconds"]
             row["rank"] = rank if row["activeSeconds"] else None
             row["ratio"] = round(row["effectiveSeconds"] / row["activeSeconds"] * 100, 1) if row["activeSeconds"] else None
-        return {"start": start, "end": end, "rows": result, "daily": sorted(daily.values(), key=lambda row: (row["day"], row["className"]))}
+        return {"start": start, "end": end, "grades": [grade for grade in GRADES if grade in grades], "rows": result,
+                "daily": sorted(daily.values(), key=lambda row: (row["day"], self.class_sort(row["className"])))}
 
     async def report(self, request):
         user = self.user(request)
@@ -328,15 +349,21 @@ class ReadingFeature:
             return self.reply({"error": str(error)}, 400)
         except PermissionError:
             return self.reply({"error": "没有查看该班级的权限。"}, 403)
+        if request.query.get('format') == 'xlsx':
+            from reading_xlsx import export_reading_xlsx
+            return web.Response(body=export_reading_xlsx(report),
+                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                headers={'Content-Disposition': f'attachment; filename="morning-reading-{report["start"]}-{report["end"]}.xlsx"'})
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["名次", "班级", "开始日期", "结束日期", "使用次数", "使用天数", "运行秒数", "有效发声秒数", "达标占比", "萝卜", "诗词", "徽章", "发射", "能量格"])
+        writer.writerow(["名次", "班级", "开始日期", "结束日期", "使用次数", "使用天数", "运行秒数", "有效发声秒数", "达标占比", "萝卜", "诗词", "徽章", "发射", "能量格", "同步状态"])
         for row in report["rows"]:
             name = row["className"]
             if name.startswith(("=", "+", "-", "@", "\t", "\r")):
                 name = "'" + name
-            writer.writerow([row["rank"] or "未使用", name, report["start"], report["end"], row["sessions"], row["days"], row["activeSeconds"], row["effectiveSeconds"], row["ratio"],
-                             *[row["completed"][k] for k in ("carrots", "poems", "badges", "launches", "energy")]])
+            writer.writerow([row["rank"] or ("暂无记录" if row["sync"]["state"] == "current" else "待同步确认"), name, report["start"], report["end"], row["sessions"], row["days"], row["activeSeconds"], row["effectiveSeconds"], row["ratio"],
+                             *[row["completed"][k] for k in ("carrots", "poems", "badges", "launches", "energy")],
+                             {"current": "已同步", "pending": "待补传", "review": "待核实", "unconfirmed": "待同步确认"}[row["sync"]["state"]]])
         return web.Response(body=("\ufeff" + output.getvalue()).encode("utf-8"), content_type="text/csv", charset="utf-8", headers={"Content-Disposition": 'attachment; filename="morning-reading.csv"'})
 
     async def controls(self, request):
@@ -408,6 +435,8 @@ class ReadingFeature:
 def install_reading(app, db, rooms, **callbacks):
     feature = ReadingFeature(db, rooms, **callbacks)
     rooms.reading = feature
+    app.router.add_get("/api/reading/offline/context", feature.offline.bootstrap)
+    app.router.add_post("/api/reading/offline/sync", feature.offline.sync)
     app.router.add_get("/api/reading/settings", feature.get_settings)
     app.router.add_put("/api/reading/settings", feature.save_settings)
     app.router.add_get("/api/reading/schedule", feature.schedule)

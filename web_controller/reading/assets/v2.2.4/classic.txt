@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>早读拔萝卜大挑战</title>
+    <title>兔拔萝卜大挑战</title>
     <style>
         :root {
             --theme-color: #ff9f43; /* 萝卜橙 */
@@ -200,14 +200,14 @@ button { touch-action: manipulation; }
 .welcome-emblem .carrot-mark { width: 39px; height: 39px; }
 #start-overlay h1 { font-size: clamp(30px, 4vw, 38px) !important; font-weight: 700; text-shadow: none !important; margin: 0 0 17px !important; }
 #start-overlay p { font-size: 16px !important; color: var(--muted) !important; margin: 0 0 27px !important; text-align: center; line-height: 1.9; font-weight: 700; }
-#big-start-btn, .save-btn { width: 100%; min-height: 52px; padding: 14px 24px; font-size: 17px; font-weight: 700; background: #487f62; color: #fff; border: 1px solid #487f62; border-radius: 8px; box-shadow: none; transition: background .12s; }
+#big-start-btn, .save-btn { width: 100%; min-height: 44px; padding: 10px 24px; font-size: 17px; font-weight: 700; background: #487f62; color: #fff; border: 1px solid #487f62; border-radius: 8px; box-shadow: none; transition: background .12s; }
 #big-start-btn:hover, .save-btn:hover { transform: none; background: #3b6e53; }
 .welcome-footnote { display: block; margin-top: 17px; color: #798579; font-size: 12px; line-height: 1.8; }
 .modal { background: rgb(28 46 33 / 35%); backdrop-filter: none; transition: none; visibility: hidden; }
 .modal.visible { visibility: visible; }
-.modal-content { max-width: 460px; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 28px; border: 1px solid #dde7d9; border-radius: 14px; background: var(--panel-bg); box-shadow: var(--shadow); transform: none; transition: none; }
-.modal h2 { color: var(--ink); font-weight: 700; font-size: 24px; padding: 0; margin: 0 0 26px; border: 0; }
-.slider-group { margin-bottom: 23px; }
+.modal-content { max-width: 460px; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 20px; border: 1px solid #dde7d9; border-radius: 14px; background: var(--panel-bg); box-shadow: var(--shadow); transform: none; transition: none; }
+.modal h2 { color: var(--ink); font-weight: 700; font-size: 22px; padding: 0; margin: 0 0 16px; border: 0; }
+.slider-group { margin-bottom: 16px; }
 .slider-group label { color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 11px; }
 .slider-group span { color: var(--theme-green); font-size: 17px; font-weight: 700; }
 .slider-stepper { display: flex; align-items: center; gap: 12px; }
@@ -218,7 +218,7 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
 .help { color: var(--muted); font-size: 12px; line-height: 1.8; margin-top: 9px; }
 #speed-warning { color: var(--muted) !important; }
 .radio-options { gap: 9px; }
-.radio-options label { min-height: 50px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; padding: 11px 5px; background: #f5f8ef; margin: 0; font-weight: 700; transition: none; }
+.radio-options label { min-height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 5px; background: #f5f8ef; margin: 0; font-weight: 700; transition: none; }
 .radio-options span { font-size: 14px; color: var(--muted); }
 .radio-options input[type="radio"]:checked + span { color: #735025; font-weight: 700; }
 .radio-options label:has(input[type="radio"]:checked) { border-color: #ddab65; background: #fff1d9; box-shadow: none; }
@@ -232,7 +232,7 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
 <body>
 
     <div id="start-overlay">
-        <h1 style="font-size: 48px; margin-bottom: 10px; text-shadow: 0 4px 10px rgba(0,0,0,0.5);">🥕 早读拔萝卜</h1>
+        <h1 style="font-size: 48px; margin-bottom: 10px; text-shadow: 0 4px 10px rgba(0,0,0,0.5);">🥕 兔拔萝卜</h1>
         <p style="font-size: 18px; margin-bottom: 40px; color: #ddd;">声音越大，小兔子拔得越快！</p>
         <button id="big-start-btn">▶️ 开始拔萝卜</button>
     </div>
@@ -246,7 +246,7 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
 
     <!-- 控制面板 -->
     <div id="dashboard">
-        <h3 class="dash-title">🥕 早读拔萝卜</h3>
+        <h3 class="dash-title">🥕 兔拔萝卜</h3>
         
         <div>
             <!-- 分贝条 -->
@@ -295,7 +295,7 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
     <!-- 设置面板 -->
     <div id="settings-modal" class="modal">
         <div class="modal-content">
-            <h2>⚙️ 拔萝卜设置</h2>
+            <h2>⚙️ 兔拔萝卜设置</h2>
             
             <div class="slider-group">
                 <label>触发分贝阈值: <span id="set-threshold-val">30</span></label>
@@ -339,10 +339,8 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
     if (targetLabel) targetLabel.textContent = config.targetCount;
     const thresholdLine = document.getElementById('vol-line');
     if (thresholdLine) thresholdLine.style.left = config.threshold + '%';
-    const thresholdLabel = document.getElementById('set-threshold-val');
-    if (thresholdLabel) thresholdLabel.textContent = config.threshold;
-    const targetSetting = document.getElementById('set-target-val');
-    if (targetSetting) targetSetting.textContent = config.targetCount;
+    // Settings inputs and their labels belong to the open dialog's draft.
+    // The statistics poll must not repaint them with the saved configuration.
 
     if (pulledCount < readingLastCount) readingRun = crypto.randomUUID();
     readingLastCount = pulledCount;
@@ -505,10 +503,14 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
   $('settings-btn').addEventListener('click', () => {
     settingsFinal = isGameFinished && !finalVideo.paused;
     if (settingsFinal) finalVideo.pause();
-    $('save-settings-btn').focus();
+    $('settings-modal').inert = false;
+    $('settings-modal').setAttribute('aria-hidden', 'false');
+    $('input-threshold').focus();
   });
   $('save-settings-btn').addEventListener('click', () => {
     if (settingsFinal) { settingsFinal = false; playFinal(); }
+    $('settings-modal').inert = true;
+    $('settings-modal').setAttribute('aria-hidden', 'true');
     $('settings-btn').focus();
   });
   $('audio-btn').addEventListener('click', () => { finalVideo.muted = !isAudioOn; });
@@ -520,16 +522,29 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
     if (event.code === 'Space' && !['INPUT', 'BUTTON'].includes(event.target.tagName) && !$('settings-modal').classList.contains('visible')) {
       event.preventDefault(); $('pause-btn').click();
     }
+    if (event.key === 'Tab' && $('settings-modal').classList.contains('visible')) {
+      const modal = $('settings-modal');
+      const elements = [...modal.querySelectorAll('button,input')].filter(element => !element.disabled);
+      const first = elements[0], last = elements.at(-1);
+      if (!modal.contains(document.activeElement) || event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
   });
   $('settings-modal').setAttribute('role', 'dialog');
-  $('settings-modal').setAttribute('aria-label', '拔萝卜设置');
+  $('settings-modal').setAttribute('aria-modal', 'true');
+  $('settings-modal').setAttribute('aria-hidden', 'true');
+  $('settings-modal').inert = true;
+  $('settings-modal').setAttribute('aria-label', '兔拔萝卜设置');
   $('copyright-container').replaceChildren();
   $('copyright-container').hidden = true;
 
-  $('start-overlay').querySelector('h1').textContent = '早读拔萝卜';
+  $('start-overlay').querySelector('h1').textContent = '兔拔萝卜';
   $('start-overlay').querySelector('p').textContent = '正常朗读，和兔子一起收获萝卜。';
   const carrot = '<svg class="carrot-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M19 12c-2-5 0-8 4-9 1 4-1 7-4 9Z" fill="#6e9650"/><path d="M20 13c2-6 6-7 10-6-1 4-5 6-10 6Z" fill="#487f62"/><path d="M18 12c-5-1-8 3-10 7L3 29l11-5c5-2 9-5 9-8-1-2-3-3-5-4Z" fill="#efa23d"/><path d="m10 18 3 2m1-6 3 2" stroke="#c47b25" stroke-width="1.5" stroke-linecap="round"/></svg>';
-  document.querySelector('.dash-title').innerHTML = carrot + '<span>早读拔萝卜</span>';
+  document.querySelector('.dash-title').innerHTML = carrot + '<span>兔拔萝卜</span>';
   const welcome = document.createElement('div');
   welcome.className = 'welcome-card';
   welcome.innerHTML = '<div class="welcome-emblem">' + carrot + '</div>';
@@ -546,7 +561,7 @@ input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
   labels[2].firstChild.textContent = '目标数量：'; labels[2].htmlFor = 'input-target';
   $('input-threshold').nextElementSibling.textContent = '相对数值，会随麦克风与摆放位置变化；短暂停顿不会立刻停住。';
   $('speed-warning').textContent = '快速档关闭视频音效，普通档可播放音效。';
-  $('settings-modal').querySelector('h2').textContent = '拔萝卜设置';
+  $('settings-modal').querySelector('h2').textContent = '兔拔萝卜设置';
   for (const [value, text] of [['8', '快速 · 8 秒'], ['16', '普通 · 16 秒'], ['32', '慢速 · 32 秒']]) {
     document.querySelector(`input[name="duration"][value="${value}"] + span`).textContent = text;
   }

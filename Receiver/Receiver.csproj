@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -7,9 +7,9 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.2.4</Version>
-    <Product>ICeClass · 班伴</Product>
-    <Title>ICeClass · 班伴教室端</Title>
+    <Version>2.3.0</Version>
+    <Product>ICeClass 班伴</Product>
+    <Title>ICeClass 班伴 · 教室端</Title>
     <Description>班级伴学与管理平台</Description>
     <Company>ICeCreamChat</Company>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -18,6 +18,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\reading\**\*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\assets\*" LogicalName="ICeClass.Local/assets/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\favicon.ico" LogicalName="ICeClass.Local/favicon.ico" />
     <EmbeddedResource Include="..\branding\app.ico" LogicalName="ICeClass.Branding.app.ico" />
     <EmbeddedResource Include="..\branding\app-icon.png" LogicalName="ICeClass.Branding.app-icon.png" />
     <EmbeddedResource Include="..\LICENSE" LogicalName="ICeClass.Notices.LICENSE" />

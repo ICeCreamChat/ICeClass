@@ -6,6 +6,8 @@ namespace ICeClass.Receiver;
 internal static class ReadingExperience
 {
     private static ReadingCompanionWindow? _window;
+    public static bool IsOpen => _window is not null;
+    public static event Action? Opened;
     private static Action? _returnHome;
     private static Action? _readingOpened;
     public static void Configure(Action returnHome, Action readingOpened) { _returnHome = returnHome; _readingOpened = readingOpened; }
@@ -19,6 +21,7 @@ internal static class ReadingExperience
             if (_window is not null) await _window.ReturnHomeAsync(false);
             var window = new ReadingCompanionWindow(config);
             _window = window;
+            Opened?.Invoke();
             window.HomeRequested += () => _returnHome?.Invoke();
             window.Closed += (_, _) => { if (ReferenceEquals(_window, window)) _window = null; };
             window.Show(); window.BringForward(); _readingOpened?.Invoke();

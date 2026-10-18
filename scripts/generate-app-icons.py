@@ -1,5 +1,4 @@
-"""Create transparent icons from the supplied classroom illustration (Pillow)."""
-import base64
+"""Create native classroom icons from the supplied classroom illustration (Pillow)."""
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
@@ -7,7 +6,6 @@ from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 BRANDING = ROOT / "branding"
-ASSETS = ROOT / "web_controller" / "assets"
 
 
 def main():
@@ -37,22 +35,6 @@ def main():
     icon = square.resize((1024, 1024), Image.Resampling.LANCZOS)
     icon.save(BRANDING / "app-icon.png")
     icon.save(BRANDING / "app.ico", sizes=[(size, size) for size in (16, 24, 32, 48, 64, 128, 256)])
-    (ASSETS.parent / "favicon.ico").write_bytes((BRANDING / "app.ico").read_bytes())
-    for size, name in (
-        (512, "app-icon.png"), (192, "app-icon-192.png"),
-        (32, "favicon.png"), (180, "apple-touch-icon.png"),
-    ):
-        icon.resize((size, size), Image.Resampling.LANCZOS).save(ASSETS / name)
-
-    # Keep saved links using the former SVG URL on the same classroom artwork.
-    image_data = base64.b64encode((ASSETS / "app-icon-192.png").read_bytes()).decode("ascii")
-    (ASSETS.parent / "favicon.svg").write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">\n'
-        f'  <image width="192" height="192" href="data:image/png;base64,{image_data}"/>\n'
-        '</svg>\n',
-        encoding="utf-8",
-    )
-
     output = ROOT / "output" / "branding"
     output.mkdir(parents=True, exist_ok=True)
     preview = Image.new("RGBA", (256, 256), "#91B2C8")

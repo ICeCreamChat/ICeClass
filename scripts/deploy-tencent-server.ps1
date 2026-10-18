@@ -48,7 +48,7 @@ foreach ($command in @('ssh.exe', 'scp.exe', 'tar.exe')) {
     }
 }
 
-$domain = (Read-Host '请输入班伴平台的新域名（需要已解析到服务器）').Trim()
+$domain = (Read-Host '请输入 ICeClass 班伴平台的新域名（需要已解析到服务器）').Trim()
 if ($domain -notmatch '^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$') { throw '域名格式不正确。' }
 $serverIp = (Read-Host '请输入腾讯云服务器公网 IP').Trim()
 if ($serverIp -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { throw '公网 IP 格式不正确。' }
@@ -64,7 +64,7 @@ $bootstrapRequired = $true
 try {
     $bootstrapStatus = Invoke-RestMethod -Method Get -Uri "https://$domain/api/bootstrap" -TimeoutSec 15
     if ($bootstrapStatus.platform -ne 'ICeClass') {
-        throw '该域名已指向其他平台。请为班伴使用独立域名，避免替换现有网站。'
+        throw '该域名已指向其他平台。请为 ICeClass 班伴使用独立域名，避免替换现有网站。'
     }
     $bootstrapRequired = [bool]$bootstrapStatus.required
 } catch {

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -13,15 +13,16 @@ namespace ICeClass.Receiver;
 internal sealed class ReadingCompanionWindow : Window
 {
     private readonly ReceiverConfig _config;
+    private readonly ReadingOfflineService _offline;
     private readonly Uri _origin;
     private ReadingBrowser _browser = new();
     private readonly Grid _surface = new();
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly TextBlock _classLabel = DesktopStyle.Text("", 15, true);
-    private readonly TextBlock _errorTitle = DesktopStyle.Text("正在打开早读陪伴", 28, true);
-    private readonly TextBlock _errorText = DesktopStyle.Text("稍候片刻，正在连接本班的早读空间。", 17, muted: true);
-    private readonly Button _retry = DesktopStyle.Button("重新连接", true);
-    private readonly Button _runtime = DesktopStyle.Button("安装运行组件");
+    private readonly TextBlock _classLabel = ClassroomStyle.Text("", 14, true);
+    private readonly TextBlock _errorTitle = ClassroomStyle.Text("正在打开早读陪伴", 28, true);
+    private readonly TextBlock _errorText = ClassroomStyle.Text("正在载入本机活动，无需等待网络。", 16, muted: true);
+    private readonly Button _retry = ClassroomStyle.Button("重新打开", true);
+    private readonly Button _runtime = ClassroomStyle.Button("安装运行组件");
     private readonly Button _fullscreen = ToolbarButton("全屏", true);
     private readonly Button _home = ToolbarButton("返回");
     private readonly Border _chrome;
@@ -34,38 +35,39 @@ internal sealed class ReadingCompanionWindow : Window
 
     public ReadingCompanionWindow(ReceiverConfig config)
     {
+        ClassroomStyle.Apply(this);
         _config = new ReceiverConfig { Endpoint = config.Endpoint, DeviceId = config.DeviceId, DeviceToken = config.DeviceToken, ClassId = config.ClassId, ClassName = config.ClassName };
-        _origin = new Uri(config.Endpoint.TrimEnd('/') + "/");
-        Title = "早读陪伴 · 班伴"; Icon = new WindowIcon(AppIconFactory.CreateStream());
+        _offline = ReadingOfflineService.For(_config);
+        var endpointOrigin = new Uri(config.Endpoint.TrimEnd('/') + "/");
+        // Preserve the existing HTTPS origin/profile so saved gameplay preferences and
+        // microphone consent survive upgrading from the online client. All reading files
+        // at this origin are mapped to disk; network APIs run only in the native worker.
+        _origin = endpointOrigin.Scheme == Uri.UriSchemeHttps && endpointOrigin.IsDefaultPort
+            ? new Uri(endpointOrigin.GetLeftPart(UriPartial.Authority) + "/")
+            : new Uri("https://" + ReadingLocalAssets.Host + "/");
+        Title = "早读陪伴 · ICeClass 班伴"; Icon = new WindowIcon(AppIconFactory.CreateStream());
         Width = 1200; Height = 820; MinWidth = 640; MinHeight = 480;
         SystemDecorations = SystemDecorations.Full;
         DesktopStyle.KeepWindowInWorkingArea(this);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = DesktopStyle.Brush("#F4F9FF");
+        Background = DesktopStyle.Brush("#F5F5F7");
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), Margin = new Thickness(12, 7) };
         _home.Click += async (_, _) => await ReturnHomeAsync();
-        _home.HorizontalAlignment = HorizontalAlignment.Left;
         ToolTip.SetTip(_home, "返回教室首页，并结束本次早读");
-        header.Children.Add(_home);
-        _classLabel.Text = config.ClassName; _classLabel.MaxWidth = 360; _classLabel.TextTrimming = TextTrimming.CharacterEllipsis;
-        _classLabel.TextWrapping = TextWrapping.NoWrap; _classLabel.Foreground = DesktopStyle.Brush("#426182");
-        _classLabel.VerticalAlignment = VerticalAlignment.Center;
-        var classTag = new Border { Background = DesktopStyle.Brush("#EAF2FB"), CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 3), VerticalAlignment = VerticalAlignment.Center, Child = _classLabel };
-        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), Children = { DesktopStyle.Logo(26), classTag } };
-        Grid.SetColumn(title, 1); header.Children.Add(title);
-        _fullscreen.HorizontalAlignment = HorizontalAlignment.Right;
+        _classLabel.Text = config.ClassName;
         ToolTip.SetTip(_fullscreen, "全屏后，长按屏幕空白处 2 秒即可退出");
         _fullscreen.Click += (_, _) => ToggleFullscreen();
-        Grid.SetColumn(_fullscreen, 2); header.Children.Add(_fullscreen);
-        _chrome = new Border { Background = DesktopStyle.Brush("#F8FAFD"), BorderBrush = DesktopStyle.Brush("#E3E9F1"), BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
+        _chrome = CreateToolbar(_classLabel, _home, _fullscreen);
         root.Children.Add(_chrome);
         _surface.Children.Add(_browser);
         _retry.IsVisible = false; _runtime.IsVisible = false;
         _retry.Click += async (_, _) => await LoadAsync();
         _runtime.Click += (_, _) => Process.Start(new ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true });
-        var message = new StackPanel { Spacing = 18, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(80), _errorTitle, _errorText, _retry, _runtime } };
-        _notice = new Border { Background = DesktopStyle.Brush("#F4F9FF"), Padding = new Thickness(32), Child = message };
+        _errorTitle.TextAlignment = TextAlignment.Center; _errorText.TextAlignment = TextAlignment.Center;
+        var message = new StackPanel { Spacing = 16, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _errorTitle, _errorText, _retry, _runtime } };
+        _notice = new Border { Background = DesktopStyle.Brush("#F5F5F7"), Padding = new Thickness(28),
+            Child = new ScrollViewer { Content = message,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
         _surface.Children.Add(_notice); Grid.SetRow(_surface, 1); root.Children.Add(_surface); Content = root;
         WireBrowser();
         KeyDown += (_, args) => { if (args.Key == Key.Escape) { ExitFullscreen(); args.Handled = true; } };
@@ -85,16 +87,31 @@ internal sealed class ReadingCompanionWindow : Window
         Closed += (_, _) => { _lifetime.Cancel(); _permissionDialog?.Close(false); _browser.DisposeBrowser(); _lifetime.Dispose(); };
     }
 
-    private static Button ToolbarButton(string text, bool primary = false) => new()
+    private static Border CreateToolbar(TextBlock classLabel, Button home, Button fullscreen)
     {
-        Content = text, MinHeight = 40, MinWidth = 76, FontSize = 15,
-        Padding = new Thickness(14, 7), CornerRadius = new CornerRadius(10),
-        Background = primary ? DesktopStyle.Brush("#E5F0FF") : Brushes.Transparent,
-        Foreground = primary ? DesktopStyle.Brush("#0969CE") : DesktopStyle.Brush("#4B5C70"),
-        BorderThickness = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center,
-        VerticalContentAlignment = VerticalAlignment.Center,
-    };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), Margin = new Thickness(16, 4) };
+        home.HorizontalAlignment = HorizontalAlignment.Left; header.Children.Add(home);
+        classLabel.MaxWidth = 360; classLabel.TextTrimming = TextTrimming.CharacterEllipsis;
+        classLabel.TextWrapping = TextWrapping.NoWrap; classLabel.Foreground = DesktopStyle.Brush("#636366");
+        classLabel.VerticalAlignment = VerticalAlignment.Center;
+        var classTag = new Border { Background = DesktopStyle.Brush("#E8F2FF"), CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(12, 4), VerticalAlignment = VerticalAlignment.Center, Child = classLabel };
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0), Children = { DesktopStyle.Logo(26), classTag } };
+        Grid.SetColumn(title, 1); header.Children.Add(title);
+        fullscreen.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(fullscreen, 2); header.Children.Add(fullscreen);
+        return new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E5E5EA"),
+            BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
+    }
+
+    private static Button ToolbarButton(string text, bool primary = false)
+    {
+        var button = ClassroomStyle.Button(text, primary);
+        button.MinWidth = 80; button.MinHeight = 44; button.Padding = new Thickness(14, 6);
+        button.HorizontalAlignment = HorizontalAlignment.Center;
+        button.VerticalAlignment = VerticalAlignment.Center;
+        return button;
+    }
 
     public bool Matches(ReceiverConfig config) => string.Equals(_config.Endpoint.TrimEnd('/'), config.Endpoint.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) && _config.DeviceId == config.DeviceId && _config.DeviceToken == config.DeviceToken;
     public bool HasClass(string classId) => _config.ClassId == classId;
@@ -105,13 +122,13 @@ internal sealed class ReadingCompanionWindow : Window
     {
         if (_loading || _closing) return;
         _loading = true; _retry.IsVisible = false; _runtime.IsVisible = false;
-        _errorTitle.Text = "正在打开早读陪伴"; _errorText.Text = "稍候片刻，正在连接本班的早读空间。";
+        _errorTitle.Text = "正在打开早读陪伴"; _errorText.Text = "正在载入本机活动，无需等待网络。";
         _notice.IsVisible = true;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
         linked.CancelAfter(TimeSpan.FromSeconds(30));
         _pageReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var elapsed = Stopwatch.StartNew();
-        var launch = ClassroomControlService.CreateReadingLaunchAsync(_config, linked.Token);
+        var assets = ReadingLocalAssets.EnsureAsync(linked.Token);
         try
         {
             if (_browserFailed)
@@ -127,6 +144,7 @@ internal sealed class ReadingCompanionWindow : Window
                 await _browser.InitializeAsync(ProfileDirectory(), linked.Token).WaitAsync(linked.Token);
                 _browser.IsVisible = false;
                 var core = _browser.Core!;
+                core.SetVirtualHostNameToFolderMapping(_origin.Host, await assets, CoreWebView2HostResourceAccessKind.DenyCors);
                 core.Settings.AreDefaultContextMenusEnabled = false;
                 core.Settings.AreDevToolsEnabled = false;
                 core.Settings.IsStatusBarEnabled = false;
@@ -143,6 +161,12 @@ internal sealed class ReadingCompanionWindow : Window
                     if (!AllowedPage(args.Source)) return;
                     try
                     {
+                        if (args.WebMessageAsJson.StartsWith('{'))
+                        {
+                            if (new Uri(args.Source).AbsolutePath is "/reading/" or "/reading/index.html")
+                                _ = HandleLocalRequestAsync(args.WebMessageAsJson);
+                            return;
+                        }
                         switch (args.TryGetWebMessageAsString())
                         {
                             case "home": _ = ReturnHomeAsync(); break;
@@ -158,17 +182,17 @@ internal sealed class ReadingCompanionWindow : Window
                     catch (ArgumentException) { }
                 };
                 core.ContainsFullScreenElementChanged += (_, _) => { if (core.ContainsFullScreenElement) WindowState = WindowState.FullScreen; };
-                core.ProcessFailed += (_, _) => { if (_closing) return; _browserFailed = true; _pageReady?.TrySetException(new InvalidOperationException("Reading renderer stopped")); ShowError("早读页面需要重新连接", "本轮已停止。点击重新连接，即可重新选择陪伴模式。"); };
+                core.ProcessFailed += (_, _) => { if (_closing) return; _browserFailed = true; _pageReady?.TrySetException(new InvalidOperationException("Reading renderer stopped")); ShowError("早读页面需要重新打开", "本轮已停止。点击“重新打开”，即可重新选择活动。"); };
                 core.NavigationCompleted += (_, args) =>
                 {
                     if (_closing || core.Source == "about:blank") return;
                     if (!args.IsSuccess) { _pageReady?.TrySetException(new InvalidOperationException("Reading navigation failed: " + args.WebErrorStatus)); return; }
-                    _errorText.Text = "页面已载入，正在确认班级连接…";
+                    _errorText.Text = "正在准备本机活动…";
                     SendFullscreenState();
                 };
                 await core.AddScriptToExecuteOnDocumentCreatedAsync("""
                     if (window === window.top) {
-                      window.ICeClassDesktop = { connectionHandshake: true, send: action => window.chrome.webview.postMessage(action) };
+                      window.ICeClassDesktop = { connectionHandshake: true, offline: true, send: action => window.chrome.webview.postMessage(action) };
                       window.chrome.webview.addEventListener('message', event => {
                         if (event.data?.type !== 'fullscreen') return;
                         window.ICeClassDesktop.fullscreen = event.data.value;
@@ -180,13 +204,13 @@ internal sealed class ReadingCompanionWindow : Window
                 _initialized = true;
             }
             linked.Token.ThrowIfCancellationRequested();
-            var uri = await launch;
+            await assets;
             linked.Token.ThrowIfCancellationRequested();
             _errorText.Text = "正在载入活动首页…";
-            _browser.Core!.Navigate(uri.AbsoluteUri);
+            _browser.Core!.Navigate(_origin + "reading/index.html");
             if (!await _pageReady.Task.WaitAsync(linked.Token))
             {
-                ShowError("班级连接未完成", "连接超时或绑定已失效。请检查网络，点击重新连接；仍无法打开时返回首页检查教室设置。");
+                ShowError("本机活动未能载入", "点击重新打开；统计记录仍保存在这台电脑上。");
                 return;
             }
             _notice.IsVisible = false; _browser.IsVisible = true; _browser.SetPageVisible(true);
@@ -194,22 +218,21 @@ internal sealed class ReadingCompanionWindow : Window
             AppLog.Info($"Reading ready in {elapsed.ElapsedMilliseconds} ms; WebView2 {_browser.Core.Environment.BrowserVersionString}");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested || _lifetime.IsCancellationRequested) { throw; }
-        catch (OperationCanceledException) { if (!_initialized) _browserFailed = true; ShowError("连接等待超时", "请检查教室网络，点击重新连接。也可以返回首页，稍后再试。"); }
+        catch (OperationCanceledException) { if (!_initialized) _browserFailed = true; ShowError("活动载入超时", "请点击重新打开；无需等待教室网络恢复。"); }
         catch (WebView2RuntimeNotFoundException)
         {
-            ShowError("还差一个运行组件", "这台电脑需要安装 Microsoft Edge WebView2。点击下方按钮安装，完成后重新打开班伴。");
+            ShowError("还差一个运行组件", "这台电脑需要安装 Microsoft Edge WebView2。点击下方按钮安装，完成后重新打开 ICeClass 班伴。");
             _runtime.IsVisible = true;
         }
         catch (Exception error)
         {
             AppLog.Error("Embedded reading failed", error);
-            ShowError("暂时无法打开早读空间", "请检查教室网络和绑定设置，然后点击重新连接。");
+            ShowError("暂时无法打开本机活动", "请点击重新打开；仍无法载入时检查运行组件或重新安装客户端。");
         }
         finally
         {
             linked.Cancel();
-            // Observe a parallel launch failure even when the browser initialization failed first.
-            _ = launch.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            _ = assets.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
             _loading = false;
         }
     }
@@ -217,7 +240,36 @@ internal sealed class ReadingCompanionWindow : Window
     private string ProfileDirectory()
     {
         static string Safe(string text) => string.Concat(text.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' ? c : '_'));
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "Reading", Safe(_origin.GetLeftPart(UriPartial.Authority)), Safe(_config.DeviceId));
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "Reading", Safe(_config.Endpoint), Safe(_config.DeviceId));
+    }
+    private async Task HandleLocalRequestAsync(string json)
+    {
+        string? id = null;
+        try
+        {
+            if (json.Length > 256 * 1024) return;
+            var message = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+            if (message["type"]?.GetValue<string>() != "reading-local") return;
+            id = message["requestId"]?.GetValue<string>();
+            if (!Guid.TryParseExact(id, "D", out _)) return;
+            var service = _offline;
+            switch (message["action"]?.GetValue<string>())
+            {
+                case "bootstrap": case "status": break;
+                case "store":
+                    var payload = message["payload"]!.DeepClone().AsObject();
+                    await Task.Run(() => service.Store(payload));
+                    break;
+                default: throw new InvalidOperationException("不支持的本机操作。");
+            }
+            var snapshot = await Task.Run(service.Snapshot);
+            _browser.Core?.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "reading-local-reply", requestId = id, data = snapshot }));
+        }
+        catch (Exception error)
+        {
+            AppLog.Error("Local reading request failed", error);
+            try { _browser.Core?.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "reading-local-reply", requestId = id, error = "本机记录未能保存，请检查磁盘空间。" })); } catch { }
+        }
     }
     private void WireBrowser()
     {
@@ -257,17 +309,36 @@ internal sealed class ReadingCompanionWindow : Window
         args.SavesInProfile = false;
         try
         {
-            var dialog = new Window { Title = "允许麦克风 · 班伴", Width = 500, Height = 340, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Brushes.White, Icon = new WindowIcon(AppIconFactory.CreateStream()) };
+            var dialog = CreateMicrophonePermissionDialog(out var remember);
             _permissionDialog = dialog;
-            var allow = DesktopStyle.Button("允许麦克风", true); var deny = DesktopStyle.Button("暂不允许");
-            var remember = new CheckBox { Content = "在这台教室电脑上记住选择", IsChecked = true, FontSize = 16 };
-            allow.Click += (_, _) => dialog.Close(true); deny.Click += (_, _) => dialog.Close(false);
-            dialog.Content = new StackPanel { Margin = new Thickness(28), Spacing = 16, Children = { DesktopStyle.Text("让朗读被看见", 25, true), DesktopStyle.Text("早读陪伴需要麦克风感知声量。声音在本机分析，不会上传录音。", 17, muted: true), remember, allow, deny } };
             var accepted = await dialog.ShowDialog<bool>(this);
             if (!_closing && accepted) { args.State = CoreWebView2PermissionState.Allow; args.SavesInProfile = remember.IsChecked == true; }
         }
         catch (Exception error) { AppLog.Error("Reading microphone permission failed", error); }
         finally { _permissionDialog = null; }
+    }
+
+    private static Window CreateMicrophonePermissionDialog(out CheckBox remember)
+    {
+        var dialog = new Window { Title = "允许麦克风 · ICeClass 班伴", Width = 520, Height = 280, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Brushes.White, Icon = new WindowIcon(AppIconFactory.CreateStream()) };
+        DesktopStyle.KeepWindowInWorkingArea(dialog); ClassroomStyle.Apply(dialog);
+        var allow = ClassroomStyle.Button("允许麦克风", true); var deny = ClassroomStyle.Button("暂不允许");
+        remember = new CheckBox { Content = "在这台教室电脑上记住选择", IsChecked = true, FontSize = 16 };
+        allow.Click += (_, _) => dialog.Close(true); deny.Click += (_, _) => dialog.Close(false);
+        var root = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        root.Children.Add(new ScrollViewer {
+            Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 10, Children = {
+                ClassroomStyle.Text("允许感知朗读声量", 20, true),
+                ClassroomStyle.Text("早读陪伴需要使用麦克风。声音仅在本机分析，不会上传录音。", 16, muted: true),
+                remember } },
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+        var actions = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
+        deny.MinHeight = 44; allow.MinHeight = 44;
+        deny.Margin = new Thickness(0, 0, 6, 0); allow.Margin = new Thickness(6, 0, 0, 0);
+        actions.Children.Add(deny); Grid.SetColumn(allow, 1); actions.Children.Add(allow);
+        var footer = DesktopStyle.DialogFooter(actions);
+        Grid.SetRow(footer, 1); root.Children.Add(footer); dialog.Content = root;
+        return dialog;
     }
 
     public async Task ReturnHomeAsync(bool showHome = true)

@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -43,7 +43,7 @@ public sealed class App : Application
         _readingReminders = new ReadingReminderService();
         ReadingExperience.Configure(ShowStudentVoice, () => _studentVoiceWindow?.MinimizeToTray());
         _receiver.ConnectionStateChanged += ReceiverOnConnectionStateChanged;
-        _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => { _studentVoiceWindow?.SetBinding(binding); ReadingExperience.BindingChanged(binding); });
+        _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => { ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding); ReadingExperience.BindingChanged(binding); });
         CreateTray();
         DesktopShortcut.EnsureCreated();
         InstanceActivation.Listen(() => Dispatcher.UIThread.Post(ShowStudentVoice));
@@ -52,6 +52,7 @@ public sealed class App : Application
 
         if (ReceiverConfig.TryLoad(out var config))
         {
+            ReadingOfflineService.For(config);
             StartupManager.SetEnabled(config);
             _ = _receiver.StartAsync(config);
             _readingReminders.Start(config);
@@ -94,23 +95,25 @@ public sealed class App : Application
         _updateMenuItem = new NativeMenuItem { Header = $"检查更新（当前 {ReceiverUpdateService.CurrentVersionText}）" };
         _updateMenuItem.Click += async (_, _) => await CheckForUpdateAsync(true);
         menu.Items.Add(_updateMenuItem);
-        var about = new NativeMenuItem { Header = "关于班伴" };
-        about.Click += (_, _) =>
-        {
-            if (_aboutWindow is null)
-            {
-                _aboutWindow = new AboutWindow();
-                _aboutWindow.Closed += (_, _) => _aboutWindow = null;
-            }
-            _aboutWindow.Show(); _aboutWindow.WindowState = WindowState.Normal; _aboutWindow.Activate();
-        };
+        var about = new NativeMenuItem { Header = "关于 ICeClass 班伴" };
+        about.Click += (_, _) => ShowAbout();
         menu.Items.Add(about);
         menu.Items.Add(new NativeMenuItemSeparator());
         var exit = new NativeMenuItem { Header = "退出" };
         exit.Click += async (_, _) => await ExitAsync();
         menu.Items.Add(exit);
-        _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass · 班伴", Menu = menu, IsVisible = true };
+        _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass 班伴", Menu = menu, IsVisible = true };
         _tray.Clicked += (_, _) => ShowStudentVoice();
+    }
+
+    private void ShowAbout()
+    {
+        if (_aboutWindow is null)
+        {
+            _aboutWindow = new AboutWindow();
+            _aboutWindow.Closed += (_, _) => _aboutWindow = null;
+        }
+        _aboutWindow.Show(); _aboutWindow.WindowState = WindowState.Normal; _aboutWindow.Activate();
     }
 
     private void ShowEnrollment()
@@ -129,6 +132,7 @@ public sealed class App : Application
         _enrollmentWindow.AudioTestRequested += async (_, _) => await TestAudioAsync();
         _enrollmentWindow.Saved += async (_, saved) =>
         {
+            ReadingOfflineService.For(saved);
             await ReadingExperience.StopAsync();
             await _receiver!.RestartAsync(saved);
             _readingReminders?.Start(saved);
@@ -163,7 +167,7 @@ public sealed class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment);
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout);
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
         KeepInTray(_studentVoiceWindow);
@@ -199,6 +203,7 @@ public sealed class App : Application
     {
         await ReadingExperience.StopAsync();
         _readingReminders?.Stop();
+        ReadingOfflineService.Stop();
         InstanceActivation.Stop();
         _automaticUpdateCancellation?.Cancel();
         _automaticUpdateCancellation?.Dispose();
@@ -234,7 +239,7 @@ public sealed class App : Application
                 while (!token.IsCancellationRequested)
                 {
                     await CheckForUpdateAsync(false, config, token);
-                    await Task.Delay(TimeSpan.FromHours(6), token);
+                    await Task.Delay(TimeSpan.FromMinutes(30), token);
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -251,6 +256,11 @@ public sealed class App : Application
 
         try
         {
+            if (ReadingExperience.IsOpen)
+            {
+                if (userInitiated) SetUpdateState("早读结束后再更新，活动不会中断。", false);
+                return;
+            }
             var config = knownConfig;
             if (config is null && !ReceiverConfig.TryLoad(out config))
             {
@@ -260,24 +270,44 @@ public sealed class App : Application
 
             SetUpdateState("正在检查更新…", true);
             var progress = new Progress<int>(value => SetUpdateState($"正在下载更新：{value}%", true));
-            var result = await _updates.CheckAndDownloadAsync(config, progress, token);
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(token);
+            void PauseDownload() => idle.Cancel();
+            ReceiverUpdateResult result;
+            ReadingExperience.Opened += PauseDownload;
+            try
+            {
+                // A reading window may have opened between the first check and subscribing.
+                if (await Dispatcher.UIThread.InvokeAsync(() => ReadingExperience.IsOpen)) idle.Cancel();
+                result = await _updates.CheckAndDownloadAsync(config, progress, idle.Token);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && idle.IsCancellationRequested)
+            {
+                SetUpdateState("早读已开始，更新已暂停，下次继续下载。", false);
+                return;
+            }
+            finally { ReadingExperience.Opened -= PauseDownload; }
             if (!result.UpdateAvailable)
             {
                 SetUpdateState($"当前已是最新版本 {ReceiverUpdateService.CurrentVersionText}", false);
                 return;
             }
 
-            SetUpdateState($"新版 {result.Version} 已下载，程序即将自动重启…", true);
-            if (!_updates.TryLaunchInstaller(result, out var error))
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                SetUpdateState(error, false);
-                return;
-            }
-            await Task.Delay(500, token);
-            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-            {
+                token.ThrowIfCancellationRequested();
+                // Reading windows are created on this same dispatcher. Keep this final check,
+                // installer launch and shutdown together so a lesson cannot start between them.
+                if (ReadingExperience.IsOpen)
+                {
+                    SetUpdateState($"新版 {result.Version} 已保存，早读结束后更新。", false);
+                    return;
+                }
+                if (!_updates.TryLaunchInstaller(result, out var error))
+                {
+                    SetUpdateState(error, false);
+                    return;
+                }
                 _exitRequested = true;
-                await ReadingExperience.StopAsync();
                 _desktop?.TryShutdown();
             });
         }

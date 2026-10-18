@@ -27,7 +27,8 @@ with zipfile.ZipFile(package) as archive:
         assert (stage / item.filename).resolve().is_relative_to(stage.resolve())
     archive.extractall(stage)
 root = stage / 'ICeClass-server'
-for name in ('server/app.py', 'server/reading.py', 'server/management.py', 'web_controller/reading/desktop.js', 'web_controller/reading/particle-relief.js'):
+assert (root / 'server/desktop_release.py').is_file()
+for name in ('server/app.py', 'server/reading.py', 'server/reading_xlsx.py', 'server/offline_reading.py', 'server/management.py', 'server/banban.py', 'server/banban_agent.py', 'server/banban_connections.py', 'server/banban_history.py', 'server/banban_platform.py', 'server/banban_policy.py', 'web_controller/banban.js', 'web_controller/banban.css', 'web_controller/assets/banban/portrait.webp', 'web_controller/reading/desktop.js', 'web_controller/reading/offline-integration.js', 'web_controller/reading/particle-relief.js'):
     assert (root / name).is_file(), name
 for name in root.glob('server/*.py'):
     ast.parse(name.read_text('utf8'), filename=str(name))
@@ -42,18 +43,19 @@ with executable.open('rb') as stream:
     assert checksum.hexdigest() == manifest['sha256']
 endpoint = 'https://iceclass.icecreamchat.top'
 prefix = 'ICeClass/教室端/'
-note = '''班伴教室端
+note = '''ICeClass 班伴 · 教室端
 
 将“教室端”整个文件夹解压到固定位置，双击 ICeClass.exe。
 首次输入全校绑定码 mas22，依次选择年级和班级。班级名单可刷新。
 新版首次运行创建桌面图标。关闭窗口只收起到托盘。
 早读在客户端内全屏打开；长按屏幕空白处 2 秒退出全屏。
+四种早读活动已内置，可离线使用；统计保存在本机，联网后自动补传。
 窗口顶栏“返回”结束本次早读并返回教室首页，“全屏”继续沉浸显示。
 首次使用麦克风需允许权限。Windows 10/11 x64 需要 WebView2，缺少时提供官方安装入口。
 已绑定的设备优先使用托盘或设置里的“检查更新”，原班级绑定和设置保留。
 正式网址已内置。绑定资料保存在本机用户数据目录，无需放在分发文件夹。
 从旧版升级时，先保留旧 config.json；新版首次启动验证并迁移成功后自动移走。
-许可与第三方说明可在托盘菜单“关于班伴”查看。
+许可与第三方说明可在托盘菜单“关于 ICeClass 班伴”查看。
 '''
 with zipfile.ZipFile(stage / 'ICeClass-classroom.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
     archive.write(executable, prefix + 'ICeClass.exe')

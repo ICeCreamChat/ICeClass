@@ -1,8 +1,12 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const modes = { classic: '拔萝卜', carving: '诗词镌刻', particle: '粒子浮雕', rocket: '火箭升空' };
-  let initialized = false, config = null, report = null, settingsDirty = false, boundClasses = new Set();
+  let initialized = false, config = null, report = null, settingsDirty = false, boundClasses = new Set(), reportGeneration = 0;
+  const selectedGrades = new Set();
+  const gradeOf = name => {
+    const match = String(name || '').normalize('NFKC').replace(/\s/g, '').match(/^高([一二三123])(?=[^0-9]|$)/);
+    return match ? '高' + ({1: '一', 2: '二', 3: '三'}[match[1]] || match[1]) : '其他';
+  };
   const api = (...args) => window.ICeClass.api(...args);
   const error = e => window.ICeClass.toast(e.message);
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -18,7 +22,9 @@
     wrap.append(t); return wrap;
   }
   function query() {
-    return new URLSearchParams({ start: $('readingStart').value, end: $('readingEnd').value, classId: $('readingClass').value });
+    const params = new URLSearchParams({ start: $('readingStart').value, end: $('readingEnd').value, classId: $('readingClass').value });
+    if (selectedGrades.size) params.set('grades', [...selectedGrades].join(','));
+    return params;
   }
   function addPeriod(value = { weekdays: [1, 2, 3, 4, 5], start: 440, end: 470 }) {
     const row = node('div', undefined, 'reading-period'), days = node('div', undefined, 'reading-days');
@@ -55,7 +61,22 @@
     finally { if (button) button.disabled = false; }
   }
   async function loadReport() {
-    report = await api('/api/reading/report?' + query());
+    const request = ++reportGeneration;
+    $('readingRanking').setAttribute('aria-busy', 'true');
+    let data;
+    try { data = await api('/api/reading/report?' + query()); }
+    catch (e) {
+      if (request === reportGeneration) {
+        $('readingRanking').setAttribute('aria-busy', 'false');
+        $('readingReportStatus').textContent = report ? '刷新失败，当前为上次查询的记录。请重试。' : '暂时无法读取成绩，请点击“查询”重试。';
+        if (!report) $('readingRanking').replaceChildren(node('div', '成绩暂时无法读取，请重新查询。', 'empty'));
+      }
+      throw e;
+    }
+    if (request !== reportGeneration) return;
+    report = data;
+    const scope = report.grades?.join('、') || '全部年级';
+    $('rankingTitle').textContent = (report.grades?.length ? scope : '') + '班级排行榜';
     const used = report.rows.filter(r => r.activeSeconds > 0), total = report.rows.reduce((sum, r) => sum + r.effectiveSeconds, 0);
     $('readingOverview').replaceChildren();
     const symbols = ['M5 12h2l3-7 4 14 3-7h2', 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z', 'M6 5v14l12-7z'];
@@ -66,15 +87,25 @@
       String(value).split(/(分|秒|\/)/).filter(Boolean).forEach(part => strong.append(node(/^(分|秒|\/)$/.test(part)?'small':'span',part.trim())));
       item.append(heading, strong, node('span',note,'metric-note')); $('readingOverview').append(item);
     });
-    const rank = value => { const marker = node('span',value ?? '—','rank-marker'); marker.dataset.rank = value ?? ''; return marker; };
-    const tags = values => { const wrap = node('div'); values.forEach(m => wrap.append(node('span',modes[m],'mode-tag'))); if (!values.length) wrap.textContent='—'; return wrap; };
-    const ratio = value => { const wrap = node('div',undefined,'ratio-cell'); wrap.append(node('span',value === null?'—':value+'%')); if(value !== null) {const bar=node('div',undefined,'ratio-bar'),fill=node('span');fill.style.width=Math.min(100,Math.max(0,value))+'%';bar.append(fill);wrap.append(bar);}return wrap; };
-    $('readingRanking').replaceChildren(report.rows.length ? table(['名次', '班级', '使用次数 / 天数', '运行时长', '有效发声', '达标占比', '模式', '完成量'], report.rows.map(r => [
-      rank(r.rank), r.className, r.activeSeconds ? `${r.sessions} 次 / ${r.days} 天` : '未使用', duration(r.activeSeconds), duration(r.effectiveSeconds), ratio(r.ratio), tags(r.modes), completed(r.completed)
-    ])) : node('div', '还没有获授权的班级。', 'empty'));
+    window.ICeClassRanking.render(report);
     $('readingDaily').replaceChildren(report.daily.length ? table(['日期', '班级', '使用次数', '运行时长', '有效发声', '完成量'], report.daily.map(r => [r.day, r.className, `${r.sessions} 次`, duration(r.activeSeconds), duration(r.effectiveSeconds), completed(r.completed)])) : node('div', '所选日期还没有早读记录。', 'empty'));
-    $('readingReportStatus').textContent = '更新于 ' + new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
+    $('readingReportStatus').textContent = `${scope} · ${report.start} — ${report.end} · 更新于 ` + new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
     void window.ICeClassCalendar?.refresh();
+  }
+  async function exportReport() {
+    const button = $('readingExport'), params = query(); params.set('format', 'xlsx');
+    button.disabled = true; button.textContent = '正在导出…';
+    try {
+      const response = await fetch('/api/reading/export?' + params, { credentials: 'same-origin' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `导出失败 (${response.status})，请重试。`);
+      }
+      const url = URL.createObjectURL(await response.blob()), link = node('a');
+      link.href = url; link.download = `ICeClass 班伴-早读-${params.get('grades')?.replaceAll(',', '·') || '全部年级'}-${params.get('start')}-${params.get('end')}.xlsx`;
+      document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) { error(e); }
+    finally { button.disabled = false; button.textContent = '↓ 导出 XLSX'; }
   }
   async function loadControls() {
     const data = await api('/api/classroom-controls');
@@ -92,7 +123,7 @@
     const badge = (text, cls) => node('span',text,'status '+cls);
     $('controlDevices').replaceChildren(rows.length ? table(['班级 / 电脑', '绑定核实', '在线状态', '当前音量', '管理员设置', '应用状态', '操作'], rows.map(d => {
       const supports = d.capabilities.includes('volume');
-      const state = !d.enabled ? '已停用' : !supports ? '需安装班伴教室端 2.0.0' : d.command_error && d.command_id === d.desired_command ? d.command_error
+      const state = !d.enabled ? '已停用' : !supports ? '需安装 ICeClass 班伴 · 教室端 2.0.0' : d.command_error && d.command_id === d.desired_command ? d.command_error
         : d.desired_volume === null ? '尚未设置' : !d.online ? '待上线应用' : d.command_id !== d.desired_command ? '等待教室确认'
         : d.actual_volume === null ? '无法读取当前音量' : d.actual_volume !== d.desired_volume ? '当前音量已变化' : '已应用';
       const identity=node('div',undefined,'device-detail');identity.append(node('strong',d.class_name+' / '+d.name),node('span',d.computer_name || '等待电脑上报'),node('span',d.device_code,'device-code'),node('span',(d.local_addresses || []).join('、') || '局域网地址尚未上报'));
@@ -119,10 +150,11 @@
   }
   function syncClasses() {
     const reading = $('readingClass').value, control = $('controlClass').value;
-    $('readingClass').replaceChildren(new Option('全部获授权班级', ''));
-    window.ICeClass.state.classes.forEach(c => { $('readingClass').append(new Option(c.name, c.id)); });
+    $('readingClass').replaceChildren(new Option(selectedGrades.size ? '所选年级全部班级' : '全部获授权班级', ''));
+    window.ICeClass.state.classes.filter(c => !selectedGrades.size || selectedGrades.has(gradeOf(c.name))).forEach(c => { $('readingClass').append(new Option(c.name, c.id)); });
     if ([...$('readingClass').options].some(o => o.value === reading)) $('readingClass').value = reading;
     if ([...$('controlClass').options].some(o => o.value === control)) $('controlClass').value = control;
+    document.querySelector('[data-reading-grade="其他"]').classList.toggle('hidden', !window.ICeClass.state.classes.some(c => gradeOf(c.name) === '其他') && !selectedGrades.has('其他'));
     window.ICeClassCalendar?.syncClasses();
   }
   function initialize() {
@@ -135,10 +167,23 @@
     $('readingAddPeriod').onclick = () => { addPeriod(); settingsDirty = true; };
     $('readingRefresh').onclick = () => loadReport().catch(error);
     $('readingClass').onchange = () => loadReport().catch(error);
+    $('readingGradeFilter').onclick = event => {
+      const grade = event.target.closest('[data-reading-grade]')?.dataset.readingGrade;
+      if (!grade) return;
+      if (grade === 'all') selectedGrades.clear();
+      else if (selectedGrades.has(grade)) selectedGrades.delete(grade);
+      else selectedGrades.add(grade);
+      if (selectedGrades.size === 4) selectedGrades.clear();
+      $('readingGradeFilter').querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.readingGrade === 'all' ? !selectedGrades.size : selectedGrades.has(button.dataset.readingGrade))));
+      $('readingGradeScope').textContent = selectedGrades.size ? [...selectedGrades].join(' + ') + ' · 可继续多选' : '可多选，一起比较';
+      $('readingClass').value = '';
+      syncClasses();
+      void loadReport().catch(error);
+    };
     $('readingToday').onclick = () => { $('readingStart').value = $('readingEnd').value = today(); $('readingToday').classList.add('active');$('readingWeek').classList.remove('active'); void loadReport().catch(error); };
     $('readingWeek').onclick = () => { const now = new Date(today() + 'T00:00:00Z'); now.setUTCDate(now.getUTCDate() - ((now.getUTCDay() + 6) % 7)); $('readingStart').value = now.toISOString().slice(0, 10); $('readingEnd').value = today(); $('readingWeek').classList.add('active');$('readingToday').classList.remove('active'); void loadReport().catch(error); };
     ['readingStart','readingEnd'].forEach(id=>$(id).onchange=()=>{$('readingToday').classList.remove('active');$('readingWeek').classList.remove('active');});
-    $('readingExport').onclick = () => { location.href = '/api/reading/export?' + query(); };
+    $('readingExport').onclick = exportReport;
     $('controlApply').onclick = () => void control('set_volume', Number($('controlVolume').value));
     $('control30').onclick = () => { $('controlVolume').value = 30; void control('set_volume', 30); };
     $('control50').onclick = () => { $('controlVolume').value = 50; void control('set_volume', 50); };

@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const requests = new Map();
+  const revisions = { 'classic.txt': '20261018-ui2', 'rocket.txt': '20261018-ui3' };
   async function load(name, json) {
     const key = `${name}:${json}`;
     if (!requests.has(key)) {
@@ -8,7 +9,8 @@
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10000);
         try {
-          const response = await fetch(`/reading/assets/v2.2.4/${name}`, { signal: controller.signal });
+          const revision = revisions[name] ? `?v=${revisions[name]}` : '';
+          const response = await fetch(`/reading/assets/v2.2.4/${name}${revision}`, { signal: controller.signal });
           if (!response.ok) throw new Error('资源未能下载');
           return await (json ? response.json() : response.text());
         } catch (error) {

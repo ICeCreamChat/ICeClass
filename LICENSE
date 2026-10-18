@@ -1,21 +1,27 @@
-MIT License
+ICeClass 班伴 · 非商业学习参考许可
+版本 1.0
 
 Copyright (c) 2026 ICeCreamChat
+保留所有权利。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+一、许可范围
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本许可仅允许为非商业的阅读、学习、研究与技术参考目的，获取、保存及查看本项目的代码和随附文档。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+二、使用限制
+
+未经 ICeCreamChat 另行书面授权，不得将本项目、其副本、修改版本或衍生作品用于任何商业目的，包括但不限于出售、收费分发、收费服务、商业产品集成、商业培训及其他直接或间接获取商业利益的活动。
+
+本许可不授予超出学习参考范围的运行、部署、修改、公开发布、再分发或再许可权利。如需上述使用，须事先取得 ICeCreamChat 的另行书面授权。
+
+三、版权与第三方组件
+
+为学习参考而保存的副本须保留本版权声明及完整许可文本，不得移除或伪造作者信息。
+
+本许可仅适用于 ICeCreamChat 拥有著作权的项目代码和随附文档。第三方组件、字体、图标、数据及素材仍遵循各自的许可证；本许可不改变其版权归属或许可条件，详情见 docs/licenses/THIRD_PARTY_NOTICES.md。
+
+四、无担保声明
+
+本项目按“现状”提供，不提供任何明示或默示的担保，包括适销性、特定用途适用性及不侵权保证。在适用法律允许的范围内，作者不对因获取、参考或其他使用本项目而产生的损失承担责任。
+
+除本许可明确授予的权限外，其他权利均予保留。

@@ -7,7 +7,6 @@ namespace ICeClass.Receiver;
 
 internal sealed class ReadingReminderService
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ReadingReminderHistory _history = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "reading-reminders.json"));
@@ -46,14 +45,15 @@ internal sealed class ReadingReminderService
         return current is not null && current.Day == period.Day && current.ClassId == period.ClassId && current.Start == period.Start && current.End == period.End;
     }
 
-    private async Task<ReadingSchedule> FetchAsync(ReceiverConfig config, CancellationToken token)
+    private Task<ReadingSchedule> FetchAsync(ReceiverConfig config, CancellationToken token)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, config.Endpoint.TrimEnd('/') + "/api/reading/schedule?deviceId=" + Uri.EscapeDataString(config.DeviceId));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.DeviceToken);
-        using var response = await Http.SendAsync(request, token);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("请确认网络、平台版本和教室绑定状态");
-        var body = await response.Content.ReadAsStringAsync(token);
-        return JsonSerializer.Deserialize<ReadingSchedule>(body, JsonOptions) ?? throw new InvalidOperationException("晨读时段暂时无法读取");
+        token.ThrowIfCancellationRequested();
+        var snapshot = ReadingOfflineService.For(config).Snapshot();
+        var value = snapshot["config"]!.DeepClone().AsObject();
+        value["classId"] = snapshot["classId"]!.DeepClone(); value["className"] = snapshot["className"]!.DeepClone();
+        value["serverTime"] = snapshot["serverTime"]!.DeepClone();
+        if (snapshot["revoked"]?.GetValue<bool>() == true) value["enabled"] = false;
+        return Task.FromResult(JsonSerializer.Deserialize<ReadingSchedule>(value.ToJsonString(), JsonOptions)!);
     }
 
     private async Task TickAsync()
@@ -81,7 +81,7 @@ internal sealed class ReadingReminderService
             ReadingReminderWindow? opened = null;
             opened = new ReadingReminderWindow(current, () => IsCurrent(current), async () =>
             {
-                // Recheck the live schedule and device authorization before opening the reading window.
+                // Use the latest locally saved rule; weak connectivity never blocks starting a lesson.
                 var live = await FetchAsync(config, dialogToken);
                 if (revision != _revision || !ReferenceEquals(_window, opened) || !opened!.IsVisible) return false;
                 _schedule = live; _synchronizedAt = Stopwatch.GetTimestamp();
@@ -97,7 +97,7 @@ internal sealed class ReadingReminderService
         {
             if (revision == _revision)
             {
-                // Do not start reminders from stale rules while offline or after device revocation.
+                // A damaged local cache must not produce a reminder with unknown rules.
                 _schedule = null;
                 if (_lastError != error.Message) { AppLog.Error("Reading reminder sync failed", error); _lastError = error.Message; }
             }

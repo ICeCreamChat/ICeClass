@@ -1,8 +1,16 @@
-# ICeClass · 班伴
+# ICeClass 班伴
 
-**班级伴学与管理平台**，把早读陪伴、班级比赛、白板管理和远程通知放在同一套系统里。管理员用浏览器管理，教师用手机或电脑查看，教室白板运行一个 Windows 单文件程序。
+**班级伴学与管理平台**，把早读陪伴、班级比赛、白板管理和远程通知放在同一套系统里。教师和管理员可用网页或 Windows 教师端；教室白板使用独立的教室端。
 
-班伴由 ICeCreamChat 维护，基于原 ICeCreamShouter 平台扩展为独立项目。当前正式版本 **2.2.4**，已部署到 [班伴平台](https://iceclass.icecreamchat.top/)。[下载最新版](https://github.com/ICeCreamChat/ICeClass/releases/latest)，修复与验证结果见 [2.2.4 发布记录](docs/发布记录-2.2.4.md)。
+ICeClass 班伴由 ICeCreamChat 维护，基于原 ICeCreamShouter 平台扩展为独立项目。当前正式版本 **2.2.4**，已部署到 [ICeClass 班伴平台](https://iceclass.icecreamchat.top/)。[下载最新版](https://github.com/ICeCreamChat/ICeClass/releases/latest)，修复与验证结果见 [2.2.4 发布记录](docs/发布记录-2.2.4.md)。
+
+**当前仓库包含 2.3.0 本地验收版源码；尚未部署正式服务器或发布 2.3.0 安装包。** 四种活动和视频随客户端提供，断网照常运行，统计先保存本机、联网后补传，客户端更新支持续传。使用范围和验证结果见 [2.3.0 本地验收说明](docs/本地验收-2.3.0.md)。正式服务器和下载链接目前仍为 2.2.4。
+
+本地版另加入“班班”悬浮数据助手：采用用户提供的小书灵与 MAS 徽章，眼神、侧身与托脸依次衔接，等待时显示更大的陪伴角色，按真实记录区别回应，支持点击招呼、附近眼神、拖动回弹和每天最多一次的静音轻提醒。聊天小窗支持移动、收起，动效和轻提醒均可关闭。接入方式、隐私范围与验证结果见 [班班本地验收](docs/班班本地验收.md)。
+
+新增 **Windows 教师端 2.3.0 本地验收版**：安装到当前 Windows 用户目录，创建桌面和开始菜单入口，关闭窗口后收起到托盘。沿用网页账号、功能和授权，不需要班级绑定码；详情见 [Windows 教师端说明](docs/Windows教师端.md)。此版本尚未发布。
+
+本机分别打开教室端、网页端和 Windows 教师端，请使用桌面“班伴三端验收”文件夹（沿用原目录名），或参照 [三端本地验收入口](docs/三端本地验收.md)。
 
 ## 早读与比赛
 
@@ -33,12 +41,20 @@
 1. 从 [GitHub Releases](https://github.com/ICeCreamChat/ICeClass/releases/latest) 下载教室端 ZIP 或服务器 ZIP。现有教室端可在托盘菜单或教室设置中点击“检查更新”。
 2. 本地体验：在源码目录双击 `start-preview.bat`，打开 `http://127.0.0.1:8837/`。需要 Python 3.10+，首次运行自动创建隔离环境。演示账号与数据见 [验收指南](docs/验收指南.md)。
 3. 正式部署：使用专用域名（可以是子域名）和 Ubuntu Server 24.04 LTS，按 [部署手册](docs/完整操作流程.md) 操作。
-4. 创建班级和用户，开放全校绑定码。把 `ICeClass.exe` 放到教室电脑，输入绑定码、读取班级并选择本班。班伴正式网址已内置，其他部署可在连接设置中修改。
+4. 创建班级和用户，开放全校绑定码。把 `ICeClass.exe` 放到教室电脑，输入绑定码、读取班级并选择本班。ICeClass 班伴正式网址已内置，其他部署可在连接设置中修改。
 5. 管理员设置早读时段，在一间真实教室检查麦克风、计时、完成量、远程 30%/50% 音量，再推广到各班。
 
 已有 Ubuntu 安装使用 `scripts/update-ubuntu.sh` 更新：`sudo bash scripts/update-ubuntu.sh /path/to/ICeClass-2.2.4-server.zip 2.2.4`。脚本备份现有数据库和程序，核对账号、班级、设备绑定与早读配置，失败时恢复原版本。首次部署仍使用部署手册。
 
 正式数据库不包含演示账号或密码。本地演示只监听 `127.0.0.1`，示例数据存放在 `.tools/preview/demo.db`，脚本默认端口为 8837。连接本地验收服务的教室端不会修改 Windows 开机启动设置。
+
+## 班班数据助手（本地验收）
+
+登录后点击右下角“班班”，可以按日期、年级、班级查看晨读表现、通知回执、累计来音数量和时长，以及已绑定设备概况。教师与主任只分析获授权班级，校长与超级管理员可以分析全校；班班只读数据，每次提问都会重新核对权限。
+
+每个账号可在“更多 → 连接设置”选择学校连接，或填写自己的 Base URL、API Key 和模型 ID；个人连接仅供本账号使用，切换连接不会扩大班级数据权限。学校连接由超级管理员维护。密钥仅存服务端，不回显，也不进入 Git 或发布包。关闭智能分析或未配置时提供明确标注的数据概览。
+
+启用 AI 后，班班按问题调用只读查询工具，逐段显示真实模型回复，支持跨班级、跨时段追问与对比；来源卡片可直接打开对应班级日历。服务器只发送获授权且与查询主题相关的资料：统计、通知文字样本及近期对话上下文。音频、转写、录音地址、用户身份资料和设备令牌不进入分析；教室来音仅使用数量、时长。每个账号独立保存多段完整会话，通过“历史”切换继续，“新对话”保留旧记录；无十轮上限和 24 小时自动过期。默认每月 1 日按北京时间统一清理上一周期的对话，超级管理员可改为每周一。账号和班级权限变化后，不再展示旧权限范围的对话。实现与验收说明见 [班班智能交互说明](docs/班班智能交互说明.md)。
 
 ## 代码与构建
 
@@ -47,11 +63,12 @@
 | `server/` | Python/aiohttp、SQLite、WebSocket 服务端及早读统计 |
 | `web_controller/` | 教师/管理员网页和完整早读陪伴资源 |
 | `Receiver/` | Avalonia/.NET 8 Windows 教室端 |
+| `Desktop/` | Avalonia/.NET 8 + WebView2 教师与管理员 Windows 教师端 |
 | `cloud/migrations/` | 服务端使用的数据库结构 |
 | `scripts/` | 部署、交付、发布包和本地演示脚本 |
-| `cloud/src/` | 原 Cloudflare 通知服务参考实现，未实现班伴新增的早读/教室控制接口 |
+| `cloud/src/` | 原 Cloudflare 通知服务参考实现，未实现 ICeClass 班伴新增的早读/教室控制接口 |
 
-班伴完整功能使用 `server/` 部署。`deploy-cloud.bat` 是旧通知服务的可选入口，不用于部署本版完整平台。
+ICeClass 班伴完整功能使用 `server/` 部署。`deploy-cloud.bat` 是旧通知服务的可选入口，不用于部署本版完整平台。
 
 ```powershell
 python -m pip install -r server/requirements.txt
@@ -60,10 +77,17 @@ npm ci
 npm run typecheck
 npm test
 dotnet build Receiver/Receiver.csproj -c Release
+dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj --no-launch-profile
+dotnet run --project tests/DesktopChecks/DesktopChecks.csproj -c Release
+powershell.exe -NoProfile -File scripts/test-desktop-update.ps1
 ```
 
-双击 `build.bat` 生成自带运行环境的 `dist/receiver/ICeClass.exe`。管理员运行 `package-release.bat` 生成两个发布 ZIP；配置正式地址后运行 `prepare-delivery.bat` 生成教师快捷方式和教室交付目录。教室电脑不需要安装 .NET、Python 或 Node.js。
+双击 `build.bat` 生成自带运行环境的 `dist/receiver/ICeClass.exe`。管理员运行 `package-release.bat` 生成 Windows 完整交付、服务端和精简教室端三个 ZIP；精简包只含 EXE、一步说明和教师端入口。配置正式地址后运行 `prepare-delivery.bat` 生成教师快捷方式和教室交付目录。教室电脑不需要安装 .NET、Python 或 Node.js。
+
+双击 `build-desktop.bat` 生成 `dist/desktop/ICeClass.Desktop.exe` 和独立安装 ZIP。`start-desktop-preview.bat` 使用独立本机资料连接 `http://127.0.0.1:8838/`；请先启动该本地验收服务。完整发布脚本也会生成桌面安装 ZIP，并将桌面更新 EXE 与信息放入服务器包的 `desktop_release/`；不包含个人登录资料或 API Key。
 
 ## 许可与来源
 
-项目新增与修改代码采用 [MIT 许可证](LICENSE)。通知平台来源和早读内嵌字体、笔画数据、图标等许可见 [第三方说明](docs/licenses/THIRD_PARTY_NOTICES.md)。早读网页保留其内嵌许可文本；2.2.3 起教室端将完整许可嵌入 EXE，可在托盘菜单“关于班伴”查看。账号、统计数据和通知数据存放在管理员自己的服务器，早读检测不上传原始麦克风音频。
+项目自身代码与文档采用 [非商业学习参考许可](LICENSE)，仅供非商业的阅读、学习、研究与技术参考，禁止商业使用。运行、部署、修改、再分发等其他使用须另行取得 ICeCreamChat 的书面授权。
+
+第三方组件及早读内嵌字体、笔画数据、图标等遵循各自许可，详见 [第三方说明](docs/licenses/THIRD_PARTY_NOTICES.md)。早读网页保留其内嵌许可文本；两端 EXE 均内置应用许可与第三方说明，可在“关于 ICeClass 班伴”查看。账号、统计数据和通知数据存放在管理员自己的服务器，早读检测不上传原始麦克风音频。

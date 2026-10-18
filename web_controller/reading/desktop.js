@@ -6,6 +6,7 @@
   let leaving = false;
   const isFullscreen = () => host.fullscreen !== false;
   let hold, feedback, hint, hintTimer, suppressClickUntil = 0;
+  let hintEligible = false;
   let exitPending = false;
   const documents = new Map(), wiredFrames = new WeakSet();
   const controls = 'button,a,input,textarea,select,label,summary,[role="button"],[role="slider"],[contenteditable]:not([contenteditable="false"]),video[controls]';
@@ -15,15 +16,29 @@
     hold = undefined;
     if (feedback) feedback.hidden = true;
   }
+  function updateOverlayState() {
+    const visible = element => {
+      const owner = element.ownerDocument.defaultView;
+      if (owner.frameElement && !owner.frameElement.getClientRects().length) return false;
+      return element.getClientRects().length > 0 && owner.getComputedStyle(element).visibility !== 'hidden';
+    };
+    const blocked = [...documents.keys()].some(doc =>
+      [...doc.querySelectorAll('.modal.visible, .classic-message:not([hidden]), .carving-error:not([hidden])')].some(visible));
+    document.documentElement.dataset.readingOverlayOpen = String(blocked);
+    if (hint) {
+      const hidden = !hintEligible || !isFullscreen() || blocked || leaving;
+      if (hint.hidden !== hidden) hint.hidden = hidden;
+    }
+  }
   function syncPresentation() {
     cancelHold(); exitPending = false;
     const fullscreen = isFullscreen();
     document.documentElement.dataset.desktopFullscreen = String(fullscreen);
     for (const doc of documents.keys()) doc.documentElement.dataset.readingTouchFullscreen = String(fullscreen);
     clearTimeout(hintTimer);
-    if (!hint) return;
-    hint.hidden = !fullscreen;
-    if (fullscreen) hintTimer = setTimeout(() => { hint.hidden = true; }, 6500);
+    hintEligible = fullscreen;
+    updateOverlayState();
+    if (fullscreen) hintTimer = setTimeout(() => { hintEligible = false; updateOverlayState(); }, 6500);
   }
   function startHold(event, doc) {
     if (hold) { cancelHold(); return; }
@@ -35,7 +50,7 @@
       if (elapsed >= 220) {
         feedback.hidden = false;
         feedback.style.setProperty('--hold-progress', Math.min(elapsed / 2000, 1));
-        hint.hidden = true;
+        hintEligible = false; hint.hidden = true;
       }
       if (elapsed >= 2000) {
         suppressClickUntil = performance.now() + 900;
@@ -55,6 +70,7 @@
       if (hold?.doc === doc) cancelHold();
       record.abort.abort(); record.observer.disconnect(); documents.delete(doc);
     }
+    updateOverlayState();
   }
   function watchFrame(frame, signal) {
     if (wiredFrames.has(frame)) return;
@@ -79,6 +95,7 @@
         removed ||= record.removedNodes.length > 0;
       }
       if (removed) pruneDocuments();
+      updateOverlayState();
     });
     documents.set(doc, { abort, observer });
     doc.documentElement.dataset.readingTouchFullscreen = String(isFullscreen());
@@ -106,8 +123,9 @@
     // Focusing an iframe briefly blurs its parent before document.hasFocus()
     // includes the child. Check after that handoff; leaving the app still cancels.
     doc.defaultView.addEventListener('blur', () => { setTimeout(() => { if (!document.hasFocus()) cancelHold(); }, 0); }, { signal: abort.signal });
-    observer.observe(doc.body, { childList: true, subtree: true });
+    observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden'] });
     doc.querySelectorAll('iframe').forEach(frame => watchFrame(frame, abort.signal));
+    updateOverlayState();
   }
   function mount() {
     feedback = document.createElement('div'); feedback.id = 'reading-hold-feedback'; feedback.hidden = true;

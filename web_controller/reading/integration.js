@@ -1,4 +1,5 @@
 (() => {
+  if (window.ICeClassDesktop?.offline) return;
   'use strict';
   const defaults = { threshold: 30, enabled: false, periods: [], classic: { duration: 15, targetCount: 10 }, rocket: { duration: 15, targetCount: 10 }, carving: { speed: 1 }, particle: { speed: 1 } };
   let connected = false, preview = false, offset = 0, current = null, starting = false, leaving = false;
@@ -168,7 +169,7 @@
   }
   async function previewSettings() {
     const session = await request('/api/session');
-    if (!session.authenticated) throw new Error('请先登录班伴再打开预览。');
+    if (!session.authenticated) throw new Error('请先登录 ICeClass 班伴再打开预览。');
     if (session.user.role !== 'superadmin') return {config:defaults};
     return request('/api/reading/settings');
   }

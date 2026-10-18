@@ -29,6 +29,9 @@ from typing import Any
 from aiohttp import WSMsgType, web
 from reading import install_reading
 from management import install_management, check_school_code, record_computer_info, device_summary
+from banban import install_banban
+from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
+from desktop_release import install_desktop_updates
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1599,6 +1602,8 @@ async def error_and_security_middleware(request: web.Request, handler):
 async def cleanup(app: web.Application) -> None:
     db = app[STORE_KEY]
     timestamp = now_ms()
+    if history := app.get(BANBAN_HISTORY_KEY):
+        history.cleanup_due()
     stale_audio_ids = [
         row["id"] for row in db.all(
             """SELECT id FROM shouts WHERE content_type='audio' AND audio_path IS NOT NULL
@@ -1665,7 +1670,7 @@ async def on_cleanup(app: web.Application) -> None:
     app[STORE_KEY].close()
 
 
-def create_app(database_path: Path | None = None, receiver_release_root: Path | None = None) -> web.Application:
+def create_app(database_path: Path | None = None, receiver_release_root: Path | None = None, desktop_release_root: Path | None = None) -> web.Application:
     resolved_database = database_path or DATABASE_PATH
     audio_root = resolved_database.parent / "audio"
     app = web.Application(middlewares=[error_and_security_middleware], client_max_size=MAX_AUDIO_BYTES + 512 * 1024)
@@ -1674,6 +1679,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app[ROOMS_KEY] = Rooms(app[STORE_KEY], audio_root)
     app[LOGGER_KEY] = logging.getLogger("iceclass")
     app[RECEIVER_RELEASE_ROOT_KEY] = receiver_release_root or RECEIVER_RELEASE_ROOT
+    install_desktop_updates(app, desktop_release_root or ROOT / 'desktop_release', reply=json_response, parse_version=parse_release_version)
 
     app.router.add_get("/api/bootstrap", bootstrap_status)
     app.router.add_post("/api/bootstrap", bootstrap)
@@ -1711,8 +1717,9 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app.router.add_get("/ws/device", device_socket)
     install_reading(app, app[STORE_KEY], app[ROOMS_KEY], user=require_user, admin=require_admin,
                     authenticate=authenticate_device, access=can_access_class, reply=json_response,
-                    clock=lambda: now_ms(), digest=sha256)
+                    clock=lambda: now_ms(), digest=sha256, class_sort=class_sort_key)
     install_management(app, sys.modules[__name__])
+    install_banban(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)

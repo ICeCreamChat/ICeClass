@@ -49,54 +49,91 @@ public sealed class ReceiverUpdateService
         Directory.CreateDirectory(updateDirectory);
         var temporaryPath = Path.Combine(updateDirectory, $"ICeClass-{manifest.Version}.download");
         var readyPath = Path.Combine(updateDirectory, $"ICeClass-{manifest.Version}.exe");
-        TryDelete(temporaryPath);
+        var metadataPath = temporaryPath + ".json";
+        var identity = JsonSerializer.Serialize(new { manifest.Version, manifest.Size, manifest.Sha256, Url = downloadUri.AbsoluteUri });
+        if (!File.Exists(metadataPath) || File.ReadAllText(metadataPath) != identity)
+        {
+            TryDelete(temporaryPath);
+            ReadingOutbox.Write(metadataPath, identity);
+        }
+        if (await VerifiedAsync(readyPath, manifest, token)) return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
 
         try
         {
+            var offset = File.Exists(temporaryPath) ? new FileInfo(temporaryPath).Length : 0;
+            if (offset > manifest.Size) { TryDelete(temporaryPath); offset = 0; }
+            if (offset == manifest.Size)
+            {
+                if (await VerifiedAsync(temporaryPath, manifest, token))
+                {
+                    File.Move(temporaryPath, readyPath, true);
+                    return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
+                }
+                TryDelete(temporaryPath); offset = 0;
+            }
             using var downloadRequest = CreateRequest(HttpMethod.Get, downloadUri, config.DeviceToken);
+            if (offset > 0) downloadRequest.Headers.Range = new RangeHeaderValue(offset, null);
             using var response = await Client.SendAsync(downloadRequest, HttpCompletionOption.ResponseHeadersRead, token);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 throw new InvalidOperationException("下载更新时教室身份验证失败。");
             response.EnsureSuccessStatusCode();
-            if (response.Content.Headers.ContentLength is long contentLength && contentLength != manifest.Size)
+            if (response.StatusCode == System.Net.HttpStatusCode.PartialContent)
+            {
+                var range = response.Content.Headers.ContentRange;
+                if (range?.From != offset || range.Length != manifest.Size || range.To < range.From || range.To >= manifest.Size)
+                    throw new InvalidOperationException("更新续传范围不正确，请稍后重试。");
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.OK) offset = 0; // Server ignored Range: restart cleanly.
+            else throw new InvalidOperationException("服务器返回了无效的更新内容。");
+            if (response.Content.Headers.ContentLength is long contentLength && contentLength > manifest.Size - offset)
                 throw new InvalidOperationException("更新文件长度与服务器记录不一致。");
 
             await using var source = await response.Content.ReadAsStreamAsync(token);
             await using (var destination = new FileStream(
-                temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 128,
+                temporaryPath, offset == 0 ? FileMode.Create : FileMode.Append, FileAccess.Write, FileShare.None, 1024 * 128,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                 var buffer = new byte[1024 * 128];
-                long total = 0;
+                long total = offset;
                 while (true)
                 {
-                    var read = await source.ReadAsync(buffer, token);
+                    using var stalled = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    stalled.CancelAfter(TimeSpan.FromSeconds(30));
+                    var read = await source.ReadAsync(buffer, stalled.Token);
                     if (read == 0) break;
                     total += read;
                     if (total > manifest.Size || total > MaximumDownloadBytes)
                         throw new InvalidOperationException("更新文件超过服务器声明的大小。");
                     await destination.WriteAsync(buffer.AsMemory(0, read), token);
-                    hash.AppendData(buffer, 0, read);
                     progress?.Report((int)Math.Clamp(total * 100 / manifest.Size, 0, 100));
                 }
                 await destination.FlushAsync(token);
                 if (total != manifest.Size)
                     throw new InvalidOperationException("更新下载不完整，请稍后重试。");
-                var actualHash = Convert.ToHexString(hash.GetHashAndReset());
-                if (!actualHash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("更新文件校验失败，请稍后重试。");
+            }
+
+            if (!await VerifiedAsync(temporaryPath, manifest, token))
+            {
+                TryDelete(temporaryPath);
+                throw new InvalidOperationException("更新文件校验失败，请稍后重试。");
             }
 
             // Windows cannot rename the download while its exclusive write handle is open.
             File.Move(temporaryPath, readyPath, true);
             return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
         }
-        catch
+        catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
         {
-            TryDelete(temporaryPath);
+            // Keep confirmed bytes across disconnections, restarts, and a lesson starting mid-download.
             throw;
         }
+    }
+
+    private static async Task<bool> VerifiedAsync(string path, ReceiverUpdateManifest manifest, CancellationToken token)
+    {
+        if (!File.Exists(path) || new FileInfo(path).Length != manifest.Size) return false;
+        await using var file = File.OpenRead(path);
+        return Convert.ToHexString(await SHA256.HashDataAsync(file, token)).Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
     public bool TryLaunchInstaller(ReceiverUpdateResult update, out string error)

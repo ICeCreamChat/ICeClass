@@ -104,8 +104,8 @@ public sealed class AlertWindow : Window
         {
             Content = "×",
             FontSize = 24,
-            Width = 38,
-            Height = 38,
+            Width = 48,
+            Height = 48,
             Padding = new Thickness(0),
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -115,6 +115,7 @@ public sealed class AlertWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
         };
+        Avalonia.Automation.AutomationProperties.SetName(close, "关闭通知");
         close.Click += (_, _) => CloseByUser();
 
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };

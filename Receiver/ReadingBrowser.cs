@@ -18,12 +18,14 @@ internal sealed class ReadingBrowser : NativeControlHost
     public event Action? EscapePressed;
     public event Action? FullscreenPressed;
     public event Action<bool>? FocusOutside;
+    public bool HandleEscapeKey { get; set; } = true;
+    public bool HandleFullscreenKey { get; set; } = true;
     public ReadingBrowser() { Focusable = true; GotFocus += (_, _) => FocusPage(); }
 
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
         var handle = CreateWindowEx(0, "STATIC", "", 0x50000000 | 0x02000000, 0, 0, 1, 1, parent.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-        if (handle == IntPtr.Zero) throw new InvalidOperationException("无法创建早读窗口，请重新打开客户端。");
+        if (handle == IntPtr.Zero) throw new InvalidOperationException("无法创建应用窗口，请重新打开客户端。");
         _handleReady.TrySetResult(handle);
         return new PlatformHandle(handle, "HWND");
     }
@@ -41,8 +43,8 @@ internal sealed class ReadingBrowser : NativeControlHost
         controller.AcceleratorKeyPressed += (_, args) =>
         {
             if (args.KeyEventKind is not (CoreWebView2KeyEventKind.KeyDown or CoreWebView2KeyEventKind.SystemKeyDown)) return;
-            if (args.VirtualKey == 27) { args.Handled = true; Dispatcher.UIThread.Post(() => EscapePressed?.Invoke()); }
-            if (args.VirtualKey == 122) { args.Handled = true; Dispatcher.UIThread.Post(() => FullscreenPressed?.Invoke()); }
+            if (HandleEscapeKey && args.VirtualKey == 27) { args.Handled = true; Dispatcher.UIThread.Post(() => EscapePressed?.Invoke()); }
+            if (HandleFullscreenKey && args.VirtualKey == 122) { args.Handled = true; Dispatcher.UIThread.Post(() => FullscreenPressed?.Invoke()); }
         };
         SizeChanged += (_, _) => QueueResizeBrowser(handle);
         controller.IsVisible = true;

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ICeClass.Desktop</AssemblyName>
+    <RootNamespace>ICeClass.Desktop</RootNamespace>
+    <Version>2.3.0</Version>
+    <Product>ICeClass 班伴 · 教师端</Product>
+    <Title>ICeClass 班伴 · 教师端</Title><Company>ICeCreamChat</Company>
+    <Description>供教师与管理员使用的 Windows 工作台</Description>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <ApplicationManifest>..\Receiver\app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\branding\teacher\app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Receiver\ReadingBrowser.cs" Link="Shared\ReadingBrowser.cs" />
+    <Compile Include="..\Receiver\DesktopStyle.cs" Link="Shared\DesktopStyle.cs" />
+    <Compile Include="..\Receiver\AboutContent.cs" Link="Shared\AboutContent.cs" />
+    <AvaloniaResource Include="..\Receiver\NativeControls.axaml" Link="Shared\NativeControls.axaml" />
+    <Compile Include="..\Receiver\AppIconFactory.cs" Link="Shared\AppIconFactory.cs" />
+    <EmbeddedResource Include="..\branding\teacher\app.ico" LogicalName="ICeClass.Branding.app.ico" />
+    <EmbeddedResource Include="..\branding\teacher\app-icon.png" LogicalName="ICeClass.Branding.app-icon.png" />
+    <EmbeddedResource Include="..\LICENSE" LogicalName="ICeClass.Notices.LICENSE" />
+    <EmbeddedResource Include="..\docs\licenses\THIRD_PARTY_NOTICES.md" LogicalName="ICeClass.Notices.THIRD_PARTY_NOTICES.md" />
+    <EmbeddedResource Include="..\docs\licenses\WebView2-LICENSE.txt" LogicalName="ICeClass.Notices.WebView2-LICENSE.txt" />
+    <EmbeddedResource Include="..\docs\licenses\WebView2-NOTICE.txt" LogicalName="ICeClass.Notices.WebView2-NOTICE.txt" />
+    <PackageReference Include="Avalonia" Version="11.2.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
+  </ItemGroup>
+  <Target Name="UseWebViewCoreOnly" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup><Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" /></ItemGroup>
+  </Target>
+</Project>
