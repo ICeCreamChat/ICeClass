@@ -32,15 +32,20 @@ for name in ('server/app.py', 'server/reading.py', 'server/reading_xlsx.py', 'se
     assert (root / name).is_file(), name
 for name in root.glob('server/*.py'):
     ast.parse(name.read_text('utf8'), filename=str(name))
-manifest = json.loads((root / 'receiver_release/manifest.json').read_text('utf-8-sig'))
+for directory, filename in (
+    ('receiver_release', 'ICeClass.exe'),
+    ('desktop_release', 'ICeClass.Desktop.exe'),
+):
+    manifest = json.loads((root / directory / 'manifest.json').read_text('utf-8-sig'))
+    executable = root / directory / filename
+    assert manifest['version'] == version, directory
+    assert manifest['size'] == executable.stat().st_size, directory
+    with executable.open('rb') as stream:
+        checksum = hashlib.sha256()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            checksum.update(chunk)
+        assert checksum.hexdigest() == manifest['sha256'], directory
 executable = root / 'receiver_release/ICeClass.exe'
-assert manifest['version'] == version
-assert manifest['size'] == executable.stat().st_size
-with executable.open('rb') as stream:
-    checksum = hashlib.sha256()
-    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-        checksum.update(chunk)
-    assert checksum.hexdigest() == manifest['sha256']
 endpoint = 'https://iceclass.icecreamchat.top'
 prefix = 'ICeClass/教室端/'
 note = '''ICeClass 班伴 · 教室端

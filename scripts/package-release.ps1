@@ -50,13 +50,16 @@ try {
     $windowsZip = Join-Path $releaseRoot "ICeClass-$version-windows-x64.zip"
     $serverZip = Join-Path $releaseRoot "ICeClass-$version-server.zip"
     $classroomZip = Join-Path $releaseRoot "ICeClass-$version-classroom.zip"
+    $desktopZip = Join-Path $releaseRoot "ICeClass-$version-desktop-windows-x64.zip"
     Compress-Archive -LiteralPath $windowsRoot -DestinationPath $windowsZip -Force
     Compress-Archive -LiteralPath $serverRoot -DestinationPath $serverZip -Force
     Compress-Archive -LiteralPath $classroomRoot -DestinationPath $classroomZip -Force
+    Compress-Archive -LiteralPath (Join-Path $windowsRoot 'Windows教师端') -DestinationPath $desktopZip -Force
     Write-Host 'ICeClass 班伴发布包已生成：' -ForegroundColor Green
     Write-Host $windowsZip
     Write-Host $serverZip
     Write-Host $classroomZip
+    Write-Host $desktopZip
 } finally {
     $resolvedStage = [IO.Path]::GetFullPath($stage)
     $resolvedReleaseRoot = [IO.Path]::GetFullPath($releaseRoot).TrimEnd('\') + '\'
