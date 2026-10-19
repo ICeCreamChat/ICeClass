@@ -122,12 +122,17 @@ class AgentTest(ServerTestCase):
             self.assertEqual(current['scope']['classCount'], count)
             self.assertEqual(current['platform']['reading']['effectiveSeconds'], effective)
             self.assertEqual(current['platform']['voice']['total'], voices)
-            self.assertNotIn('bindings', current['platform'])
-            self.assertNotIn('devices', current['platform']['devices'])
+            if role == 'principal':
+                self.assertIn('bindings', current['platform'])
+                self.assertIn('devices', current['platform']['devices'])
+            else:
+                self.assertNotIn('bindings', current['platform'])
+                self.assertNotIn('devices', current['platform']['devices'])
             serialized = json.dumps(data, ensure_ascii=False)
             for secret in ['PRIVATE-AUDIO', '/private/', 'SECRET-SENDER', 'classId', 'deviceId', 'token_hash', 'recentTexts', self.device['deviceId']]:
                 self.assertNotIn(secret, serialized)
-            self.assertTrue(all(f['view'] not in {'controls', 'classes', 'teachers'} for f in card['findings']))
+            if role != 'principal':
+                self.assertTrue(all(f['view'] not in {'controls', 'classes', 'teachers'} for f in card['findings']))
             self.assertEqual(card['temporal'], 'mixed')
             if role == 'teacher':
                 self.assertNotIn('高二', serialized)
@@ -194,7 +199,11 @@ class AgentTest(ServerTestCase):
         data, card, _ = self.agent.query('query_data', {'topic': 'rules'}, self.scope(), admin)
         self.assertEqual(data['current']['rules']['reading']['threshold'], 87)
         self.assertEqual(card['actions'][0]['anchor'], 'rules')
-        for role in ('teacher', 'director', 'principal'):
+        principal = await self.login_staff('principal')
+        for topic in ('accounts', 'bindings', 'rules'):
+            data, _, _ = self.agent.query('query_data', {'topic': topic}, self.scope(), principal)
+            self.assertIn(topic, data['current'])
+        for role in ('teacher', 'director'):
             user = await self.login_staff(role)
             for topic in ('accounts', 'bindings'):
                 with self.assertRaises(PermissionError):
@@ -302,7 +311,7 @@ class AgentTest(ServerTestCase):
         self.assertNotIn('OpenAI', visible)
         self.assertEqual(visible, events[-1]['message']['content'])
 
-    async def test_director_school_analysis_does_not_expand_operational_or_admin_permissions(self):
+    async def test_director_has_three_grade_operations_but_not_school_configuration(self):
         await self.seed()
         user = await self.login_staff('director')
         for topic in ['reading', 'notifications', 'voice', 'sync', 'devices', 'platform']:
@@ -312,11 +321,11 @@ class AgentTest(ServerTestCase):
         for topic in ['accounts', 'bindings']:
             with self.assertRaises(PermissionError):
                 self.agent.query('query_data', {'topic': topic}, self.scope(), user)
-        self.assertFalse(service.can_access_class(self.db, user, self.other))
+        self.assertTrue(service.can_access_class(self.db, user, self.other))
         response, _ = await self.json_request('GET', '/api/reading/report?start=' + self.day + '&end=' + self.day + '&classId=' + self.other)
-        self.assertEqual(response.status, 403)
-        response, _ = await self.json_request('POST', '/api/classes/' + self.other + '/control', {'volume': 30}, csrf=True)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(response.status, 200)
+        response, _ = await self.json_request('POST', '/api/classes/' + self.other + '/control', {'action': 'set_volume', 'volume': 30}, csrf=True)
+        self.assertEqual(response.status, 409)  # Authorized class has no bound device.
 
     async def test_explicit_other_class_in_question_is_rejected_before_any_model_or_overview(self):
         await self.seed()

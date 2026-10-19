@@ -38,11 +38,13 @@ class AnswerPolicyTest(unittest.TestCase):
 
     def test_scope_explanation_uses_trusted_role(self):
         self.assertIn('分配给您的班级', local_reply('我可以分析其他班吗？', 'teacher'))
-        for role in ['director', 'principal', 'superadmin']:
+        self.assertIn('高一、高二、高三', local_reply('我可以分析全校吗？', 'director'))
+        self.assertIn('您负责年级', local_reply('我可以分析其他班吗？', 'grade_leader'))
+        for role in ['principal', 'superadmin']:
             self.assertIn('全校', local_reply('我可以分析全校吗？', role))
 
     def test_capability_answers_accept_both_forms_of_address_and_reply_respectfully(self):
-        for role in ['teacher', 'director', 'principal', 'superadmin']:
+        for role in ['teacher', 'grade_leader', 'director', 'principal', 'superadmin']:
             for question in ['你能做什么？', '您能做什么？', '班班，您能做什么？']:
                 with self.subTest(role=role, question=question):
                     answer = local_reply(question, role)
@@ -50,6 +52,10 @@ class AnswerPolicyTest(unittest.TestCase):
                     self.assertNotIn('你', answer)
                     if role == 'teacher':
                         self.assertIn('您获授权的班级', answer)
+                    elif role == 'grade_leader':
+                        self.assertIn('您负责年级的全部班级', answer)
+                    elif role == 'director':
+                        self.assertIn('高一、高二、高三', answer)
                     else:
                         self.assertIn('全校或指定班级', answer)
 

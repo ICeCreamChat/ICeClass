@@ -164,7 +164,7 @@ class AccountConnections:
         return {'source': source, 'configured': bool(cfg['apiKey']), 'enabled': cfg['enabled'],
                 'personal': public_config(personal),
                 'school': {'configured': bool(school['apiKey']), 'enabled': school['enabled']},
-                'canManageSchool': user['role'] == 'superadmin'}
+                'canManageSchool': user['role'] in {'superadmin', 'principal'}}
 
     def save(self, user, body):
         if not isinstance(body, dict) or body.get('source') not in {'school', 'personal'}:

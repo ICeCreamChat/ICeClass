@@ -367,7 +367,7 @@ class ReadingFeature:
         return web.Response(body=("\ufeff" + output.getvalue()).encode("utf-8"), content_type="text/csv", charset="utf-8", headers={"Content-Disposition": 'attachment; filename="morning-reading.csv"'})
 
     async def controls(self, request):
-        user = self.admin(request)
+        user = self.user(request)
         if isinstance(user, web.Response):
             return user
         from management import device_summary
@@ -377,18 +377,19 @@ class ReadingFeature:
             FROM devices d JOIN classes c ON c.id=d.class_id LEFT JOIN classroom_controls cc ON cc.class_id=c.id
             LEFT JOIN device_telemetry t ON t.device_id=d.id WHERE d.deleted_at IS NULL ORDER BY c.name,d.name""")
         counts = {r['class_id']: r['n'] for r in self.db.all('SELECT class_id,COUNT(*) n FROM devices WHERE enabled=1 AND deleted_at IS NULL GROUP BY class_id')}
+        rows = [r for r in rows if self.access(self.db, user, r['class_id'], include_disabled=True)]
         for row in rows:
             device_summary(row, self.rooms, counts)
             row["capabilities"] = json.loads(row["capabilities"] or "[]")
         return self.reply({"devices": rows})
 
     async def command(self, request):
-        user = self.admin(request)
+        user = self.user(request)
         if isinstance(user, web.Response):
             return user
         class_id = request.match_info["class_id"]
         if not self.access(self.db, user, class_id):
-            return self.reply({"error": "班级不存在或已停用。"}, 404)
+            return self.reply({"error": "没有此班级的操作权限，或班级已停用。"}, 403)
         if not self.db.one("SELECT id FROM devices WHERE class_id=? AND enabled=1 AND deleted_at IS NULL", (class_id,)):
             return self.reply({"error": "该班级尚未绑定启用的教室设备。"}, 409)
         try:

@@ -28,6 +28,8 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 from reading import install_reading
+from permissions import (GRADES, STAFF_ROLES, SCHOOL_ROLES, MANAGER_ROLES, scope_sql,
+                         class_ids, can_manage_user, managed_roles, capabilities, class_grade, can_manage_grade)
 from management import install_management, check_school_code, record_computer_info, device_summary
 from banban import install_banban
 from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
@@ -55,8 +57,6 @@ CLASSROOM_VOICE_RATE_LIMIT = 3
 LOGIN_FAILURE_LIMIT = 10
 LOGIN_FAILURE_WINDOW_MS = 300_000
 LOGIN_BLOCK_MS = 300_000
-STAFF_ROLES = {"teacher", "director", "principal"}
-SCHOOL_ROLES = {"superadmin", "principal"}
 
 JSON_HEADERS = {"Content-Type": "application/json; charset=utf-8"}
 SECURITY_HEADERS = {
@@ -176,6 +176,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.db.row_factory = sqlite3.Row
+        self.db.create_function('class_grade', 1, class_grade, deterministic=True)
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
@@ -187,17 +188,21 @@ class Store:
 
     def _ensure_staff_roles(self) -> None:
         definition = self.db.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]
-        if "'director'" in definition and "'principal'" in definition:
+        if "'grade_leader'" in definition:
             return
         # Rebuild the parent table with foreign keys suspended, preserving child rows.
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         replacement = re.search(r"CREATE TABLE users \([\s\S]*?\n\);", schema).group(0)
         extras = self.db.execute("SELECT sql FROM sqlite_master WHERE tbl_name='users' AND type IN ('index','trigger') AND sql IS NOT NULL").fetchall()
+        columns = [row[1] for row in self.db.execute('PRAGMA table_info(users)')]
         self.db.execute("PRAGMA foreign_keys=OFF")
         try:
             with self.transaction():
                 self.db.execute(replacement.replace("CREATE TABLE users", "CREATE TABLE users_role_upgrade", 1))
-                self.db.execute("INSERT INTO users_role_upgrade SELECT * FROM users")
+                if 'deleted_at' in columns:
+                    self.db.execute('ALTER TABLE users_role_upgrade ADD COLUMN deleted_at INTEGER')
+                names = ','.join(columns)
+                self.db.execute(f"INSERT INTO users_role_upgrade ({names}) SELECT {names} FROM users")
                 self.db.execute("DROP TABLE users")
                 self.db.execute("ALTER TABLE users_role_upgrade RENAME TO users")
                 for item in extras:
@@ -208,6 +213,10 @@ class Store:
             self.db.execute("PRAGMA foreign_keys=ON")
 
     def _ensure_feature_schema(self) -> None:
+        self.db.execute("""CREATE TABLE IF NOT EXISTS user_grades (
+            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            grade TEXT NOT NULL CHECK(grade IN ('高一','高二','高三'))
+        )""")
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(shouts)").fetchall()}
         additions = {
             "content_type": "TEXT NOT NULL DEFAULT 'text'",
@@ -471,6 +480,8 @@ def current_user(request: web.Request) -> dict[str, Any] | None:
     return {
         "id": row["id"], "username": row["username"], "displayName": row["display_name"],
         "role": row["role"], "csrfToken": row["csrf_token"],
+        "grade": (store(request).one('SELECT grade FROM user_grades WHERE user_id=?', (row['id'],)) or {}).get('grade'),
+        "permissions": capabilities(row),
     }
 
 
@@ -489,9 +500,16 @@ def require_admin(request: web.Request) -> dict[str, Any] | web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
         return user
-    if user["role"] != "superadmin":
+    if user["role"] not in SCHOOL_ROLES:
         return json_response({"error": "没有执行此操作的权限。"}, 403)
     return user
+
+
+def require_manager(request: web.Request) -> dict[str, Any] | web.Response:
+    user = require_user(request)
+    if isinstance(user, web.Response):
+        return user
+    return user if user['role'] in MANAGER_ROLES else json_response({'error': '没有管理权限。'}, 403)
 
 
 def audit(db: Store, actor_id: str, action: str, target_type: str, target_id: str | None, detail: str | None) -> None:
@@ -593,13 +611,8 @@ async def update_quiet_hours(request: web.Request) -> web.Response:
 
 def can_access_class(db: Store, user: dict[str, Any], class_id: str, include_disabled: bool = False) -> bool:
     enabled = "" if include_disabled else " AND c.enabled=1"
-    if user["role"] in SCHOOL_ROLES:
-        row = db.one(f"SELECT 1 ok FROM classes c WHERE c.id=?{enabled}", (class_id,))
-    else:
-        row = db.one(
-            f"SELECT 1 ok FROM teacher_classes tc JOIN classes c ON c.id=tc.class_id WHERE tc.user_id=? AND tc.class_id=?{enabled}",
-            (user["id"], class_id),
-        )
+    clause, args = scope_sql(user)
+    row = db.one(f'SELECT 1 ok FROM classes c WHERE c.id=?{enabled} AND {clause}', (class_id, *args))
     return bool(row)
 
 
@@ -753,6 +766,8 @@ async def login(request: web.Request) -> web.Response:
     response = json_response({"user": {
         "id": account["id"], "username": account["username"], "displayName": account["display_name"],
         "role": account["role"], "csrfToken": csrf,
+        "grade": (db.one('SELECT grade FROM user_grades WHERE user_id=?', (account['id'],)) or {}).get('grade'),
+        "permissions": capabilities(account),
     }})
     response.set_cookie(
         "iceclass_session", token, path="/", httponly=True, secure=True, samesite="Strict",
@@ -805,25 +820,17 @@ async def list_classes(request: web.Request) -> web.Response:
     if isinstance(user, web.Response):
         return user
     db = store(request)
-    if user["role"] in SCHOOL_ROLES:
-        rows = db.all(
-            """SELECT c.*, (SELECT COUNT(*) FROM teacher_classes tc WHERE tc.class_id=c.id) teacher_count,
+    clause, args = scope_sql(user)
+    rows = db.all(f"""SELECT c.*, (SELECT COUNT(*) FROM teacher_classes tc JOIN users u ON u.id=tc.user_id
+               WHERE tc.class_id=c.id AND u.deleted_at IS NULL AND u.role='teacher') teacher_count,
                (SELECT MAX(last_seen_at) FROM devices d WHERE d.class_id=c.id AND d.enabled=1) last_seen_at
-               FROM classes c ORDER BY c.name"""
-        )
-    else:
-        rows = db.all(
-            """SELECT c.*, 0 teacher_count,
-               (SELECT MAX(last_seen_at) FROM devices d WHERE d.class_id=c.id AND d.enabled=1) last_seen_at
-               FROM classes c JOIN teacher_classes tc ON tc.class_id=c.id WHERE tc.user_id=? ORDER BY c.name""",
-            (user["id"],),
-        )
+               FROM classes c WHERE {clause} ORDER BY c.name""", args)
     rows.sort(key=lambda row: class_sort_key(row.get("name")))
     return json_response({"classes": rows})
 
 
 async def create_class(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     body = await read_json(request) or {}
@@ -833,6 +840,8 @@ async def create_class(request: web.Request) -> web.Response:
     class_id = str(uuid.uuid4())
     timestamp = now_ms()
     db = store(request)
+    if not can_manage_grade(db, user, class_grade(name)):
+        return json_response({'error': '只能在负责的年级创建班级。'}, 403)
     try:
         with db.transaction():
             db.run("INSERT INTO classes(id, name, enabled, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", (class_id, name, timestamp, timestamp))
@@ -843,7 +852,7 @@ async def create_class(request: web.Request) -> web.Response:
 
 
 async def batch_create_classes(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     body = await read_json(request) or {}
@@ -855,6 +864,8 @@ async def batch_create_classes(request: web.Request) -> web.Response:
     if not GRADE_RE.match(grade) or start < 1 or end > 60 or start > end:
         return json_response({"error": "请选择年级，并填写有效的起止班号。"}, 400)
     db = store(request)
+    if not can_manage_grade(db, user, grade):
+        return json_response({'error': '不能管理其他年级。'}, 403)
     timestamp = now_ms()
     created: list[str] = []
     with db.transaction():
@@ -871,7 +882,7 @@ async def batch_create_classes(request: web.Request) -> web.Response:
 
 
 async def update_class(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     class_id = request.match_info["class_id"]
@@ -879,10 +890,14 @@ async def update_class(request: web.Request) -> web.Response:
     existing = db.one("SELECT name, enabled FROM classes WHERE id=?", (class_id,))
     if not existing:
         return json_response({"error": "班级不存在。"}, 404)
+    if not can_access_class(db, user, class_id, include_disabled=True):
+        return json_response({'error': '没有此班级的管理权限。'}, 403)
     body = await read_json(request) or {}
     name = existing["name"] if "name" not in body else normalize_class_name(body.get("name"))
     if not name:
         return json_response({"error": "班级名称应为 2 至 40 个字符。"}, 400)
+    if not can_manage_grade(db, user, class_grade(name)):
+        return json_response({'error': '不能将班级移动到其他管理范围。'}, 403)
     enabled = existing["enabled"] if "enabled" not in body else int(bool(body["enabled"]))
     try:
         db.run("UPDATE classes SET name=?, enabled=?, updated_at=? WHERE id=?", (name, enabled, now_ms(), class_id))
@@ -907,11 +922,13 @@ async def class_status(request: web.Request) -> web.Response:
 
 
 async def enrollment_code(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     class_id = request.match_info["class_id"]
     db = store(request)
+    if not can_access_class(db, user, class_id):
+        return json_response({'error': '没有此班级的管理权限。'}, 403)
     target = db.one("SELECT name FROM classes WHERE id=? AND enabled=1", (class_id,))
     if not target:
         return json_response({"error": "班级不存在或已停用。"}, 404)
@@ -988,17 +1005,57 @@ async def enroll_device(request: web.Request) -> web.Response:
 
 
 async def list_teachers(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     db = store(request)
     teachers = db.all("SELECT id, username, display_name, role, enabled, created_at FROM users WHERE role!='superadmin' AND deleted_at IS NULL ORDER BY username")
+    visible = []
     for teacher in teachers:
-        teacher["classes"] = db.all(
-            "SELECT c.id, c.name FROM teacher_classes tc JOIN classes c ON c.id=tc.class_id WHERE tc.user_id=? ORDER BY c.name",
-            (teacher["id"],),
-        )
-    return json_response({"teachers": teachers})
+        editable = can_manage_user(db, user, teacher)
+        if not editable and teacher['id'] != user['id']:
+            continue
+        clause, args = scope_sql(teacher)
+        teacher['classes'] = db.all(f'SELECT c.id,c.name,c.enabled FROM classes c WHERE {clause} ORDER BY c.name', args)
+        teacher['classes'].sort(key=lambda c: class_sort_key(c['name']))
+        teacher['grade'] = (db.one('SELECT grade FROM user_grades WHERE user_id=?', (teacher['id'],)) or {}).get('grade')
+        teacher['canManage'] = editable
+        visible.append(teacher)
+    return json_response({'teachers': visible, 'assignableRoles': capabilities(user)['assignableRoles']})
+
+
+def staff_assignment(db, actor, role, body, existing=None):
+    if role not in managed_roles(actor):
+        raise PermissionError('不能创建或授予此身份。')
+    if role == 'grade_leader':
+        grade = body.get('grade')
+        if grade is None and existing and existing['role'] == role:
+            grade = (db.one('SELECT grade FROM user_grades WHERE user_id=?', (existing['id'],)) or {}).get('grade')
+        if grade not in GRADES:
+            raise ValueError('请为年级部长选择负责年级。')
+        if not can_manage_grade(db, actor, grade):
+            raise PermissionError('不能授权其他年级。')
+        return [], grade
+    if role != 'teacher':
+        return [], None
+    requested = body.get('classIds')
+    if requested is None:
+        requested = [r['class_id'] for r in db.all('SELECT class_id FROM teacher_classes WHERE user_id=?', (existing['id'],))] if existing else []
+    if not isinstance(requested, list) or len(requested) > 200 or any(not isinstance(cid, str) for cid in requested):
+        raise ValueError('班级授权格式不正确。')
+    assigned = list(dict.fromkeys(requested))
+    if any(not db.one('SELECT id FROM classes WHERE id=?', (cid,)) for cid in assigned):
+        raise ValueError('有班级已不存在，请刷新后重试。')
+    if actor['role'] not in SCHOOL_ROLES and (not assigned or not set(assigned).issubset(class_ids(db, actor))):
+        raise PermissionError('只能授权本人管理范围内的班级。')
+    return assigned, None
+
+
+def save_staff_assignment(db, teacher_id, assigned, grade):
+    replace_teacher_classes(db, teacher_id, assigned)
+    db.run('DELETE FROM user_grades WHERE user_id=?', (teacher_id,))
+    if grade:
+        db.run('INSERT INTO user_grades(user_id,grade) VALUES(?,?)', (teacher_id, grade))
 
 
 def replace_teacher_classes(db: Store, teacher_id: str, requested: Any) -> None:
@@ -1006,13 +1063,13 @@ def replace_teacher_classes(db: Store, teacher_id: str, requested: Any) -> None:
     db.run("DELETE FROM teacher_classes WHERE user_id=?", (teacher_id,))
     for class_id in class_ids:
         db.run(
-            "INSERT INTO teacher_classes(user_id, class_id) SELECT ?, id FROM classes WHERE id=? AND enabled=1",
+            "INSERT INTO teacher_classes(user_id, class_id) SELECT ?, id FROM classes WHERE id=?",
             (teacher_id, class_id),
         )
 
 
 async def create_teacher(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     body = await read_json(request) or {}
@@ -1020,7 +1077,7 @@ async def create_teacher(request: web.Request) -> web.Response:
     display_name = str(body.get("displayName", "")).strip()
     role = body.get("role", "teacher")
     if not isinstance(role, str) or role not in STAFF_ROLES:
-        return json_response({"error": "请选择教师、主任或校长。"}, 400)
+        return json_response({"error": "请选择校长、主任、年级部长或班主任教师。"}, 400)
     if not USERNAME_RE.match(username):
         return json_response({"error": "用户名需为 3 至 64 位字母、数字或 ._@-。"}, 400)
     if not 1 <= len(display_name) <= 40:
@@ -1032,12 +1089,16 @@ async def create_teacher(request: web.Request) -> web.Response:
     timestamp = now_ms()
     db = store(request)
     try:
+        assigned, grade = staff_assignment(db, user, role, body)
+    except (ValueError, PermissionError) as error:
+        return json_response({'error': str(error)}, 403 if isinstance(error, PermissionError) else 400)
+    try:
         with db.transaction():
             db.run(
                 "INSERT INTO users(id, username, display_name, role, password_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
                 (teacher_id, username, display_name, role, hash_password(body["password"]), timestamp, timestamp),
             )
-            replace_teacher_classes(db, teacher_id, body.get("classIds"))
+            save_staff_assignment(db, teacher_id, assigned, grade)
             audit(db, user["id"], "teacher.create", "user", teacher_id, username)
     except sqlite3.IntegrityError:
         return json_response({"error": "用户名已经存在。"}, 409)
@@ -1045,34 +1106,40 @@ async def create_teacher(request: web.Request) -> web.Response:
 
 
 async def update_teacher(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     teacher_id = request.match_info["teacher_id"]
     db = store(request)
-    existing = db.one("SELECT display_name, role, enabled FROM users WHERE id=? AND role!='superadmin' AND deleted_at IS NULL", (teacher_id,))
+    existing = db.one("SELECT id, display_name, role, enabled FROM users WHERE id=? AND role!='superadmin' AND deleted_at IS NULL", (teacher_id,))
     if not existing:
         return json_response({"error": "账号不存在。"}, 404)
+    if not can_manage_user(db, user, existing):
+        return json_response({'error': '不能修改本人、上级或其他范围的账号。'}, 403)
     body = await read_json(request) or {}
     display_name = str(body.get("displayName", existing["display_name"])).strip()
     role = body.get("role", existing["role"])
     if not isinstance(role, str) or role not in STAFF_ROLES:
-        return json_response({"error": "请选择教师、主任或校长。"}, 400)
+        return json_response({"error": "请选择校长、主任、年级部长或班主任教师。"}, 400)
     if not 1 <= len(display_name) <= 40:
         return json_response({"error": "姓名应为 1 至 40 个字符。"}, 400)
     enabled = existing["enabled"] if "enabled" not in body else int(bool(body["enabled"]))
+    try:
+        assigned, grade = staff_assignment(db, user, role, body, existing)
+    except (ValueError, PermissionError) as error:
+        return json_response({'error': str(error)}, 403 if isinstance(error, PermissionError) else 400)
     with db.transaction():
         db.run("UPDATE users SET display_name=?, role=?, enabled=?, updated_at=? WHERE id=?", (display_name, role, enabled, now_ms(), teacher_id))
-        if "classIds" in body:
-            replace_teacher_classes(db, teacher_id, body["classIds"])
-        if not enabled or role != existing["role"]:
+        if any(key in body for key in ('classIds', 'grade', 'role')):
+            save_staff_assignment(db, teacher_id, assigned, grade)
+        if not enabled or role != existing["role"] or 'classIds' in body or 'grade' in body:
             db.run("DELETE FROM sessions WHERE user_id=?", (teacher_id,))
         audit(db, user["id"], "teacher.update", "user", teacher_id, json.dumps({"displayName": display_name, "role": role, "enabled": bool(enabled)}, ensure_ascii=False))
     return json_response({"ok": True})
 
 
 async def reset_teacher_password(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     body = await read_json(request) or {}
@@ -1081,6 +1148,9 @@ async def reset_teacher_password(request: web.Request) -> web.Response:
         return json_response({"error": error}, 400)
     teacher_id = request.match_info["teacher_id"]
     db = store(request)
+    target = db.one('SELECT id,role FROM users WHERE id=? AND deleted_at IS NULL', (teacher_id,))
+    if not target or not can_manage_user(db, user, target):
+        return json_response({'error': '没有此账号的管理权限。'}, 403)
     with db.transaction():
         cursor = db.run(
             "UPDATE users SET password_hash=?, updated_at=? WHERE id=? AND role!='superadmin' AND deleted_at IS NULL",
@@ -1094,22 +1164,11 @@ async def reset_teacher_password(request: web.Request) -> web.Response:
 
 
 async def set_teacher_classes(request: web.Request) -> web.Response:
-    user = require_admin(request)
-    if isinstance(user, web.Response):
-        return user
-    teacher_id = request.match_info["teacher_id"]
-    db = store(request)
-    if not db.one("SELECT id FROM users WHERE id=? AND role!='superadmin' AND deleted_at IS NULL", (teacher_id,)):
-        return json_response({"error": "账号不存在。"}, 404)
-    body = await read_json(request) or {}
-    with db.transaction():
-        replace_teacher_classes(db, teacher_id, body.get("classIds"))
-        audit(db, user["id"], "teacher.classes", "user", teacher_id, json.dumps(body.get("classIds") or [], ensure_ascii=False))
-    return json_response({"ok": True})
+    return await update_teacher(request)
 
 
 async def list_devices(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     rows = store(request).all(
@@ -1117,6 +1176,7 @@ async def list_devices(request: web.Request) -> web.Response:
            d.computer_name,d.os_version,d.local_addresses,d.identity_seen_at,d.binding_note,d.verified_at
            FROM devices d JOIN classes c ON c.id=d.class_id WHERE d.deleted_at IS NULL ORDER BY c.name, d.created_at DESC"""
     )
+    rows = [r for r in rows if can_access_class(store(request), user, r['class_id'], include_disabled=True)]
     rows.sort(key=lambda row: (*class_sort_key(row.get("class_name")), -int(row.get("created_at") or 0)))
     counts = {r['class_id']: r['n'] for r in store(request).all('SELECT class_id,COUNT(*) n FROM devices WHERE enabled=1 AND deleted_at IS NULL GROUP BY class_id')}
     for row in rows:
@@ -1125,7 +1185,7 @@ async def list_devices(request: web.Request) -> web.Response:
 
 
 async def update_device(request: web.Request) -> web.Response:
-    user = require_admin(request)
+    user = require_manager(request)
     if isinstance(user, web.Response):
         return user
     body = await read_json(request) or {}
@@ -1139,9 +1199,13 @@ async def update_device(request: web.Request) -> web.Response:
     device = db.one("SELECT id,class_id,name,enabled,binding_note,verified_at FROM devices WHERE id=? AND deleted_at IS NULL", (device_id,))
     if not device:
         return json_response({"error": "设备不存在。"}, 404)
+    if not can_access_class(db, user, device['class_id'], include_disabled=True):
+        return json_response({'error': '没有此设备的管理权限。'}, 403)
     cid = body.get('classId', device['class_id'])
     if not isinstance(cid, str) or (cid != device['class_id'] and not db.one('SELECT id FROM classes WHERE id=? AND enabled=1', (cid,))):
         return json_response({'error': '请选择启用的目标班级。'}, 400)
+    if not can_access_class(db, user, cid, include_disabled=True):
+        return json_response({'error': '没有目标班级的管理权限。'}, 403)
     name, note = body.get('name', device['name']), body.get('note', device['binding_note'])
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80 or not isinstance(note, str) or len(note.strip()) > 120:
         return json_response({'error': '设备名称应为 1 至 80 个字符，位置备注最多 120 个字符。'}, 400)
@@ -1335,9 +1399,9 @@ async def list_classroom_voice(request: web.Request) -> web.Response:
     if class_id:
         conditions.append("m.class_id=?")
         params.append(class_id)
-    if user["role"] not in SCHOOL_ROLES:
-        conditions.append("EXISTS (SELECT 1 FROM teacher_classes tc WHERE tc.user_id=? AND tc.class_id=m.class_id)")
-        params.append(user["id"])
+    clause, args = scope_sql(user, 'm.class_id')
+    conditions.append(clause)
+    params.extend(args)
     where = " AND ".join(conditions)
     rows = db.all(
         f"""SELECT m.id, m.class_id, c.name class_name, m.audio_duration_ms, m.created_at,
@@ -1409,10 +1473,9 @@ def history_query(request: web.Request, export: bool = False) -> tuple[dict[str,
         conditions.append("s.class_id=?")
         params.append(class_id)
     join = ""
-    if user["role"] not in SCHOOL_ROLES:
-        join = "JOIN teacher_classes tc ON tc.class_id=s.class_id"
-        conditions.append("tc.user_id=?")
-        params.append(user["id"])
+    clause, args = scope_sql(user, 's.class_id')
+    conditions.append(clause)
+    params.extend(args)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return user, f"{join} {where}", tuple(params)
 
@@ -1629,8 +1692,11 @@ async def cleanup(app: web.Application) -> None:
                WHERE m.audio_path IS NOT NULL AND (
                    m.expires_at<=? OR NOT EXISTS (
                        SELECT 1 FROM users u
-                       WHERE u.enabled=1 AND (u.role='principal' OR EXISTS (
-                           SELECT 1 FROM teacher_classes tc WHERE tc.user_id=u.id AND tc.class_id=m.class_id))
+                       WHERE u.enabled=1 AND u.deleted_at IS NULL AND (u.role IN ('principal','superadmin')
+                         OR (u.role='director' AND EXISTS (SELECT 1 FROM classes c WHERE c.id=m.class_id AND class_grade(c.name) IN ('高一','高二','高三')))
+                         OR (u.role='grade_leader' AND EXISTS (SELECT 1 FROM classes c JOIN user_grades ug ON ug.grade=class_grade(c.name) WHERE c.id=m.class_id AND ug.user_id=u.id))
+                         OR (u.role='teacher' AND EXISTS (
+                           SELECT 1 FROM teacher_classes tc WHERE tc.user_id=u.id AND tc.class_id=m.class_id)))
                          AND NOT EXISTS (
                              SELECT 1 FROM classroom_voice_receipts r
                              WHERE r.message_id=m.id AND r.user_id=u.id

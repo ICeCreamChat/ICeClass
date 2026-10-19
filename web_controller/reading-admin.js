@@ -41,7 +41,7 @@
     row.append(days, start, node('span', '至'), end, remove); $('readingPeriods').append(row);
   }
   async function loadSettings(refreshEditor = false) {
-    if (window.ICeClass.state.user.role !== 'superadmin') return;
+    if (!['superadmin', 'principal'].includes(window.ICeClass.state.user.role)) return;
     const data = await api('/api/reading/settings'); config = data.config;
     $('readingRuleStatus').textContent = config.enabled ? `已启用统计 · 声量门槛 ${config.threshold} · ${config.periods.length} 个时段 · 北京时间 · 晨读提醒${config.reminderEnabled !== false ? '已开启' : '已关闭'}` : '尚未启用统计。管理员保存统计时段后，各班活动自动计入。';
     $('readingRuleStatus').dataset.enabled = String(config.enabled);
@@ -199,9 +199,9 @@
     void loadSettings(true).catch(error);
     void loadReport().catch(error);
     setInterval(() => { if (!$('view-reading').classList.contains('hidden')) void loadReport().catch(() => {}); }, 15000);
-    setInterval(() => { if (!$('view-controls').classList.contains('hidden') && window.ICeClass.state.user.role === 'superadmin') void loadControls().catch(() => {}); }, 5000);
+    setInterval(() => { if (!$('view-controls').classList.contains('hidden') ) void loadControls().catch(() => {}); }, 5000);
   }
   window.addEventListener('iceclass-ready', initialize);
-  window.addEventListener('iceclass-classes-changed', () => {syncClasses();void loadReport().catch(error);if(window.ICeClass.state.user.role==='superadmin')void loadControls().catch(error);});
+  window.addEventListener('iceclass-classes-changed', () => {syncClasses();void loadReport().catch(error);void loadControls().catch(error);});
   initialize();
 })();

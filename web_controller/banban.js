@@ -68,12 +68,14 @@
     return m ? '高' + ({1: '一', 2: '二', 3: '三'}[m[1]] || m[1]) : '其他';
   }
   function canOpenScope(target) {
-    if (window.ICeClass.state.user.role !== 'director') return true;
-    // School-wide analysis does not grant new permissions on operational pages.
     if (!analysisClasses) return false;
     const own = new Set(window.ICeClass.state.classes.map(c => c.id));
+    if (target.classId) return own.has(target.classId);
     const selected = classesForAnalysis().filter(c => (!target.classId || c.id === target.classId) && (!target.grades?.length || target.grades.includes(gradeOf(c.name))));
     return selected.length > 0 && selected.every(c => own.has(c.id));
+  }
+  function canOpenView(view) {
+    return !['classes', 'teachers'].includes(view) || ['superadmin', 'principal', 'director', 'grade_leader'].includes(window.ICeClass.state.user.role);
   }
   function fromPage() {
     const view = document.querySelector('#mainNav button.active')?.dataset.view;
@@ -103,7 +105,7 @@
     const range = className || (scope.grades || '').split(',').filter(Boolean).join('、') || (schoolAnalysis ? '全校' : classesForAnalysis().length === 1 ? classesForAnalysis()[0].name : '我的班级');
     const dates = scope.start === scope.end ? scope.start.slice(5) : `${scope.start.slice(5)} — ${scope.end.slice(5)}`;
     $('bbScopeLabel').textContent = `${dates} · ${range}`;
-    $('bbScopeLabel').title = `${scope.start} 至 ${scope.end} · ${range} · ${schoolAnalysis ? '全校只读分析' : '仅分析管理员分配的班级'}`;
+    $('bbScopeLabel').title = `${scope.start} 至 ${scope.end} · ${range} · ${schoolAnalysis ? '全校数据分析' : '仅分析本人负责范围内的班级'}`;
     $('bbScopeToggle').setAttribute('aria-label', '分析范围：' + $('bbScopeLabel').title);
   }
   function modeNote() {
@@ -314,7 +316,7 @@
       }); card.append(rows);
     }
     const names = {reading: '查看晨读', history: '查看回执', console: '班级通知', 'classroom-voice': '查看来音', controls: '查看设备', classes: '班级管理', teachers: '用户管理', quiet: '禁言时间', settings: '账号设置'};
-    const allowed = view => Boolean(names[view]) && (!['controls', 'classes', 'teachers'].includes(view) || window.ICeClass.state.user.role === 'superadmin') && (['quiet', 'settings'].includes(view) || canOpenScope(data.scope));
+    const allowed = view => Boolean(names[view]) && canOpenView(view) && (['quiet', 'settings'].includes(view) || canOpenScope(data.scope));
     const findings = Array.isArray(data.findings) ? data.findings : [];
     function findingItem(item) {
       const line = allowed(item.view) ? button('', 'bb-finding', () => navigate(item.view, data.scope)) : node('div', undefined, 'bb-finding');
@@ -348,7 +350,7 @@
   function followups(cards = []) {
     const row = $('bbFollowups'); row.replaceChildren(); row.hidden = !cards.length;
     const topic = cards.at(-1)?.topic;
-    const admin = window.ICeClass.state.user.role === 'superadmin';
+    const admin = ['superadmin', 'principal'].includes(window.ICeClass.state.user.role);
     const choices = topic === 'platform' ? [['看看晨读同步', '核对刚才范围各班的晨读同步情况。'], [admin ? '检查设备与绑定' : '通知回执呢？', admin ? '核对当前设备连接、版本和班级绑定，有哪些需要人工检查？' : '核对刚才范围的通知回执。']]
       : topic === 'devices' || topic === 'bindings' ? [[admin ? '绑定核查' : '操作指南', admin ? '检查当前范围的班级绑定，哪些班级无设备或有多台设备，需要怎样核实？' : '教室客户端怎样绑定和更新？'], ['统计规则', '解释当前统计规则与通知禁言规则。']]
       : topic === 'rules' || topic === 'accounts' || topic === 'help' ? [['平台检查', '综合检查当前范围的晨读、通知、来音与设备状态。']]
@@ -610,7 +612,7 @@
   }
   function navigate(view, target = {}, anchor) {
     if (!['reading', 'history', 'console', 'classroom-voice', 'controls', 'classes', 'teachers', 'quiet', 'settings'].includes(view)) return;
-    if (['controls', 'classes', 'teachers'].includes(view) && window.ICeClass.state.user.role !== 'superadmin') return;
+    if (!canOpenView(view)) return;
     const nav = document.querySelector(`#mainNav button[data-view="${view}"]`);
     if (!nav || nav.disabled) return;
     nav.click();
@@ -621,7 +623,7 @@
       document.querySelector('[data-reading-grade="all"]')?.click();
       expected.forEach(g => document.querySelector(`[data-reading-grade="${g}"]`)?.click());
       $('readingClass').value = target.classId || ''; $('readingRefresh').click();
-      if (anchor === 'rules' && window.ICeClass.state.user.role === 'superadmin') {
+      if (anchor === 'rules' && ['superadmin', 'principal'].includes(window.ICeClass.state.user.role)) {
         const rules = $('readingSettingsForm')?.closest('details');
         if (rules) { rules.open = true; rules.scrollIntoView({block: 'start'}); }
       }
@@ -885,7 +887,7 @@
     ['bbKey', 'bbBaseUrl', 'bbModel'].forEach(id => $(id).removeAttribute('aria-invalid'));
     $('bbSettingsTitle').textContent = settingsTarget === 'school' ? '学校服务设置' : '连接设置';
     $('bbSettingsIntro').textContent = settingsTarget === 'school' ? '修改后将影响选择“学校提供”的账号。' : '选择班班使用的 AI 服务。';
-    $('bbManageSchool').hidden = window.ICeClass.state.user.role !== 'superadmin';
+    $('bbManageSchool').hidden = !['superadmin', 'principal'].includes(window.ICeClass.state.user.role);
     $('bbManageSchool').textContent = settingsTarget === 'school' ? '返回个人设置' : '管理学校服务';
     const school = data.school;
     $('bbSchoolTitle').textContent = !school?.configured ? '学校服务尚未配置' : !school.enabled ? '学校智能分析已关闭' : '学校服务已配置';
@@ -1028,7 +1030,7 @@
     document.body.append(root); $('bbLauncher').prepend(mascot()); $('bbSayHello').append(mascot()); $('bbHeaderMascot').append(mascot());
     character = window.ICeClassBanbanMotion(root);
     renderPrompts();
-    $('bbHistoryAdmin').hidden = window.ICeClass.state.user.role !== 'superadmin';
+    $('bbHistoryAdmin').hidden = !['superadmin', 'principal'].includes(window.ICeClass.state.user.role);
     const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
     function motion() { root.classList.toggle('bb-reduced', motionPreference.matches); character.reduce(motionPreference.matches); }
     motion();

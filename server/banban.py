@@ -91,7 +91,7 @@ class Banban:
     def public_config(self, user=None):
         cfg = self.config(user)
         public = {'configured': bool(cfg['apiKey']), 'enabled': cfg['enabled'], 'source': cfg.get('source', 'school')}
-        if user is None or user['role'] == 'superadmin':
+        if user is None or user['role'] in {'superadmin', 'principal'}:
             public.update(model=cfg['model'], baseUrl=cfg['baseUrl'])
         return public
 
@@ -137,9 +137,6 @@ class Banban:
             return self.s.json_response({'error': str(error)}, 400)
 
     def can_analyze_class(self, db, user, class_id, include_disabled=False):
-        if user['role'] in SCHOOL_ANALYSIS_ROLES:
-            enabled = '' if include_disabled else ' AND enabled=1'
-            return bool(db.one('SELECT 1 ok FROM classes WHERE id=?' + enabled, (class_id,)))
         return self.s.can_access_class(db, user, class_id, include_disabled=include_disabled)
 
     def roster(self, user):

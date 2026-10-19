@@ -131,19 +131,19 @@ class BanbanPlatform:
             ('console', '发送班级通知', '在班级通知选择已授权班级，检查内容后手动发送；班班可以分析回执，不代为发送。'),
             ('history', '核对通知回执', '历史记录查看发送与白板显示状态；显示回执不等于已经阅读。'),
             ('classroom-voice', '查看教室来音', '在教室来音页面由您手动查看；班班只分析累计数量、时长，更早数据可能不完整。'),
-            ('quiet', '通知禁言时间', '禁言时间页面查看禁言时段；超级管理员维护规则。'),
-            ('settings', '个人账号与教室客户端', '网页“账号与设备”查看当前账号并修改自己的密码，超级管理员还可管理绑定电脑；网页没有客户端下载或检查更新按钮。安装包由管理员通过现有分发渠道提供，检查更新在教室电脑的 EXE 托盘菜单或客户端设置中完成，安装绑定也在教室电脑操作。')]
+            ('quiet', '通知禁言时间', '禁言时间页面查看禁言时段；校长与超级管理员维护全校规则。'),
+            ('settings', '个人账号与教室客户端', '网页“账号设置”可修改自己的密码；校长、主任和年级部长在各自范围内管理绑定电脑。安装包由学校提供，检查更新在教室电脑的托盘菜单或客户端设置中完成，安装绑定也在教室电脑操作。')]
         if admin:
             rows += [('controls', '检查教室设备', '教室控制核对在线、最近联系、电脑信息、版本和音量回报；调整与停用由您确认执行。'),
                      ('classes', '班级换届与绑定', '班级管理可更名、重新对应班级；先核对实际电脑，多个设备不一定是绑错；更名保留原班级历史。'),
-                     ('teachers', '管理平台账号', '用户管理可创建、停用或删除账号并分配班级；教师的班班分析限分配班级，主任、校长和超级管理员可做全校只读分析；其他页面操作权限不随之扩大。'),
-                     ('reading', '修改统计规则', '早读统计页的全校统计规则由超级管理员维护星期、起止时间、提醒与声量门槛；本地活动参数在陪伴内设置。')]
+                     ('teachers', '管理平台账号', '用户管理可创建、停用或删除账号并分配班级；班主任教师限本人班级，年级部长限负责年级，主任覆盖高一至高三，校长和超级管理员覆盖全校。'),
+                     ('reading', '修改统计规则', '早读统计页的全校统计规则由校长与超级管理员维护星期、起止时间、提醒与声量门槛；本地活动参数在陪伴内设置。')]
         return [{'view': view, 'title': title, 'text': text} for view, title, text in rows]
 
     def read(self, snapshot, topic, user):
-        admin = user['role'] == 'superadmin'
+        admin = user['role'] in {'superadmin', 'principal'}
         if topic in {'bindings', 'accounts'} and not admin:
-            raise PermissionError('此项仅超级管理员可查看。')
+            raise PermissionError('此项仅校长与超级管理员可查看。')
         card = {'topic': topic, 'title': TITLES[topic], 'scope': snapshot['scope'],
                 'generatedAt': snapshot['generatedAt'], 'previousScope': None, 'metrics': [],
                 'temporal': 'current' if topic in CURRENT_TOPICS else 'mixed' if topic in {'platform', 'sync'} else 'period',
@@ -201,13 +201,16 @@ class BanbanPlatform:
                     'basis': '当前全校账号汇总，不含姓名、账号、密码、会话和已删除账号。'}
             metrics(('平台账号', data['total'], 'accounts'), ('已启用', data['enabled'], 'accounts'), ('已停用', data['total'] - data['enabled'], 'accounts'))
             card['scopeLabel'] = '当前全校账号'
-            labels = {'teacher': '教师', 'director': '主任', 'principal': '校长', 'superadmin': '超级管理员'}
+            labels = {'teacher': '班主任教师', 'grade_leader': '年级部长', 'director': '主任', 'principal': '校长', 'superadmin': '超级管理员'}
             card['details'] = [f"{labels.get(c['role'], '其他')} · {'启用' if c['enabled'] else '停用'} {c['amount']} 个" for c in roles]
             action('teachers')
         elif topic == 'help':
             data = {'guides': self.guides(admin), 'readOnly': True}
             if user['role'] == 'director':
-                data['scopeNote'] = '主任可在班班内做全校只读分析；其他页面仍按原分配班级开放，不会因此扩大通知发送或管理权限。'
+                data['scopeNote'] = '主任可分析高一、高二、高三的班级，并管理三个年级范围内的班级、设备及下级账号。'
+                card['details'].append(data['scopeNote'])
+            elif user['role'] == 'grade_leader':
+                data['scopeNote'] = '年级部长可分析负责年级的全部班级，并管理本年级的班级、设备及班主任教师账号。'
                 card['details'].append(data['scopeNote'])
             card['scopeLabel'] = '与您当前权限对应的操作指南'
             for guide in data['guides']:

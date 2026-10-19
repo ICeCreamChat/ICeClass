@@ -93,13 +93,16 @@ class BanbanTest(ServerTestCase):
             self.assertEqual(snapshot['notifications']['total'], count + 1)
             self.assertEqual(snapshot['devices']['total'], 1)
             response, _ = await self.json_request('GET', '/api/banban/settings')
-            self.assertEqual(response.status, 403)
+            self.assertEqual(response.status, 200 if role == 'principal' else 403)
             response, _ = await self.json_request('PUT', '/api/banban/settings',
                 {'enabled': False, 'model': 'deepseek-flash'}, csrf=True)
-            self.assertEqual(response.status, 403)
-            self.assertEqual(data['schoolAnalysis'], role != 'teacher')
+            self.assertEqual(response.status, 200 if role == 'principal' else 403)
+            self.assertEqual(data['schoolAnalysis'], role == 'principal')
             self.assertEqual(len(data['classes']), count)
-            self.assertNotIn('model', data['connection'])
+            if role == 'principal':
+                self.assertIn('model', data['connection'])
+            else:
+                self.assertNotIn('model', data['connection'])
             if role == 'teacher':
                 self.assertNotIn('高二班级专属通知', json.dumps(snapshot, ensure_ascii=False))
                 for method in ['GET', 'POST']:

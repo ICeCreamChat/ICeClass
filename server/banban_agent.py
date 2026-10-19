@@ -410,7 +410,7 @@ class BanbanAgent:
             now = datetime.fromtimestamp(self.s.now_ms() / 1000, SHANGHAI)
             names = {c['id']: c['name'] for c in access['classes']}
             brief = {'today': now.date().isoformat(), 'weekday': now.isoweekday(), 'currentPage': page,
-                     'role': user['role'], 'availableTopics': [t for t in TOPICS if user['role'] == 'superadmin' or t not in {'accounts', 'bindings'}],
+                     'role': user['role'], 'availableTopics': [t for t in TOPICS if user['role'] in {'superadmin', 'principal'} or t not in {'accounts', 'bindings'}],
                      'currentScope': {**scope, 'className': names.get(scope.get('classId'), '')},
                      'authorizedClasses': list(names.values())}
             brief['currentScope'].pop('classId', None)

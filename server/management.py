@@ -1,4 +1,4 @@
-"""ICe-only record management and school-wide classroom enrollment."""
+"""Scoped school management and classroom enrollment."""
 from __future__ import annotations
 
 import hmac
@@ -114,7 +114,7 @@ class Management:
                 self.app[self.service.LOGGER_KEY].warning('Could not remove cleared audio file: %s', target.name)
 
     async def rename_classes(self, request):
-        user = self.service.require_admin(request)
+        user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
         body = await self.service.read_json(request) or {}
         changes = body.get('changes')
@@ -128,6 +128,9 @@ class Management:
             if not name:
                 return self.service.json_response({'error': '班级名称应为 2 至 40 个字符。'}, 400)
             proposed[item['id']] = name
+            if (not self.service.can_access_class(self.db, user, item['id'], include_disabled=True)
+                    or not self.service.can_manage_grade(self.db, user, self.service.class_grade(name))):
+                return self.service.json_response({'error': '只能调整管理范围内的班级。'}, 403)
         if len(set(proposed.values())) != len(proposed):
             return self.service.json_response({'error': '更新后的班级名称不能重复。'}, 409)
         with self.db.transaction():
@@ -150,9 +153,11 @@ class Management:
         return self.service.json_response({'updated': len(proposed)})
 
     async def delete_class(self, request):
-        user = self.service.require_admin(request)
+        user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
         cid = request.match_info['class_id']
+        if not self.service.can_access_class(self.db, user, cid, include_disabled=True):
+            return self.service.json_response({'error': '没有此班级的管理权限。'}, 403)
         row = self.db.one('SELECT name FROM classes WHERE id=?', (cid,))
         if not row: return self.service.json_response({'error': '班级不存在。'}, 404)
         body = await self.confirmed(request, row['name'])
@@ -177,13 +182,13 @@ class Management:
         return self.service.json_response({'deleted': True})
 
     async def delete_user(self, request):
-        user = self.service.require_admin(request)
+        user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
         uid = request.match_info['teacher_id']
-        row = self.db.one('SELECT username,role FROM users WHERE id=? AND deleted_at IS NULL', (uid,))
+        row = self.db.one('SELECT id,username,role FROM users WHERE id=? AND deleted_at IS NULL', (uid,))
         if not row: return self.service.json_response({'error': '账号不存在。'}, 404)
-        if row['role'] == 'superadmin' or uid == user['id']:
-            return self.service.json_response({'error': '不能删除超级管理员 ICe。'}, 403)
+        if not self.service.can_manage_user(self.db, user, row):
+            return self.service.json_response({'error': '不能删除本人、上级或其他范围的账号。'}, 403)
         body = await self.confirmed(request, row['username'])
         if isinstance(body, web.Response): return body
         with self.db.transaction():
@@ -192,16 +197,19 @@ class Management:
                         ('deleted-' + uid, self.service.hash_password(self.service.random_token()), self.service.now_ms(), self.service.now_ms(), uid))
             self.db.run('DELETE FROM sessions WHERE user_id=?', (uid,))
             self.db.run('DELETE FROM teacher_classes WHERE user_id=?', (uid,))
+            self.db.run('DELETE FROM user_grades WHERE user_id=?', (uid,))
             self.db.run('DELETE FROM classroom_voice_receipts WHERE user_id=?', (uid,))
             self.service.audit(self.db, user['id'], 'user.delete', 'user', uid, json.dumps({'username': row['username']}, ensure_ascii=False))
         return self.service.json_response({'deleted': True})
 
     async def delete_device(self, request):
-        user = self.service.require_admin(request)
+        user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
         did = request.match_info['device_id']
         row = self.db.one('SELECT name,class_id FROM devices WHERE id=? AND deleted_at IS NULL', (did,))
         if not row: return self.service.json_response({'error': '设备不存在。'}, 404)
+        if not self.service.can_access_class(self.db, user, row['class_id'], include_disabled=True):
+            return self.service.json_response({'error': '没有此设备的管理权限。'}, 403)
         body = await self.confirmed(request, row['name'])
         if isinstance(body, web.Response): return body
         paths = [r['audio_path'] for r in self.db.all('SELECT audio_path FROM classroom_voice_messages WHERE device_id=?', (did,))]
@@ -217,9 +225,11 @@ class Management:
         return self.service.json_response({'deleted': True})
 
     async def clear_records(self, request):
-        user = self.service.require_admin(request)
+        user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
         cid = request.match_info['class_id']
+        if not self.service.can_access_class(self.db, user, cid, include_disabled=True):
+            return self.service.json_response({'error': '没有此班级的管理权限。'}, 403)
         row = self.db.one('SELECT name FROM classes WHERE id=?', (cid,))
         if not row: return self.service.json_response({'error': '班级不存在。'}, 404)
         body = await self.confirmed(request, row['name'])

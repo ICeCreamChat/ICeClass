@@ -4,7 +4,7 @@ CREATE TABLE users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL COLLATE NOCASE UNIQUE,
   display_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('superadmin', 'teacher', 'director', 'principal')),
+  role TEXT NOT NULL CHECK (role IN ('superadmin', 'teacher', 'director', 'principal', 'grade_leader')),
   password_hash TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   created_at INTEGER NOT NULL,

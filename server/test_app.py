@@ -241,7 +241,7 @@ class ICeClassServerTest(ServerTestCase):
         legacy_path = Path(self.temp.name) / "legacy.db"
         connection = sqlite3.connect(legacy_path)
         legacy_schema = service.SCHEMA_PATH.read_text(encoding="utf-8").replace(
-            "('superadmin', 'teacher', 'director', 'principal')", "('superadmin', 'teacher')")
+            "('superadmin', 'teacher', 'director', 'principal', 'grade_leader')", "('superadmin', 'teacher')")
         connection.executescript(legacy_schema)
         connection.execute(
             "INSERT INTO users(id, username, display_name, role, password_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, 1, 1)",
@@ -286,53 +286,48 @@ class ICeClassServerTest(ServerTestCase):
     async def test_staff_roles_scope_and_rule_permissions(self) -> None:
         await self.bootstrap_and_login()
         admin_cookie, admin_csrf = self.cookie, self.csrf
-        class_ids = []
+        class_ids, staff = [], {}
         for number in (1, 2):
             response, result = await self.json_request("POST", "/api/classes", {"name": f"高一（{number}）班"}, csrf=True)
             self.assertEqual(response.status, 201, result)
             class_ids.append(result["id"])
-        staff = {}
         for role in ("director", "principal"):
             response, result = await self.json_request("POST", "/api/teachers", {
                 "username": role, "displayName": role, "password": "StaffPassword123",
-                "role": role, "classIds": [class_ids[0]] if role == "director" else []}, csrf=True)
+                "role": role, "classIds": [class_ids[0]]}, csrf=True)
             self.assertEqual(response.status, 201, result)
             staff[role] = result["id"]
-        response, result = await self.json_request("POST", "/api/teachers", {
+        response, _ = await self.json_request("POST", "/api/teachers", {
             "username": "second.admin", "displayName": "第二管理员", "password": "StaffPassword123", "role": "superadmin"}, csrf=True)
-        self.assertEqual(response.status, 400, result)
-        response, result = await self.json_request("GET", "/api/teachers")
-        self.assertEqual({row["role"] for row in result["teachers"]}, {"director", "principal"})
-        for role in ("director", "principal"):
+        self.assertEqual(response.status, 400)
+        for number, role in enumerate(("director", "principal"), 1):
             response, result = await self.json_request("POST", "/api/auth/login", {"username": role, "password": "StaffPassword123"})
-            self.assertEqual(response.status, 200, result)
             self.cookie = response.headers["Set-Cookie"].split(";", 1)[0]
             self.csrf = result["user"]["csrfToken"]
-            response, result = await self.json_request("GET", "/api/classes")
-            expected = {class_ids[0]} if role == "director" else set(class_ids)
-            self.assertEqual({row["id"] for row in result["classes"]}, expected)
-            response, result = await self.json_request("GET", "/api/reading/report")
-            self.assertEqual(response.status, 200, result)
-            self.assertEqual({row["classId"] for row in result["rows"]}, expected)
-            response, result = await self.json_request("PUT", "/api/reading/settings", {}, csrf=True)
-            self.assertEqual(response.status, 403, result)
-            response, result = await self.json_request("POST", "/api/classes", {"name": "高二（1）班"}, csrf=True)
-            self.assertEqual(response.status, 403, result)
+            for path, field in [("/api/classes", "classes"), ("/api/reading/report", "rows")]:
+                response, result = await self.json_request("GET", path)
+                self.assertEqual(response.status, 200, result)
+                self.assertEqual({row.get("id", row.get("classId")) for row in result[field]}, set(class_ids))
+            response, _ = await self.json_request("PUT", "/api/reading/settings", {}, csrf=True)
+            self.assertEqual(response.status, 400 if role == "principal" else 403)
+            response, result = await self.json_request("POST", "/api/classes", {"name": f"高二（{number}）班"}, csrf=True)
+            self.assertEqual(response.status, 201, result)
+            class_ids.append(result['id'])
         principal_cookie = self.cookie
         self.cookie, self.csrf = admin_cookie, admin_csrf
-        response, result = await self.json_request("PATCH", f"/api/teachers/{staff['principal']}", {
-            "role": "director", "classIds": [class_ids[0]]}, csrf=True)
-        self.assertEqual(response.status, 200, result)
+        response, _ = await self.json_request("PATCH", f"/api/teachers/{staff['principal']}", {
+            "role": "grade_leader", "grade": "高一"}, csrf=True)
+        self.assertEqual(response.status, 200)
         self.cookie = principal_cookie
-        response, result = await self.json_request("GET", "/api/classes")
-        self.assertEqual(response.status, 401, result)
+        response, _ = await self.json_request("GET", "/api/classes")
+        self.assertEqual(response.status, 401)
         response, result = await self.json_request("POST", "/api/auth/login", {"username": "principal", "password": "StaffPassword123"})
         self.cookie = response.headers["Set-Cookie"].split(";", 1)[0]
         self.csrf = result["user"]["csrfToken"]
         response, result = await self.json_request("GET", "/api/classes")
-        self.assertEqual({row["id"] for row in result["classes"]}, {class_ids[0]})
-        response, result = await self.json_request("GET", f"/api/reading/report?classId={class_ids[1]}")
-        self.assertEqual(response.status, 403, result)
+        self.assertEqual({row['id'] for row in result['classes']}, set(class_ids[:2]))
+        response, _ = await self.json_request("GET", f"/api/reading/report?classId={class_ids[-1]}")
+        self.assertEqual(response.status, 403)
 
     async def test_quiet_hours_require_teacher_confirmation_and_mark_history(self) -> None:
         await self.bootstrap_and_login()

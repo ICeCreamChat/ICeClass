@@ -224,8 +224,9 @@ class HistoryTest(ServerTestCase):
     async def test_weekly_policy_validation_csrf_and_schedule(self):
         await self.seed()
         user = self.admin()
-        cid = self.history.create(user)['id']
-        self.add(user, cid, '不会在改周期时立即删除')
+        with patch.object(service, 'now_ms', return_value=stamp(2026, 10, 18, 20)):
+            cid = self.history.create(user)['id']
+            self.add(user, cid, '不会在改周期时立即删除')
         result, _ = await self.json_request('PUT', '/api/banban/history-policy', {'cycle':'weekly'})
         self.assertEqual(result.status, 403)
         for invalid in [[], {}, {'cycle':[]}, {'cycle':None}, {'cycle':'daily'}]:

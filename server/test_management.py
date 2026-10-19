@@ -191,7 +191,7 @@ class ManagementTest(ServerTestCase):
         _, other = await self.json_request('POST', '/api/classes', {'name': '未绑定班级'}, csrf=True)
         response, _ = await self.json_request('POST', '/api/classes/' + other['id'] + '/control', {'action': 'set_volume', 'volume': 50}, csrf=True)
         self.assertEqual(response.status, 409)
-        for role in ('teacher', 'director', 'principal'):
+        for role in ('teacher',):
             admin_cookie, admin_csrf = self.cookie, self.csrf
             await self.json_request('POST', '/api/teachers', {'username': role, 'displayName': role, 'password': 'TeacherPassword123', 'role': role, 'classIds': [device['classId']]}, csrf=True)
             response, login = await self.json_request('POST', '/api/auth/login', {'username': role, 'password': 'TeacherPassword123'})
