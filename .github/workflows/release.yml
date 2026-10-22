@@ -1,0 +1,152 @@
+name: Publish release
+run-name: Release ${{ inputs.tag || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag, for example v2.4.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  PYTHONUTF8: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  build:
+    name: Check and build Windows packages
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate tag format
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw 'Use an existing stable version tag such as v2.4.0.'
+          }
+
+      # Keep the workflow tools separate so manual runs can build older tags.
+      - name: Check out workflow tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tooling
+          persist-credentials: false
+
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          path: source
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Check release automation
+        run: python -m unittest discover -s tooling/tests -p test_github_release.py -v
+
+      - name: Check source versions and tag commit
+        id: metadata
+        run: python tooling/scripts/github_release.py validate --source source --tag "$env:RELEASE_TAG" --output "$env:GITHUB_OUTPUT"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: source/global.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install server dependencies
+        run: python -m pip install -r source/server/requirements.txt
+
+      - name: Install web dependencies
+        working-directory: source
+        run: npm ci
+
+      - name: Check server
+        working-directory: source
+        run: python -m unittest discover -s server -p 'test_*.py' -v
+
+      - name: Check TypeScript
+        working-directory: source
+        run: npm run typecheck
+
+      - name: Check legacy cloud backend
+        working-directory: source
+        run: npm test
+
+      - name: Check classroom core
+        working-directory: source
+        run: dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile
+
+      - name: Check teacher desktop
+        working-directory: source
+        run: dotnet run --project tests/DesktopChecks/DesktopChecks.csproj -c Release --no-launch-profile
+
+      - name: Build release packages
+        working-directory: source
+        run: ./scripts/package-release.ps1
+
+      - name: Verify packaged clients and start extracted server
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: python source/scripts/verify-release.py --directory source/dist/release --version "$env:RELEASE_VERSION" --output source/output/release-verification.json
+
+      - name: Prepare release assets and checksums
+        run: python tooling/scripts/github_release.py prepare --source source --tag "$env:RELEASE_TAG" --directory release-assets
+
+      - name: Save verified release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ env.RELEASE_TAG }}
+          path: release-assets/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out workflow tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tooling
+          persist-credentials: false
+
+      - name: Download verified release assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ env.RELEASE_TAG }}
+          path: release-assets
+
+      - name: Upload draft assets, verify them, and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tooling/scripts/github_release.py publish --tag "$RELEASE_TAG" --directory release-assets --repo "$GITHUB_REPOSITORY"

@@ -2,9 +2,9 @@
 
 **班级伴学与管理平台**，把早读陪伴、班级比赛、白板管理和远程通知放在同一套系统里。教师和管理员可用网页或 Windows 教师端；教室白板使用独立的教室端。
 
-ICeClass 班伴由 ICeCreamChat 维护，基于原 ICeCreamShouter 平台扩展为独立项目。当前正式版本 **2.3.0**，已部署到 [ICeClass 班伴平台](https://iceclass.icecreamchat.top/)。[下载教室端](https://iceclass.icecreamchat.top/download/ICeClass-classroom.zip) · [下载 Windows 教师端](https://iceclass.icecreamchat.top/download/ICeClass-teacher.zip) · [GitHub 发布页](https://github.com/ICeCreamChat/ICeClass/releases/latest)。升级与验证结果见 [2.3.0 发布记录](docs/发布记录-2.3.0.md)。
+ICeClass 班伴由 ICeCreamChat 维护，基于原 ICeCreamShouter 平台扩展为独立项目。学校平台当前部署版本为 **2.3.0**，地址为 [ICeClass 班伴平台](https://iceclass.icecreamchat.top/)。[学校平台教室端下载](https://iceclass.icecreamchat.top/download/ICeClass-classroom.zip) · [学校平台 Windows 教师端下载](https://iceclass.icecreamchat.top/download/ICeClass-teacher.zip) · [GitHub 发布页](https://github.com/ICeCreamChat/ICeClass/releases/latest)。学校平台的升级与验证结果见 [2.3.0 发布记录](docs/发布记录-2.3.0.md)。
 
-当前源码版本 **2.4.0**，新增教室岛课表、提醒、自动化与班班三种喊话，统一字体清晰度和设置排版。源码提交与本地试用包不代表线上已升级；正式服务器与下载仍以已部署的 2.3.0 为准。功能和验收记录见 [2.4.0 版本说明](docs/发布记录-2.4.0.md)。
+当前源码版本 **2.4.0**，新增教室岛课表、提醒、自动化与班班三种喊话，统一字体清晰度和设置排版。GitHub 安装包按版本标签自动构建；学校平台与正式下载另行部署，目前仍为 2.3.0。教室岛需要配套的 2.4.0 服务端。功能和验收记录见 [2.4.0 版本说明](docs/发布记录-2.4.0.md)。
 
 四种活动和视频随客户端提供，断网照常运行，统计先保存本机、联网后补传，客户端更新支持续传。正式服务器、教室端下载及教师端更新接口已升级到 2.3.0，原账号、班级绑定和早读规则保留。使用范围和本地验证记录见 [2.3.0 验收说明](docs/本地验收-2.3.0.md)。
 
@@ -86,7 +86,9 @@ dotnet run --project tests/DesktopChecks/DesktopChecks.csproj -c Release
 powershell.exe -NoProfile -File scripts/test-desktop-update.ps1
 ```
 
-双击 `build.bat` 生成自带运行环境的 `dist/receiver/ICeClass.exe`。管理员运行 `package-release.bat` 生成 Windows 完整交付、服务端和精简教室端三个 ZIP；精简包只含 EXE、一步说明和教师端入口。配置正式地址后运行 `prepare-delivery.bat` 生成教师快捷方式和教室交付目录。教室电脑不需要安装 .NET、Python 或 Node.js。
+推送版本标签后，GitHub Actions 会自动检查、构建四种安装 ZIP、生成 Ubuntu 更新脚本和 SHA256，并发布对应的 Release。已有标签可通过 Actions 的 **Publish release → Run workflow** 补发；操作与权限见 [GitHub 自动发布](docs/GitHub自动发布.md)。GitHub 发版与学校服务器部署分开进行。
+
+双击 `build.bat` 生成自带运行环境的 `dist/receiver/ICeClass.exe`。管理员运行 `package-release.bat` 生成 Windows 完整交付、服务端、精简教室端和 Windows 教师端四个 ZIP；精简包只含 EXE、一步说明和教师端入口。配置正式地址后运行 `prepare-delivery.bat` 生成教师快捷方式和教室交付目录。教室电脑不需要安装 .NET、Python 或 Node.js。
 
 双击 `build-desktop.bat` 生成 `dist/desktop/ICeClass.Desktop.exe` 和独立安装 ZIP。`start-desktop-preview.bat` 使用独立本机资料连接 `http://127.0.0.1:8838/`；请先启动该本地验收服务。完整发布脚本也会生成桌面安装 ZIP，并将桌面更新 EXE 与信息放入服务器包的 `desktop_release/`；不包含个人登录资料或 API Key。
 
