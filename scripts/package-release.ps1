@@ -31,8 +31,13 @@ try {
     foreach ($directory in @('server', 'cloud\migrations', 'receiver_release', 'desktop_release', 'scripts')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $serverRoot $directory) | Out-Null
     }
-    foreach ($name in @('app.py', 'desktop_release.py', 'reading.py', 'reading_xlsx.py', 'offline_reading.py', 'management.py', 'banban.py', 'banban_agent.py', 'banban_connections.py', 'banban_history.py', 'banban_platform.py', 'banban_policy.py', 'requirements.txt', 'install-ubuntu.sh')) {
-        Copy-Item -LiteralPath (Join-Path $projectRoot "server\$name") -Destination (Join-Path $serverRoot "server\$name")
+    $serverModules = Get-ChildItem -LiteralPath (Join-Path $projectRoot 'server') -File |
+        Where-Object { $_.Extension -eq '.py' -and $_.Name -notlike 'test_*' -and $_.Name -ne 'preview.py' }
+    foreach ($module in $serverModules) {
+        Copy-Item -LiteralPath $module.FullName -Destination (Join-Path $serverRoot 'server')
+    }
+    foreach ($name in @('requirements.txt', 'install-ubuntu.sh')) {
+        Copy-Item -LiteralPath (Join-Path $projectRoot "server\$name") -Destination (Join-Path $serverRoot 'server')
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update-ubuntu.sh') -Destination (Join-Path $serverRoot 'scripts\update-ubuntu.sh')
     Copy-Item -LiteralPath (Join-Path $projectRoot 'web_controller') -Destination $serverRoot -Recurse

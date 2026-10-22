@@ -106,9 +106,6 @@ try {
         New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot $relativeDirectory) | Out-Null
     }
     foreach ($relativeFile in @(
-        'server\app.py',
-        'server\reading.py',
-        'server\management.py',
         'server\requirements.txt',
         'server\install-ubuntu.sh',
         'web_controller\index.html',
@@ -124,8 +121,12 @@ try {
     )) {
         Copy-Item -LiteralPath (Join-Path (Get-Location) $relativeFile) -Destination (Join-Path $packageRoot $relativeFile) -Force
     }
-    Copy-Item -LiteralPath (Join-Path (Get-Location) 'web_controller\reading') -Destination (Join-Path $packageRoot 'web_controller') -Recurse -Force
-    Copy-Item -LiteralPath (Join-Path (Get-Location) 'web_controller\assets') -Destination (Join-Path $packageRoot 'web_controller') -Recurse -Force
+    $serverModules = Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'server') -File |
+        Where-Object { $_.Extension -eq '.py' -and $_.Name -notlike 'test_*' -and $_.Name -ne 'preview.py' }
+    foreach ($module in $serverModules) {
+        Copy-Item -LiteralPath $module.FullName -Destination (Join-Path $packageRoot 'server') -Force
+    }
+    Copy-Item -Path (Join-Path (Get-Location) 'web_controller\*') -Destination (Join-Path $packageRoot 'web_controller') -Recurse -Force
     Copy-Item -LiteralPath $receiverExecutable -Destination (Join-Path $packageRoot 'receiver_release\ICeClass.exe') -Force
     $manifest = [ordered]@{
         version = $receiverVersion

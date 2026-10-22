@@ -1,0 +1,157 @@
+#view-island { max-width: 1500px; }
+main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
+.island-top { margin-bottom: 22px; }
+.island-top h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.5px; }
+.island-toolbar, .island-inline, .island-section-heading, .island-rule-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.island-toolbar { margin-bottom: 20px; align-items: flex-end; gap: 12px 16px; }
+.island-class-field { display: grid; gap: 6px; width: 260px; max-width: 100%; font-size: 14px; font-weight: 600; color: var(--muted); }
+.island-class-field select { font-weight: 400; color: var(--text); }
+.island-files { display: flex; gap: 8px; margin-left: auto; }
+.island-layout { display: grid; gap: 20px; min-width: 0; }
+.island-main, .island-preview-panel, .island-delivery-panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.island-main { position: relative; }
+.island-savebar { position: sticky; top: 64px; z-index: 12; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 22px; background: var(--surface); border-bottom: 1px solid var(--line); border-radius: 14px 14px 0 0; box-shadow: 0 3px 10px #00000003; }
+.island-savebar > div { min-width: 0; }
+.island-savebar strong { display: block; font-size: 15px; overflow-wrap: anywhere; line-height: 1.5; }
+.island-savebar span { display: block; color: var(--muted); font-size: 13px; line-height: 1.6; }
+#view-island[data-dirty=true] #islandDirty { color: var(--orange); }
+.island-savebar > button { flex: none; min-width: 112px; }
+.island-tabs { display: flex; gap: 4px; padding: 10px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.island-tabs button { flex: none; border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 9px 14px; min-height: 42px; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.island-tabs button:hover { background: var(--bg); }
+.island-tabs button.active { color: var(--blue); background: var(--blue-soft); }
+#islandTabContent { padding: 24px; min-height: 280px; scroll-margin-top: 150px; }
+.island-section-heading { justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 12px 24px; }
+.island-section-heading > div { flex: 1; min-width: 200px; }
+.island-section-heading h2 { font-size: 19px; margin: 0 0 5px; letter-spacing: 0; }
+.island-section-heading .hint { max-width: 720px; }
+.island-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px 24px; margin: 18px 0; }
+.island-filters .island-field { width: 220px; max-width: 100%; }
+.island-field { display: flex; flex-direction: column; align-self: start; gap: 7px; min-width: 0; margin: 0; font-size: 14px; }
+.island-field > label, .island-field-label { font-weight: 600; color: var(--text); line-height: 1.5; }
+.island-field > small, .island-toggle small { color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.65; }
+.island-field.is-full { grid-column: 1 / -1; }
+.island-field.is-short { max-width: 240px; }
+.island-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-size: 14px; line-height: 1.6; }
+.island-toggle > span { display: grid; gap: 2px; }
+.island-toggle.is-disabled, .island-field.is-disabled { opacity: .6; }
+.island-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 24px; align-items: start; }
+.island-group { padding: 0; border: 0; margin: 26px 0 0; min-width: 0; }
+.island-group + .island-group { border-top: 1px solid var(--line); padding-top: 24px; }
+.island-group > legend { float: left; width: 100%; padding: 0; margin: 0 0 5px; font-size: 16px; font-weight: 600; }
+.island-group > .hint { clear: both; margin-bottom: 16px; }
+.island-group > .island-fields { clear: both; }
+.island-details { padding-top: 20px; margin-top: 20px; border-top: 1px solid var(--line); }
+.island-details > summary { cursor: pointer; color: var(--text); font-size: 14px; font-weight: 600; min-height: 36px; }
+.island-details[open] > summary { margin-bottom: 12px; }
+#islandTabContent input, #islandTabContent select, #islandTabContent textarea, .island-dialog input { width: 100%; min-width: 0; font-size: 14px; }
+#islandTabContent textarea { min-height: 84px; line-height: 1.7; }
+#islandTabContent input[type=checkbox], .island-dialog input[type=checkbox] { width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; flex: none; accent-color: var(--blue); }
+#islandTabContent [aria-invalid=true] { border-color: var(--red); }
+#islandTabContent .island-field-error { display: block; margin: 4px 0 0; color: var(--red); font-size: 13px; line-height: 1.6; }
+#islandTabContent .table-wrap { margin: 18px 0 8px; }
+#islandTabContent th, #islandTabContent td { padding: 10px 8px; font-size: 14px; vertical-align: middle; }
+#islandTabContent th { font-size: 13px; font-weight: 600; }
+.island-week { isolation: isolate; }
+.island-week table { min-width: 880px; table-layout: fixed; }
+.island-week th:first-child { width: 126px; }
+.island-week td:first-child, .island-week th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.island-slot-label { display: grid; gap: 4px; line-height: 1.5; }
+.island-slot-label strong { font-size: 14px; font-weight: 600; }
+.island-slot-label small { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.island-cell { display: grid; align-content: center; gap: 4px; width: 100%; min-height: 60px; padding: 8px 7px; border: 1px solid transparent; border-radius: 8px; background: var(--bg); color: var(--text); text-align: center; line-height: 1.55; }
+.island-cell:hover { background: var(--blue-soft); border-color: #0071e345; }
+.island-cell strong, .island-cell small { display: block; overflow-wrap: anywhere; white-space: normal; }
+.island-cell strong { font-size: 14px; font-weight: 600; }
+.island-cell small { color: var(--muted); font-size: 12px; }
+.island-cell.is-empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.island-cell.is-empty strong { font-weight: 400; }
+.island-split-lesson { display: block; font-size: 13px; }
+.island-split-lesson + .island-split-lesson { padding-top: 4px; border-top: 1px solid var(--line); }
+.island-scroll-hint { display: none; }
+.island-slots table { min-width: 600px; table-layout: fixed; }
+.island-slots th:first-child { width: 34%; }
+.island-slots th:last-child { width: 90px; }
+.island-rule { border: 1px solid var(--line); border-radius: 11px; padding: 20px; margin: 16px 0 0; }
+.island-rule-heading { justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.island-rule-heading h3 { font-size: 16px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.island-rule-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.island-rule-actions .btn { min-height: 36px; padding: 5px 11px; font-size: 13px; }
+.island-rule > .hint { margin-top: 14px; }
+.island-weekdays { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 0; border: 0; margin: 20px 0 0; }
+.island-weekdays legend { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.island-empty { padding: 34px 24px; margin: 20px 0 4px; background: var(--bg); border-radius: 10px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.8; }
+.island-empty strong { display: block; font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.island-empty .btn { margin-top: 16px; }
+.island-error, .island-notice { margin: 16px 22px; padding: 12px 16px; border-radius: 9px; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; scroll-margin-top: 150px; }
+.island-error { background: var(--red-soft); color: var(--red); }
+.island-notice { background: var(--orange-soft); color: var(--orange); }
+.island-error:empty, .island-notice:empty { display: none; }
+.island-aside { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; align-items: start; min-width: 0; }
+.island-preview-panel, .island-delivery-panel { padding: 24px; }
+.island-aside h2 { font-size: 18px; margin: 0 0 6px; }
+.island-aside h3 { font-size: 14px; margin: 24px 0 4px; }
+.island-preview-options { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.island-preview-options .island-field:first-child { flex: 1; min-width: 145px; }
+.island-preview-options .island-field:nth-child(2) { width: 112px; }
+.island-preview-options .btn { font-size: 13px; padding-inline: 11px; }
+#islandPreviewSummary { margin-top: 10px; font-size: 13px; }
+.island-component-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.island-component-preview span { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.island-today { max-height: 340px; overflow: auto; scrollbar-width: thin; }
+.island-today-row { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 2px 14px; font-size: 14px; padding: 11px 0; border-bottom: 1px solid var(--line); line-height: 1.6; overflow-wrap: anywhere; }
+.island-today-row > span:first-child { font-size: 12px; font-variant-numeric: tabular-nums; }
+.island-today-row > span:last-child { grid-column: 2; font-size: 13px; }
+.island-today-row.is-current strong { color: var(--blue); }
+#islandDeliveryNote { font-size: 13px; margin-top: 12px; }
+.island-delivery-row { padding: 18px 0; border-bottom: 1px solid var(--line); font-size: 14px; overflow-wrap: anywhere; }
+.island-delivery-heading { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.island-delivery-heading > span { font-size: 13px; flex: none; }
+.island-delivery-row small { display: block; color: var(--muted); font-size: 13px; margin-top: 7px; line-height: 1.7; }
+#view-island .success-text { color: var(--green); }
+.island-dialog { width: min(520px, calc(100vw - 32px)); max-height: 88dvh; border: 1px solid var(--line); border-radius: 16px; padding: 26px; color: var(--text); background: var(--surface); overflow: auto; }
+.island-dialog::backdrop { background: #0d182b66; }
+.island-dialog .island-field { margin: 16px 0; }
+.island-dialog h2 { font-size: 20px; margin-bottom: 6px; }
+.island-dialog .island-inline { justify-content: flex-end; margin-top: 24px; }
+.island-dialog .island-inline .danger { margin-right: auto; }
+.island-copy-list { max-height: 280px; overflow: auto; padding: 0 5px; margin-top: 12px; border-block: 1px solid var(--line); }
+.island-copy-list .island-toggle { padding: 6px 0; }
+.island-copy-list [hidden] { display: none; }
+.island-copy-summary { min-height: 24px; margin-top: 10px; font-size: 14px; color: var(--muted); }
+@media (max-width: 1100px) {
+  .island-aside { grid-template-columns: minmax(0, 1fr); }
+  .island-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .island-scroll-hint { display: block; margin-top: 8px; }
+}
+@media (max-width: 600px) {
+  .island-top h1 { font-size: 25px; }
+  .island-toolbar { gap: 14px; }
+  .island-class-field { width: 100%; }
+  .island-files { margin-left: 0; }
+  #view-island .btn, .island-dialog .btn { min-height: 44px; }
+  .island-toolbar .island-inline { gap: 8px; }
+  .island-savebar { padding: 12px 14px; gap: 12px; }
+  .island-savebar strong { font-size: 14px; }
+  .island-savebar span { font-size: 12px; }
+  .island-savebar > button { min-width: 104px; padding-inline: 12px; }
+  .island-tabs { padding: 8px; }
+  .island-tabs button { min-height: 44px; padding-inline: 12px; }
+  #islandTabContent { padding: 20px 14px; }
+  .island-fields { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .island-field.is-short { max-width: none; }
+  .island-filters { gap: 16px; }
+  .island-filters .island-field { width: 100%; }
+  .island-rule { padding: 16px; }
+  .island-rule-heading { align-items: start; }
+  .island-rule-actions { width: 100%; margin: 0; }
+  .island-rule-actions .btn { flex: 1; }
+  .island-preview-panel, .island-delivery-panel { padding: 20px 16px; }
+  .island-error, .island-notice { margin-inline: 14px; }
+  .island-dialog { padding: 22px; }
+  .island-dialog .island-inline { gap: 8px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .island-cell { transition: background .15s, border-color .15s; }
+  .island-cell:active { transform: scale(.98); }
+}

@@ -9,6 +9,8 @@
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=9">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=4">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=11">
@@ -60,6 +62,7 @@
     <aside id="appSidebar" class="sidebar">
       <button id="sidebarClose" class="btn icon sidebar-close" type="button" aria-label="关闭功能菜单">×</button><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>教师工作台</small></div></div>      <nav id="mainNav" class="nav" aria-label="主要功能"><span class="nav-group-label">班级工作</span>
         <button data-view="reading" class="active"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6c-2-2-5-3-9-2v15c4-1 7 0 9 2 2-2 5-3 9-2V4c-4-1-7 0-9 2ZM12 6v15"/></svg></span><span data-label>早读统计</span></button>
+        <button data-view="island"><span class="nav-icon" aria-hidden="true"><img src="/assets/app-icon.png" width="20" height="20" alt=""></span><span data-label>教室岛</span></button>
         <button data-view="console"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span><span data-label>班级通知</span></button>
         <button data-view="classroom-voice"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>教室来音</span></button>
         <button data-view="controls" data-control><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.5"/></svg></span><span data-label>教室控制</span></button>
@@ -73,6 +76,34 @@
       <div class="sidebar-note"><span class="note-leaf" aria-hidden="true">✧</span><strong>陪伴每个班级的日常</strong><p>早读 · 通知 · 班班</p></div>
     </aside>
     <main id="mainContent" tabindex="-1">
+      <section id="view-island" class="view hidden" aria-label="教室岛配置">
+        <div class="island-top"><h1>教室岛</h1><p class="hint">设置班级课表、上下课提醒和教室屏幕上的信息。</p></div>
+        <div class="island-toolbar">
+          <label class="island-class-field" for="islandClass"><span>配置班级</span><select id="islandClass"></select></label>
+          <div class="island-inline"><button type="button" id="islandReload" class="btn">重新载入</button><button type="button" id="islandCopy" class="btn">复制到其他班级</button></div>
+          <div class="island-files"><button type="button" id="islandImport" class="btn">导入 Excel</button><button type="button" id="islandExport" class="btn" title="导出最近保存的作息、课表和临时调课">导出 Excel</button><input id="islandImportFile" type="file" accept=".xlsx" hidden></div>
+        </div>
+        <div class="island-layout"><div class="island-main">
+          <div class="island-savebar"><div><strong id="islandEditingClass">班级配置</strong><span id="islandDirty" role="status" aria-live="polite">尚未载入</span></div><button type="button" id="islandSave" class="btn primary" disabled>保存并下发</button></div>
+          <p id="islandError" class="island-error" role="alert" tabindex="-1"></p>
+          <p id="islandSyncNotice" class="island-notice" role="status"></p>
+          <div id="islandEditor" inert>
+            <div id="islandTabs" class="island-tabs" role="tablist" aria-label="教室岛设置分类"><button type="button" data-tab="timetable" class="active">周课表</button><button type="button" data-tab="slots">作息时间</button><button type="button" data-tab="overrides">临时调课</button><button type="button" data-tab="settings">提醒与外观</button><button type="button" data-tab="components">轮播信息</button><button type="button" data-tab="automation">自动化</button></div>
+            <div id="islandTabContent" role="tabpanel" tabindex="0"><p class="hint">选择班级后载入配置。</p></div>
+          </div>
+        </div>
+        <aside class="island-aside" aria-label="教室岛预览和同步状态">
+          <section class="island-preview-panel"><h2>内容预览</h2><p class="hint">使用当前编辑的设置。保存后，教室端才会更新。</p>
+            <div class="island-preview-options"><label class="island-field" for="islandPreviewDate">预览日期<input id="islandPreviewDate" type="date"></label><label class="island-field" for="islandPreviewTime">预览时间<input id="islandPreviewTime" type="time"></label><button type="button" id="islandPreviewNow" class="btn">当前时间</button></div>
+            <div id="islandPreviewStage" class="island-preview-stage"><div id="islandPreview" class="island-ribbon" role="img" aria-label="教室岛内容预览"></div></div>
+            <div id="islandMotionControls" class="island-motion-controls"><button type="button" id="islandPreviewPlay" class="btn">播放提醒</button><button type="button" id="islandPreviewExpand" class="btn">放大预览</button><label id="islandMotionSeekLabel" class="island-motion-seek" hidden>演示进度<input id="islandMotionSeek" type="range" min="0" max="22" step="0.05" value="0" aria-label="提醒演示进度"></label></div>
+            <p id="islandMotionNote" class="hint">快速演示课前提醒到上课的过程，不会向教室发送通知。</p>
+            <p id="islandPreviewSummary" class="hint"></p><div id="islandComponentPreview" class="island-component-preview"></div>
+            <h3 id="islandTodayTitle">当日课程</h3><div id="islandToday" class="island-today"></div>
+          </section>
+          <section class="island-delivery-panel"><h2>设备同步</h2><p class="hint">保存的配置会在教室端联网后自动同步。</p><p id="islandDeliveryNote" class="hint" role="status"></p><div id="islandDelivery"><p class="hint">载入班级后查看设备状态。</p></div></section>
+        </aside></div>
+      </section>
       <section id="view-console" class="view hidden">
         <div class="view-head"><div><h1>班级通知</h1><p>向所选班级发送文字或语音通知，并查看送达状态。</p></div></div>
         <div class="console-layout">
@@ -101,11 +132,11 @@
               <button class="phrase" type="button">眼保健操开始</button>
               <button class="phrase" type="button">请任课老师查看消息</button>
             </div>
-            <div class="level-heading"><span class="label">通知类型</span><span id="levelDescription" class="hint">右下角悬浮，默认显示 8 秒</span></div>
+            <div class="level-heading"><span class="label">通知类型</span><span id="levelDescription" class="hint">悬浮岛内静音展示，默认显示 8 秒</span></div>
             <div class="level-picker" role="radiogroup" aria-label="通知类型">
-              <label class="level-option info selected"><input type="radio" name="alertLevel" value="info" checked><span class="level-icon" aria-hidden="true">i</span><span><strong>普通</strong><small>右下角静音弹窗</small></span></label>
-              <label class="level-option warning"><input type="radio" name="alertLevel" value="warning"><span class="level-icon" aria-hidden="true">!</span><span><strong>重要</strong><small>顶部横幅并播放声音</small></span></label>
-              <label class="level-option urgent"><input type="radio" name="alertLevel" value="urgent"><span class="level-icon" aria-hidden="true">!</span><span><strong>紧急</strong><small>全屏提醒并播放声音</small></span></label>
+              <label class="level-option info selected"><input type="radio" name="alertLevel" value="info" checked><span class="level-icon" aria-hidden="true">i</span><span><strong>普通</strong><small>悬浮岛内静音展示</small></span></label>
+              <label class="level-option warning"><input type="radio" name="alertLevel" value="warning"><span class="level-icon" aria-hidden="true">!</span><span><strong>重要</strong><small>拉开岛身，突出正文并播放声音</small></span></label>
+              <label class="level-option urgent"><input type="radio" name="alertLevel" value="urgent"><span class="level-icon" aria-hidden="true">!</span><span><strong>紧急</strong><small>浅红岛条，正文直接出现并播放声音</small></span></label>
             </div>
             <details id="advancedSettings" class="advanced">
               <summary>更多设置</summary>
@@ -373,11 +404,12 @@
       const roleLabels = { superadmin: "超级管理员", teacher: "班主任教师", grade_leader: "年级部长", director: "主任", principal: "校长" };
       const isSchoolAdmin = () => ["superadmin", "principal"].includes(state.user?.role);
       const isManager = () => ["superadmin", "principal", "director", "grade_leader"].includes(state.user?.role);
-      const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "正在展示", failed: "处理失败" };
+      const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "已展示，待知晓", acknowledged: "教室已知晓", failed: "处理失败" };
+      const deliveryStatus = item => item.acknowledged_at ? "acknowledged" : item.status;
       const levelMeta = {
-        info: { label: "普通", mode: "右下角静音弹窗", sound: false, duration: 8, className: "info" },
-        warning: { label: "重要", mode: "顶部横幅并播放声音", sound: true, duration: 12, className: "warning" },
-        urgent: { label: "紧急", mode: "全屏提醒并播放声音", sound: true, duration: 20, className: "urgent" },
+        info: { label: "普通", mode: "悬浮岛内静音展示", sound: false, duration: 8, className: "info" },
+        warning: { label: "重要", mode: "拉开岛身，突出正文并播放声音", sound: true, duration: 12, className: "warning" },
+        urgent: { label: "紧急", mode: "浅红岛条，正文直接出现并播放声音", sound: true, duration: 20, className: "urgent" },
       };
 
       function selectedAlertLevel() { return document.querySelector('input[name="alertLevel"]:checked')?.value || "info"; }
@@ -802,7 +834,7 @@
         status.classList.toggle("active", Boolean(active));
         status.replaceChildren(
           el("strong", "", active ? "当前处于禁言时间" : "当前不在禁言时间"),
-          el("span", "", active ? `${active.name} ${active.startTime}–${active.endTime}；发送时会提醒教师再次确认。` : "发送通知前无需额外确认。进入下方时段后，将再次提醒。"),
+          el("span", "", active ? `${active.name} ${active.startTime}-${active.endTime}；发送时会提醒教师再次确认。` : "发送通知前无需额外确认。进入下方时段后，将再次提醒。"),
         );
       }
 
@@ -860,7 +892,8 @@
           addCell(row, item.content_type === "audio" ? `语音（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : "文字");
           addCell(row, item.content_type === "audio" ? "教师原声" : item.text);
           const cell = row.insertCell();
-          cell.append(statusBadge(item.status));
+          cell.append(statusBadge(deliveryStatus(item)));
+          if (item.acknowledged_at) cell.append(el("div", "hint", `知晓时间：${formatTime(item.acknowledged_at)}`));
           if (item.status_detail) cell.append(el("div", "hint", item.status_detail));
           const actions = row.insertCell();
           const deleteButton = actionButton("删除", () => deleteHistoryItem(item));
@@ -896,7 +929,7 @@
           meta.append(el("span", "", item.class_name), el("span", "", formatTime(item.created_at, true)));
           node.append(meta, levelBadge(item.alert_level));
           if (Number(item.quiet_override) === 1) node.append(el("div", "hint", "禁言时间内确认发送"));
-          node.append(el("p", "", item.content_type === "audio" ? `语音通知（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : item.text), statusBadge(item.status));
+          node.append(el("p", "", item.content_type === "audio" ? `语音通知（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : item.text), statusBadge(deliveryStatus(item)));
           list.append(node);
         }
       }
@@ -1039,8 +1072,8 @@
         if (quietPeriod) {
           $("quietWarningTitle").textContent = `当前处于禁言时间：${quietPeriod.name}`;
           $("quietWarningDetail").textContent = meta.sound
-            ? `${quietPeriod.startTime}–${quietPeriod.endTime}。发送后教室会显示通知并播放声音，是否仍然发送？`
-            : `${quietPeriod.startTime}–${quietPeriod.endTime}。发送后教室只显示静音弹窗，是否仍然发送？`;
+            ? `${quietPeriod.startTime}-${quietPeriod.endTime}。发送后教室会显示通知并播放声音，是否仍然发送？`
+            : `${quietPeriod.startTime}-${quietPeriod.endTime}。发送后悬浮岛会静音展示通知，是否仍然发送？`;
         }
         $("confirmTitle").textContent = quietPeriod ? "当前处于禁言时间" : level === "urgent" ? "确认发送紧急通知" : "确认发送通知";
         $("confirmSend").textContent = quietPeriod ? "仍然发送" : level === "urgent" ? "确认发送紧急通知" : "确认发送";
@@ -1049,15 +1082,16 @@
 
       async function pollDelivery(attempt) {
         clearTimeout(state.deliveryTimer);
-        if (!state.selectedShoutId || attempt > 20) return;
+        if (!state.selectedShoutId || attempt > 120) return;
         try {
           const data = await api(`/api/history?classId=${encodeURIComponent(state.selectedShoutClassId)}&limit=20`);
           const item = data.history.find(row => row.id === state.selectedShoutId);
           if (item) {
-            setDelivery(item.status, item.status_detail || "", statusLabels[item.status]);
+            const result = deliveryStatus(item);
+            setDelivery(result, item.status_detail || "", statusLabels[result]);
             state.recent = data.history.slice(0, 5);
             renderRecent();
-            if (["displayed", "failed", "offline"].includes(item.status)) return;
+            if (["acknowledged", "failed", "offline"].includes(result)) return;
           }
         } catch { /* Keep the current status and retry. */ }
         state.deliveryTimer = setTimeout(() => pollDelivery(attempt + 1), 1000);
@@ -1363,6 +1397,8 @@
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=7" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>

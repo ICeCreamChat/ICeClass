@@ -27,3 +27,8 @@ banban-settings.json
 receiver_release/
 desktop_release/
 .updates/
+
+# Local design/reference artifacts (including private account recovery files).
+/tmp/
+/图/
+/design-qa.md

@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Threading;
 
 namespace ICeClass.Receiver;
@@ -7,7 +8,9 @@ internal static class ReadingExperience
 {
     private static ReadingCompanionWindow? _window;
     public static bool IsOpen => _window is not null;
+    public static bool IsFullscreen => _window is { IsVisible: true, WindowState: WindowState.FullScreen };
     public static event Action? Opened;
+    public static event Action? StateChanged;
     private static Action? _returnHome;
     private static Action? _readingOpened;
     public static void Configure(Action returnHome, Action readingOpened) { _returnHome = returnHome; _readingOpened = readingOpened; }
@@ -23,8 +26,13 @@ internal static class ReadingExperience
             _window = window;
             Opened?.Invoke();
             window.HomeRequested += () => _returnHome?.Invoke();
-            window.Closed += (_, _) => { if (ReferenceEquals(_window, window)) _window = null; };
+            window.PropertyChanged += (_, args) =>
+            {
+                if (args.Property == Window.WindowStateProperty || args.Property == Window.IsVisibleProperty) StateChanged?.Invoke();
+            };
+            window.Closed += (_, _) => { if (ReferenceEquals(_window, window)) { _window = null; StateChanged?.Invoke(); } };
             window.Show(); window.BringForward(); _readingOpened?.Invoke();
+            StateChanged?.Invoke();
             try { await window.LoadAsync(token); }
             catch (OperationCanceledException) { await window.ReturnHomeAsync(false); throw; }
         });

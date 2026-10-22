@@ -27,7 +27,8 @@ with zipfile.ZipFile(package) as archive:
         assert (stage / item.filename).resolve().is_relative_to(stage.resolve())
     archive.extractall(stage)
 root = stage / 'ICeClass-server'
-assert (root / 'server/desktop_release.py').is_file()
+for required in ('server/desktop_release.py', 'server/permissions.py', 'server/island.py', 'server/island_xlsx.py', 'web_controller/island-admin.js', 'web_controller/island-admin.css', 'web_controller/island-ribbon.js', 'web_controller/island-ribbon.css'):
+    assert (root / required).is_file(), required
 for name in ('server/app.py', 'server/reading.py', 'server/reading_xlsx.py', 'server/offline_reading.py', 'server/management.py', 'server/banban.py', 'server/banban_agent.py', 'server/banban_connections.py', 'server/banban_history.py', 'server/banban_platform.py', 'server/banban_policy.py', 'web_controller/banban.js', 'web_controller/banban.css', 'web_controller/assets/banban/portrait.webp', 'web_controller/reading/desktop.js', 'web_controller/reading/offline-integration.js', 'web_controller/reading/particle-relief.js'):
     assert (root / name).is_file(), name
 for name in root.glob('server/*.py'):
@@ -51,7 +52,7 @@ prefix = 'ICeClass/教室端/'
 note = '''ICeClass 班伴 · 教室端
 
 将“教室端”整个文件夹解压到固定位置，双击 ICeClass.exe。
-首次输入全校绑定码 mas22，依次选择年级和班级。班级名单可刷新。
+首次输入管理员提供的当前全校绑定码，依次选择年级和班级。班级名单可刷新。
 新版首次运行创建桌面图标。关闭窗口只收起到托盘。
 早读在客户端内全屏打开；长按屏幕空白处 2 秒退出全屏。
 四种早读活动已内置，可离线使用；统计保存在本机，联网后自动补传。

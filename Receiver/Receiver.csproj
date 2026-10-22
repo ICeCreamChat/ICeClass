@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.3.0</Version>
+    <Version>2.4.0</Version>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
     <Description>班级伴学与管理平台</Description>
@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\assets\banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\reading\**\*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\*" LogicalName="ICeClass.Local/assets/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\favicon.ico" LogicalName="ICeClass.Local/favicon.ico" />

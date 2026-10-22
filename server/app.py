@@ -34,6 +34,7 @@ from management import install_management, check_school_code, record_computer_in
 from banban import install_banban
 from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
 from desktop_release import install_desktop_updates
+from island import install_island
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -224,6 +225,7 @@ class Store:
             "audio_size": "INTEGER",
             "audio_duration_ms": "INTEGER",
             "quiet_override": "INTEGER NOT NULL DEFAULT 0",
+            "acknowledged_at": "INTEGER",
         }
         for name, definition in additions.items():
             if name not in columns:
@@ -370,7 +372,7 @@ class Rooms:
     def _record_ack(self, class_id: str, message: dict[str, Any]) -> None:
         message_id = message.get("message_id")
         status = message.get("status")
-        if not isinstance(message_id, str) or status not in {"received", "displayed", "failed"}:
+        if not isinstance(message_id, str) or status not in {"received", "displayed", "acknowledged", "failed"}:
             return
         timestamp = now_ms()
         detail = message.get("detail")
@@ -378,13 +380,22 @@ class Rooms:
         if status == "received":
             self.store.run(
                 """UPDATE shouts SET status=CASE WHEN status='sent' THEN 'received' ELSE status END,
-                   received_at=COALESCE(received_at, ?), status_detail=? WHERE id=? AND class_id=?""",
+                   received_at=COALESCE(received_at, ?),
+                   status_detail=CASE WHEN status='sent' THEN ? ELSE status_detail END WHERE id=? AND class_id=?""",
                 (timestamp, detail, message_id, class_id),
             )
+        elif status == "acknowledged":
+            self.store.run(
+                """UPDATE shouts SET status='displayed', acknowledged_at=COALESCE(acknowledged_at, ?),
+                   displayed_at=COALESCE(displayed_at, ?), received_at=COALESCE(received_at, ?),
+                   status_detail='教室已点击“已知晓”' WHERE id=? AND class_id=?""",
+                (timestamp, timestamp, timestamp, message_id, class_id),
+            )
+            delete_audio_file(self.store, self.audio_root, message_id)
         elif status == "displayed":
             self.store.run(
-                """UPDATE shouts SET status='displayed', displayed_at=?, received_at=COALESCE(received_at, ?),
-                   status_detail=? WHERE id=? AND class_id=?""",
+                """UPDATE shouts SET status='displayed', displayed_at=COALESCE(displayed_at, ?), received_at=COALESCE(received_at, ?),
+                   status_detail=CASE WHEN acknowledged_at IS NULL THEN ? ELSE status_detail END WHERE id=? AND class_id=?""",
                 (timestamp, timestamp, detail, message_id, class_id),
             )
             delete_audio_file(self.store, self.audio_root, message_id)
@@ -1489,7 +1500,7 @@ async def list_history(request: web.Request) -> web.Response:
     offset = round(clamp(request.query.get("offset", 0), 0, 100_000, 0))
     rows = store(request).all(
         f"""SELECT s.id, s.class_id, c.name class_name, s.sender_name, s.text, s.alert_level, s.status,
-            s.status_detail, s.created_at, s.received_at, s.displayed_at, s.content_type,
+            s.status_detail, s.created_at, s.received_at, s.displayed_at, s.acknowledged_at, s.content_type,
             s.audio_duration_ms, s.quiet_override
             FROM shouts s JOIN classes c ON c.id=s.class_id {suffix}
             ORDER BY s.created_at DESC LIMIT ? OFFSET ?""",
@@ -1505,14 +1516,14 @@ async def export_history(request: web.Request) -> web.Response:
     _, suffix, params = query
     rows = store(request).all(
         f"""SELECT c.name class_name, s.sender_name, s.text, s.alert_level, s.status, s.status_detail, s.created_at,
-            s.received_at, s.displayed_at, s.content_type, s.audio_duration_ms, s.quiet_override
+            s.received_at, s.displayed_at, s.acknowledged_at, s.content_type, s.audio_duration_ms, s.quiet_override
             FROM shouts s JOIN classes c ON c.id=s.class_id {suffix}
             ORDER BY s.created_at DESC LIMIT 10000""",
         params,
     )
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["班级", "发送教师", "通知级别", "禁言时段确认发送", "内容类型", "时长（秒）", "喊话内容", "状态", "状态说明", "发送时间", "收到时间", "展示时间"])
+    writer.writerow(["班级", "发送教师", "通知级别", "禁言时段确认发送", "内容类型", "时长（秒）", "喊话内容", "状态", "状态说明", "发送时间", "收到时间", "展示时间", "人工知晓时间"])
     for row in rows:
         writer.writerow([
             row["class_name"], row["sender_name"], alert_level_label(row["alert_level"]),
@@ -1521,6 +1532,7 @@ async def export_history(request: web.Request) -> web.Response:
             round((row["audio_duration_ms"] or 0) / 1000, 1) if row["content_type"] == "audio" else "",
             row["text"], row["status"], row["status_detail"],
             iso_time(row["created_at"]), iso_time(row["received_at"]), iso_time(row["displayed_at"]),
+            iso_time(row["acknowledged_at"]),
         ])
     return web.Response(
         body=("\ufeff" + output.getvalue()).encode("utf-8"),
@@ -1785,6 +1797,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
                     authenticate=authenticate_device, access=can_access_class, reply=json_response,
                     clock=lambda: now_ms(), digest=sha256, class_sort=class_sort_key)
     install_management(app, sys.modules[__name__])
+    install_island(app, sys.modules[__name__])
     install_banban(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)

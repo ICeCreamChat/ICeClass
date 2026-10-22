@@ -1,0 +1,42 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="Window.island-settings NumericUpDown">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="White" />
+    <Setter Property="Foreground" Value="#243349" />
+    <Setter Property="BorderBrush" Value="#D8E1EC" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown /template/ TextBox#PART_TextBox">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown /template/ ButtonSpinner#PART_Spinner">
+    <Setter Property="Foreground" Value="#36516E" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown:focus-within">
+    <Setter Property="BorderBrush" Value="#0071E3" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown:disabled">
+    <Setter Property="Background" Value="#F4F6F9" />
+    <Setter Property="Foreground" Value="#697586" />
+    <Setter Property="BorderBrush" Value="#E2E8F0" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown /template/ ButtonSpinner /template/ RepeatButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown /template/ ButtonSpinner /template/ RepeatButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#F2F7FD" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown /template/ ButtonSpinner /template/ RepeatButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#E6EFFB" />
+  </Style>
+  <Style Selector="Window.island-settings NumericUpDown /template/ ButtonSpinner /template/ RepeatButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="#8A98AA" />
+  </Style>
+</Styles>

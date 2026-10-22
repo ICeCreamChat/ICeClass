@@ -80,6 +80,49 @@ class ServerTestCase(unittest.IsolatedAsyncioTestCase):
         return device
 
 class ICeClassServerTest(ServerTestCase):
+    async def test_shout_acknowledgment_is_explicit_scoped_and_monotonic(self) -> None:
+        device = await self.enroll_test_device()
+        class_id = device["classId"]
+        ws = await self.client.ws_connect(
+            f"/ws/device?deviceId={device['deviceId']}",
+            headers={"Authorization": f"Bearer {device['deviceToken']}"},
+        )
+        await ws.receive_json()
+        response, sent = await self.json_request("POST", "/api/shouts", {
+            "classId": class_id, "text": "请带好练习册", "alertLevel": "info",
+            "displayDurationSec": 8, "ttsVolume": 0, "ttsSpeed": 0,
+        }, csrf=True)
+        self.assertEqual(response.status, 202, sent)
+        payload = await ws.receive_json()
+        record = self.app[service.ROOMS_KEY]._record_ack
+        record(class_id, {"message_id": sent["id"], "status": "displayed", "detail": "已展示"})
+        _, data = await self.json_request("GET", f"/api/history?classId={class_id}")
+        self.assertEqual(data["history"][0]["status"], "displayed")
+        self.assertIsNone(data["history"][0]["acknowledged_at"])
+        record("another-class", {"message_id": sent["id"], "status": "acknowledged"})
+        self.assertIsNone(self.app[service.STORE_KEY].one("SELECT acknowledged_at FROM shouts WHERE id=?", (sent["id"],))["acknowledged_at"])
+        await ws.send_json({"type": "ack", "message_id": payload["message_id"], "status": "acknowledged"})
+        for _ in range(30):
+            _, data = await self.json_request("GET", f"/api/history?classId={class_id}")
+            if data["history"][0]["acknowledged_at"]:
+                break
+            await __import__("asyncio").sleep(.01)
+        acknowledged = data["history"][0]["acknowledged_at"]
+        self.assertIsNotNone(acknowledged)
+        for status in ("received", "displayed", "failed", "acknowledged"):
+            record(class_id, {"message_id": sent["id"], "status": status, "detail": "晚到回执"})
+        _, data = await self.json_request("GET", f"/api/history?classId={class_id}")
+        row = data["history"][0]
+        self.assertEqual(row["status"], "displayed")
+        self.assertEqual(row["acknowledged_at"], acknowledged)
+        self.assertEqual(row["status_detail"], "教室已点击“已知晓”")
+        exported = await self.client.get(f"/api/history/export?classId={class_id}", headers=self.headers())
+        self.assertEqual(exported.status, 200)
+        csv_rows = list(csv.reader(io.StringIO(await exported.text())))
+        self.assertIn("人工知晓时间", csv_rows[0])
+        self.assertTrue(csv_rows[1][csv_rows[0].index("人工知晓时间")])
+        await ws.close()
+
     async def test_login_reports_remaining_attempts_blocks_at_ten_and_expires(self) -> None:
         await self.bootstrap_and_login()
         timestamp = service.now_ms()

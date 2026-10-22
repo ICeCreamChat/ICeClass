@@ -21,6 +21,8 @@ public sealed class ShoutPayload
 
 public sealed class ShoutData
 {
+    [JsonIgnore]
+    internal bool IsPreview { get; set; }
     [JsonPropertyName("sender_name")]
     public string SenderName { get; set; } = "";
 

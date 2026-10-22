@@ -2,6 +2,20 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--island-acceptance", var acceptanceBinding, var acceptanceOutput]) { NativeIslandAcceptanceChecks.Run("acceptance", acceptanceBinding, acceptanceOutput); return; }
+if (args is ["--island-restart-write", var restartWriteBinding, var restartWriteOutput]) { NativeIslandAcceptanceChecks.Run("write", restartWriteBinding, restartWriteOutput); return; }
+if (args is ["--island-restart-read", var restartReadBinding, var restartReadOutput]) { NativeIslandAcceptanceChecks.Run("read", restartReadBinding, restartReadOutput); return; }
+if (args is ["--island-fullscreen-probe", var probeOutput]) { NativeIslandAcceptanceChecks.FullscreenProbe(probeOutput); return; }
+if (args is ["--native-island", var bindingPath]) { NativeIslandChecks.Run(bindingPath); return; }
+if (args is ["--island-ribbon"]) { NativeRibbonChecks.Run(); return; }
+if (args is ["--island-ribbon-light"]) { NativeRibbonChecks.Run(light: true); return; }
+if (args is ["--island-demo"]) { NativeDemoChecks.Run(); return; }
+if (args is ["--island-timetable"]) { NativeTimetableChecks.Run(); return; }
+if (args is ["--island-shout"]) { NativeShoutChecks.Run(); return; }
+if (args is ["--island-arm-review", var reviewOutput]) { NativeHoldingArmReview.Run(reviewOutput); return; }
+if (args is ["--island-layout-review", var layoutOutput]) { NativeIslandLayoutReview.Run(layoutOutput); return; }
+if (args is ["--island-settings-review", var settingsOutput]) { NativeIslandSettingsReview.Run(settingsOutput); return; }
+
 var root = Path.Combine(Path.GetTempPath(), "ICeClass-offline-check-" + Guid.NewGuid().ToString("N"));
 var checks = 0;
 void Check(bool condition, string description)
@@ -51,7 +65,13 @@ try
     using var child = Process.Start(start)!; await child.WaitForExitAsync();
     Check(child.ExitCode == 0 && new ReadingOutbox(Path.Combine(root, "crash")).Pending == 1, "an abruptly exiting process leaves its confirmed write recoverable");
     checks += await UpdateChecks.Run();
-    Console.WriteLine($"{checks} durable outbox checks passed.");
+    checks += IslandChecks.Run(root);
+    checks += IslandSpringChecks.Run();
+    checks += IslandHoldingArmChecks.Run();
+    checks += IslandScheduleChecks.Run(root);
+    checks += IslandRibbonChecks.Run();
+    checks += IslandDemoChecks.Run();
+    Console.WriteLine($"{checks} receiver checks passed.");
 }
 catch (Exception error)
 {

@@ -16,10 +16,14 @@ public sealed class CloudReceiverService
     private Task? _connectionTask;
     private CancellationTokenSource? _connectionCancellation;
     private AlertWindow? _currentAlert;
+    private int _presentationGeneration;
+    internal IShoutPresenter? NotificationPresenter { get; set; }
 
     public CloudReceiverService(SpeechService speech) => _speech = speech;
     public event EventHandler<ReceiverConnectionState>? ConnectionStateChanged;
     public event EventHandler<ReceiverConfig>? BindingChanged;
+    public event EventHandler<ShoutData>? NotificationDisplayed;
+    public event EventHandler<ShoutData>? NotificationAcknowledged;
 
     public Task StartAsync(ReceiverConfig config)
     {
@@ -31,6 +35,7 @@ public sealed class CloudReceiverService
     public async Task RestartAsync(ReceiverConfig config)
     {
         await StopConnectionAsync();
+        await Dispatcher.UIThread.InvokeAsync(() => NotificationPresenter?.Clear());
         await StartAsync(config);
     }
 
@@ -38,7 +43,7 @@ public sealed class CloudReceiverService
     {
         _lifetime.Cancel();
         await StopConnectionAsync();
-        await Dispatcher.UIThread.InvokeAsync(() => { _currentAlert?.Close(); _speech.Stop(); _audio.Stop(); });
+        await Dispatcher.UIThread.InvokeAsync(() => { _presentationGeneration++; NotificationPresenter?.Clear(); _currentAlert?.Close(); _speech.Stop(); _audio.Stop(); });
         _audio.Dispose();
     }
 
@@ -58,10 +63,18 @@ public sealed class CloudReceiverService
         }, null, CancellationToken.None);
     }
 
+    public Task ShowShoutPreviewAsync(string alertLevel = "info", bool sound = false) => DisplayAsync(new ShoutPayload
+    {
+        Data = new ShoutData { SenderName = "本机预览", Text = alertLevel == "urgent" ? "请立即停止当前活动，留在座位上，听从老师安排。" : alertLevel == "warning"
+                ? "第三节是实验课，请带好课本和练习册，提前到实验室集合，按学号就座。" : "同学们，请准备好课本和练习册，回到座位后保持安静。",
+            AlertLevel = alertLevel is "warning" or "urgent" ? alertLevel : "info", DisplayDurationSec = 30, TtsVolume = sound && alertLevel != "info" ? .35 : 0, IsPreview = true }
+    }, null, CancellationToken.None);
+
     public async Task PlayTestAudioAsync()
     {
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            _presentationGeneration++; NotificationPresenter?.Clear();
             _currentAlert?.Close();
             _currentAlert = null;
             _speech.Stop();
@@ -234,23 +247,8 @@ public sealed class CloudReceiverService
             catch (JsonException) { continue; }
             if (!TryAccept(payload) || payload is null) continue;
             await AckAsync(socket, sendLock, payload.MessageId, "received", null, token);
-            try
-            {
-                var audioTask = await DisplayAsync(payload, config, token);
-                if (audioTask is null)
-                {
-                    await AckAsync(socket, sendLock, payload.MessageId, "displayed", null, token);
-                }
-                else
-                {
-                    _ = FinishAudioAsync(socket, sendLock, payload.MessageId, audioTask, token);
-                }
-            }
-            catch (Exception exception)
-            {
-                AppLog.Error("Message display failed", exception);
-                await AckAsync(socket, sendLock, payload.MessageId, "failed", "教室端无法显示消息", token);
-            }
+            // A queued message must not block receiving a later emergency.
+            _ = DisplayReceivedAsync(payload, config, socket, sendLock, token);
         }
     }
 
@@ -276,40 +274,98 @@ public sealed class CloudReceiverService
         return true;
     }
 
-    private async Task<Task?> DisplayAsync(ShoutPayload payload, ReceiverConfig? config, CancellationToken token)
+    private async Task DisplayReceivedAsync(ShoutPayload payload, ReceiverConfig config, ClientWebSocket socket, SemaphoreSlim sendLock, CancellationToken token)
     {
-        AlertWindow? openedWindow = null;
+        async Task Report(string status, string? detail = null)
+        {
+            try { if (!token.IsCancellationRequested && socket.State == WebSocketState.Open) await AckAsync(socket, sendLock, payload.MessageId, status, detail, token); }
+            catch (Exception error) when (error is OperationCanceledException or WebSocketException or ObjectDisposedException) { }
+        }
+        try
+        {
+            var audioTask = await DisplayCoreAsync(payload, config, token, () => Report("acknowledged", "教室已点击“已知晓”"));
+            if (audioTask is null) await Report("displayed", "已在教室展示；尚未人工确认");
+            else await FinishAudioAsync(socket, sendLock, payload.MessageId, audioTask, token);
+        }
+        catch (Exception error)
+        {
+            if (!token.IsCancellationRequested) { AppLog.Error("Message display failed", error); await Report("failed", error.Message); }
+        }
+    }
+
+    private Task<Task?> DisplayAsync(ShoutPayload payload, ReceiverConfig? config, CancellationToken token)
+        => DisplayCoreAsync(payload, config, token, null);
+
+    private async Task<Task?> DisplayCoreAsync(ShoutPayload payload, ReceiverConfig? config, CancellationToken token, Func<Task>? acknowledged)
+    {
+        Task? shown = null;
+        var generation = 0;
+        var closed = false;
+        void StopCurrent(bool stopAudio)
+        {
+            if (generation == 0 || generation != _presentationGeneration) return;
+            _presentationGeneration++; _speech.Stop(); if (stopAudio) _audio.Stop();
+        }
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            _speech.Stop();
-            _audio.Stop();
-            _currentAlert?.Close();
-            var window = new AlertWindow(payload.Data);
-            _currentAlert = window;
-            window.Closed += (_, _) =>
+            if (NotificationPresenter is { } presenter)
             {
-                if (window.StopSpeechOnClose) _speech.Stop();
-                if (window.StopAudioOnClose) _audio.Stop();
-                if (ReferenceEquals(_currentAlert, window)) _currentAlert = null;
-            };
-            window.Show();
-            openedWindow = window;
+                shown = presenter.QueueAsync(payload.Data, reason =>
+                {
+                    closed = true;
+                    StopCurrent(reason != ShoutCloseReason.TimedOut);
+                    if (reason == ShoutCloseReason.Acknowledged)
+                    {
+                        NotificationAcknowledged?.Invoke(this, payload.Data);
+                        if (acknowledged is not null) _ = acknowledged();
+                    }
+                }, () => StopCurrent(true), payload.ExpiresAt);
+            }
+            else
+            {
+                generation = ++_presentationGeneration;
+                _speech.Stop(); _audio.Stop(); _currentAlert?.Close();
+                var window = new AlertWindow(payload.Data);
+                _currentAlert = window;
+                window.Closed += (_, _) =>
+                {
+                    closed = true;
+                    if (generation == _presentationGeneration)
+                    {
+                        if (window.StopSpeechOnClose) _speech.Stop();
+                        if (window.StopAudioOnClose) _audio.Stop();
+                    }
+                    if (ReferenceEquals(_currentAlert, window)) _currentAlert = null;
+                };
+                window.Show(); shown = window.OpenedTask;
+            }
         });
-        if (openedWindow is null) throw new InvalidOperationException("The alert window could not be created.");
-        await openedWindow.OpenedTask;
-        if (payload.Data.AlertLevel == "info") return null;
-        if (payload.Data.ContentType == "audio")
+        if (shown is null) throw new InvalidOperationException("喊话窗口未能创建。");
+        await shown;
+        Task? playback = null;
+        // Start playback on the same dispatcher as dismissal, so a message closed
+        // during its first rendered frame cannot start speaking afterwards.
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            if (config is null) throw new InvalidOperationException("语音预览缺少设备配置。");
-            var audioUri = new Uri(new Uri(config.Endpoint.TrimEnd('/') + "/", UriKind.Absolute), payload.Data.AudioUrl!.TrimStart('/'));
-            var authenticatedAudioUri = new UriBuilder(audioUri)
+            token.ThrowIfCancellationRequested();
+            if (closed || NotificationPresenter is { } presenter && !presenter.IsCurrent(payload.Data)) return;
+            generation = ++_presentationGeneration;
+            _speech.Stop(); _audio.Stop();
+            NotificationDisplayed?.Invoke(this, payload.Data);
+            if (generation != _presentationGeneration || payload.Data.AlertLevel == "info") return;
+            if (payload.Data.ContentType == "audio")
             {
-                Query = $"deviceId={Uri.EscapeDataString(config.DeviceId)}",
-            }.Uri;
-            return _audio.PlayAsync(authenticatedAudioUri, config.DeviceToken, token);
-        }
-        _speech.SpeakLatest(payload.Data.Text, payload.Data.TtsSpeed, payload.Data.TtsVolume);
-        return null;
+                if (config is null) throw new InvalidOperationException("语音预览缺少设备配置。");
+                var audioUri = new Uri(new Uri(config.Endpoint.TrimEnd('/') + "/", UriKind.Absolute), payload.Data.AudioUrl!.TrimStart('/'));
+                var authenticatedAudioUri = new UriBuilder(audioUri)
+                {
+                    Query = $"deviceId={Uri.EscapeDataString(config.DeviceId)}",
+                }.Uri;
+                playback = _audio.PlayAsync(authenticatedAudioUri, config.DeviceToken, token);
+            }
+            else _speech.SpeakLatest(payload.Data.Text, payload.Data.TtsSpeed, payload.Data.TtsVolume);
+        });
+        return playback;
     }
 
     private async Task FinishAudioAsync(ClientWebSocket socket, SemaphoreSlim sendLock, string messageId, Task audioTask, CancellationToken token)

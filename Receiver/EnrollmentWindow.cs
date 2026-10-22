@@ -186,16 +186,9 @@ public sealed class EnrollmentWindow : Window
         button.FontSize = 14; button.MinHeight = 40; button.Padding = new Thickness(12, 6);
         button.HorizontalAlignment = HorizontalAlignment.Left;
     }
-    private static Border SettingsCard(Control content) => new()
-    {
-        Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 12), Child = content,
-    };
-    private static Border Divider() => new() { Height = 1, Background = DesktopStyle.Brush("#EDF1F6") };
-    private static StackPanel Section(string title, Control content) => new()
-    {
-        Spacing = 8, Children = { ClassroomStyle.Text(title, 15, true), SettingsCard(content) },
-    };
+    private static Border SettingsCard(Control content) => ClassroomStyle.SettingsCard(content);
+    private static Border Divider() => ClassroomStyle.SettingsDivider();
+    private static StackPanel Section(string title, Control content) => ClassroomStyle.SettingsSection(title, content);
     private static Grid SettingRow(string title, Control description, Control action)
     {
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };

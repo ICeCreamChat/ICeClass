@@ -35,7 +35,9 @@ try
     Assert(DesktopSettings.Load(temporary).Endpoint == DesktopSettings.DefaultEndpoint, "Malformed settings recover");
 }
 finally { if (Directory.Exists(temporary)) Directory.Delete(temporary, true); }
-var release = new DesktopRelease("2.3.1", new string('a', 64), 100, "/api/desktop/update/download");
+var currentVersion = Version.Parse(DesktopUpdates.CurrentVersion);
+var nextVersion = new Version(currentVersion.Major, currentVersion.Minor, currentVersion.Build + 1).ToString(3);
+var release = new DesktopRelease(nextVersion, new string('a', 64), 100, "/api/desktop/update/download");
 Assert(DesktopUpdates.IsValid(DesktopSettings.DefaultEndpoint, release), "Valid native release");
 Assert(!DesktopUpdates.IsValid(DesktopSettings.DefaultEndpoint, release with { DownloadUrl = "https://attacker.example/update.exe" }), "Foreign update rejected");
 Assert(!DesktopUpdates.IsValid(DesktopSettings.DefaultEndpoint, release with { Version = "2.2.0" }), "Downgrade rejected");

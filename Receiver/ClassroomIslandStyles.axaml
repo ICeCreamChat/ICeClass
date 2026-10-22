@@ -1,0 +1,80 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="Button.island-ribbon-button /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="24" />
+  </Style>
+  <Style Selector="Button.island-ribbon-button">
+    <Setter Property="FocusAdorner"><Template><Border BorderThickness="2" CornerRadius="24" BorderBrush="#64E5E7" IsHitTestVisible="False" /></Template></Setter>
+  </Style>
+  <Style Selector="Button.native-button.island-button">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="10,4" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="#263548" />
+    <Setter Property="Foreground" Value="#E5EDF8" />
+    <Setter Property="BorderBrush" Value="#3B4B60" />
+    <Setter Property="FocusAdorner">
+      <Template><Border BorderThickness="2" CornerRadius="8" Margin="1" BorderBrush="#8FC3FF" IsHitTestVisible="False" /></Template>
+    </Setter>
+  </Style>
+  <Style Selector="Button.native-button.island-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#354963" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#6B91BD" />
+  </Style>
+  <Style Selector="Button.native-button.island-button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#1C2B3F" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.native-button.island-button.island-primary">
+    <Setter Property="Background" Value="#0071E3" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#398FEC" />
+  </Style>
+  <Style Selector="Button.native-button.island-button.island-primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#1683F2" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#80BBFF" />
+  </Style>
+  <Style Selector="Button.native-button.island-button.island-primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#005EBE" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.native-button.island-button.island-quiet">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="#B8C8DC" />
+  </Style>
+  <Style Selector="Button.native-button.island-button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#263548" />
+    <Setter Property="Foreground" Value="#93A4BA" />
+    <Setter Property="BorderBrush" Value="#3B4B60" />
+  </Style>
+  <Style Selector="Button.native-button.island-button:disabled">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Window.island-light Button.native-button.island-button">
+    <Setter Property="Background" Value="#E7EDF6" />
+    <Setter Property="Foreground" Value="#29486D" />
+    <Setter Property="BorderBrush" Value="#C2CDDC" />
+  </Style>
+  <Style Selector="Window.island-light Button.native-button.island-button.island-quiet">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="#29486D" />
+  </Style>
+  <Style Selector="Window.island-light Button.native-button.island-button.island-primary">
+    <Setter Property="Background" Value="#0071E3" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#398FEC" />
+  </Style>
+  <Style Selector="Window.island-light Button.native-button.island-button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#E8EDF4" />
+    <Setter Property="Foreground" Value="#52647B" />
+    <Setter Property="BorderBrush" Value="#C8D3E1" />
+  </Style>
+</Styles>

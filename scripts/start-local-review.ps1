@@ -1,4 +1,4 @@
-﻿param([ValidateSet('Web', 'Classroom', 'Teacher')][string]$Client = 'Web')
+﻿param([ValidateSet('Web', 'Classroom', 'Teacher')][string]$Client = 'Web', [switch]$IslandDemo, [switch]$ShoutPreview)
 $ErrorActionPreference = 'Stop'
 $reviewRepository = Split-Path -Parent $PSScriptRoot
 $reviewFolder = Join-Path $reviewRepository 'dist\local-review-2.3.0'
@@ -31,10 +31,16 @@ if (-not $reviewResponse -or $reviewResponse.Headers['X-ICeClass-Review'] -ne '2
 switch ($Client) {
     'Web' { Start-Process $reviewUrl }
     'Classroom' {
-        $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-ui-review.exe'
+        $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-demo-review.exe'
+        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-spacing-review.exe' }
+        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-motion-review.exe' }
+        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-review.exe' }
+        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-ui-review.exe' }
         if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0.exe' }
         if (-not (Test-Path -LiteralPath $reviewExecutable)) { throw '找不到本地教室端验收程序。' }
-        Start-Process -FilePath $reviewExecutable -WorkingDirectory $reviewFolder -WindowStyle Hidden
+        if ($ShoutPreview) { Start-Process -FilePath $reviewExecutable -ArgumentList @('--island-shout-preview') -WorkingDirectory $reviewFolder -WindowStyle Normal }
+        elseif ($IslandDemo) { Start-Process -FilePath $reviewExecutable -ArgumentList @('--island-demo') -WorkingDirectory $reviewFolder -WindowStyle Normal }
+        else { Start-Process -FilePath $reviewExecutable -WorkingDirectory $reviewFolder -WindowStyle Normal }
     }
     'Teacher' {
         $reviewExecutable = Join-Path $reviewRepository 'dist\desktop\ICeClass.Desktop.exe'

@@ -43,6 +43,16 @@ internal static class ClassroomStyle
     {
         Spacing = 6, Children = { Text(label, 14, true), input },
     };
+    internal static Border SettingsCard(Control content) => new()
+    {
+        Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 12), Child = content,
+    };
+    internal static Border SettingsDivider() => new() { Height = 1, Background = DesktopStyle.Brush("#EDF1F6") };
+    internal static StackPanel SettingsSection(string title, Control content) => new()
+    {
+        Spacing = 8, Children = { Text(title, 15, true), SettingsCard(content) },
+    };
     // Unmodified Lucide paths, bundled locally; see Assets/Icons/SOURCE.md.
     internal static Border IconBadge(string name)
     {

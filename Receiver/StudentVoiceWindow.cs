@@ -27,7 +27,7 @@ public sealed class StudentVoiceWindow : Window
     private DateTimeOffset _startedAt;
     private bool _recording, _sending, _closing;
 
-    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null)
+    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null)
     {
         ClassroomStyle.Apply(this);
         _send = send; _config = config; Title = $"ICeClass 班伴 · {config.ClassName}";
@@ -45,7 +45,15 @@ public sealed class StudentVoiceWindow : Window
             Children = { ClassroomStyle.SectionTitle("ICeClass 班伴"), ClassroomStyle.Caption("教室端") } };
         Grid.SetColumn(brandText, 1); brand.Children.Add(brandText); toolbar.Children.Add(brand);
         var settings = ClassroomStyle.Button("教室设置"); settings.MinHeight = 44; settings.Click += (_, _) => openSettings?.Invoke();
-        settings.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(settings, 2); toolbar.Children.Add(settings);
+        settings.VerticalAlignment = VerticalAlignment.Center;
+        var toolbarActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        if (showIsland is not null)
+        {
+            var island = ClassroomStyle.Button("顶部悬浮岛"); island.MinHeight = 44;
+            island.Click += (_, _) => showIsland();
+            ToolTip.SetTip(island, "显示并展开顶部悬浮岛"); toolbarActions.Children.Add(island);
+        }
+        toolbarActions.Children.Add(settings); Grid.SetColumn(toolbarActions, 2); toolbar.Children.Add(toolbarActions);
         root.Children.Add(new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E1E7EF"), BorderThickness = new Thickness(0, 0, 0, 1), Child = toolbar });
 
         var main = new StackPanel { Spacing = 16, MaxWidth = 1200, HorizontalAlignment = HorizontalAlignment.Stretch };
