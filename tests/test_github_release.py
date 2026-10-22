@@ -28,6 +28,7 @@ class ReleaseChecks(unittest.TestCase):
             (self.source / "dist/release" / name).write_bytes(b"test-package-" + name.encode())
         self.directory = self.root / "assets"
         self.commit = "a" * 40
+        self.draft = {"id": 123, "tag_name": "v2.4.0", "draft": True, "prerelease": False, "body": release.MARKER}
 
     def prepare(self):
         with patch.object(release, "source_commit", return_value=self.commit):
@@ -101,7 +102,7 @@ class ReleaseChecks(unittest.TestCase):
     def test_incomplete_upload_stays_draft(self):
         self.prepare()
         with patch.object(release, "gh_json", side_effect=[
-            {"sha": self.commit}, [[]], {"draft": True, "assets": []}
+            {"sha": self.commit}, [[]], [[self.draft]], {"draft": True, "assets": []}
         ]), patch.object(release, "gh") as gh, self.assertRaises(ValueError):
             release.publish(self.directory, "v2.4.0", "owner/repo")
         self.assertTrue(any(call.args[:2] == ("release", "create") for call in gh.call_args_list))
@@ -111,14 +112,14 @@ class ReleaseChecks(unittest.TestCase):
         metadata = self.prepare()
         assets = [dict(asset, state="uploaded", digest="sha256:wrong") for asset in metadata["assets"]]
         with patch.object(release, "gh_json", side_effect=[
-            {"sha": self.commit}, [[]], {"draft": True, "assets": assets}
+            {"sha": self.commit}, [[]], [[self.draft]], {"draft": True, "assets": assets}
         ]), patch.object(release, "gh") as gh, self.assertRaises(ValueError):
             release.publish(self.directory, "v2.4.0", "owner/repo")
         self.assertFalse(any("--draft=false" in call.args for call in gh.call_args_list))
 
     def test_upload_failure_does_not_publish(self):
         self.prepare()
-        with patch.object(release, "gh_json", side_effect=[{"sha": self.commit}, [[]]]), patch.object(
+        with patch.object(release, "gh_json", side_effect=[{"sha": self.commit}, [[]], [[self.draft]]]), patch.object(
             release, "gh", side_effect=["draft created", RuntimeError("upload interrupted")]
         ) as gh, self.assertRaises(RuntimeError):
             release.publish(self.directory, "v2.4.0", "owner/repo")
@@ -127,9 +128,8 @@ class ReleaseChecks(unittest.TestCase):
     def test_own_draft_can_resume_after_failure(self):
         metadata = self.prepare()
         assets = [dict(asset, state="uploaded", digest="sha256:" + asset["sha256"]) for asset in metadata["assets"]]
-        draft = {"tag_name": "v2.4.0", "draft": True, "prerelease": False, "body": release.MARKER}
         with patch.object(release, "gh_json", side_effect=[
-            {"sha": self.commit}, [[draft]], {"draft": True, "assets": assets},
+            {"sha": self.commit}, [[self.draft]], {"draft": True, "assets": assets},
             {"draft": False, "html_url": "https://github.com/owner/repo/releases/tag/v2.4.0"}
         ]), patch.object(release, "gh") as gh:
             release.publish(self.directory, "v2.4.0", "owner/repo")
@@ -142,11 +142,13 @@ class ReleaseChecks(unittest.TestCase):
         for newer_exists in (False, True):
             releases = [{"tag_name": "v2.5.0", "draft": False, "prerelease": False}] if newer_exists else []
             with self.subTest(newer_exists=newer_exists), patch.object(release, "gh_json", side_effect=[
-                {"sha": self.commit}, [releases], {"draft": True, "assets": assets},
+                {"sha": self.commit}, [releases], [[self.draft, *releases]], {"draft": True, "assets": assets},
                 {"draft": False, "html_url": "https://github.com/owner/repo/releases/tag/v2.4.0"}
-            ]), patch.object(release, "gh") as gh:
+            ]) as gh_json, patch.object(release, "gh") as gh:
                 release.publish(self.directory, "v2.4.0", "owner/repo")
             self.assertIn("--latest=false" if newer_exists else "--latest", gh.call_args_list[-1].args)
+            self.assertEqual(gh_json.call_args_list[-2].args, ("api", "repos/owner/repo/releases/123"))
+            self.assertEqual(gh_json.call_args_list[-1].args, ("api", "repos/owner/repo/releases/123"))
 
 
 if __name__ == "__main__":

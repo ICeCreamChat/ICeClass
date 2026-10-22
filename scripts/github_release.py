@@ -134,6 +134,11 @@ def gh_json(*args):
     return json.loads(gh(*args))
 
 
+def list_releases(repo):
+    pages = gh_json("api", "--paginate", "--slurp", f"repos/{repo}/releases?per_page=100")
+    return [release for page in pages for release in page]
+
+
 def publish(directory, tag, repo):
     metadata = verify_assets(directory, tag)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
@@ -141,8 +146,7 @@ def publish(directory, tag, repo):
     commit = gh_json("api", f"repos/{repo}/commits/{tag}")["sha"]
     if commit != metadata["commit"]:
         raise ValueError("The remote tag moved after the build; refusing to publish.")
-    pages = gh_json("api", "--paginate", "--slurp", f"repos/{repo}/releases?per_page=100")
-    releases = [release for page in pages for release in page]
+    releases = list_releases(repo)
     existing = [release for release in releases if release["tag_name"] == tag]
     if len(existing) > 1:
         raise ValueError("More than one release uses this tag.")
@@ -152,11 +156,16 @@ def publish(directory, tag, repo):
     notes = str(directory / "release-notes.md")
     if not existing:
         gh("release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", title, "--notes-file", notes)
+        existing = [release for release in list_releases(repo) if release["tag_name"] == tag]
+        if len(existing) != 1 or not existing[0]["draft"]:
+            raise ValueError("Could not find the draft that was just created.")
     else:
         gh("release", "edit", tag, "--repo", repo, "--draft", "--title", title, "--notes-file", notes)
+    # The tag endpoint excludes drafts, including with a workflow's GITHUB_TOKEN.
+    release_endpoint = f"repos/{repo}/releases/{existing[0]['id']}"
     gh("release", "upload", tag, "--repo", repo, "--clobber",
        *(str(directory / asset["name"]) for asset in metadata["assets"]))
-    uploaded = gh_json("api", f"repos/{repo}/releases/tags/{tag}")
+    uploaded = gh_json("api", release_endpoint)
     if not uploaded["draft"]:
         raise ValueError("The release must remain a draft until all assets are verified.")
     remote_assets = {asset["name"]: asset for asset in uploaded["assets"]}
@@ -176,7 +185,7 @@ def publish(directory, tag, repo):
     )
     gh("release", "edit", tag, "--repo", repo, "--draft=false",
        "--latest=false" if newer_exists else "--latest")
-    published = gh_json("api", f"repos/{repo}/releases/tags/{tag}")
+    published = gh_json("api", release_endpoint)
     if published["draft"]:
         raise ValueError("GitHub did not publish the release.")
     return published["html_url"]
