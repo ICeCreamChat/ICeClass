@@ -2,6 +2,8 @@
   'use strict';
   const $ = id => document.getElementById(id);
   let initialized = false, config = null, report = null, settingsDirty = false, boundClasses = new Set(), reportGeneration = 0;
+  let reportRequest = null, controlsRequest = null, controlsSignature = '';
+  const visible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
   const selectedGrades = new Set();
   const gradeOf = name => {
     const match = String(name || '').normalize('NFKC').replace(/\s/g, '').match(/^高([一二三123])(?=[^0-9]|$)/);
@@ -61,10 +63,18 @@
     finally { if (button) button.disabled = false; }
   }
   async function loadReport() {
+    const key = query().toString();
+    if (reportRequest?.key === key) return reportRequest.promise;
+    const promise = fetchReport(key);
+    reportRequest = {key, promise};
+    try { return await promise; }
+    finally { if (reportRequest?.promise === promise) reportRequest = null; }
+  }
+  async function fetchReport(key) {
     const request = ++reportGeneration;
     $('readingRanking').setAttribute('aria-busy', 'true');
     let data;
-    try { data = await api('/api/reading/report?' + query()); }
+    try { data = await api('/api/reading/report?' + key); }
     catch (e) {
       if (request === reportGeneration) {
         $('readingRanking').setAttribute('aria-busy', 'false');
@@ -74,8 +84,15 @@
       throw e;
     }
     if (request !== reportGeneration) return;
+    const unchanged = report && JSON.stringify(report) === JSON.stringify(data);
     report = data;
     const scope = report.grades?.join('、') || '全部年级';
+    $('readingReportStatus').textContent = `${scope} · ${report.start} — ${report.end} · 更新于 ` + new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
+    if (unchanged) {
+      $('readingRanking').setAttribute('aria-busy', 'false');
+      void window.ICeClassCalendar?.refresh();
+      return;
+    }
     $('rankingTitle').textContent = (report.grades?.length ? scope : '') + '班级排行榜';
     const used = report.rows.filter(r => r.activeSeconds > 0), total = report.rows.reduce((sum, r) => sum + r.effectiveSeconds, 0);
     $('readingOverview').replaceChildren();
@@ -89,7 +106,6 @@
     });
     window.ICeClassRanking.render(report);
     $('readingDaily').replaceChildren(report.daily.length ? table(['日期', '班级', '使用次数', '运行时长', '有效发声', '完成量'], report.daily.map(r => [r.day, r.className, `${r.sessions} 次`, duration(r.activeSeconds), duration(r.effectiveSeconds), completed(r.completed)])) : node('div', '所选日期还没有早读记录。', 'empty'));
-    $('readingReportStatus').textContent = `${scope} · ${report.start} — ${report.end} · 更新于 ` + new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
     void window.ICeClassCalendar?.refresh();
   }
   async function exportReport() {
@@ -108,8 +124,17 @@
     finally { button.disabled = false; button.textContent = '↓ 导出 XLSX'; }
   }
   async function loadControls() {
+    if (controlsRequest) return controlsRequest;
+    controlsRequest = fetchControls();
+    try { return await controlsRequest; }
+    finally { controlsRequest = null; }
+  }
+  async function fetchControls() {
     const data = await api('/api/classroom-controls');
     const available = window.ICeClass.state.classes.filter(c => Number(c.enabled)===1 && data.devices.some(d => d.class_id===c.id && Number(d.enabled)===1));
+    const signature = JSON.stringify([data, available, $('controlClass').value]);
+    if (signature === controlsSignature) return;
+    controlsSignature = signature;
     boundClasses = new Set(available.map(c=>c.id));
     const previous=$('controlClass').value;
     $('controlClass').replaceChildren(new Option('请选择已绑定班级',''));
@@ -198,8 +223,12 @@
     });
     void loadSettings(true).catch(error);
     void loadReport().catch(error);
-    setInterval(() => { if (!$('view-reading').classList.contains('hidden')) void loadReport().catch(() => {}); }, 15000);
-    setInterval(() => { if (!$('view-controls').classList.contains('hidden') ) void loadControls().catch(() => {}); }, 5000);
+    setInterval(() => { if (visible('reading') && !reportRequest) void loadReport().catch(() => {}); }, 15000);
+    setInterval(() => { if (visible('controls') && !controlsRequest) void loadControls().catch(() => {}); }, 5000);
+    document.addEventListener('visibilitychange', () => {
+      if (visible('reading')) void loadReport().catch(() => {});
+      if (visible('controls')) void loadControls().catch(() => {});
+    });
   }
   window.addEventListener('iceclass-ready', initialize);
   window.addEventListener('iceclass-classes-changed', () => {syncClasses();void loadReport().catch(error);void loadControls().catch(error);});

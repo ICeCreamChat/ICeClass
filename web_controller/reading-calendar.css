@@ -9,7 +9,7 @@
 .calendar-content { padding: 0 23px 22px; }
 .calendar-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 24px; margin: 0 0 25px; color: #636366; font-size: 14px; }
 .calendar-summary > span:first-child { margin-right: auto; color: #1d1d1f; font-size: 16px; }
-.calendar-summary strong { color: #0071e3; font-weight: 600; font-variant-numeric: tabular-nums; }
+.calendar-summary strong { color: var(--blue-text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .calendar-message { color: #636366; font-size: 15px; padding: 10px 0 20px; }
 .calendar-message[data-error="true"] { color: #b33a32; }
 .calendar-plot { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
@@ -47,7 +47,7 @@
 .calendar-day-detail > div { min-width: 0; padding: 13px 15px; border-radius: 10px; background: #f6f9fc; }
 .calendar-day-detail dt { color: #636366; font-size: 14px; }
 .calendar-day-detail dd { font-size: 16px; font-weight: 600; margin: 5px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.calendar-day-detail > div:first-child dd { color: #0071e3; }
+.calendar-day-detail > div:first-child dd { color: var(--blue-text); }
 .calendar-day-detail > div:last-child dd { font-size: 14px; font-weight: 400; }
 .calendar-records { border-top: 1px solid #e5e5ea; }
 .calendar-records summary { padding: 15px 23px; font-size: 14px; cursor: pointer; color: #515154; }

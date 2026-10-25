@@ -510,7 +510,7 @@
     if (!config.automation.length) root.append(empty('还没有自动化规则', '例如：早读前打开活动，下课时显示护眼提醒。'));
   }
   function changeTab(next) {
-    if (!tabs.includes(next) || !config || busy) return;
+    if (!tabs.includes(next) || !config || busy || next === tab) return;
     tab = next; render();
   }
   function render(restoreFocus) {
@@ -751,7 +751,12 @@
     event.preventDefault();
     let index = tabs.indexOf(active.dataset.tab);
     index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-    changeTab(tabs[index]); $('island-tab-' + tabs[index]).focus();
+    changeTab(tabs[index]);
+    const selected = $('island-tab-' + tabs[index]), strip = $('islandTabs');
+    selected.focus({ preventScroll: true });
+    const itemBox = selected.getBoundingClientRect(), stripBox = strip.getBoundingClientRect();
+    if (itemBox.left < stripBox.left) strip.scrollLeft += itemBox.left - stripBox.left;
+    else if (itemBox.right > stripBox.right) strip.scrollLeft += itemBox.right - stripBox.right;
   };
   $('islandClass').onchange = () => {
     if (dirty && !confirm('切换班级会放弃当前未保存的修改。继续切换？')) { $('islandClass').value = loadedClass; return; }
@@ -803,7 +808,7 @@
     }
   });
   setInterval(async () => {
-    if (!config || busy || polling || $('view-island').classList.contains('hidden')) return;
+    if (document.hidden || !config || busy || polling || $('view-island').classList.contains('hidden')) return;
     renderPreview();
     const classId = loadedClass, requestId = loadId;
     polling = true;

@@ -8,14 +8,14 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=9">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=13">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=22">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=4">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=1">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=2">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=3">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=11">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=28">
-  <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261019"></script>
+  <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261025.1"></script>
 </head>
 <body>
   <div id="loading" class="app-loading"><div class="spinner" aria-label="正在加载"></div></div>
@@ -28,9 +28,9 @@
       <div class="auth-features"><span>早读陪伴</span><span>课堂连接</span><span>校园协同</span></div>
     </aside>
     <div class="auth-card"><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>班级陪伴</small></div></div>      <form id="loginForm" class="hidden">
-        <p class="auth-kicker">欢迎回来</p><h1>登录 ICeClass 班伴</h1>
+        <h1>登录 ICeClass 班伴</h1>
         <p class="muted">使用学校分配的账号，进入您的班级工作台。</p>
-        <div class="field"><label for="loginUsername">用户名</label><input id="loginUsername" autocomplete="username" required maxlength="64"></div>
+        <div class="field"><label for="loginUsername">用户名</label><input id="loginUsername" name="username" autocomplete="username" spellcheck="false" autocapitalize="none" required maxlength="64"></div>
         <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" type="password" autocomplete="current-password" required maxlength="128"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false">显示</button></div></div>
         <p id="loginError" class="form-error" role="alert"></p>
         <button id="loginSubmit" class="btn primary block" type="submit">进入工作台 <span aria-hidden="true">→</span></button>
@@ -45,11 +45,11 @@
         <p id="bootstrapError" class="form-error" role="alert"></p>
         <button class="btn primary block" type="submit">完成初始化</button>
       </form>
-      <div class="auth-foot">一个工作台，陪伴每个班级的日常。</div>
     </div>
   </section>
 
   <div id="appShell" class="shell hidden">
+    <a class="skip-link" href="#mainContent">跳到主要内容</a>
     <header class="topbar">
       <button id="menuToggle" class="btn icon menu-toggle" type="button" aria-label="打开功能菜单" aria-controls="appSidebar" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <span class="mobile-brand">ICeClass 班伴</span>
@@ -59,7 +59,7 @@
       <button id="logoutButton" class="btn" type="button">退出</button>
     </header>
     <button id="navBackdrop" class="nav-backdrop" type="button" tabindex="-1" aria-label="关闭功能菜单"></button>
-    <aside id="appSidebar" class="sidebar">
+    <aside id="appSidebar" class="sidebar" aria-label="功能菜单">
       <button id="sidebarClose" class="btn icon sidebar-close" type="button" aria-label="关闭功能菜单">×</button><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>教师工作台</small></div></div>      <nav id="mainNav" class="nav" aria-label="主要功能"><span class="nav-group-label">班级工作</span>
         <button data-view="reading" class="active"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6c-2-2-5-3-9-2v15c4-1 7 0 9 2 2-2 5-3 9-2V4c-4-1-7 0-9 2ZM12 6v15"/></svg></span><span data-label>早读统计</span></button>
         <button data-view="island"><span class="nav-icon" aria-hidden="true"><img src="/assets/app-icon.png" width="20" height="20" alt=""></span><span data-label>教室岛</span></button>
@@ -113,24 +113,26 @@
               <div id="presence" class="presence"><span class="dot"></span><span>正在检查</span></div>
             </div>
             <div class="mode-picker" role="tablist" aria-label="通知方式">
-              <button id="textModeButton" class="mode-button selected" type="button" role="tab" aria-selected="true">文字通知</button>
-              <button id="voiceModeButton" class="mode-button" type="button" role="tab" aria-selected="false">语音通知</button>
+              <button id="textModeButton" class="mode-button selected" type="button" role="tab" aria-selected="true" aria-controls="textComposer">文字通知</button>
+              <button id="voiceModeButton" class="mode-button" type="button" role="tab" aria-selected="false" aria-controls="voiceComposer" tabindex="-1">语音通知</button>
             </div>
-            <div id="textComposer">
-              <div class="field"><label for="shoutText">通知内容</label><textarea id="shoutText" maxlength="500" required placeholder="输入要在教室大屏显示的通知"></textarea><p class="hint"><span id="charCount">0</span>/500</p></div>
-            </div>
-            <div id="voiceComposer" class="voice-composer hidden" aria-live="polite">
-              <button id="recordButton" class="record-button" type="button">按住说话</button>
-              <p id="recordStatus" class="hint">最长 30 秒，播放教师原声；松开后可试听。</p>
-              <audio id="voicePreview" class="voice-preview hidden" controls preload="metadata"></audio>
-              <p id="voicePreviewStatus" class="hint" role="status"></p>
-              <div class="voice-actions"><button id="playVoiceButton" class="btn hidden" type="button">试听</button><button id="stopVoiceButton" class="btn hidden" type="button">停止试听</button><button id="reRecordButton" class="btn hidden" type="button">重录</button><button id="clearVoiceButton" class="btn hidden" type="button">取消语音</button></div>
-            </div>
-            <div id="textPhrases" class="phrases" aria-label="快捷短语">
-              <button class="phrase" type="button">全班保持安静</button>
-              <button class="phrase" type="button">请班长到讲台前收作业</button>
-              <button class="phrase" type="button">眼保健操开始</button>
-              <button class="phrase" type="button">请任课老师查看消息</button>
+            <div class="composer-modes">
+              <div id="textComposer" class="composer-panel text-composer" role="tabpanel" aria-labelledby="textModeButton">
+                <div class="field"><label for="shoutText">通知内容</label><textarea id="shoutText" maxlength="500" required placeholder="输入要在教室大屏显示的通知"></textarea><p class="hint"><span id="charCount">0</span>/500</p></div>
+                <div id="textPhrases" class="phrases" aria-label="快捷短语">
+                  <button class="phrase" type="button">全班保持安静</button>
+                  <button class="phrase" type="button">请班长到讲台前收作业</button>
+                  <button class="phrase" type="button">眼保健操开始</button>
+                  <button class="phrase" type="button">请任课老师查看消息</button>
+                </div>
+              </div>
+              <div id="voiceComposer" class="composer-panel voice-composer" role="tabpanel" aria-labelledby="voiceModeButton" aria-hidden="true" inert>
+                <button id="recordButton" class="record-button" type="button" aria-describedby="recordStatus" aria-pressed="false">按住说话</button>
+                <p id="recordStatus" class="hint" role="status">最长 30 秒；按住按钮或空格键录音，松开后可试听。</p>
+                <audio id="voicePreview" class="voice-preview hidden" controls preload="metadata"></audio>
+                <p id="voicePreviewStatus" class="hint" role="status"></p>
+                <div class="voice-actions"><button id="playVoiceButton" class="btn hidden" type="button">试听</button><button id="stopVoiceButton" class="btn hidden" type="button">停止试听</button><button id="reRecordButton" class="btn hidden" type="button">重录</button><button id="clearVoiceButton" class="btn hidden" type="button">取消语音</button></div>
+              </div>
             </div>
             <div class="level-heading"><span class="label">通知类型</span><span id="levelDescription" class="hint">悬浮岛内静音展示，默认显示 8 秒</span></div>
             <div class="level-picker" role="radiogroup" aria-label="通知类型">
@@ -264,7 +266,7 @@
         <section class="plain-section">
           <div class="view-head"><div><h2>每周时间表</h2><p>普通通知始终静音；重要和紧急通知会播放声音。</p></div><button id="addQuietPeriod" class="btn" type="button" data-admin>添加时段</button></div>
           <div id="quietScheduleList" class="schedule-list"></div>
-          <p id="quietScheduleError" class="form-error" data-admin></p>
+          <p id="quietScheduleError" class="form-error" role="alert" data-admin></p>
         </section>
       </section>
 
@@ -274,7 +276,7 @@
           <button id="addClassButton" class="btn primary" type="button">创建班级</button>
         </div>
         <div class="class-toolbar" aria-label="班级筛选与工具">
-          <div id="classGradeFilter" class="grade-filter" role="tablist" aria-label="年级筛选"><button type="button" data-grade-filter="all" class="active">全部</button><button type="button" data-grade-filter="高一">高一</button><button type="button" data-grade-filter="高二">高二</button><button type="button" data-grade-filter="高三">高三</button></div>
+          <div id="classGradeFilter" class="grade-filter" role="group" aria-label="年级筛选"><button type="button" data-grade-filter="all" class="active" aria-pressed="true">全部</button><button type="button" data-grade-filter="高一" aria-pressed="false">高一</button><button type="button" data-grade-filter="高二" aria-pressed="false">高二</button><button type="button" data-grade-filter="高三" aria-pressed="false">高三</button></div>
           <div class="class-tools"><button id="batchClassButton" class="btn" type="button">批量创建</button><details class="action-menu"><summary class="btn">更多操作</summary><div class="action-menu-content"><button id="classRolloverButton" class="btn" type="button" data-admin>年度升班</button><button id="schoolEnrollmentButton" class="btn" type="button" data-admin>全校快捷绑定</button><button id="allClassesButton" class="btn" type="button" data-admin>创建预设班级</button></div></details></div>
         </div>
         <div id="classesContainer"></div>
@@ -309,7 +311,7 @@
             <div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password" required maxlength="128"></div>
             <div class="field"><label for="ownNewPassword">新密码</label><input id="ownNewPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
             <div class="field"><label for="ownNewPasswordConfirm">再次输入新密码</label><input id="ownNewPasswordConfirm" type="password" autocomplete="new-password" required maxlength="128"></div>
-            <p id="ownPasswordError" class="form-error"></p>
+            <p id="ownPasswordError" class="form-error" role="alert"></p>
             <button class="btn primary" type="submit">修改密码</button>
           </form>
           <section class="plain-section"><h2>当前账号</h2><p id="settingsAccount"></p><p class="hint">修改密码后，网页和教师端均需使用新密码重新登录。</p></section>
@@ -322,74 +324,74 @@
     </main>
   </div>
 
-  <dialog id="confirmDialog">
+  <dialog id="confirmDialog" aria-labelledby="confirmTitle">
     <div class="dialog-head"><h2 id="confirmTitle">确认发送</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
     <div class="dialog-body"><div class="confirm-summary"><p id="confirmTarget"></p><p id="confirmLevel"></p><p id="confirmMode"></p><p id="confirmText"></p></div><div id="quietWarning" class="quiet-warning hidden"><strong id="quietWarningTitle"></strong><p id="quietWarningDetail"></p></div><p class="danger-text">教室收到新通知后，会中断正在播放的上一条通知。</p></div>
     <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button id="confirmSend" class="btn send" type="button">确认发送</button></div>
   </dialog>
 
-  <dialog id="classDialog">
+  <dialog id="classDialog" aria-labelledby="classDialogTitle">
     <form id="classForm">
-      <div class="dialog-head"><h2>创建班级</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-      <div class="dialog-body"><div class="field"><label for="className">班级名称</label><input id="className" required maxlength="40" placeholder="例如：高一（1）班"></div><p id="classError" class="form-error"></p></div>
+      <div class="dialog-head"><h2 id="classDialogTitle">创建班级</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-body"><div class="field"><label for="className">班级名称</label><input id="className" required maxlength="40" placeholder="例如：高一（1）班"></div><p id="classError" class="form-error" role="alert"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">创建</button></div>
     </form>
   </dialog>
 
-  <dialog id="batchDialog">
+  <dialog id="batchDialog" aria-labelledby="batchDialogTitle">
     <form id="batchForm">
-      <div class="dialog-head"><h2>批量创建班级</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-head"><h2 id="batchDialogTitle">批量创建班级</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
       <div class="dialog-body">
         <div class="field"><label for="batchGrade">年级</label><select id="batchGrade"><option>高一</option><option>高二</option><option>高三</option></select></div>
         <div class="options-row"><div class="field"><label for="batchStart">起始班号</label><input id="batchStart" type="number" min="1" max="60" value="1" required></div><div class="field"><label for="batchEnd">结束班号</label><input id="batchEnd" type="number" min="1" max="60" value="16" required></div></div>
-        <p id="batchError" class="form-error"></p>
+        <p id="batchError" class="form-error" role="alert"></p>
       </div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">批量创建</button></div>
     </form>
   </dialog>
 
-  <dialog id="renameClassDialog">
+  <dialog id="renameClassDialog" aria-labelledby="renameClassDialogTitle">
     <form id="renameClassForm">
-      <div class="dialog-head"><h2>班级升班与更名</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-      <div class="dialog-body"><p class="reading-note">例如将高一（10）班改为高二（10）班。设备绑定、教师授权和历史记录继续归属于这个班级，在线新版教室端会同步名称。换教室时，可在设备管理中单独改绑电脑。</p><div class="field"><label for="renameClassName">新的班级名称</label><input id="renameClassName" required maxlength="40"></div><input id="renameClassId" type="hidden"><p id="renameClassError" class="form-error"></p></div>
+      <div class="dialog-head"><h2 id="renameClassDialogTitle">班级升班与更名</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-body"><p class="reading-note">例如将高一（10）班改为高二（10）班。设备绑定、教师授权和历史记录继续归属于这个班级，在线新版教室端会同步名称。换教室时，可在设备管理中单独改绑电脑。</p><div class="field"><label for="renameClassName">新的班级名称</label><input id="renameClassName" required maxlength="40"></div><input id="renameClassId" type="hidden"><p id="renameClassError" class="form-error" role="alert"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存</button></div>
     </form>
   </dialog>
 
-  <dialog id="teacherDialog">
+  <dialog id="teacherDialog" aria-labelledby="teacherDialogTitle">
     <form id="teacherForm">
-      <div class="dialog-head"><h2>创建用户账号</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-head"><h2 id="teacherDialogTitle">创建用户账号</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
       <div class="dialog-body">
         <div class="field"><label for="teacherUsername">登录用户名</label><input id="teacherUsername" required maxlength="64" pattern="[A-Za-z0-9_.@-]{3,64}"></div>
         <div class="field"><label for="teacherDisplayName">姓名</label><input id="teacherDisplayName" required maxlength="40"></div>
         <div class="field"><label for="teacherRole">身份</label><select id="teacherRole"><option value="teacher">班主任教师</option><option value="grade_leader">年级部长</option><option value="director">主任</option><option value="principal">校长</option></select><p id="newStaffRoleHint" class="hint"></p></div>
         <div id="newStaffGradeScope" class="field hidden"><label for="teacherGrade">负责年级</label><select id="teacherGrade"><option value="">请选择年级</option><option>高一</option><option>高二</option><option>高三</option></select></div>
-        <div class="field"><label for="teacherPassword">初始密码</label><input id="teacherPassword" type="password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
+        <div class="field"><label for="teacherPassword">初始密码</label><input id="teacherPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
         <div id="newStaffScope" class="field"><span class="label">授权班级</span><div id="newTeacherClasses" class="check-grid"></div></div>
-        <p id="teacherError" class="form-error"></p>
+        <p id="teacherError" class="form-error" role="alert"></p>
       </div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">创建账号</button></div>
     </form>
   </dialog>
 
-  <dialog id="permissionDialog">
+  <dialog id="permissionDialog" aria-labelledby="permissionDialogTitle">
     <form id="permissionForm">
-      <div class="dialog-head"><h2>身份与班级权限</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-head"><h2 id="permissionDialogTitle">身份与班级权限</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
       <div class="dialog-body"><p id="permissionTeacher"></p><div class="field"><label for="permissionDisplayName">姓名</label><input id="permissionDisplayName" required maxlength="40"></div><div class="field"><label for="permissionRole">身份</label><select id="permissionRole"><option value="teacher">班主任教师</option><option value="grade_leader">年级部长</option><option value="director">主任</option><option value="principal">校长</option></select><p id="permissionRoleHint" class="hint"></p></div><div id="permissionGradeScope" class="field hidden"><label for="permissionGrade">负责年级</label><select id="permissionGrade"><option value="">请选择年级</option><option>高一</option><option>高二</option><option>高三</option></select></div><div id="permissionScope" class="field"><span class="label">负责班级</span><div id="permissionClasses" class="check-grid"></div></div><input id="permissionTeacherId" type="hidden"><p id="permissionError" class="form-error" role="alert"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存权限</button></div>
     </form>
   </dialog>
 
-  <dialog id="passwordDialog">
+  <dialog id="passwordDialog" aria-labelledby="passwordDialogTitle">
     <form id="passwordForm">
-      <div class="dialog-head"><h2>重置用户密码</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-      <div class="dialog-body"><p id="passwordTeacher"></p><div class="field"><label for="newTeacherPassword">新密码</label><input id="newTeacherPassword" type="password" required minlength="10" maxlength="128"></div><input id="passwordTeacherId" type="hidden"><p id="passwordError" class="form-error"></p></div>
+      <div class="dialog-head"><h2 id="passwordDialogTitle">重置用户密码</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+      <div class="dialog-body"><p id="passwordTeacher"></p><div class="field"><label for="newTeacherPassword">新密码</label><input id="newTeacherPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"></div><input id="passwordTeacherId" type="hidden"><p id="passwordError" class="form-error" role="alert"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">重置密码</button></div>
     </form>
   </dialog>
 
-  <dialog id="enrollDialog">
-    <div class="dialog-head"><h2>绑定教室电脑</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+  <dialog id="enrollDialog" aria-labelledby="enrollDialogTitle">
+    <div class="dialog-head"><h2 id="enrollDialogTitle">绑定教室电脑</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
     <div class="dialog-body"><p id="enrollClass"></p><div id="enrollCode" class="code-box"></div><p class="hint">在该班教室电脑的首次启动页面输入此绑定码。绑定码 15 分钟内有效且只能使用一次。</p></div>
     <div class="dialog-actions"><button class="btn primary" type="button" data-close>完成</button></div>
   </dialog>
@@ -401,6 +403,10 @@
       "use strict";
       const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
+      const viewVisible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
+      let voiceRequest = 0, recentRequest = 0, presenceRequest = 0;
+      let recordingRequest = 0, recordingRequested = false, recordingTimer = null;
+      let scheduleFieldId = 0;
       const roleLabels = { superadmin: "超级管理员", teacher: "班主任教师", grade_leader: "年级部长", director: "主任", principal: "校长" };
       const isSchoolAdmin = () => ["superadmin", "principal"].includes(state.user?.role);
       const isManager = () => ["superadmin", "principal", "director", "grade_leader"].includes(state.user?.role);
@@ -428,9 +434,13 @@
         $("voiceModeButton").classList.toggle("selected", voice);
         $("textModeButton").setAttribute("aria-selected", String(!voice));
         $("voiceModeButton").setAttribute("aria-selected", String(voice));
-        $("textComposer").classList.toggle("hidden", voice);
-        $("textPhrases").classList.toggle("hidden", voice);
-        $("voiceComposer").classList.toggle("hidden", !voice);
+        $("textModeButton").tabIndex = voice ? -1 : 0;
+        $("voiceModeButton").tabIndex = voice ? 0 : -1;
+        if (!voice) void finishRecording();
+        $("textComposer").inert = voice;
+        $("textComposer").setAttribute("aria-hidden", String(voice));
+        $("voiceComposer").inert = !voice;
+        $("voiceComposer").setAttribute("aria-hidden", String(!voice));
         $("shoutText").required = !voice;
         $("sendButton").textContent = voice ? "发送语音通知" : "发送通知";
         const infoInput = document.querySelector('input[name="alertLevel"][value="info"]');
@@ -525,20 +535,30 @@
       }
 
       async function finishRecording() {
+        recordingRequested = false;
+        recordingRequest++;
+        clearTimeout(recordingTimer);
+        $("recordButton").setAttribute("aria-pressed", "false");
         const recorder = state.mediaRecorder;
-        if (!recorder || recorder.state === "inactive") return;
-        recorder.stop();
+        if (recorder && recorder.state !== "inactive") recorder.stop();
         state.voiceStream?.getTracks().forEach(track => track.stop());
         state.voiceStream = null;
       }
 
       async function startRecording() {
-        if (state.mediaRecorder?.state === "recording") return;
+        if (recordingRequested || state.mediaRecorder) return;
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
           toast("当前浏览器不支持录音，请改用最新版 Chrome 或 Edge。"); return;
         }
+        recordingRequested = true;
+        const request = ++recordingRequest;
         try {
-          state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+          if (request !== recordingRequest || !recordingRequested || !isVoiceMode()) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
+          state.voiceStream = stream;
           state.voiceChunks = [];
           state.mediaRecorder = new MediaRecorder(state.voiceStream);
           state.voiceStartedAt = Date.now();
@@ -565,10 +585,16 @@
             } catch { toast("录音处理失败，请重试。"); setVoiceBlob(null); }
           };
           state.mediaRecorder.start();
+          $("recordButton").setAttribute("aria-pressed", "true");
           $("recordButton").classList.add("recording"); $("recordButton").textContent = "正在录音，松开结束";
           $("recordStatus").textContent = "正在录音，最长 30 秒";
-          setTimeout(() => { if (state.mediaRecorder?.state === "recording") finishRecording(); }, 30_000);
-        } catch { toast("无法使用麦克风，请允许浏览器访问麦克风后重试。"); }
+          recordingTimer = setTimeout(() => { if (state.mediaRecorder === recorder) void finishRecording(); }, 30_000);
+        } catch {
+          if (request !== recordingRequest) return;
+          void finishRecording();
+          state.mediaRecorder = null;
+          toast("无法使用麦克风，请允许浏览器访问麦克风后重试。");
+        }
       }
 
       function updateLevelPresentation(resetDuration = false) {
@@ -645,11 +671,13 @@
         $("settingsAccount").textContent = `${user.displayName}（${user.username}）`;
         updatePresence();
         clearInterval(state.presenceTimer);
-        state.presenceTimer = setInterval(updatePresence, 15000);
+        state.presenceTimer = setInterval(() => { if (viewVisible('console')) void updatePresence(); }, 15000);
         clearInterval(state.quietTimer);
-        state.quietTimer = setInterval(() => loadQuietHours({ refreshEditor: false }).catch(() => {}), 60000);
+        state.quietTimer = setInterval(() => { if (viewVisible('quiet') || viewVisible('console')) void loadQuietHours({ refreshEditor: false }).catch(() => {}); }, 60000);
         clearInterval(state.classroomVoiceTimer);
-        state.classroomVoiceTimer = setInterval(() => loadClassroomVoice().catch(() => {}), 15000);
+        state.classroomVoiceTimer = setInterval(() => {
+          if (viewVisible('classroom-voice') && !classroomVoiceInUse()) void loadClassroomVoice({background: true}).catch(() => {});
+        }, 15000);
       }
 
       async function loadClasses() {
@@ -694,16 +722,27 @@
       }
 
       async function loadRecent() {
+        const request = ++recentRequest;
         const classId = $("targetClass")?.value || "";
         if (!classId) { state.recent = []; renderRecent(); return; }
         const data = await api(`/api/history?classId=${encodeURIComponent(classId)}&limit=5`);
+        if (request !== recentRequest) return;
         state.recent = data.history;
         renderRecent();
       }
 
-      async function loadClassroomVoice() {
+      function classroomVoiceInUse() {
+        return [...$('classroomVoiceContainer').querySelectorAll('audio')].some(audio => !audio.paused)
+          || $('classroomVoiceContainer').contains(document.activeElement);
+      }
+
+      async function loadClassroomVoice({background = false} = {}) {
+        const request = ++voiceRequest;
         const classId = $("classroomVoiceClass")?.value || "";
         const data = await api(`/api/classroom-voice${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`);
+        if (request !== voiceRequest) return;
+        if (background && classroomVoiceInUse()) return;
+        if (JSON.stringify(state.classroomVoice) === JSON.stringify(data.messages || []) && $('classroomVoiceContainer').childElementCount) return;
         state.classroomVoice = data.messages || [];
         renderClassroomVoice();
       }
@@ -799,6 +838,8 @@
         const wrap = el("div", "field");
         const caption = el("label", "", label);
         const input = document.createElement("input");
+        input.id = `quiet-field-${++scheduleFieldId}`;
+        caption.htmlFor = input.id;
         input.type = type; input.value = value || ""; input.dataset.scheduleField = name;
         input.disabled = !isSchoolAdmin();
         wrap.append(caption, input);
@@ -998,6 +1039,7 @@
       }
 
       async function updatePresence() {
+        const request = ++presenceRequest;
         const classId = $("targetClass")?.value;
         const presence = $("presence");
         if (!classId) {
@@ -1008,10 +1050,12 @@
         }
         try {
           const result = await api(`/api/classes/${encodeURIComponent(classId)}/status`);
+          if (request !== presenceRequest) return;
           presence.querySelector("span:last-child").textContent = result.online ? "教室在线" : "教室离线";
           presence.querySelector(".dot").classList.toggle("online", result.online);
           $("sendButton").disabled = false;
         } catch {
+          if (request !== presenceRequest) return;
           presence.querySelector("span:last-child").textContent = "状态未知";
           presence.querySelector(".dot").classList.remove("online");
         }
@@ -1237,6 +1281,8 @@
           document.querySelectorAll(".nav button").forEach(node => node.classList.toggle("active", node === button));
           document.querySelectorAll("main > .view").forEach(node => node.classList.add("hidden"));
           $(`view-${button.dataset.view}`).classList.remove("hidden");
+          if (button.dataset.view === 'console') { void updatePresence(); void loadRecent().catch(error => toast(error.message)); }
+          else void finishRecording();
           if (button.dataset.view === "history") loadHistory().catch(error => toast(error.message));
           if (button.dataset.view === "classroom-voice") loadClassroomVoice().catch(error => toast(error.message));
           if (button.dataset.view === "quiet") loadQuietHours().catch(error => toast(error.message));
@@ -1246,12 +1292,37 @@
           const button = event.target.closest("[data-grade-filter]");
           if (!button) return;
           state.classGradeFilter = button.dataset.gradeFilter || "all";
+          $('classGradeFilter').querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
           renderClasses();
         });
         $("textModeButton").addEventListener("click", () => setInputMode("text"));
         $("voiceModeButton").addEventListener("click", () => setInputMode("voice"));
+        document.querySelector('.mode-picker').addEventListener('keydown', event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const voice = event.key === 'End' || !['Home', 'End'].includes(event.key) && !isVoiceMode();
+          setInputMode(voice ? 'voice' : 'text');
+          $(voice ? 'voiceModeButton' : 'textModeButton').focus({preventScroll: true});
+        });
         $("recordButton").addEventListener("pointerdown", event => { event.preventDefault(); startRecording(); });
         ["pointerup", "pointercancel", "pointerleave"].forEach(name => $("recordButton").addEventListener(name, event => { event.preventDefault(); finishRecording(); }));
+        $('recordButton').addEventListener('keydown', event => {
+          if (![' ', 'Enter'].includes(event.key)) return;
+          event.preventDefault(); if (!event.repeat) void startRecording();
+        });
+        $('recordButton').addEventListener('keyup', event => {
+          if (![' ', 'Enter'].includes(event.key)) return;
+          event.preventDefault(); void finishRecording();
+        });
+        $('recordButton').addEventListener('blur', () => { void finishRecording(); });
+        window.addEventListener('blur', () => { void finishRecording(); });
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) { void finishRecording(); return; }
+          if (!state.user) return;
+          if (viewVisible('console')) { void updatePresence(); void loadRecent().catch(() => {}); }
+          if (viewVisible('quiet') || viewVisible('console')) void loadQuietHours({refreshEditor: false}).catch(() => {});
+          if (viewVisible('classroom-voice') && !classroomVoiceInUse()) void loadClassroomVoice({background: true}).catch(() => {});
+        });
         $("voicePreview").addEventListener("loadedmetadata", updateVoicePreviewStatus);
         $("voicePreview").addEventListener("durationchange", updateVoicePreviewStatus);
         $("voicePreview").addEventListener("ended", updateVoicePreviewStatus);
@@ -1393,12 +1464,12 @@
       start();
     })();
   </script>
-  <script nonce="__CSP_NONCE__" src="/ui.js?v=7" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ui.js?v=9" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=7" defer></script>
+  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=10" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=3" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=23" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>

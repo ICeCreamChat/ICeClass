@@ -65,13 +65,21 @@
     closeMenu();
     const users = context.teachers;
     $('userScopeNote').textContent = context.user.role === 'grade_leader' ? `您负责${context.user.grade || '所选年级'}，可管理本年级的班主任教师。` : context.user.role === 'director' ? '您负责高一、高二、高三，可管理年级部长与班主任教师。' : '按学校职责分配权限，年级范围自动包含新增班级。';
-    const tabs = $('userRoleTabs'); tabs.replaceChildren();
+    const tabs = $('userRoleTabs');
     const visibleRoles = roles.filter(role => users.some(user => user.role === role) || context.user.permissions?.assignableRoles?.includes(role));
+    const existingTabs = new Map([...tabs.children].map(tab => [tab.dataset.roleFilter, tab]));
+    for (const [role, tab] of existingTabs) if (role !== 'all' && !visibleRoles.includes(role)) tab.remove();
     for (const role of ['all', ...visibleRoles]) {
       const count = role === 'all' ? users.length : users.filter(u => u.role === role).length;
-      const tab = button(role === 'all' ? '全部用户' : labels[role], () => { filters.role = role; filters.page = 1; draw(); }, 'user-role-tab');
-      tab.append(node('span', String(count), 'user-tab-count'));
-      tab.setAttribute('aria-pressed', String(filters.role === role)); tabs.append(tab);
+      let tab = existingTabs.get(role);
+      if (!tab) {
+        tab = button(role === 'all' ? '全部用户' : labels[role], () => { filters.role = role; filters.page = 1; draw(); }, 'user-role-tab');
+        tab.dataset.roleFilter = role;
+        tab.append(node('span', '', 'user-tab-count')); tabs.append(tab);
+      }
+      const badge = tab.querySelector('.user-tab-count');
+      if (badge.textContent !== String(count)) badge.textContent = String(count);
+      tab.setAttribute('aria-pressed', String(filters.role === role));
     }
     const keyword = $('userSearch').value.trim().toLocaleLowerCase();
     const selectedGrade = $('userGradeFilter').value, status = $('userStatusFilter').value;

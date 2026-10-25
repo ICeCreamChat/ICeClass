@@ -2,14 +2,37 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const mobile = matchMedia('(max-width: 880px)');
+  const switchGroups = '.mode-picker, #islandTabs, .ranking-switch, #readingGradeFilter, #classGradeFilter, #userRoleTabs, .island-duty-choices, .island-duty-weeks';
+  function clearSwitchHeights() {
+    document.querySelectorAll('main > .view').forEach(view => view.style.removeProperty('min-height'));
+  }
+  function keepSwitchViewport(event) {
+    if (event.type === 'keydown' && !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const view = event.target.closest(switchGroups)?.closest('.view');
+    if (!view) return;
+    if (!window.scrollY) { view.style.removeProperty('min-height'); return; }
+    // A shorter panel must not clamp the current scroll position. Reserve only
+    // the remaining viewport, outside the cards; reset on navigation or resize.
+    const bottom = parseFloat(getComputedStyle(view.parentElement).paddingBottom) || 0;
+    view.style.minHeight = Math.max(0, Math.ceil(innerHeight - view.getBoundingClientRect().top - bottom)) + 'px';
+  }
+  document.addEventListener('click', keepSwitchViewport, true);
+  document.addEventListener('keydown', keepSwitchViewport, true);
+  window.addEventListener('resize', clearSwitchHeights);
   $('topbarDate').textContent = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long'}).format(new Date());
   function closeNav(returnFocus = false) {
     document.body.classList.remove('nav-open'); $('menuToggle').setAttribute('aria-expanded', 'false');
+    $('mainContent').inert = false; document.querySelector('.topbar').inert = false;
+    if ($('banbanRoot')) $('banbanRoot').inert = false;
+    $('appSidebar').removeAttribute('role'); $('appSidebar').removeAttribute('aria-modal');
     if (returnFocus) $('menuToggle').focus();
   }
   $('menuToggle').onclick = () => {
     if (document.body.classList.contains('nav-open')) return closeNav(true);
     document.body.classList.add('nav-open'); $('menuToggle').setAttribute('aria-expanded', 'true');
+    $('mainContent').inert = true; document.querySelector('.topbar').inert = true;
+    if ($('banbanRoot')) $('banbanRoot').inert = true;
+    $('appSidebar').setAttribute('role', 'dialog'); $('appSidebar').setAttribute('aria-modal', 'true');
     $('mainNav').querySelector('button.active')?.focus();
   };
   $('sidebarClose').onclick = () => closeNav(true);
@@ -26,6 +49,9 @@
     });
   });
   mobile.addEventListener('change', () => closeNav());
+  document.querySelector('.skip-link').addEventListener('click', event => {
+    event.preventDefault(); $('mainContent').focus();
+  });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
     const dialog = [...document.querySelectorAll('dialog[open]')].at(-1);
@@ -58,6 +84,7 @@
   }
   $('mainNav').addEventListener('click', event => {
     if (!event.target.closest('[data-view]')) return;
+    clearSwitchHeights();
     syncNavigation();
     if (mobile.matches) { closeNav(); $('mainContent').focus({preventScroll: true}); }
     window.scrollTo({top: 0, behavior: 'instant'});

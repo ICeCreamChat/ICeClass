@@ -32,3 +32,12 @@ desktop_release/
 /tmp/
 /图/
 /design-qa.md
+
+# Local Tencent Cloud API connection and handoff.
+/AGENTS.md
+/docs/腾讯云API运维.md
+/scripts/tencent-cloud-api.ps1
+/scripts/tencent-cloud-status.sh
+/scripts/test-tencent-cloud-api.ps1
+TencentCloud/
+*.dpapi

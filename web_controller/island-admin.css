@@ -21,6 +21,7 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 .island-tabs button:hover { background: var(--bg); }
 .island-tabs button.active { color: var(--blue); background: var(--blue-soft); }
 #islandTabContent { padding: 24px; min-height: 280px; scroll-margin-top: 150px; }
+#islandEditor #islandTabs button { scroll-margin-top: 0; }
 .island-section-heading { justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 12px 24px; }
 .island-section-heading > div { flex: 1; min-width: 200px; }
 .island-section-heading h2 { font-size: 19px; margin: 0 0 5px; letter-spacing: 0; }
