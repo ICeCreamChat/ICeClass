@@ -31,9 +31,9 @@ def prepare(source, archive):
             output.write(path, name)
             files.append({'name': name, 'size': path.stat().st_size, 'sha256': digest(path)})
     parts = []
-    with archive.open('rb') as source:
+    with archive.open('rb') as packed:
         for index in range(10):
-            chunk = source.read(64 * 1024 * 1024)
+            chunk = packed.read(64 * 1024 * 1024)
             if not chunk:
                 break
             path = TARGET / f'voice-{index + 1:02d}.pack'

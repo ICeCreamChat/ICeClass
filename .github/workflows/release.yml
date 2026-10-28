@@ -63,7 +63,7 @@ jobs:
         run: |
           python -m unittest discover -s tooling/tests -p test_github_release.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m unittest discover -s tooling/tests -p test_prepare_banban_voice.py -v
+          python -m unittest discover -s tooling/tests -p 'test_prepare_banban*.py' -v
 
       - name: Check source versions and tag commit
         id: metadata
