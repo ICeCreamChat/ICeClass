@@ -1,6 +1,8 @@
 using System.Net.WebSockets;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using Avalonia.Threading;
 
 namespace ICeClass.Receiver;
@@ -10,6 +12,7 @@ public sealed class CloudReceiverService
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(45) };
     private readonly SpeechService _speech;
     private readonly AudioPlaybackService _audio = new();
+    internal ClassroomAgentService ComputerAgent { get; }
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<string> _recentIds = new(StringComparer.Ordinal);
     private readonly Queue<string> _recentOrder = new();
@@ -19,7 +22,9 @@ public sealed class CloudReceiverService
     private int _presentationGeneration;
     internal IShoutPresenter? NotificationPresenter { get; set; }
 
-    public CloudReceiverService(SpeechService speech) => _speech = speech;
+    public CloudReceiverService(SpeechService speech) : this(speech, new ClassroomAgentService()) { }
+    internal CloudReceiverService(SpeechService speech, ClassroomAgentService computerAgent)
+        => (_speech, ComputerAgent) = (speech, computerAgent);
     public event EventHandler<ReceiverConnectionState>? ConnectionStateChanged;
     public event EventHandler<ReceiverConfig>? BindingChanged;
     public event EventHandler<ShoutData>? NotificationDisplayed;
@@ -34,6 +39,7 @@ public sealed class CloudReceiverService
 
     public async Task RestartAsync(ReceiverConfig config)
     {
+        ComputerAgent.Stop();
         await StopConnectionAsync();
         await Dispatcher.UIThread.InvokeAsync(() => NotificationPresenter?.Clear());
         await StartAsync(config);
@@ -45,6 +51,7 @@ public sealed class CloudReceiverService
         await StopConnectionAsync();
         await Dispatcher.UIThread.InvokeAsync(() => { _presentationGeneration++; NotificationPresenter?.Clear(); _currentAlert?.Close(); _speech.Stop(); _audio.Stop(); });
         _audio.Dispose();
+        ComputerAgent.Dispose();
     }
 
     public Task ShowTestAsync(string alertLevel = "info")
@@ -169,13 +176,20 @@ public sealed class CloudReceiverService
 
     private static Task SendDeviceStatusAsync(ClientWebSocket socket, SemaphoreSlim sendLock, CancellationToken token) =>
         SendAsync(socket, sendLock, new { type = "device_status", outputVolume = ClassroomControlService.ReadVolume(),
-            version = ReceiverUpdateService.CurrentVersionText, capabilities = new[] { "reading", "volume" }, computer = ComputerIdentity.Snapshot() }, token);
+            version = ReceiverUpdateService.CurrentVersionText, capabilities = new[] { "reading", "volume", "agent_control_v1" }, computer = ComputerIdentity.Snapshot() }, token);
 
-    private static async Task HandleCommandAsync(JsonElement command, ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
+    private async Task HandleCommandAsync(JsonElement command, ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
     {
         if (!command.TryGetProperty("commandId", out var id) || id.ValueKind != JsonValueKind.String || id.GetString()?.Length > 100 ||
             !command.TryGetProperty("action", out var actionNode) || actionNode.ValueKind != JsonValueKind.String) return;
         var action = actionNode.GetString();
+        if (action == "agent_control")
+        {
+            // Do not await: the receive loop must remain able to receive stop,
+            // binding changes, emergency notices and heartbeat acknowledgements.
+            _ = HandleAgentCommandAsync(command.Clone(), socket, sendLock, config, token);
+            return;
+        }
         if (action is not ("set_volume" or "open_reading")) return;
         try
         {
@@ -192,6 +206,22 @@ public sealed class CloudReceiverService
             AppLog.Error("Classroom control failed", error);
             await SendAsync(socket, sendLock, new { type = "device_command_ack", commandId = id.GetString(), action, success = false, error = error.Message, outputVolume = ClassroomControlService.ReadVolume() }, token);
         }
+    }
+
+    private async Task HandleAgentCommandAsync(JsonElement command, ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
+    {
+        try
+        {
+            var result = await ComputerAgent.ExecuteAsync(command, config, token);
+            try
+            {
+                if (!token.IsCancellationRequested && socket.State == WebSocketState.Open)
+                    await SendAsync(socket, sendLock, result, token);
+            }
+            finally { ClassroomAgentService.ReleaseFrame(result); }
+        }
+        catch (Exception error) when (error is OperationCanceledException or WebSocketException or ObjectDisposedException) { }
+        catch (Exception error) { AppLog.Error("Send computer operation result", error); }
     }
 
     private async Task ReceiveAsync(ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
@@ -224,6 +254,7 @@ public sealed class CloudReceiverService
                         if (binding.TryGetProperty("deviceName", out var deviceName) && deviceName.ValueKind == JsonValueKind.String &&
                             !string.IsNullOrWhiteSpace(deviceName.GetString()) && deviceName.GetString()!.Length <= 80) name = deviceName.GetString()!;
                         var changed = config.ClassId != classId.GetString() || config.ClassName != className.GetString() || config.DeviceName != name;
+                        if (config.ClassId != classId.GetString()) ComputerAgent.Stop();
                         config.ClassId = classId.GetString()!; config.ClassName = className.GetString()!; config.DeviceName = name;
                         if (changed)
                         {
@@ -410,7 +441,7 @@ public sealed class CloudReceiverService
     }
 
     private void SetState(bool connected, string text) => ConnectionStateChanged?.Invoke(this, new ReceiverConnectionState(connected, text));
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.Create(UnicodeRanges.All) };
 }
 
 public sealed record ReceiverConnectionState(bool Connected, string Text);

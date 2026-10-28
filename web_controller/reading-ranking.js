@@ -63,7 +63,7 @@
       number.append(node('strong', Math.floor(row.effectiveSeconds / 60)), node('small', '分'), node('strong', row.effectiveSeconds % 60), node('small', '秒'));
       card.append(top, node('strong', row.className, 'leader-class'), number);
       const bottom = node('span', undefined, 'leader-bottom');
-      bottom.append(node('span', `${row.sessions} 次使用 · ${row.ratio === null ? '—' : row.ratio + '%'} 达标`), node('span', '查看日历 ↗'));
+      bottom.append(node('span', `${row.sessions} 次使用 · ${row.ratio === null ? '—' : row.ratio + '%'} 达标`), node('span', '查看日历'));
       card.append(bottom);
       const line = sparkline(row, report); if (line) card.append(line);
       wrap.append(card);
@@ -122,7 +122,7 @@
       if (!row.effectiveSeconds) fill.classList.add('is-zero');
       plot.append(value, fill);
       const info = node('span', undefined, 'ranking-column-info');
-      info.append(rank(row), node('strong', row.className, 'ranking-class'), syncBadge(row), node('span', row.activeSeconds ? `${row.sessions} 次 · 达标 ${row.ratio}%` : '暂无已同步记录', 'ranking-column-meta'), node('span', '查看日历 ↗', 'ranking-column-link'));
+      info.append(rank(row), node('strong', row.className, 'ranking-class'), syncBadge(row), node('span', row.activeSeconds ? `${row.sessions} 次 · 达标 ${row.ratio}%` : '暂无已同步记录', 'ranking-column-meta'), node('span', '查看日历', 'ranking-column-link'));
       b.append(plot, info); item.append(b); list.append(item);
     });
     list.addEventListener('keydown', event => {

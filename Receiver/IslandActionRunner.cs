@@ -32,7 +32,7 @@ internal sealed class IslandActionRunner(Func<ReceiverConfig, Task> openReading,
             {
                 if (!ApplicationAllowed(rule.Value, local.AllowedApplications))
                 {
-                    notify("自动化应用待允许", $"请在教室岛设置中允许 {Path.GetFileName(rule.Value)}。", p.Reminders.DisplaySeconds);
+                    notify("自动化应用待允许", $"请在教室浮岛设置中允许 {Path.GetFileName(rule.Value)}。", p.Reminders.DisplaySeconds);
                     return $"{e.Title}：应用尚未在本机允许";
                 }
                 Process.Start(new ProcessStartInfo(Path.GetFullPath(rule.Value)) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(rule.Value)! });

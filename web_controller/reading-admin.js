@@ -97,12 +97,12 @@
     const used = report.rows.filter(r => r.activeSeconds > 0), total = report.rows.reduce((sum, r) => sum + r.effectiveSeconds, 0);
     $('readingOverview').replaceChildren();
     const symbols = ['M5 12h2l3-7 4 14 3-7h2', 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z', 'M6 5v14l12-7z'];
-    [['有效发声总时长', duration(total), '每一秒投入，都在积累'], ['使用班级', `${used.length} / ${report.rows.length}`, '当前范围内有早读记录的班级'], ['使用次数', used.reduce((sum, r) => sum + r.sessions, 0), '所选日期内的早读活动']].forEach(([label, value, note], i) => {
+    [['有效发声总时长', duration(total)], ['使用班级 / 总班级', `${used.length} / ${report.rows.length}`], ['使用次数', used.reduce((sum, r) => sum + r.sessions, 0)]].forEach(([label, value], i) => {
       const item = node('div', undefined, 'metric'), heading = node('div',undefined,'metric-heading'), symbol = node('span',undefined,'metric-symbol');
       const svg = document.createElementNS('http://www.w3.org/2000/svg','svg'), path = document.createElementNS(svg.namespaceURI,'path'); svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('aria-hidden','true'); path.setAttribute('d',symbols[i]); svg.append(path); symbol.append(svg);
       heading.append(node('span',label),symbol); const strong = node('strong');
       String(value).split(/(分|秒|\/)/).filter(Boolean).forEach(part => strong.append(node(/^(分|秒|\/)$/.test(part)?'small':'span',part.trim())));
-      item.append(heading, strong, node('span',note,'metric-note')); $('readingOverview').append(item);
+      item.append(heading, strong); $('readingOverview').append(item);
     });
     window.ICeClassRanking.render(report);
     $('readingDaily').replaceChildren(report.daily.length ? table(['日期', '班级', '使用次数', '运行时长', '有效发声', '完成量'], report.daily.map(r => [r.day, r.className, `${r.sessions} 次`, duration(r.activeSeconds), duration(r.effectiveSeconds), completed(r.completed)])) : node('div', '所选日期还没有早读记录。', 'empty'));
@@ -121,7 +121,7 @@
       link.href = url; link.download = `ICeClass 班伴-早读-${params.get('grades')?.replaceAll(',', '·') || '全部年级'}-${params.get('start')}-${params.get('end')}.xlsx`;
       document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (e) { error(e); }
-    finally { button.disabled = false; button.textContent = '↓ 导出 XLSX'; }
+    finally { button.disabled = false; button.textContent = '导出 XLSX'; }
   }
   async function loadControls() {
     if (controlsRequest) return controlsRequest;
@@ -158,6 +158,13 @@
       const manage=node('button','核实 / 改绑','btn');manage.type='button';manage.onclick=()=>window.ICeClassAdmin.openDevice(d);
       return [identity, verification, badge(d.online ? '在线' : '离线',d.online?'enabled':'offline'), d.actual_volume === null ? '—' : d.actual_volume + '%', d.desired_volume === null ? '—' : d.desired_volume + '%', state+' · '+(d.receiver_version || '版本未上报'), manage];
     })) : node('div', '所选班级还没有绑定教室设备。', 'empty'));
+    const controlsTable = $('controlDevices').querySelector('table');
+    if (controlsTable) {
+      controlsTable.classList.add('control-device-table');
+      const wrap = controlsTable.parentElement;
+      wrap.tabIndex = 0; wrap.setAttribute('role', 'region');
+      wrap.setAttribute('aria-label', '教室设备状态，可左右滚动');
+    }
   }
   async function control(action, volume) {
     const selected = $('controlClass').value;
@@ -200,7 +207,7 @@
       else selectedGrades.add(grade);
       if (selectedGrades.size === 4) selectedGrades.clear();
       $('readingGradeFilter').querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.readingGrade === 'all' ? !selectedGrades.size : selectedGrades.has(button.dataset.readingGrade))));
-      $('readingGradeScope').textContent = selectedGrades.size ? [...selectedGrades].join(' + ') + ' · 可继续多选' : '可多选，一起比较';
+      $('readingGradeScope').textContent = selectedGrades.size ? '已选年级：' + [...selectedGrades].join('、') : '全部年级';
       $('readingClass').value = '';
       syncClasses();
       void loadReport().catch(error);

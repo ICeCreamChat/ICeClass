@@ -60,7 +60,10 @@ jobs:
           python-version: '3.12'
 
       - name: Check release automation
-        run: python -m unittest discover -s tooling/tests -p test_github_release.py -v
+        run: |
+          python -m unittest discover -s tooling/tests -p test_github_release.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tooling/tests -p test_prepare_banban_voice.py -v
 
       - name: Check source versions and tag commit
         id: metadata
@@ -85,6 +88,13 @@ jobs:
         working-directory: source
         run: npm ci
 
+      - name: Prepare and verify bundled offline voice assets
+        working-directory: source
+        run: |
+          if (Test-Path scripts/prepare-banban-voice.py) {
+            python scripts/prepare-banban-voice.py
+          }
+
       - name: Check server
         working-directory: source
         run: python -m unittest discover -s server -p 'test_*.py' -v
@@ -96,6 +106,12 @@ jobs:
       - name: Check legacy cloud backend
         working-directory: source
         run: npm test
+
+      - name: Check Banban voice and island interactions
+        working-directory: source
+        run: |
+          $checks = @('scripts/test-banban-voice.cjs', 'scripts/test-island-schedule.cjs', 'scripts/test-island-ribbon.cjs') | Where-Object { Test-Path $_ }
+          if ($checks.Count -gt 0) { node --test @checks }
 
       - name: Check classroom core
         working-directory: source

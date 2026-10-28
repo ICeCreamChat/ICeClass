@@ -6,7 +6,7 @@ set "DOTNET_EXE=dotnet"
 if exist ".tools\dotnet\dotnet.exe" set "DOTNET_EXE=.tools\dotnet\dotnet.exe"
 if defined ICECLASS_DOTNET set "DOTNET_EXE=%ICECLASS_DOTNET%"
 
-echo [1/2] Checking .NET SDK...
+echo [1/3] Checking .NET SDK...
 "%DOTNET_EXE%" --version >nul 2>nul
 if errorlevel 1 (
   echo.
@@ -16,7 +16,17 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [2/2] Building the Windows 10/11 single-file receiver...
+echo [2/3] Preparing verified offline voice assets...
+set "PYTHON_EXE=python"
+if defined ICECLASS_PYTHON set "PYTHON_EXE=%ICECLASS_PYTHON%"
+"%PYTHON_EXE%" "scripts\prepare-banban-voice.py"
+if errorlevel 1 (
+  echo Voice asset preparation failed. Python 3.11 or newer and network access are required for a clean build.
+  if /i not "%ICECLASS_NO_PAUSE%"=="1" pause
+  exit /b 1
+)
+
+echo [3/3] Building the Windows 10/11 single-file receiver...
 if exist "dist\receiver" rmdir /s /q "dist\receiver"
 "%DOTNET_EXE%" publish "Receiver\Receiver.csproj" -c Release -r win-x64 --self-contained true -o "dist\receiver" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 if errorlevel 1 (

@@ -133,7 +133,7 @@
     if (!select.options.length) {
       ++generation; inFlightKey = loadedKey = ''; hideTip(); $('calendarBody').classList.add('hidden'); $('calendarSummary').replaceChildren();
       $('readingCalendar').setAttribute('aria-busy', 'false'); message('还没有获授权的班级。');
-      $('calendarClassCaption').textContent = '把每天的朗读，连成一年的坚持。';
+      $('calendarClassCaption').textContent = '';
     }
   }
   async function showClass(classId, day) {

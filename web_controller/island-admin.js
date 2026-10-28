@@ -4,22 +4,33 @@
   const api = (...args) => window.ICeClass.api(...args);
   const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const weekNames = { all: '每周', odd: '单周', even: '双周' };
-  const tabs = ['timetable', 'slots', 'overrides', 'settings', 'components', 'automation'];
+  const tabs = ['timetable', 'duties', 'slots', 'overrides', 'settings', 'components', 'automation'];
+  const dutyNames = { midday: '午间静校', evening: '晚自习' };
+  const schedule = window.ICeClassIslandSchedule;
+  let dutyKind = 'midday', dutyWeek = 1;
+  let dutyDrafts = {};
   let profile, config, dirty = false, busy = false, loadedClass = '', tab = 'timetable', week = 'all';
-  let fieldId = 0, loadId = 0, polling = false, livePreview = true;
+  let fieldId = 0, loadId = 0, polling = false, livePreview = true, previewOpen = false;
   const ribbon = new window.ICeClassIslandRibbon($('islandPreview'), $('islandPreviewStage'));
-  ribbon.onChange = () => {
-    $('islandPreviewPlay').textContent = ribbon.playing ? '暂停演示' : ribbon.elapsed === null ? '播放提醒' : '继续演示';
-    $('islandMotionSeekLabel').hidden = ribbon.elapsed === null;
-    $('islandMotionSeek').value = ribbon.elapsed || 0;
-  };
+  ribbon.onChange = updatePreviewControls;
+  const workspaceHead = document.querySelector('.island-workspace-head');
+  new ResizeObserver(() => {
+    const height = workspaceHead.getBoundingClientRect().height + (parseFloat(getComputedStyle(workspaceHead).top) || 0) + 16;
+    $('view-island').style.setProperty('--island-sticky-height', Math.ceil(height) + 'px');
+  }).observe(workspaceHead);
+  function updateTableOverflow() {
+    const root = $('islandTabContent');
+    root.dataset.tableOverflow = String([...root.querySelectorAll('.table-wrap')].some(node => node.clientWidth > 0 && node.scrollWidth > node.clientWidth + 1));
+  }
+  new ResizeObserver(updateTableOverflow).observe($('islandTabContent'));
 
   const clock = n => Number.isFinite(n) ? `${Math.floor(n / 60)}`.padStart(2, '0') + ':' + `${n % 60}`.padStart(2, '0') : '';
   const minute = value => /^\d{2}:\d{2}$/.test(value) ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null;
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const nowClock = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
   const className = () => $('islandClass').selectedOptions[0]?.text || '班级配置';
-  const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(Date.parse(value + 'T12:00:00Z'));
+  const validDate = schedule.validDate;
+  const isClassroom = value => !value || ['本班', '本班教室', '本教室'].includes(value.trim());
 
   function el(tag, text, cls) {
     const node = document.createElement(tag);
@@ -51,6 +62,8 @@
   function input(value, action, type = 'text', extra = {}, path, tracked = true) {
     const node = keyed(el('input'), path);
     node.type = type;
+    node.name = path || '';
+    node.autocomplete = 'off';
     Object.assign(node, extra);
     if (type === 'checkbox') node.checked = !!value;
     else node.value = value ?? '';
@@ -63,6 +76,7 @@
   }
   function select(value, choices, action, path, tracked = true) {
     const node = keyed(el('select'), path);
+    node.name = path || '';
     choices.forEach(([key, label]) => node.append(new Option(label, key)));
     node.value = value;
     node.onchange = () => { clearFieldError(node); action(node.value); if (tracked) mark(); };
@@ -70,6 +84,8 @@
   }
   function area(value, action, maximum, path) {
     const node = keyed(el('textarea'), path);
+    node.name = path || '';
+    node.autocomplete = 'off';
     node.value = value || '';
     node.maxLength = maximum;
     node.rows = 2;
@@ -79,6 +95,7 @@
   function field(label, control, hint, cls = '') {
     const wrap = el('div', undefined, 'island-field' + (cls ? ' ' + cls : ''));
     control.id ||= `island-field-${++fieldId}`;
+    control.name ||= label;
     const caption = el('label', label);
     caption.htmlFor = control.id;
     wrap.append(caption, control);
@@ -93,6 +110,7 @@
   function toggle(label, object, key, path, hint, changed) {
     const wrap = el('label', undefined, 'island-toggle');
     const control = input(object[key], value => { object[key] = value; changed?.(); }, 'checkbox', {}, path);
+    control.name ||= key;
     const copy = el('span');
     copy.append(el('span', label));
     if (hint) {
@@ -104,15 +122,24 @@
     wrap.append(control, copy);
     return wrap;
   }
+  function switchToggle(label, object, key, path, hint, changed) {
+    const node = toggle(label, object, key, path, hint, changed);
+    node.classList.add('island-switch');
+    node.querySelector('input').setAttribute('role', 'switch');
+    return node;
+  }
   function disabled(control, value) {
     control.disabled = value;
     control.closest('.island-field, .island-toggle')?.classList.toggle('is-disabled', value);
   }
+  function needsSave() {
+    return !!config && (dirty || (profile?.revision === 0 && config.slots.length > 0));
+  }
   function status(message) {
     $('view-island').dataset.dirty = String(dirty);
     $('islandEditingClass').textContent = loadedClass ? className() : '班级配置';
-    $('islandDirty').textContent = message || (dirty ? '有未保存的修改' : profile?.revision ? `版本 ${profile.revision} · 已保存` : '尚未保存配置');
-    $('islandSave').disabled = busy || !config || !dirty;
+    $('islandDirty').textContent = message || (dirty ? '有未保存的修改' : profile?.revision ? `版本 ${profile.revision} · 已保存` : needsSave() ? '已带入年级默认作息 · 尚未保存' : '尚未保存配置');
+    $('islandSave').disabled = busy || !needsSave();
   }
   function mark() {
     dirty = true;
@@ -132,26 +159,30 @@
     busy = value;
     $('islandEditor').inert = value || !config;
     $('islandEditor').setAttribute('aria-busy', String(value));
-    $('islandSave').disabled = value || !config || !dirty;
+    $('islandSave').disabled = value || !needsSave();
     $('islandSave').textContent = label || '保存并下发';
     $('islandReload').disabled = value;
     $('islandClass').disabled = value;
     ['islandCopy', 'islandImport', 'islandExport', 'islandImportFile'].forEach(id => $(id).disabled = value || !config);
+    updatePreviewControls();
   }
   function regularLesson(slotId, weekday, scope) {
     return config.lessons.find(l => l.slotId === slotId && l.weekday === weekday && l.week === scope)
       || (scope !== 'all' ? config.lessons.find(l => l.slotId === slotId && l.weekday === weekday && l.week === 'all') : null);
   }
   function scheduleFor(on) {
-    if (!validDate(on) || !validDate(config.weekAnchor)) return [];
-    const date = new Date(on + 'T12:00:00Z');
-    const weekday = date.getUTCDay() || 7;
-    const parity = ((Math.floor((date - new Date(config.weekAnchor + 'T12:00:00Z')) / 604800000) % 2) + 2) % 2 === 0 ? 'odd' : 'even';
-    return [...config.slots].sort((a, b) => a.start - b.start).flatMap(slot => {
-      const override = config.overrides.find(o => o.date === on && o.slotId === slot.id);
-      const lesson = override || regularLesson(slot.id, weekday, parity);
-      return lesson && !lesson.cancelled ? [{ ...slot, ...lesson, temporary: !!override }] : [];
-    });
+    return schedule.forDate(config, on);
+  }
+  function componentName(component) {
+    return component.title || { date: '日期', countdown: '倒数日', text: '班级寄语' }[component.type];
+  }
+  function componentText(component, on) {
+    if (component.type === 'date') return validDate(on) ? on.replaceAll('-', '.') + ' ' + weekdays[(new Date(on + 'T12:00:00Z').getUTCDay() + 6) % 7] : '日期';
+    if (component.type === 'countdown') {
+      const days = Math.round((Date.parse(component.date + 'T12:00:00Z') - Date.parse(on + 'T12:00:00Z')) / 86400000);
+      return `${component.title || '倒数日'} · ${Number.isFinite(days) ? days > 0 ? `还有 ${days} 天` : days === 0 ? '就是今天' : `已过 ${-days} 天` : '请选择日期'}`;
+    }
+    return component.text || component.title || '尚未填写文字';
   }
   function renderPreview() {
     if (!config) return;
@@ -167,33 +198,67 @@
       : current ? `${current.subject} · 距下课 ${current.end - m} 分钟`
       : next ? `下节 ${next.subject} · ${clock(next.start)}`
       : lessons.length ? '当日课程已结束' : '这一天没有课程';
-    ribbon.update({ date: on, minute: m, lessons, appearance: config.appearance, reminders: config.reminders, message, className: className() });
-    $('islandPreviewPlay').disabled = !lessons.length;
-    $('islandMotionNote').textContent = lessons.length ? '播放仅用于预览，不会向教室发送通知。' : '设置当日课程后，可以播放提醒动画。';
-    $('islandPreviewSummary').textContent = !config.enabled ? '教室岛已关闭。保存后，教室端将隐藏悬浮岛。'
+    const valid = validDate(on) && m !== null;
+    if (!valid && previewOpen) ribbon.pause();
+    const firstLesson = config.lessons.find(l => config.slots.some(s => s.id === l.slotId));
+    const demoLesson = lessons[0] || (firstLesson && { ...config.slots.find(s => s.id === firstLesson.slotId), ...firstLesson }) || { subject: '示例课程', start: 480, end: 525 };
+    const second = livePreview ? new Date().getSeconds() : 0;
+    ribbon.update({ date: on, minute: m, second, live: livePreview, valid,
+      epochSeconds: valid ? Date.parse(on + 'T' + clock(m) + ':00+08:00') / 1000 + second : NaN,
+      lessons, demoLesson, enabled: config.enabled, appearance: config.appearance, reminders: config.reminders,
+      components: config.components.filter(c => c.enabled).map(c => ({ id: c.id, title: componentName(c), text: componentText(c, on) })),
+      rotationSeconds: config.rotationSeconds, message, classId: loadedClass, className: className() });
+    $('islandPreviewSummary').textContent = !config.enabled ? '教室浮岛已关闭。保存后，教室端将隐藏悬浮岛。'
       : current && config.appearance.hideDuringLessons ? `上课期间自动隐藏 · ${message}` : message;
     $('islandTodayTitle').textContent = `当日课程${lessons.length ? ` · ${lessons.length} 节` : ''}`;
-    const list = $('islandToday');
-    list.replaceChildren();
-    lessons.forEach(lesson => {
-      const row = el('div', undefined, 'island-today-row');
-      row.classList.toggle('is-current', lesson === current);
-      row.append(el('span', `${clock(lesson.start)}—${clock(lesson.end)}`, 'muted'), el('strong', lesson.subject),
-        el('span', [lesson.teacher, lesson.location, lesson.temporary ? '临时调课' : ''].filter(Boolean).join(' · '), 'muted'));
-      list.append(row);
+    $('islandTabContent').querySelectorAll('[data-component-preview]').forEach(node => {
+      const component = config.components.find(c => c.id === node.dataset.componentPreview);
+      if (component) node.textContent = componentText(component, on);
     });
-    if (!lessons.length) list.append(el('p', '这一天没有课程；请检查周课表、周次或临时调课。', 'hint'));
-    const components = $('islandComponentPreview');
-    components.replaceChildren();
-    config.components.filter(c => c.enabled).forEach(component => {
-      let content = component.text || component.title || '尚未填写文字';
-      if (component.type === 'date') content = validDate(on) ? on.replaceAll('-', '.') + ' ' + weekdays[(new Date(on + 'T12:00:00Z').getUTCDay() + 6) % 7] : '日期';
-      if (component.type === 'countdown') {
-        const days = Math.round((Date.parse(component.date + 'T12:00:00Z') - Date.parse(on + 'T12:00:00Z')) / 86400000);
-        content = `${component.title || '倒数日'} · ${Number.isFinite(days) ? days > 0 ? `还有 ${days} 天` : days === 0 ? '就是今天' : `已过 ${-days} 天` : '请选择日期'}`;
-      }
-      components.append(el('span', content));
+    updatePreviewControls();
+  }
+  function updatePreviewControls() {
+    const valid = !!config && !busy && validDate($('islandPreviewDate').value) && minute($('islandPreviewTime').value) !== null;
+    const state = ribbon.currentState, scene = ribbon.scene;
+    $('islandPreviewToggle').disabled = !previewOpen && !valid;
+    $('islandPreviewToggle').textContent = previewOpen ? '收起预览' : '预览浮岛';
+    $('islandPreviewToggle').setAttribute('aria-expanded', String(previewOpen));
+    $('islandPreviewPanel').dataset.open = String(previewOpen);
+    ['islandFloatingStatus', 'islandMotionControls', 'islandPreviewClock', 'islandPreviewPause'].forEach(id => { $(id).hidden = !previewOpen; });
+    document.querySelectorAll('[data-preview-scene]').forEach(node => {
+      node.disabled = !valid;
+      node.setAttribute('aria-pressed', String(node.dataset.previewScene === scene));
     });
+    $('islandPreviewPause').textContent = ribbon.playing ? '暂停' : '继续';
+    $('islandPreviewPause').disabled = !valid;
+    $('islandPreviewPause').setAttribute('aria-label', ribbon.playing ? '暂停悬浮预览' : '继续悬浮预览');
+    $('islandMotionSeekLabel').hidden = !previewOpen || ribbon.elapsed === null;
+    $('islandMotionSeek').value = ribbon.elapsed || 0;
+    $('islandMotionSeek').disabled = !valid;
+    $('islandFloatingStatus').textContent = !valid ? '请选择时间' : state?.hidden ? '已隐藏' : ribbon.playing ? '播放中' : '已暂停';
+    const note = !valid ? '请选择完整的预览日期和时间。' : state?.hidden ? state.text + '，可在“提醒与外观”中调整。'
+      : scene !== 'daily' && !ribbon.data?.lessons.length ? `当天没有课程，提醒以“${ribbon.data?.demoLesson.subject || '示例课程'}”演示。` : '';
+    $('islandFloatingHint').textContent = note;
+    $('islandFloatingHint').hidden = !note;
+    $('islandPreviewExtras').hidden = !previewOpen || (ribbon.elapsed === null && !note);
+  }
+  function openFloatingPreview(scene = 'daily') {
+    if (!config || busy || !validDate($('islandPreviewDate').value) || minute($('islandPreviewTime').value) === null) return;
+    if (!previewOpen) {
+      previewOpen = true; $('islandPreviewStage').hidden = false;
+      ribbon.setActive(true);
+    }
+    ribbon.show(scene);
+    updatePreviewControls();
+  }
+  function closeFloatingPreview(restoreFocus = true) {
+    if (!previewOpen) return;
+    previewOpen = false; ribbon.setActive(false); $('islandPreviewStage').hidden = true;
+    $('islandPreviewClock').open = false;
+    if (config && (!validDate($('islandPreviewDate').value) || minute($('islandPreviewTime').value) === null)) {
+      livePreview = true; renderPreview();
+    } else updatePreviewControls();
+    if (restoreFocus && !$('islandPreviewToggle').disabled && !$('view-island').classList.contains('hidden')) $('islandPreviewToggle').focus({ preventScroll: true });
   }
   function table(headers, cls, label) {
     const wrap = el('div', undefined, 'table-wrap ' + (cls || ''));
@@ -205,10 +270,12 @@
     wrap.append(node);
     return { wrap, body: node.createTBody() };
   }
-  function addRow(body, controls) {
+  function addRow(body, controls, rowHeader = false) {
     const row = body.insertRow();
     controls.forEach((control, index) => {
-      const cell = row.insertCell();
+      const cell = rowHeader && index === 0 ? el('th') : el('td');
+      if (rowHeader && index === 0) cell.scope = 'row';
+      row.append(cell);
       cell.append(control instanceof Node ? control : document.createTextNode(control));
       cell.querySelectorAll('input,select').forEach(node => {
         if (!node.hasAttribute('aria-label')) node.setAttribute('aria-label', body.parentElement.tHead.rows[0].cells[index].textContent + ' · 第 ' + row.rowIndex + ' 行');
@@ -217,13 +284,15 @@
   }
   function empty(title, description, action) {
     const node = el('div', undefined, 'island-empty');
-    node.append(el('strong', title), el('div', description));
+    node.append(el('strong', title));
+    if (description) node.append(el('div', description));
     if (action) node.append(action);
     return node;
   }
   function heading(title, note, action) {
+    if (!note && !action) return el('h2', title, 'sr-only');
     const row = el('div', undefined, 'island-section-heading'), copy = el('div');
-    copy.append(el('h2', title));
+    copy.append(el('h2', title, 'sr-only'));
     if (note) copy.append(el('p', note, 'hint'));
     row.append(copy);
     if (action) row.append(action);
@@ -234,11 +303,292 @@
     node?.focus({ preventScroll: true });
     return node;
   }
+  function prepareConfig(raw) {
+    const next = structuredClone(raw);
+    next.dutyRotations ||= {};
+    for (const kind of Object.keys(dutyNames)) next.dutyRotations[kind] ||= {
+      enabled: false, cycleWeeks: 2, weekAnchor: next.weekAnchor, lessons: [],
+      slotIds: kind === 'evening' ? next.slots.filter(s => ['evening-study-1', 'evening-study-2'].includes(s.id)).map(s => s.id) : []
+    };
+    return next;
+  }
+  function confirmDutyChange(title, message, label, returnFocus) {
+    return new Promise(resolve => {
+      const { dialog, form } = dialogForm(title, returnFocus);
+      const note = el('p', message, 'hint');
+      note.id = `island-duty-confirm-${++fieldId}`;
+      dialog.setAttribute('aria-describedby', note.id);
+      const actions = el('div', undefined, 'island-inline');
+      const cancel = button('取消', () => dialog.close());
+      const submit = el('button', label, 'btn primary'); submit.type = 'submit';
+      let approved = false;
+      actions.append(cancel, submit); form.append(note, actions);
+      form.onsubmit = event => { event.preventDefault(); approved = true; dialog.close(); };
+      dialog.addEventListener('close', () => resolve(approved), { once: true });
+      dialog.showModal(); cancel.focus();
+    });
+  }
+  async function applyDutyRule(kind) {
+    const duty = config.dutyRotations[kind], draft = dutyDrafts[kind];
+    if (!draft) return true;
+    const weeks = Number(draft.cycleWeeks);
+    const invalid = (path, message) => {
+      dutyKind = kind;
+      showValidation({ tab: 'duties', path: `duty.${kind}.${path}`, message });
+      return false;
+    };
+    if (!Number.isInteger(weeks) || weeks < 1 || weeks > 20) return invalid('cycleWeeks', '请填写 1-20 的整数。');
+    if (!validDate(draft.weekAnchor) || new Date(draft.weekAnchor + 'T12:00:00Z').getUTCDay() !== 1) return invalid('weekAnchor', '第 1 周必须从周一开始。');
+    const removed = duty.lessons.filter(l => l.cycleWeek > weeks).length;
+    if (removed && !await confirmDutyChange('缩短循环周期', `缩短为 ${weeks} 周循环，将移除第 ${weeks + 1} 周起的 ${removed} 项${dutyNames[kind]}安排。其他循环周会保留。`, '确认缩短', `duty.${kind}.cycleWeeks`)) return false;
+    const changed = duty.cycleWeeks !== weeks || duty.weekAnchor !== draft.weekAnchor;
+    duty.cycleWeeks = weeks; duty.weekAnchor = draft.weekAnchor;
+    duty.lessons = duty.lessons.filter(l => l.cycleWeek <= weeks);
+    delete dutyDrafts[kind];
+    if (kind === dutyKind) dutyWeek = Math.min(dutyWeek, weeks);
+    if (changed) mark();
+    return true;
+  }
+  function renderDuties(root) {
+    const duty = config.dutyRotations[dutyKind], name = dutyNames[dutyKind];
+    const draft = dutyDrafts[dutyKind] ||= { cycleWeeks: String(duty.cycleWeeks), weekAnchor: duty.weekAnchor };
+    dutyWeek = Math.min(Math.max(dutyWeek, 1), duty.cycleWeeks);
+    const header = el('div', undefined, 'island-duty-header');
+    const choices = el('div', undefined, 'island-duty-choices');
+    choices.setAttribute('role', 'group'); choices.setAttribute('aria-label', '值班类型');
+    for (const [kind, label] of Object.entries(dutyNames)) {
+      const d = config.dutyRotations[kind];
+      const card = button('', () => { dutyKind = kind; dutyWeek = 1; render(`duty.${kind}.choice`); }, 'island-duty-choice', `duty.${kind}.choice`);
+      card.setAttribute('aria-pressed', String(kind === dutyKind));
+      card.append(el('strong', label), el('span', `${d.cycleWeeks} 周`));
+      choices.append(card);
+    }
+    const state = el('div', undefined, 'island-duty-state');
+    const activeWeek = schedule.cycleWeek(duty, today());
+    if (duty.enabled) state.append(el('span', activeWeek === null ? '尚未开始' : `当前第 ${activeWeek} 周`, 'island-duty-status'));
+    state.append(switchToggle('启用轮换', duty, 'enabled', `duty.${dutyKind}.enabled`, null, () => render()));
+    header.append(choices, state);
+    root.append(heading('值班安排'), header);
+    const rule = el('section', undefined, 'island-duty-rule');
+    rule.setAttribute('aria-label', name + '轮换规则');
+    const form = el('form', undefined, 'island-duty-settings');
+    const count = input(draft.cycleWeeks, value => { draft.cycleWeeks = value; }, 'number', { min: 1, max: 20, required: true }, `duty.${dutyKind}.cycleWeeks`);
+    const anchor = input(draft.weekAnchor, value => { draft.weekAnchor = value; }, 'date', { required: true }, `duty.${dutyKind}.weekAnchor`);
+    const apply = el('button', '更新周期', 'btn'); apply.type = 'submit';
+    form.append(field('循环周数', count), field('首周周一', anchor), apply);
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (await applyDutyRule(dutyKind)) render();
+    };
+    rule.append(form);
+    const times = el('div', undefined, 'island-duty-times');
+    const labels = duty.slotIds.map(id => config.slots.find(s => s.id === id)).filter(Boolean);
+    const timesCopy = el('div', undefined, 'island-duty-time-list');
+    timesCopy.append(el('strong', '值班时段'));
+    labels.forEach(s => timesCopy.append(el('span', `${s.label} ${clock(s.start)}-${clock(s.end)}`)));
+    if (labels.length) times.append(timesCopy, button('调整时段', () => editDutyTimes(duty, dutyKind), 'island-duty-link', `duty.${dutyKind}.times`));
+    const details = el('details', undefined, 'island-details island-duty-details');
+    details.append(el('summary', '时段与规则'));
+    if (labels.length) details.append(times);
+    details.append(el('p', '按自然周循环；单日换班请在“临时调课”中调整。', 'hint'));
+    if (duty.enabled && (!labels.length || config.lessons.some(l => duty.slotIds.includes(l.slotId)))) rule.append(el('p', !labels.length ? '请先选择值班时段。' : '该时段已有固定课程，请先在周课表中清空，再启用轮换。', 'island-field-error'));
+    root.append(rule);
+    if (!labels.length) {
+      root.append(empty('先选择值班时段', '使用已设置的作息，无需重复填写时间。',
+        button('选择作息时段', () => editDutyTimes(duty, dutyKind), 'btn primary', `duty.${dutyKind}.times`)), details);
+      return;
+    }
+    const toolbar = el('div', undefined, 'island-duty-toolbar');
+    const weeks = el('div', undefined, 'island-duty-weeks');
+    weeks.setAttribute('role', 'tablist'); weeks.setAttribute('aria-label', name + '循环周次');
+    for (let n = 1; n <= duty.cycleWeeks; n++) {
+      const b = button(`第 ${n} 周`, () => { dutyWeek = n; render(`duty.week.${n}`); }, 'btn', `duty.week.${n}`);
+      b.id = 'island-duty-week-' + n; b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(n === dutyWeek)); b.setAttribute('aria-controls', 'island-duty-week-panel');
+      b.tabIndex = n === dutyWeek ? 0 : -1; weeks.append(b);
+    }
+    weeks.onkeydown = event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault(); dutyWeek = event.key === 'Home' ? 1 : event.key === 'End' ? duty.cycleWeeks : (dutyWeek - 1 + (event.key === 'ArrowRight' ? 1 : -1) + duty.cycleWeeks) % duty.cycleWeeks + 1;
+      render(`duty.week.${dutyWeek}`);
+    };
+    const panel = el('section', undefined, 'island-duty-board'); panel.id = 'island-duty-week-panel';
+    panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'island-duty-week-' + dutyWeek);
+    const filled = new Set(duty.lessons.filter(l => l.cycleWeek === dutyWeek).map(l => l.weekday)).size;
+    const actions = el('div', undefined, 'island-duty-actions');
+    const copy = button('从其他周复制', () => copyDutyWeek(duty), 'btn', 'duty.copy'); copy.disabled = duty.cycleWeeks < 2;
+    const clear = button('清空本周', async () => {
+      if (!await confirmDutyChange('清空本周安排', `清空${name}第 ${dutyWeek} 周的 ${filled} 天安排？其他循环周会保留。`, '确认清空', 'duty.clear')) return;
+      duty.lessons = duty.lessons.filter(l => l.cycleWeek !== dutyWeek); mark(); render('duty.clear');
+    }, 'btn danger', 'duty.clear'); clear.disabled = filled === 0;
+    actions.append(copy, clear);
+    toolbar.append(weeks, actions); root.append(toolbar);
+    const selectedWeek = weeks.children[dutyWeek - 1];
+    weeks.scrollLeft = Math.max(0, selectedWeek.offsetLeft - weeks.firstElementChild.offsetLeft - (weeks.clientWidth - selectedWeek.offsetWidth) / 2);
+    const boardHeading = el('div', undefined, 'island-duty-board-heading');
+    boardHeading.append(el('span', `已安排 ${filled} / 7 天`));
+    panel.append(boardHeading);
+    const { wrap, body } = table(['值班时段', ...weekdays], 'island-duty-grid', name + '循环第' + dutyWeek + '周，左右滚动查看所有星期');
+    const row = body.insertRow(), rowHeader = el('th'); rowHeader.scope = 'row';
+    const label = el('div', undefined, 'island-slot-label');
+    label.append(el('strong', name));
+    labels.forEach(slot => label.append(el('small', `${clock(slot.start)}-${clock(slot.end)}`)));
+    rowHeader.append(label); row.append(rowHeader);
+    weekdays.forEach((day, index) => {
+      const lessons = labels.map(slot => duty.lessons.find(l => l.cycleWeek === dutyWeek && l.weekday === index + 1 && l.slotId === slot.id));
+      const split = lessons.some(l => dutySignature(l) !== dutySignature(lessons[0]));
+      const lesson = lessons.find(Boolean), key = `duty.cell.${dutyKind}.${index + 1}`;
+      const cell = button('', () => editDutyDay(duty, labels, index + 1, key), 'island-cell', key);
+      const description = split ? labels.map((slot, i) => `${slot.label}：${lessons[i] ? [lessons[i].subject, lessons[i].teacher, lessons[i].location].filter(Boolean).join('，') : '未安排'}`).join('；') : lesson ? [lesson.subject, lesson.teacher, lesson.location].filter(Boolean).join('，') : '未安排';
+      cell.setAttribute('aria-label', `${name}第${dutyWeek}周 ${day}，${description}`);
+      cell.classList.toggle('is-empty', !lesson);
+      cell.append(el('strong', split ? '分节安排' : lesson?.subject || '添加安排'));
+      if (split) {
+        labels.forEach((slot, i) => cell.append(el('small', `${slot.label}：${lessons[i] ? [lessons[i].subject, lessons[i].teacher].filter(Boolean).join(' · ') : '未安排'}`)));
+      } else if (lesson) {
+        cell.append(el('small', lesson.teacher || '教师待填写'));
+        if (!isClassroom(lesson.location)) cell.append(el('small', lesson.location, 'island-duty-location'));
+      }
+      row.insertCell().append(cell);
+    });
+    panel.append(wrap, el('p', '左右滑动查看所有星期。', 'hint island-duty-scroll-hint'));
+    root.append(panel, details);
+  }
+  function copyDutyWeek(duty) {
+    const { dialog, form } = dialogForm(`复制到第 ${dutyWeek} 周`, 'duty.copy');
+    const source = select('', Array.from({ length: duty.cycleWeeks }, (_, i) => i + 1).filter(n => n !== dutyWeek).map(n => [String(n), `第 ${n} 周 · ${new Set(duty.lessons.filter(l => l.cycleWeek === n).map(l => l.weekday)).size} 天安排`]), () => {}, null, false);
+    source.selectedIndex = 0;
+    const note = el('p', `仅复制${dutyNames[dutyKind]}的学科、教师和地点；目标周已有内容将被替换。`, 'hint');
+    form.append(note, field('从哪一周复制', source));
+    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
+    const actions = el('div', undefined, 'island-inline'), submit = el('button', `复制到第 ${dutyWeek} 周`, 'btn primary'); submit.type = 'submit';
+    actions.append(button('取消', () => dialog.close()), submit); form.append(actions);
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const rows = duty.lessons.filter(l => l.cycleWeek === Number(source.value));
+      if (!rows.length) { error.textContent = '来源周还没有安排，请选择已填写的循环周。'; return; }
+      if (duty.lessons.some(l => l.cycleWeek === dutyWeek) && !await confirmDutyChange('替换本周安排', `替换第 ${dutyWeek} 周现有的值班安排？来源周会保留。`, '确认替换')) return;
+      duty.lessons = duty.lessons.filter(l => l.cycleWeek !== dutyWeek).concat(rows.map(l => ({ ...l, cycleWeek: dutyWeek })));
+      mark(); render(); dialog.close();
+    };
+    dialog.showModal(); source.focus();
+  }
+  function dutySignature(lesson) {
+    return lesson ? JSON.stringify([lesson.subject, lesson.teacher || '', lesson.location || '']) : '';
+  }
+  function editDutyDay(duty, slots, weekday, key) {
+    const kind = dutyKind, editingWeek = dutyWeek, name = dutyNames[kind];
+    const lessons = slots.map(slot => duty.lessons.find(l => l.cycleWeek === editingWeek && l.weekday === weekday && l.slotId === slot.id));
+    const wasSplit = lessons.some(l => dutySignature(l) !== dutySignature(lessons[0]));
+    let split = wasSplit, separateOpened = wasSplit;
+    const draft = lesson => ({ subject: lesson?.subject || '', teacher: lesson?.teacher || '', location: lesson?.location || '' });
+    const shared = draft(lessons.find(Boolean)), separate = lessons.map(draft);
+    const { dialog, form } = dialogForm(`${name} · 第 ${editingWeek} 周 · ${weekdays[weekday - 1]}`, key);
+    const mode = el('div', undefined, 'island-duty-mode');
+    mode.setAttribute('role', 'group'); mode.setAttribute('aria-label', '晚自习填写方式');
+    if (slots.length > 1) {
+      for (const [label, value] of [['两节统一', false], ['按节分别', true]]) {
+        const choice = button(label, () => {
+          if (value && !separateOpened) { separate.forEach(values => Object.assign(values, shared)); separateOpened = true; }
+          split = value; renderFields();
+        }, 'btn');
+        choice.dataset.split = String(value); mode.append(choice);
+      }
+      form.append(mode);
+    }
+    const fields = el('div', undefined, 'island-duty-edit-fields'); form.append(fields);
+    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
+    function renderFields() {
+      fields.replaceChildren(); error.textContent = '';
+      [...mode.children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.split === String(split))));
+      const drafts = split ? separate : [shared];
+      drafts.forEach((values, index) => {
+        const group = el('fieldset', undefined, 'island-duty-edit-group');
+        const slot = slots[index];
+        group.append(el('legend', split ? `${slot.label} · ${clock(slot.start)}-${clock(slot.end)}` : slots.length > 1 ? '本日两节' : name));
+        const pair = el('div', undefined, 'island-duty-edit-pair');
+        const subject = input(values.subject, value => { values.subject = value; error.textContent = ''; }, 'text', { maxLength: 40, placeholder: `留空显示“${name}”` }, null, false);
+        const teacher = input(values.teacher, value => { values.teacher = value; error.textContent = ''; }, 'text', { maxLength: 40, placeholder: '填写老师姓名' }, null, false);
+        pair.append(field('学科（选填）', subject), field('值班教师', teacher)); group.append(pair);
+        const details = el('details', undefined, 'island-details island-duty-place');
+        details.open = !isClassroom(values.location);
+        details.append(el('summary', '地点 · ' + (values.location || '本班教室')));
+        const location = input(values.location, value => { values.location = value; }, 'text', { maxLength: 60, placeholder: '本班教室' }, null, false);
+        details.append(field('其他地点（选填）', location)); group.append(details); fields.append(group);
+      });
+    }
+    renderFields();
+    function remove() { duty.lessons = duty.lessons.filter(l => l.cycleWeek !== editingWeek || l.weekday !== weekday || !slots.some(s => s.id === l.slotId)); }
+    const actions = el('div', undefined, 'island-inline');
+    const clear = button('清空本日', () => { remove(); mark(); render(); dialog.close(); }, 'btn danger'); clear.disabled = !lessons.some(Boolean);
+    const submit = el('button', '应用修改', 'btn primary'); submit.type = 'submit';
+    actions.append(clear, button('取消', () => dialog.close()), submit); form.append(actions);
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const entries = slots.map((slot, index) => {
+        const values = split ? separate[index] : shared;
+        return { slotId: slot.id, weekday, cycleWeek: editingWeek, subject: values.subject.trim(), teacher: values.teacher.trim(), location: values.location.trim() };
+      });
+      if (entries.some(l => l.location && !l.subject && !l.teacher)) { error.textContent = '请填写学科或教师，地点不能单独作为值班安排。'; return; }
+      const arranged = entries.filter(l => l.subject || l.teacher).map(l => ({ ...l, subject: l.subject || name }));
+      if (!arranged.length) { error.textContent = '请至少填写学科或教师；移除安排请点“清空本日”。'; fields.querySelector('input')?.focus(); return; }
+      if (wasSplit && !split && !await confirmDutyChange('统一两节晚自习', '本日两节原有安排不同，是否都替换为当前填写的安排？', '确认统一')) return;
+      remove(); duty.lessons.push(...arranged);
+      mark(); render(); dialog.close();
+    };
+    dialog.showModal(); fields.querySelector('input')?.focus();
+  }
+  function editDutyTimes(duty, kind) {
+    const { dialog, form } = dialogForm(`${dutyNames[kind]} · 值班时段`, `duty.${kind}.times`);
+    form.append(el('p', '选择已有作息，或填写学校实际时间新增。已有时段的时间可在“作息时间”中调整。', 'hint'));
+    const reserved = Object.entries(config.dutyRotations).filter(([key]) => key !== kind).flatMap(([, d]) => d.slotIds);
+    const available = config.slots.filter(s => !reserved.includes(s.id));
+    const controls = [];
+    for (let n = 0; n < (kind === 'midday' ? 1 : 2); n++) {
+      const start = input('', () => {}, 'time', {}, null, false), end = input('', () => {}, 'time', {}, null, false);
+      const choice = select(duty.slotIds[n] || '', [['', '未设置'], ...available.map(s => [s.id, `${s.label} · ${clock(s.start)}-${clock(s.end)}`]), ['new', '新增时段']], refresh, null, false);
+      function refresh() {
+        const slot = available.find(s => s.id === choice.value);
+        start.value = slot ? clock(slot.start) : ''; end.value = slot ? clock(slot.end === 1440 ? 0 : slot.end) : '';
+        start.disabled = end.disabled = choice.value !== 'new'; start.required = end.required = choice.value === 'new';
+      }
+      const row = el('div', undefined, 'island-fields');
+      row.append(field(kind === 'midday' ? '午间时段' : `晚自习第 ${n + 1} 节`, choice), field('开始时间', start), field('结束时间', end));
+      form.append(row); controls.push({ choice, start, end }); refresh();
+    }
+    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
+    const actions = el('div', undefined, 'island-inline'), submit = el('button', '应用时段', 'btn primary'); submit.type = 'submit';
+    actions.append(button('取消', () => dialog.close()), submit); form.append(actions);
+    form.onsubmit = async event => {
+      event.preventDefault(); error.textContent = '';
+      const ids = [], added = [];
+      controls.forEach(({ choice, start, end }, n) => {
+        if (choice.value === 'new') {
+          const s = { id: crypto.randomUUID(), label: kind === 'midday' ? '午间静校' : `晚自习第${n + 1}节`, start: minute(start.value), end: end.value ? minute(end.value) || 1440 : null };
+          added.push(s); ids.push(s.id);
+        } else if (choice.value) ids.push(choice.value);
+      });
+      if (!ids.length || new Set(ids).size !== ids.length) { error.textContent = '请选择至少一个时段，两节晚自习不可使用同一个时段。'; return; }
+      if (config.slots.length + added.length > 32) { error.textContent = '最多支持 32 个作息时段，请先整理已有作息。'; return; }
+      const sorted = [...config.slots, ...added].sort((a, b) => a.start - b.start);
+      if (added.some(s => s.start === null || s.end === null || s.start >= s.end) || sorted.some((s, i) => i && sorted[i - 1].end > s.start)) { error.textContent = '请填写完整起止时间，结束时间应晚于开始，且不可与已有作息重叠。'; return; }
+      if (duty.enabled && config.lessons.some(l => ids.includes(l.slotId))) { error.textContent = '所选时段已有固定课程，请先清空对应的周课表，或关闭循环后再调整。'; return; }
+      const removed = duty.lessons.filter(l => !ids.includes(l.slotId)).length;
+      if (removed && !await confirmDutyChange('更换值班时段', `更换时段会移除原时段的 ${removed} 项循环值班，是否继续？`, '确认更换')) return;
+      config.slots.push(...added); duty.slotIds = ids; duty.lessons = duty.lessons.filter(l => ids.includes(l.slotId));
+      mark(); render(); dialog.close();
+    };
+    dialog.showModal(); controls[0].choice.focus();
+  }
   function renderTimetable(root) {
-    root.append(heading('每周课程安排', '点击课程格编辑。可分别设置单周、双周课程；临时调整请使用“临时调课”。', button('编辑作息时间', () => changeTab('slots'))));
+    root.append(heading('每周课程安排'));
+    if (profile?.revision === 0 && !dirty && config.slots.length) {
+      root.append(el('p', '已带入本年级默认作息，保存后生效。', 'hint'));
+    }
     const filters = el('div', undefined, 'island-filters');
-    filters.append(field('第一周的周一', input(config.weekAnchor, value => config.weekAnchor = value, 'date', { required: true }, 'weekAnchor'), '从这一天起计算单双周。'),
-      field('查看与编辑周次', select(week, [['all', '每周 · 显示全部安排'], ['odd', '单周课程'], ['even', '双周课程']], value => { week = value; render(); }, 'editingWeek', false)));
+    filters.append(field('首周周一', input(config.weekAnchor, value => config.weekAnchor = value, 'date', { required: true }, 'weekAnchor'), '用于计算单双周。'),
+      field('周次', select(week, [['all', '全部课程'], ['odd', '单周课程'], ['even', '双周课程']], value => { week = value; render(); }, 'editingWeek', false)),
+      button('编辑作息时间', () => changeTab('slots')));
     root.append(filters);
     if (!config.slots.length) {
       root.append(empty('先设置作息时间', '添加上课、下课时间后，再填写各节课的科目。', button('添加作息时段', () => changeTab('slots'), 'btn primary')));
@@ -248,9 +598,14 @@
     const { wrap, body } = table(['时段', ...weekdays], 'island-week', '周课表，左右滚动查看所有星期');
     [...config.slots].sort((a, b) => a.start - b.start).forEach(slot => {
       const label = el('div', undefined, 'island-slot-label');
-      label.append(el('strong', slot.label), el('small', `${clock(slot.start)}—${clock(slot.end)}`));
+      label.append(el('strong', slot.label), el('small', `${clock(slot.start)}-${clock(slot.end)}`));
       const cells = [label];
+      const dutyOwner = Object.entries(config.dutyRotations).find(([, duty]) => duty.enabled && duty.slotIds.includes(slot.id));
       weekdays.forEach((dayName, index) => {
+        if (dutyOwner) {
+          cells.push(button('查看循环值班', () => { dutyKind = dutyOwner[0]; dutyWeek = 1; changeTab('duties'); }, 'island-cell island-duty-owned'));
+          return;
+        }
         const lesson = regularLesson(slot.id, index + 1, week);
         const split = week === 'all' ? ['odd', 'even'].map(scope => regularLesson(slot.id, index + 1, scope)).filter(l => l && l.week !== 'all') : [];
         const key = `lesson.${slot.id}.${index + 1}`;
@@ -267,7 +622,7 @@
         cell.classList.toggle('is-empty', !lesson && !split.length);
         cells.push(cell);
       });
-      addRow(body, cells);
+      addRow(body, cells, true);
     });
     root.append(wrap);
   }
@@ -296,11 +651,18 @@
       subject.value = lesson?.subject || '';
       teacher.value = lesson?.teacher || '';
       location.value = lesson?.location || '';
+      clear.disabled = !config.lessons.some(l => l.slotId === slot.id && l.weekday === weekday && (scope === 'all' || l.week === 'all' || l.week === scope));
+      place.open = !isClassroom(location.value);
+      placeSummary.textContent = '上课地点 · ' + (location.value || '本班教室');
       note.textContent = scope === 'all' ? '保存为“每周”会同时设置本格的单周和双周课程。' : `仅修改${weekNames[scope]}；另一周的课程会保留。`;
     }
-    form.append(el('p', `${clock(slot.start)}—${clock(slot.end)}`, 'hint'),
-      field('生效周次', select(scope, [['all', '每周'], ['odd', '单周'], ['even', '双周']], value => { scope = value; fill(); }, null, false)),
-      field('科目', subject), field('任课教师（选填）', teacher), field('上课地点（选填）', location), note);
+    const fields = el('div', undefined, 'island-dialog-fields');
+    fields.append(field('生效周次', select(scope, [['all', '每周'], ['odd', '单周'], ['even', '双周']], value => { scope = value; fill(); }, null, false), null, 'is-full'),
+      field('科目', subject), field('任课教师（选填）', teacher));
+    const place = el('details', undefined, 'island-details'), placeSummary = el('summary');
+    place.append(placeSummary, field('其他地点（选填）', location));
+    note.classList.add('island-dialog-note');
+    form.append(el('p', `${clock(slot.start)}-${clock(slot.end)}`, 'hint'), fields, place, note);
     function removeScope() {
       config.lessons = config.lessons.flatMap(lesson => {
         if (lesson.slotId !== slot.id || lesson.weekday !== weekday) return [lesson];
@@ -310,7 +672,8 @@
       });
     }
     const actions = el('div', undefined, 'island-inline');
-    actions.append(button('清空本格课程', () => { removeScope(); mark(); render(); dialog.close(); }, 'btn danger'), button('取消', () => dialog.close()));
+    const clear = button('清空本格课程', () => { removeScope(); mark(); render(); dialog.close(); }, 'btn danger');
+    actions.append(clear, button('取消', () => dialog.close()));
     const submit = el('button', '应用修改', 'btn primary');
     submit.type = 'submit';
     actions.append(submit);
@@ -333,18 +696,22 @@
       mark(); render(`slots.${config.slots.length - 1}.label`);
     }, 'btn', 'add-slot');
     add.disabled = config.slots.length >= 32;
-    root.append(heading('作息时间', '按本班作息设置时段。修改时间后，周课表中的课程会一起更新。最多 32 个时段。', add));
+    root.append(heading('作息时间', '调整后同步课表时间，最多 32 个时段。', add));
     if (!config.slots.length) { root.append(empty('还没有作息时段', '点击“添加时段”，填写名称和上课、下课时间。')); return; }
     const { wrap, body } = table(['时段名称', '上课时间', '下课时间', '操作'], 'island-slots', '作息时间表');
     config.slots.forEach((slot, index) => addRow(body, [
-      input(slot.label, value => slot.label = value, 'text', { maxLength: 30, required: true }, `slots.${index}.label`),
-      input(clock(slot.start), value => slot.start = minute(value), 'time', { required: true }, `slots.${index}.start`),
-      input(clock(slot.end === 1440 ? 0 : slot.end), value => slot.end = value ? minute(value) || 1440 : null, 'time', { required: true }, `slots.${index}.end`),
-      button('删除', () => {
-        if ((config.lessons.some(l => l.slotId === slot.id) || config.overrides.some(o => o.slotId === slot.id)) && !confirm(`删除“${slot.label}”后，关联的周课表和临时调课也会移除。继续删除？`)) return;
+      input(slot.label, value => slot.label = value, 'text', { maxLength: 30, required: true, ariaLabel: `第 ${index + 1} 个时段名称` }, `slots.${index}.label`),
+      input(clock(slot.start), value => slot.start = minute(value), 'time', { required: true, ariaLabel: `${slot.label}上课时间` }, `slots.${index}.start`),
+      input(clock(slot.end === 1440 ? 0 : slot.end), value => slot.end = value ? minute(value) || 1440 : null, 'time', { required: true, ariaLabel: `${slot.label}下课时间` }, `slots.${index}.end`),
+      button('删除', async () => {
+        if ((config.lessons.some(l => l.slotId === slot.id) || config.overrides.some(o => o.slotId === slot.id) || Object.values(config.dutyRotations).some(d => d.slotIds.includes(slot.id))) && !await confirmDutyChange('删除作息时段', `删除“${slot.label}”后，关联的周课表、循环值班和临时调课也会移除。`, '确认删除', `slots.${index}.delete`)) return;
         config.slots.splice(index, 1);
         config.lessons = config.lessons.filter(l => l.slotId !== slot.id);
         config.overrides = config.overrides.filter(o => o.slotId !== slot.id);
+        Object.values(config.dutyRotations).forEach(d => {
+          d.slotIds = d.slotIds.filter(id => id !== slot.id); d.lessons = d.lessons.filter(l => l.slotId !== slot.id);
+          if (!d.slotIds.length) d.enabled = false;
+        });
         mark(); render(config.slots.length ? `slots.${Math.min(index, config.slots.length - 1)}.label` : 'add-slot');
       }, 'btn danger', `slots.${index}.delete`)
     ]));
@@ -357,41 +724,53 @@
       mark(); render(`overrides.${config.overrides.length - 1}.date`);
     }, 'btn', 'add-override');
     add.disabled = config.overrides.length >= 500;
-    root.append(heading('临时调课与停课', '只影响指定日期，不改变每周课表。停课后，该节课的课程提醒和自动化也会暂停。', add));
-    if (!config.overrides.length) { root.append(empty('没有临时调整', '教室端会按每周课表运行。临时换课或停课时，在这里添加。')); return; }
+    root.append(heading('临时调课与停课', '仅指定日期生效，优先于周课表与循环值班，不改变轮换顺序。', add));
+    if (!config.overrides.length) { root.append(empty('暂无临时调整', '')); return; }
     config.overrides.forEach((override, index) => {
       const card = el('section', undefined, 'island-rule');
       const top = el('div', undefined, 'island-rule-heading');
-      top.append(el('h3', `调整 ${index + 1}`), button('删除调整', () => {
+      const title = el('h3');
+      const updateTitle = () => {
+        const slot = config.slots.find(s => s.id === override.slotId);
+        title.textContent = [override.date || '选择日期', slot?.label, override.cancelled ? '停课' : '调课'].filter(Boolean).join(' ');
+      };
+      updateTitle();
+      top.append(title, button('删除调整', () => {
         config.overrides.splice(index, 1); mark(); render('add-override');
       }, 'btn danger'));
       const fields = el('div', undefined, 'island-fields');
       const path = `overrides.${index}`;
-      fields.append(field('生效日期', input(override.date, value => override.date = value, 'date', { required: true }, path + '.date')),
-        field('调整时段', select(override.slotId, config.slots.map(slot => [slot.id, `${slot.label} · ${clock(slot.start)}`]), value => override.slotId = value, path + '.slotId')),
-        field('调整方式', select(override.cancelled ? 'cancel' : 'lesson', [['lesson', '更换课程'], ['cancel', '停课']], value => { override.cancelled = value === 'cancel'; render(); }, path + '.cancelled')));
+      fields.append(field('生效日期', input(override.date, value => { override.date = value; updateTitle(); }, 'date', { required: true }, path + '.date')),
+        field('调整时段', select(override.slotId, config.slots.map(slot => [slot.id, `${slot.label} · ${clock(slot.start)}`]), value => { override.slotId = value; updateTitle(); }, path + '.slotId')),
+        field('调整方式', select(override.cancelled ? 'cancel' : 'lesson', [['lesson', '更换课程'], ['cancel', '停课']], value => { override.cancelled = value === 'cancel'; render(path + '.cancelled'); }, path + '.cancelled')));
       const subject = input(override.subject, value => override.subject = value, 'text', { maxLength: 40 }, path + '.subject');
       const teacher = input(override.teacher, value => override.teacher = value, 'text', { maxLength: 40 }, path + '.teacher');
-      const location = input(override.location, value => override.location = value, 'text', { maxLength: 60 }, path + '.location');
-      fields.append(field('调整后的科目', subject), field('任课教师（选填）', teacher), field('上课地点（选填）', location));
-      card.append(top, fields);
+      const location = input(override.location, value => override.location = value, 'text', { maxLength: 60, placeholder: '本班教室' }, path + '.location');
+      const course = el('div', undefined, 'island-override-course'), lessonFields = el('div', undefined, 'island-fields');
+      lessonFields.append(field('调整后的科目', subject), field('任课教师（选填）', teacher));
+      const place = el('details', undefined, 'island-details island-override-place');
+      place.open = !isClassroom(override.location);
+      place.append(el('summary', '上课地点 · ' + (override.location || '本班教室')), field('其他地点（选填）', location));
+      course.hidden = override.cancelled;
+      course.append(lessonFields, place);
+      card.append(top, fields, course);
       [subject, teacher, location].forEach(control => disabled(control, override.cancelled));
-      if (override.cancelled) card.append(el('p', '当天该时段停课，不触发课程提醒。原课程信息会保留，方便改回调课。', 'hint'));
+      if (override.cancelled) card.append(el('p', '当天该时段的课程提醒和自动化暂停，原课程信息保留。', 'hint'));
       root.append(card);
     });
   }
   function group(title, note, controls) {
-    const node = el('fieldset', undefined, 'island-group');
+    const node = el('fieldset', undefined, 'island-settings-card');
     node.append(el('legend', title));
     if (note) node.append(el('p', note, 'hint'));
-    const fields = el('div', undefined, 'island-fields');
+    const fields = el('div', undefined, 'island-settings-fields');
     fields.append(...controls);
     node.append(fields);
     return node;
   }
   function renderSettings(root) {
     const r = config.reminders, a = config.appearance;
-    root.append(heading('提醒与外观', '提醒会从悬浮岛展开，结束后自动收起。以下设置在保存后同步到本班教室端。'));
+    root.append(heading('提醒与外观'));
     function refresh() {
       root.querySelectorAll('[data-path^="reminders."]').forEach(control => {
         const key = control.dataset.path.split('.')[1];
@@ -399,48 +778,59 @@
         disabled(control, !r.enabled || (key === 'prepareMinutes' && !r.prepare) || (key === 'volume' && !r.sound && !r.speech));
       });
     }
-    root.append(group('上下课提醒', '选择提醒时机，并设置课前提前量。', [
-      toggle('启用上下课提醒', r, 'enabled', 'reminders.enabled', null, refresh),
-      toggle('课前准备提醒', r, 'prepare', 'reminders.prepare', null, refresh),
-      toggle('上课提醒', r, 'start', 'reminders.start'),
-      toggle('下课提醒', r, 'end', 'reminders.end'),
-      field('课前提前（分钟）', input(r.prepareMinutes, value => r.prepareMinutes = value, 'number', { min: 1, max: 30, required: true }, 'reminders.prepareMinutes'), '可设置 1–30 分钟。'),
-      field('提醒停留（秒）', input(r.displaySeconds, value => r.displaySeconds = value, 'number', { min: 3, max: 60, required: true }, 'reminders.displaySeconds'), '可设置 3–60 秒。')
-    ]), group('提醒声音', '声音和语音使用同一音量。关闭后仍可显示文字提醒。', [
-      toggle('播放提示音', r, 'sound', 'reminders.sound', null, refresh),
-      toggle('语音播报提醒', r, 'speech', 'reminders.speech', null, refresh),
-      field('提醒音量（%）', input(r.volume, value => r.volume = value, 'number', { min: 0, max: 100, required: true }, 'reminders.volume'), '0 为静音，100 为最大音量。')
-    ]), group('显示外观', '教室端收起时保持单行显示；屏幕缩放会影响实际大小。', [
-      toggle('显示教室岛', config, 'enabled', 'enabled', '关闭后保留本班的课表和设置。'),
+    const full = node => { node.classList.add('is-full'); return node; };
+    const timing = el('fieldset', undefined, 'island-reminder-timing is-full');
+    timing.append(el('legend', '提醒时机'),
+      toggle('课前准备', r, 'prepare', 'reminders.prepare', null, refresh),
+      toggle('上课', r, 'start', 'reminders.start'), toggle('下课', r, 'end', 'reminders.end'));
+    const reminderCard = group('课程提醒', null, [
+      full(switchToggle('启用上下课提醒', r, 'enabled', 'reminders.enabled', null, refresh)), timing,
+      field('提前提醒（分钟）', input(r.prepareMinutes, value => r.prepareMinutes = value, 'number', { min: 1, max: 30, required: true }, 'reminders.prepareMinutes'), '1-30 分钟'),
+      field('提醒停留（秒）', input(r.displaySeconds, value => r.displaySeconds = value, 'number', { min: 3, max: 60, required: true }, 'reminders.displaySeconds'), '3-60 秒')
+    ]);
+    reminderCard.querySelector('.island-settings-fields').append(el('h4', '提醒声音', 'island-settings-subheading is-full'),
+      switchToggle('提示音', r, 'sound', 'reminders.sound', null, refresh),
+      switchToggle('语音播报', r, 'speech', 'reminders.speech', null, refresh),
+      full(field('提醒音量（%）', input(r.volume, value => r.volume = value, 'number', { min: 0, max: 100, required: true }, 'reminders.volume'), '提示音和语音共用音量。')));
+    const appearanceCard = group('浮岛显示', null, [
+      full(switchToggle('显示教室浮岛', config, 'enabled', 'enabled')),
       field('屏幕位置', select(a.position, [['top-center', '顶部居中'], ['top-left', '左上角'], ['top-right', '右上角'], ['bottom-center', '底部居中']], value => a.position = value, 'appearance.position')),
-      field('显示主题', select(a.theme, [['light', '浅色'], ['dark', '深色'], ['system', '跟随教室电脑系统']], value => a.theme = value, 'appearance.theme')),
-      field('悬浮岛宽度', input(a.width, value => a.width = value, 'number', { min: 380, max: 1000, required: true }, 'appearance.width'), '380-1000；默认 560。数值越大，内容空间越宽。'),
-      field('不透明度（%）', input(a.opacity, value => a.opacity = value, 'number', { min: 30, max: 100, required: true }, 'appearance.opacity'), '30–100；数值越低，背景越透明。')
-    ]), group('自动隐藏', '减少悬浮岛对课堂演示的遮挡。', [
-      toggle('全屏演示时隐藏', a, 'hideFullscreen', 'appearance.hideFullscreen'),
-      toggle('上课期间隐藏', a, 'hideDuringLessons', 'appearance.hideDuringLessons', '按本班课表判断上课时间。')
-    ]));
-    const details = el('details', undefined, 'island-details');
+      field('显示主题', select(a.theme, [['light', '浅色'], ['dark', '深色'], ['system', '跟随系统']], value => a.theme = value, 'appearance.theme')),
+      field('浮岛宽度（像素）', input(a.width, value => a.width = value, 'number', { min: 380, max: 1000, required: true }, 'appearance.width'), '380-1000，默认 560。'),
+      field('不透明度（%）', input(a.opacity, value => a.opacity = value, 'number', { min: 30, max: 100, required: true }, 'appearance.opacity'), '30–100，越高越清晰。'),
+      el('h4', '自动隐藏', 'island-settings-subheading is-full'),
+      full(switchToggle('全屏演示时隐藏', a, 'hideFullscreen', 'appearance.hideFullscreen')),
+      full(switchToggle('上课期间隐藏', a, 'hideDuringLessons', 'appearance.hideDuringLessons'))
+    ]);
+    const details = el('details', undefined, 'island-details island-settings-advanced is-full');
     details.append(el('summary', '位置微调与鼠标操作'));
     const fields = el('div', undefined, 'island-fields');
-    fields.append(field('水平偏移', input(a.offsetX, value => a.offsetX = value, 'number', { min: -2000, max: 2000, required: true }, 'appearance.offsetX'), '正数向右，负数向左；0 为不偏移。'),
-      field('垂直偏移', input(a.offsetY, value => a.offsetY = value, 'number', { min: -2000, max: 2000, required: true }, 'appearance.offsetY'), '正数向下，负数向上；0 为不偏移。'),
-      toggle('鼠标点击穿过悬浮岛', a, 'clickThrough', 'appearance.clickThrough', '开启后，从教室首页或托盘恢复操作。'));
-    details.append(fields); root.append(details); refresh();
+    fields.append(field('水平偏移', input(a.offsetX, value => a.offsetX = value, 'number', { min: -2000, max: 2000, required: true }, 'appearance.offsetX'), '正数向右，负数向左。'),
+      field('垂直偏移', input(a.offsetY, value => a.offsetY = value, 'number', { min: -2000, max: 2000, required: true }, 'appearance.offsetY'), '正数向下，负数向上。'),
+      full(switchToggle('鼠标穿透', a, 'clickThrough', 'appearance.clickThrough', '开启后，从教室首页或托盘恢复操作。')));
+    details.append(fields); appearanceCard.querySelector('.island-settings-fields').append(details);
+    const layout = el('div', undefined, 'island-settings-layout');
+    layout.append(reminderCard, appearanceCard); root.append(layout); refresh();
   }
   function renderComponents(root) {
     const add = button('添加信息', () => {
       config.components.push({ id: crypto.randomUUID(), type: 'text', enabled: true, title: '班级寄语', text: '', date: '' });
       mark(); render(`components.${config.components.length - 1}.type`);
-    }, 'btn', 'add-component');
+    }, 'btn primary', 'add-component');
     add.disabled = config.components.length >= 16;
-    root.append(heading('轮播信息', '日期、倒数日和班级寄语会按下列顺序轮流显示。最多添加 16 项。', add),
-      field('每项停留（秒）', input(config.rotationSeconds, value => config.rotationSeconds = value, 'number', { min: 3, max: 120, required: true }, 'rotationSeconds'), '可设置 3–120 秒。', 'is-short'));
+    root.append(heading('轮播信息'));
+    const toolbar = el('div', undefined, 'island-component-toolbar');
+    toolbar.append(field('切换间隔（秒）', input(config.rotationSeconds, value => config.rotationSeconds = value, 'number', { min: 3, max: 120, required: true }, 'rotationSeconds')),
+      el('span', `${config.components.length} / 16 项`, 'island-component-count'), add);
+    root.append(toolbar);
     config.components.forEach((component, index) => {
-      const card = el('section', undefined, 'island-rule'), top = el('div', undefined, 'island-rule-heading');
-      const name = component.title || { date: '日期', countdown: '倒数日', text: '自定义文字' }[component.type];
-      const title = keyed(el('h3', `${index + 1} · ${name}`), null, `component.${component.id}.heading`);
+      const card = el('section', undefined, 'island-component-card'), top = el('div', undefined, 'island-component-heading');
+      const name = componentName(component);
+      const title = keyed(el('h3', name), null, `component.${component.id}.heading`);
       title.tabIndex = -1;
+      const identity = el('div', undefined, 'island-component-identity');
+      const number = el('span', String(index + 1).padStart(2, '0'), 'island-component-index');
+      number.setAttribute('aria-hidden', 'true'); identity.append(number, title);
       const actions = el('div', undefined, 'island-rule-actions');
       const up = button('上移', () => {
         [config.components[index - 1], config.components[index]] = [component, config.components[index - 1]];
@@ -454,18 +844,28 @@
       up.setAttribute('aria-label', `上移“${name}”`); down.setAttribute('aria-label', `下移“${name}”`);
       const remove = button('删除', () => { config.components.splice(index, 1); mark(); render('add-component'); }, 'btn danger');
       remove.setAttribute('aria-label', `删除“${name}”`);
-      actions.append(up, down, remove); top.append(title, actions);
-      const fields = el('div', undefined, 'island-fields'), path = `components.${index}`;
-      fields.append(toggle('显示此项', component, 'enabled', path + '.enabled'),
-        field('信息类型', select(component.type, [['date', '日期'], ['countdown', '倒数日'], ['text', '自定义文字']], value => {
+      const path = `components.${index}`;
+      actions.append(up, down, remove); top.append(identity, switchToggle('显示', component, 'enabled', path + '.enabled'), actions);
+      const fields = el('div', undefined, 'island-component-fields');
+      fields.append(field('信息类型', select(component.type, [['date', '日期'], ['countdown', '倒数日'], ['text', '班级寄语']], value => {
           component.type = value;
           if (value === 'countdown' && !component.date) component.date = today();
           render();
         }, path + '.type')),
-        field('标题（选填）', input(component.title, value => component.title = value, 'text', { maxLength: 40 }, path + '.title')));
-      if (component.type === 'text') fields.append(field('显示文字', area(component.text, value => component.text = value, 240, path + '.text'), '最多 240 字，在教室岛中单行显示。', 'is-full'));
+        field('标题（选填）', input(component.title, value => {
+          component.title = value;
+          const name = componentName(component);
+          title.textContent = name;
+          up.setAttribute('aria-label', `上移“${name}”`);
+          down.setAttribute('aria-label', `下移“${name}”`);
+          remove.setAttribute('aria-label', `删除“${name}”`);
+        }, 'text', { maxLength: 40 }, path + '.title')));
+      if (component.type === 'text') fields.append(field('显示内容', area(component.text, value => component.text = value, 240, path + '.text'), '240 字以内。', 'is-full'));
       if (component.type === 'countdown') fields.append(field('目标日期', input(component.date, value => component.date = value, 'date', { required: true }, path + '.date')));
-      card.append(top, fields); root.append(card);
+      const preview = el('div', undefined, 'island-component-sample'), content = el('span');
+      content.dataset.componentPreview = component.id;
+      preview.append(el('span', '预览', 'island-component-sample-label'), content);
+      card.append(top, fields, preview); root.append(card);
     });
     if (!config.components.length) root.append(empty('还没有轮播信息', '可以添加日期、重要日子的倒计时，或给班级的一句寄语。'));
   }
@@ -475,20 +875,28 @@
       mark(); render(`automation.${config.automation.length - 1}.name`);
     }, 'btn', 'add-rule');
     add.disabled = config.automation.length >= 40;
-    root.append(heading('自动化', '在指定时间，或按课表的上课、下课时机执行。同步后，教室端断网也能按规则运行。最多 40 条。', add));
+    root.append(heading('自动化', '同步后可离线执行，最多 40 条。', add));
     config.automation.forEach((rule, index) => {
-      const card = el('section', undefined, 'island-rule'), top = el('div', undefined, 'island-rule-heading');
-      top.append(el('h3', `规则 ${index + 1}`), button('删除规则', () => { config.automation.splice(index, 1); mark(); render('add-rule'); }, 'btn danger'));
-      const fields = el('div', undefined, 'island-fields'), path = `automation.${index}`;
-      fields.append(toggle('启用此规则', rule, 'enabled', path + '.enabled'),
-        field('规则名称', input(rule.name, value => rule.name = value, 'text', { maxLength: 60, required: true }, path + '.name')),
-        field('触发时机', select(rule.trigger, [['time', '指定时间'], ['prepare', '课前准备'], ['start', '上课时'], ['end', '下课时']], value => {
+      const card = el('section', undefined, 'island-rule island-automation-rule'), top = el('div', undefined, 'island-rule-heading island-automation-heading');
+      const path = `automation.${index}`;
+      const title = el('h3', rule.name || '未命名规则', 'sr-only');
+      title.id = `island-rule-title-${++fieldId}`;
+      card.setAttribute('aria-labelledby', title.id);
+      const remove = button('删除规则', () => { config.automation.splice(index, 1); mark(); render('add-rule'); }, 'btn danger');
+      const name = input(rule.name, value => {
+        rule.name = value; title.textContent = value || '未命名规则'; remove.setAttribute('aria-label', '删除规则“' + title.textContent + '”');
+      }, 'text', { maxLength: 60, required: true, placeholder: '填写规则名称' }, path + '.name');
+      remove.setAttribute('aria-label', '删除规则“' + title.textContent + '”');
+      top.append(title, field('规则名称', name), switchToggle('启用', rule, 'enabled', path + '.enabled'), remove);
+      const fields = el('div', undefined, 'island-fields island-automation-fields');
+      fields.dataset.timed = String(rule.trigger === 'time');
+      fields.append(field('触发时机', select(rule.trigger, [['time', '指定时间'], ['prepare', '课前准备'], ['start', '上课时'], ['end', '下课时']], value => {
           rule.trigger = value;
           if (value !== 'time' && !Number.isInteger(rule.minute)) rule.minute = 480;
-          render();
+          render(path + '.trigger');
         }, path + '.trigger')));
       if (rule.trigger === 'time') fields.append(field('执行时间', input(clock(rule.minute), value => rule.minute = minute(value), 'time', { required: true }, path + '.minute')));
-      fields.append(field('执行动作', select(rule.action, [['reminder', '显示提醒'], ['website', '打开网页'], ['app', '打开本机应用'], ['reading', '打开早读']], value => { rule.action = value; render(); }, path + '.action')));
+      fields.append(field('执行动作', select(rule.action, [['reminder', '显示提醒'], ['website', '打开网页'], ['app', '打开本机应用'], ['reading', '打开早读']], value => { rule.action = value; render(path + '.action'); }, path + '.action')));
       if (rule.action === 'reminder') fields.append(field('提醒内容', area(rule.value, value => rule.value = value, 500, path + '.value'), '最多 500 字。', 'is-full'));
       if (rule.action === 'website') fields.append(field('网页地址', input(rule.value, value => rule.value = value, 'url', { maxLength: 500, placeholder: 'https://example.com', required: true }, path + '.value'), '请填写以 https:// 开头的完整地址。', 'is-full'));
       if (rule.action === 'app') fields.append(field('应用完整路径', input(rule.value, value => rule.value = value, 'text', { maxLength: 500, placeholder: 'C:\\School\\Lesson.exe', required: true }, path + '.value'), '首次使用需在教室端“自动化应用”中允许这个应用。只填写 exe 路径。', 'is-full'));
@@ -527,9 +935,14 @@
       node.classList.toggle('active', active);
     });
     const root = $('islandTabContent');
+    const dutyScroll = tab === 'duties' ? root.querySelector('.island-duty-grid')?.scrollLeft || 0 : 0;
+    root.dataset.panel = tab;
     root.setAttribute('aria-labelledby', 'island-tab-' + tab);
     root.replaceChildren();
-    ({ timetable: renderTimetable, slots: renderSlots, overrides: renderOverrides, settings: renderSettings, components: renderComponents, automation: renderAutomation })[tab](root);
+    ({ timetable: renderTimetable, duties: renderDuties, slots: renderSlots, overrides: renderOverrides, settings: renderSettings, components: renderComponents, automation: renderAutomation })[tab](root);
+    const dutyGrid = root.querySelector('.island-duty-grid');
+    if (dutyGrid) dutyGrid.scrollLeft = dutyScroll;
+    updateTableOverflow();
     if (key) focusKey(key);
     renderPreview();
   }
@@ -543,6 +956,14 @@
       if (!Number.isInteger(slot.end) || slot.end <= slot.start || slot.end > 1440) return issue('slots', `slots.${index}.end`, `“${slot.label}”的下课时间应晚于上课时间。`);
     }
     for (let i = 1; i < sorted.length; i++) if (sorted[i - 1].end > sorted[i].start) return issue('slots', `slots.${sorted[i].index}.start`, `“${sorted[i].label}”与“${sorted[i - 1].label}”的时间重叠，请调整。`);
+    for (const [kind, duty] of Object.entries(config.dutyRotations)) {
+      if (duty.enabled && !duty.slotIds.length) {
+        dutyKind = kind; return issue('duties', `duty.${kind}.times`, `请先设置${dutyNames[kind]}的时段。`);
+      }
+      if (duty.enabled && config.lessons.some(l => duty.slotIds.includes(l.slotId))) {
+        dutyKind = kind; return issue('duties', `duty.${kind}.enabled`, `${dutyNames[kind]}时段已有固定课程，请先清空该时段的周课表，再启用循环。`);
+      }
+    }
     const seen = new Set();
     for (const [index, override] of config.overrides.entries()) {
       const path = `overrides.${index}`;
@@ -601,7 +1022,7 @@
   function renderDelivery(devices, revision = profile?.revision) {
     const list = $('islandDelivery');
     list.replaceChildren();
-    $('islandDeliveryNote').textContent = revision ? `当前已保存版本：${revision}` : '此班级尚未保存教室岛配置。';
+    $('islandDeliveryNote').textContent = !devices.length ? '未绑定教室设备。' : revision ? '联网后自动同步。' : '尚未保存配置。';
     devices.forEach(device => {
       const row = el('div', undefined, 'island-delivery-row'), top = el('div', undefined, 'island-delivery-heading');
       const current = device.revision === revision && revision > 0;
@@ -612,12 +1033,13 @@
       if (device.detail) row.append(el('small', device.detail));
       list.append(row);
     });
-    if (!devices.length) list.append(el('p', '该班还没有绑定教室设备。绑定后会自动获取已保存的配置。', 'hint'));
   }
   function clearClass() {
+    closeFloatingPreview(false);
     profile = config = null; loadedClass = ''; dirty = false;
     $('islandTabContent').replaceChildren(empty('暂无可配置的班级', '请先创建班级，或联系管理员分配班级权限。'));
-    ['islandToday', 'islandComponentPreview', 'islandDelivery'].forEach(id => $(id).replaceChildren());
+    $('islandDelivery').replaceChildren();
+    $('islandTodayTitle').textContent = '当日课程';
     ribbon.clear();
     $('islandPreviewSummary').textContent = '';
     $('islandDeliveryNote').textContent = '';
@@ -626,15 +1048,16 @@
   }
   async function load(force = false) {
     if (busy) return;
-    if (dirty && !force && !confirm('重新载入会放弃当前未保存的修改。继续载入？')) return;
+    if (dirty && !force && !await confirmDutyChange('重新载入', '重新载入会放弃当前未保存的修改。', '重新载入', 'islandReload')) return;
     const classId = $('islandClass').value, requestId = ++loadId;
+    closeFloatingPreview(false);
     if (!classId) { clearClass(); return; }
     $('islandError').textContent = '';
     setBusy(true); status('正在载入班级配置…');
     try {
       const data = await api('/api/island/classes/' + encodeURIComponent(classId));
       if (requestId !== loadId) return;
-      profile = data; config = structuredClone(data.config); loadedClass = classId; dirty = false;
+      profile = data; config = prepareConfig(data.config); dutyDrafts = {}; loadedClass = classId; dirty = false;
       $('islandSyncNotice').textContent = '';
       status(); renderDelivery(data.devices); render();
     } catch (error) {
@@ -647,12 +1070,13 @@
   }
   async function save() {
     if (!config || busy) return;
+    for (const kind of Object.keys(dutyDrafts)) if (!await applyDutyRule(kind)) return;
     const issue = validationIssue();
     if (issue) { showValidation(issue); return; }
     setBusy(true, '保存中…'); $('islandError').textContent = '';
     try {
       profile = await api('/api/island/classes/' + encodeURIComponent(loadedClass), { method: 'PUT', body: JSON.stringify({ revision: profile.revision, config }) });
-      config = structuredClone(profile.config); dirty = false;
+      config = prepareConfig(profile.config); dutyDrafts = {}; dirty = false;
       $('islandSyncNotice').textContent = '';
       status(); renderDelivery(profile.devices); render();
       window.ICeClass.toast('已保存。教室端联网后会自动同步。');
@@ -666,23 +1090,39 @@
     try {
       if (!/\.xlsx$/i.test(file.name)) throw new Error('请选择 .xlsx 格式的 Excel 课表。');
       if (file.size > 2000000) throw new Error('文件不能超过 2 MB。');
-      if (!confirm('导入会替换当前的作息、周课表和临时调课，其他设置会保留。导入后可先检查，再保存下发。继续导入？')) return;
+      if (!await confirmDutyChange('导入课表', `将课表导入“${className()}”的编辑预览，替换未保存的课程和值班安排。上课时间沿用本班作息，检查后保存并下发。`, '导入预览', 'islandImport')) return;
       setBusy(true); $('islandError').textContent = '';
       const data = await api('/api/island/classes/' + encodeURIComponent(loadedClass) + '/import', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
       // Import previews are based on the server's saved profile. Merge only schedule
       // fields so an unsaved appearance, component or automation edit survives import.
-      for (const key of ['weekAnchor', 'slots', 'lessons', 'overrides']) config[key] = structuredClone(data.config[key]);
+      if (data.scheduleOnly) {
+        const currentSlots = new Set(config.slots.map(slot => slot.id));
+        const referenced = [...data.config.lessons, ...data.config.overrides,
+          ...Object.values(data.config.dutyRotations).flatMap(duty => duty.slotIds.map(slotId => ({ slotId })))];
+        if (referenced.some(row => !currentSlots.has(row.slotId))) throw new Error('当前未保存的作息与模板不一致，请先保存作息设置，再重新导入课表。');
+      }
+      for (const key of ['weekAnchor', 'lessons', 'overrides', ...(data.scheduleOnly ? [] : ['slots'])]) config[key] = structuredClone(data.config[key]);
+      if (data.dutiesIncluded) { config.dutyRotations = prepareConfig(data.config).dutyRotations; dutyDrafts = {}; }
       tab = 'timetable'; mark(); render();
+      const parts = [`日常课程 ${config.lessons.length} 节`];
+      if (data.dutiesIncluded) {
+        for (const [kind, name] of [['midday', '午间静校'], ['evening', '晚自习']]) {
+          const duty = config.dutyRotations[kind];
+          parts.push(`${name} ${duty.cycleWeeks} 周循环、${duty.lessons.length} 项${duty.enabled ? '' : '（未启用）'}`);
+        }
+      }
+      parts.push(`临时调课 ${config.overrides.length} 项`);
+      $('islandSyncNotice').textContent = `${data.sourceClass ? `已读取“${data.sourceClass}”的课表。` : ''}已识别：${parts.join('；')}。${data.scheduleOnly ? '上课时间沿用本班已设置的作息。' : ''}当前为“${className()}”的预览，检查后保存并下发。`;
       window.ICeClass.toast('课表已导入预览。检查后点击“保存并下发”。');
     } catch (error) { showError(error); }
     finally { setBusy(false); $('islandImportFile').value = ''; }
   }
   function copyDialog() {
     if (!config || busy) return;
-    if (dirty) { showError(new Error('请先保存本班配置，再复制到其他班级。')); return; }
+    if (needsSave()) { showError(new Error('请先保存本班配置，再复制到其他班级。')); return; }
     const classes = window.ICeClass.state.classes.filter(c => c.id !== loadedClass && Number(c.enabled) === 1);
     const { dialog, form } = dialogForm('复制到其他班级', 'islandCopy');
-    form.append(el('p', `使用“${className()}”已保存的全部教室岛设置，替换所选班级的现有配置。`, 'hint'));
+    form.append(el('p', `使用“${className()}”已保存的全部教室浮岛设置，替换所选班级的现有配置。`, 'hint'));
     const search = input('', () => {
       rows.forEach(({ node, name }) => node.hidden = !name.includes(search.value.trim()));
     }, 'search', { placeholder: '输入班级名称' }, null, false);
@@ -758,8 +1198,11 @@
     if (itemBox.left < stripBox.left) strip.scrollLeft += itemBox.left - stripBox.left;
     else if (itemBox.right > stripBox.right) strip.scrollLeft += itemBox.right - stripBox.right;
   };
-  $('islandClass').onchange = () => {
-    if (dirty && !confirm('切换班级会放弃当前未保存的修改。继续切换？')) { $('islandClass').value = loadedClass; return; }
+  $('islandClass').onchange = async () => {
+    const nextClass = $('islandClass').value;
+    $('islandClass').value = loadedClass;
+    if (dirty && !await confirmDutyChange('切换班级', '切换班级会放弃当前未保存的修改。', '确认切换', 'islandClass')) return;
+    $('islandClass').value = nextClass;
     void load(true);
   };
   $('islandReload').onclick = () => void load();
@@ -767,36 +1210,45 @@
   $('islandCopy').onclick = copyDialog;
   $('islandImportFile').onchange = event => void importFile(event.target.files[0]);
   $('islandImport').onclick = () => $('islandImportFile').click();
-  $('islandExport').onclick = () => {
+  $('islandExport').onclick = async () => {
     if (!loadedClass || busy) return;
-    if (dirty && !confirm('导出的是最近保存的课表，不包含当前未保存的修改。继续导出？')) return;
+    if (dirty && !await confirmDutyChange('导出 Excel', '导出的是最近保存的课表，不包含当前未保存的修改。', '继续导出', 'islandExport')) return;
     location.href = '/api/island/classes/' + encodeURIComponent(loadedClass) + '/export';
   };
   $('islandPreviewDate').value = today(); $('islandPreviewTime').value = nowClock();
   [$('islandPreviewDate'), $('islandPreviewTime')].forEach(node => node.addEventListener('input', () => { livePreview = false; renderPreview(); }));
   $('islandPreviewNow').onclick = () => { livePreview = true; renderPreview(); };
-  $('islandPreviewPlay').onclick = () => ribbon.play();
-  $('islandMotionSeek').oninput = event => ribbon.seek(Number(event.target.value));
-  $('islandPreviewExpand').onclick = () => {
-    const dialog = el('dialog', undefined, 'island-motion-dialog');
-    dialog.setAttribute('aria-label', '教室岛动画预览');
-    const stage = $('islandPreviewStage'), controls = $('islandMotionControls'), marker = document.createComment('island-preview');
-    stage.before(marker);
-    const replay = button('重新播放', () => ribbon.reset()), close = button('关闭预览', () => dialog.close());
-    const actions = el('div', undefined, 'island-motion-controls'); actions.append(replay, close);
-    dialog.append(stage, controls, actions); document.body.append(dialog);
-    $('islandPreviewExpand').disabled = true;
-    dialog.addEventListener('close', () => {
-      ribbon.stop(); marker.before(stage, controls); marker.remove(); dialog.remove();
-      $('islandPreviewExpand').disabled = false; $('islandPreviewExpand').focus();
-    }, { once: true });
-    dialog.showModal(); close.focus();
+  $('islandPreviewToggle').onclick = () => previewOpen ? closeFloatingPreview() : openFloatingPreview();
+  $('islandPreviewPause').onclick = () => {
+    if (ribbon.playing) ribbon.pause();
+    else { ribbon.play(); renderPreview(); }
   };
-  new MutationObserver(() => { if ($('view-island').classList.contains('hidden')) ribbon.stop(); }).observe($('view-island'), { attributes: true, attributeFilter: ['class'] });
+  document.querySelectorAll('[data-preview-scene]').forEach(node => {
+    node.onclick = () => openFloatingPreview(node.dataset.previewScene);
+  });
+  $('islandMotionSeek').oninput = event => ribbon.seek(Number(event.target.value));
+  document.addEventListener('pointerdown', event => {
+    if ($('islandPreviewClock').open && !$('islandPreviewClock').contains(event.target)) $('islandPreviewClock').open = false;
+  });
+  document.addEventListener('focusin', event => {
+    if ($('islandPreviewClock').open && !$('islandPreviewClock').contains(event.target)) $('islandPreviewClock').open = false;
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !event.defaultPrevented && previewOpen && !document.querySelector('dialog[open]') && !event.target.closest('input, select, textarea')) {
+      if ($('islandPreviewClock').open) {
+        $('islandPreviewClock').open = false; $('islandPreviewClock').querySelector('summary').focus({ preventScroll: true }); event.preventDefault(); return;
+      }
+      closeFloatingPreview(); event.preventDefault();
+    }
+  });
+  new MutationObserver(() => { if ($('view-island').classList.contains('hidden')) closeFloatingPreview(false); }).observe($('view-island'), { attributes: true, attributeFilter: ['class'] });
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-  $('logoutButton').addEventListener('click', event => {
-    if (dirty && !confirm('退出登录会放弃教室岛中未保存的修改。确认退出？')) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+  $('logoutButton').addEventListener('click', async event => {
+    if (!dirty) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!await confirmDutyChange('退出登录', '退出登录会放弃教室浮岛中未保存的修改。', '确认退出', 'logoutButton')) return;
     dirty = false;
+    $('logoutButton').click();
   }, true);
   window.addEventListener('iceclass-ready', () => { fillClasses(); void load(true); });
   window.addEventListener('iceclass-classes-changed', () => {

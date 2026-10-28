@@ -297,6 +297,7 @@ class Rooms:
         self.audio_root = audio_root
         self.sockets: dict[str, dict[web.WebSocketResponse, str]] = defaultdict(dict)
         self.reading = None
+        self.operations = None
 
     def online(self, class_id: str) -> bool:
         return any(not ws.closed for ws in self.sockets.get(class_id, {}))
@@ -330,7 +331,7 @@ class Rooms:
         return len(sockets)
 
     async def connect(self, request: web.Request, device: dict[str, Any]) -> web.WebSocketResponse:
-        socket = web.WebSocketResponse(heartbeat=45, max_msg_size=4096)
+        socket = web.WebSocketResponse(heartbeat=45, max_msg_size=768 * 1024)
         await socket.prepare(request)
         class_id = str(device["class_id"])
         device_id = str(device["id"])
@@ -342,13 +343,18 @@ class Rooms:
             if self.reading:
                 await self.reading.on_connect(socket, class_id)
             async for message in socket:
-                if message.type != WSMsgType.TEXT or len(message.data) > 4096:
+                if message.type != WSMsgType.TEXT or len(message.data) > 768 * 1024:
                     continue
                 try:
                     parsed = json.loads(message.data)
                 except json.JSONDecodeError:
                     continue
                 if not isinstance(parsed, dict):
+                    continue
+                # Computer snapshots are larger than heartbeats and status
+                # reports. Operations removes the bounded, transient image
+                # before enforcing the 48 KB persisted-result limit.
+                if parsed.get('type') != 'device_command_ack' and len(message.data) > 4096:
                     continue
                 if parsed.get("type") == "heartbeat":
                     timestamp = now_ms()
@@ -363,6 +369,8 @@ class Rooms:
                     if parsed.get('type') == 'device_status':
                         record_computer_info(self.store, device_id, parsed.get('computer'), now_ms())
                     self.reading.telemetry(device_id, parsed)
+                    if self.operations and parsed.get('type') == 'device_command_ack':
+                        self.operations.acknowledge(device_id, class_id, parsed)
         finally:
             self.sockets[class_id].pop(socket, None)
             if not self.sockets[class_id]:

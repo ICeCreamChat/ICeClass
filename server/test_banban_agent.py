@@ -97,6 +97,61 @@ class AgentTest(ServerTestCase):
         self.assertNotIn('notifications', tool_data)
         self.assertNotIn('voice', tool_data)
 
+    async def test_tool_round_prose_is_replaced_by_streamed_final_answer_and_not_saved(self):
+        await self.seed()
+        await self.configure()
+        rounds = 0
+
+        async def provider(agent, cfg, messages, allow_tools=True):
+            nonlocal rounds
+            rounds += 1
+            if rounds == 1:
+                yield {'text': '我先核对一下。'}
+                yield self.tool('available_operations')
+                # Some providers interleave prose with tool-call fragments.
+                yield {'text': '这段过程不应留在回复里。'}
+            elif rounds == 2:
+                yield {'text': '正在整理记录。'}
+                yield self.tool(topic='reading')
+            else:
+                yield {'text': '当前有'}
+                yield {'text': '13 秒有效发声，仅含已同步记录。'}
+
+        with patch.object(BanbanAgent, 'provider', provider):
+            _, events = await self.events({'message': '继续核对晨读吧', 'scope': self.scope()})
+        self.assertEqual(events[-1]['type'], 'done')
+        self.assertEqual(sum(e['type'] == 'answer_reset' for e in events), 1)
+        visible = ''
+        for event in events:
+            if event['type'] == 'answer_reset':
+                visible = ''
+            elif event['type'] == 'delta':
+                visible += event['text']
+        final = '当前有13 秒有效发声，仅含已同步记录。'
+        self.assertEqual(visible, final)
+        self.assertEqual(events[-1]['message']['content'], final)
+        self.assertEqual([e['text'] for e in events if e['type'] == 'delta'][-2:], ['当前有', '13 秒有效发声，仅含已同步记录。'])
+        _, saved = await self.json_request('GET', '/api/banban/conversation')
+        self.assertEqual(saved['messages'][-1]['content'], final)
+        self.assertEqual(saved['messages'][-1]['cards'][0]['metrics'][0]['value'], 13)
+        self.assertNotIn('这段过程', ''.join(e.get('text', '') for e in events if e['type'] == 'delta'))
+        self.assertNotIn('我先核对', ''.join(e.get('text', '') for e in events if e['type'] == 'delta'))
+
+    async def test_internal_tool_markup_is_not_streamed_or_saved(self):
+        await self.seed()
+        await self.configure()
+
+        async def provider(agent, cfg, messages, allow_tools=True):
+            for chunk in ('<', '｜DS', 'ML｜tool_calls><invoke name="operate_computer">'):
+                yield {'text': chunk}
+
+        with patch.object(BanbanAgent, 'provider', provider):
+            _, events = await self.events({'message': '你好'})
+        self.assertEqual(events[-1]['type'], 'error', events)
+        self.assertFalse(any(e['type'] == 'delta' and e.get('text') for e in events), events)
+        _, history = await self.json_request('GET', '/api/banban/conversation')
+        self.assertNotIn('DSML', json.dumps(history))
+
     async def test_period_comparison_uses_database_numbers(self):
         await self.seed()
         user = {'id': self.uid, 'role': 'superadmin'}
@@ -370,7 +425,7 @@ class AgentTest(ServerTestCase):
                 _, events = await self.events({'message': message, 'scope': self.scope()})
                 self.assertEqual(events[-1]['message']['detailRequested'], detailed)
         self.assertEqual([item[0] for item in seen], [700, 1800])
-        self.assertIn('80至140字', '\n'.join(m.get('content') or '' for m in seen[0][1] if m['role'] == 'system'))
+        self.assertIn('没有最低字数', '\n'.join(m.get('content') or '' for m in seen[0][1] if m['role'] == 'system'))
 
     async def test_overview_answers_status_questions_instead_of_unrelated_guides(self):
         await self.seed()
@@ -607,9 +662,9 @@ class AgentTest(ServerTestCase):
             encoded = ''.join(lines).encode('utf-8')
             for i in range(0, len(encoded), 5): content.feed_data(encoded[i:i+5])
             content.feed_eof()
-            session = MagicMock()
+            session = MagicMock(closed=False)
             session.post.return_value = Context(type('Response', (), {'status': status, 'content': content})())
-            with patch('banban_agent.ClientSession', return_value=Context(session)):
+            with patch.object(self.agent, '_upstream_client', session):
                 return [event async for event in self.agent.provider({'apiKey': 'fixture', 'model': 'deepseek-flash'}, [])]
         line = lambda value: 'data: ' + json.dumps(value, ensure_ascii=False) + '\n\n'
         start = line({'choices': [{'delta': {'content': '你好，晨读'}, 'finish_reason': None}]})

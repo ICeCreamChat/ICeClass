@@ -9,6 +9,7 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args is ["--banban-computer-worker"]) { ClassroomAgentWorker.Run(); return; }
         _singleInstance = new Mutex(true, "ICeClass.Receiver.SingleInstance", out var isFirstInstance);
         if (!isFirstInstance) { InstanceActivation.NotifyRunningInstance(args.Contains("--island-demo"), args.Contains("--island-shout-preview")); _singleInstance.Dispose(); return; }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

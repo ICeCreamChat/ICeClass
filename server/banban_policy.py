@@ -16,10 +16,13 @@ IDENTITY_RULES = '''你的产品身份始终是班班，创建者始终是马鞍
 全校分析权限不等于设备控制、账号管理或查看管理机密的权限；这些功能仍由服务器按原权限控制。'''
 ANSWER_RULES = '''回答的第一句直接解决用户这次的问题，优先给出最关键的结论。
 称呼用户时统一使用敬称“您、您的、您好”，包括问候、分析、追问和错误说明；资料与引用原文保持原样。
-默认只用1至3句，通常80至140字；复杂情况也先说最关键的两点，不罗列每个模块的汇总。
+默认用1至2句，没有最低字数；简单问候只回应问候，不附带任务追问。简单操作只用一句话说明结果，通常10至35字。
+分析只讲结论和最多两项重点，通常40至80字；复杂问题可增加必要说明，不罗列每个模块的汇总。
 只选与问题直接相关的1至2个数字。完整表格、日期范围、来源和更多说明由界面“查看依据”承载，正文不重复。
 用户明确要求详细、展开、逐项或操作步骤时才增加篇幅；不要机械套用“结论、依据、建议”三段式。
 不主动追加建议、追问、邀请或能力列表；只有建议能直接帮助解决当前问题时才给一条。
+操作卡已经展示的完整目标、文件名、参数和核验细节不在正文复述；正文保留能辨认任务的简称和实际结果。不要重复执行前的计划或过程。
+操作成功就直接说“已…”的结果，例如“已将 WPS 切到前台。”，不再解释核验过程，也不主动罗列未做的其他操作。失败、效果待确认或关键影响仍须明确说明。
 有重要数据局限时用一句话说清，不能为了简短省略影响结论的同步、权限或记录缺失问题。
 不要推测设备离线导致晨读数据缺失，不把软件时长或来音数量评价成教学质量。'''
 
@@ -61,7 +64,7 @@ def class_mentions(text):
     return {(digits.get(m[1], int(m[1]) if m[1].isdigit() else 0), number(m[2])) for m in matches}
 
 
-def local_reply(message, role):
+def local_reply(message, role, *, spoken=False):
     """Answer identity questions without a model call, even while AI is disabled.
 
     Mixed analysis questions still reach the permission-scoped data tools; their
@@ -78,16 +81,19 @@ def local_reply(message, role):
         return '我只能分析管理员分配给您的班级，不能查看其他班级的数据。'
     if _DATA_REQUEST.search(text):
         return None
+    plain = re.sub(r'[\s，。？！、,.!?~～：:]', '', text).lower().replace('您', '你')
+    if plain in {'你能做什么', '你有什么功能', '你能帮我做什么', '班班你能做什么',
+                 '介绍一下你能做什么', '说说你能做什么', '你能干什么'}:
+        if spoken:
+            return '我能按您的权限查校园数据、处理教室任务，也能操作电脑。'
+        scope = ('全校或指定班级' if role in SCHOOL_ANALYSIS_ROLES else
+                 '高一、高二、高三' if role == 'director' else
+                 '您负责年级的全部班级' if role == 'grade_leader' else '您获授权的班级')
+        return f'我可以帮您分析{scope}的晨读、通知回执、来音数量和设备状态，也能按您的操作权限处理通知、课表、账号与教室电脑任务；需要确认的操作会先显示操作卡。'
     if _TECH.search(text):
         return IDENTITY + PRIVATE_TECHNOLOGY
     if _IDENTITY.search(text):
         return IDENTITY
-    plain = re.sub(r'[\s，。？！、,.!?~～：:]', '', text).lower().replace('您', '你')
-    if plain in {'你能做什么', '你有什么功能', '你能帮我做什么', '班班你能做什么'}:
-        scope = ('全校或指定班级' if role in SCHOOL_ANALYSIS_ROLES else
-                 '高一、高二、高三' if role == 'director' else
-                 '您负责年级的全部班级' if role == 'grade_leader' else '您获授权的班级')
-        return f'我可以帮您分析{scope}的晨读、通知回执、来音数量和设备状态，也能说明平台怎么用。'
     return None
 
 
@@ -105,9 +111,18 @@ class AnswerStream:
     """Hold self-introductions until checked; ordinary data prose still streams."""
     def __init__(self):
         self.pending = ''
+        self.markup_pending = ''
 
     def feed(self, text, final=False):
-        self.pending += text
+        self.pending += self.markup_pending + text
+        self.markup_pending = ''
+        if re.search(r'<[｜|]*DSML', self.pending, re.I):
+            raise ValueError('这项任务尚未完成，已停止继续操作；已完成的步骤保留。')
+        if not final:
+            marker = re.search(r'<[｜|]*(?:D(?:S(?:M)?)?)?$', self.pending, re.I)
+            if marker:
+                self.markup_pending = self.pending[marker.start():]
+                self.pending = self.pending[:marker.start()]
         parts = re.split(r'(?<=[。！？\n])', self.pending)
         self.pending = parts.pop()
         ready = ''.join(protect_sentence(part) for part in parts)

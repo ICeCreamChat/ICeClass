@@ -27,7 +27,7 @@ with zipfile.ZipFile(package) as archive:
         assert (stage / item.filename).resolve().is_relative_to(stage.resolve())
     archive.extractall(stage)
 root = stage / 'ICeClass-server'
-for required in ('server/desktop_release.py', 'server/permissions.py', 'server/island.py', 'server/island_xlsx.py', 'web_controller/island-admin.js', 'web_controller/island-admin.css', 'web_controller/island-ribbon.js', 'web_controller/island-ribbon.css'):
+for required in ('server/desktop_release.py', 'server/permissions.py', 'server/island.py', 'server/island_xlsx.py', 'server/banban_operations.py', 'server/banban_speech.py', 'server/banban_math_speech.py', 'web_controller/banban-operations.js', 'web_controller/banban-operations.css', 'web_controller/banban-voice.js', 'web_controller/banban-voice.css', 'web_controller/island-admin.js', 'web_controller/island-admin.css', 'web_controller/island-ribbon.js', 'web_controller/island-ribbon.css'):
     assert (root / required).is_file(), required
 for name in ('server/app.py', 'server/reading.py', 'server/reading_xlsx.py', 'server/offline_reading.py', 'server/management.py', 'server/banban.py', 'server/banban_agent.py', 'server/banban_connections.py', 'server/banban_history.py', 'server/banban_platform.py', 'server/banban_policy.py', 'web_controller/banban.js', 'web_controller/banban.css', 'web_controller/assets/banban/portrait.webp', 'web_controller/reading/desktop.js', 'web_controller/reading/offline-integration.js', 'web_controller/reading/particle-relief.js'):
     assert (root / name).is_file(), name
@@ -62,6 +62,10 @@ note = '''ICeClass 班伴 · 教室端
 正式网址已内置。绑定资料保存在本机用户数据目录，无需放在分发文件夹。
 从旧版升级时，先保留旧 config.json；新版首次启动验证并迁移成功后自动移走。
 许可与第三方说明可在托盘菜单“关于 ICeClass 班伴”查看。
+班班语音：从教室首页“班班”登录教师账号，开启麦克风后说“你好班班”。
+收起窗口仍可后台唤醒；连续安排、语音反馈、口头确认、打断和取消沿用账号权限。
+Windows 需有中文语音识别与中文语音、可用的默认麦克风和扬声器。
+说“班班停一下”停止播报，“班班取消操作”请求停止任务，“再见班班”结束对话。
 '''
 with zipfile.ZipFile(stage / 'ICeClass-classroom.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
     archive.write(executable, prefix + 'ICeClass.exe')

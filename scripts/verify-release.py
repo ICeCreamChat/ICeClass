@@ -52,7 +52,7 @@ def verify(args):
             for name in archive.namelist():
                 parts = Path(name.replace("\\", "/")).parts
                 assert ".." not in parts and not Path(name).is_absolute(), name
-                assert Path(name).name.lower() not in {"config.json", ".env", "iceclass.db", "island-settings.json"}, name
+                assert Path(name).name.lower() not in {"config.json", ".env", "iceclass.db", "island-settings.json", "banban-settings.json", "credentials.dpapi", "agents.md", "腾讯云api运维.md"}, name
         checks.append(path.name + ": CRC, safe paths and no machine binding/preferences")
         artifacts.append({"file": path.name, "size": path.stat().st_size, "sha256": sha256(path)})
     with tempfile.TemporaryDirectory(prefix="iceclass-package-") as temporary:
@@ -71,6 +71,19 @@ def verify(args):
             checks.append(directory + ": version, size and executable checksum")
         assert (server / "web_controller/island-admin.js").is_file()
         assert (server / "web_controller/island-ribbon.css").is_file()
+        assert (server / "web_controller/banban-voice.js").is_file()
+        assert (server / "web_controller/banban-voice.css").is_file()
+        assert (server / "server/banban_speech.py").is_file()
+        assert (server / "server/banban_math_speech.py").is_file()
+        assert (server / "server/banban_operations.py").is_file()
+        assert (server / "server/banban_vision.py").is_file()
+        assert (server / "web_controller/banban-operations.js").is_file()
+        assert (server / "web_controller/banban-operations.css").is_file()
+        assert (server / "web_controller/island-schedule.js").is_file()
+        for notice in ["THIRD_PARTY_NOTICES.md", "SenseVoice-MODEL-LICENSE.txt", "MeloTTS-LICENSE.txt", "SileroVAD-LICENSE.txt",
+                       "sherpa-onnx-LICENSE.txt", "ONNXRuntime-LICENSE.txt", "3D-Speaker-LICENSE.txt"]:
+            assert (server / "docs/licenses" / notice).is_file(), notice
+        checks.append("voice sentence protocol, client assets and third-party notices are included")
         result = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--server-root", str(server)],
             cwd=temporary, capture_output=True, text=True, encoding="utf-8", timeout=40)
         assert result.returncode == 0, result.stdout + result.stderr

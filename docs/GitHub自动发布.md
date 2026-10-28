@@ -18,6 +18,7 @@ git push --atomic origin main v2.4.1
 ## 工作流做什么
 
 - 使用 Windows runner，按源码的 `global.json` 安装 .NET SDK，并安装 Python 3.12 和 Node.js 22。
+- 2.5.0 起先准备并校验离线唤醒、SenseVoice、MeloTTS、VAD 和说话人模型。模型二进制不存入 Git，按固定上游版本和 SHA256 恢复，再嵌入教室端；附件无需额外下载模型。
 - 运行自动发布检查、Python 服务端检查、TypeScript 检查、旧 Cloudflare 检查、教室端核心检查和 Windows 教师端检查。
 - 复用现有打包脚本，生成教室端、教师端、完整 Windows 和服务端四个 ZIP。
 - 检查 ZIP、更新清单、客户端 SHA256，并在隔离进程中启动解压后的服务端，防止漏装模块。

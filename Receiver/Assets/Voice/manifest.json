@@ -1,0 +1,26 @@
+{
+  "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "name": "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+      "size": 4777666,
+      "sha256": "dd784973fc9d2fabb3b800d6dcd20fc3b0ca84f8e2415afe54b032878e447f4d"
+    },
+    {
+      "name": "decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+      "size": 181069,
+      "sha256": "ed83454004d5bd16d831eaf00adcd181ed7734886aab6ef440f3ffa5aa3cfe3b"
+    },
+    {
+      "name": "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+      "size": 65242,
+      "sha256": "f79760052b87239e325f0567c752ad3130b30d92effb847d4307743c20c59a24"
+    },
+    {
+      "name": "tokens.txt",
+      "size": 1627,
+      "sha256": "72316508d9119696145abc6f1f8cdc46287535c34e5ce7e595f845cb1499cf2e"
+    }
+  ]
+}

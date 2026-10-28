@@ -41,3 +41,11 @@ desktop_release/
 /scripts/test-tencent-cloud-api.ps1
 TencentCloud/
 *.dpapi
+
+# Generated voice models and local design/review outputs.
+/Receiver/Assets/Voice/**/*.onnx
+/Receiver/Assets/Voice/Tts/voice-*.pack
+/Receiver/Assets/Voice/**/*.download
+/Receiver/Assets/Voice/**/*.tmp
+/outputs/
+/.impeccable/

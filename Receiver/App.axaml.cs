@@ -19,6 +19,7 @@ public sealed class App : Application
     private Bitmap? _trayIconBitmap;
     private EnrollmentWindow? _enrollmentWindow;
     private StudentVoiceWindow? _studentVoiceWindow;
+    private BanbanVoiceWindow? _banbanVoiceWindow;
     private AboutWindow? _aboutWindow;
     private IslandShoutPreviewWindow? _shoutPreviewWindow;
     private ReadingReminderService? _readingReminders;
@@ -48,9 +49,14 @@ public sealed class App : Application
         _receiver.NotificationPresenter = _island;
         _island.ShoutPreviewRequested += PreviewShout;
         _island.PreferenceChanged += UpdateIslandMenu;
+        _island.ClassTimeChanged += value => _banbanVoiceWindow?.SetInClass(value);
         ReadingExperience.Configure(ShowStudentVoice, () => _studentVoiceWindow?.MinimizeToTray());
         _receiver.ConnectionStateChanged += ReceiverOnConnectionStateChanged;
-        _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => { ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding); ReadingExperience.BindingChanged(binding); _island?.SetBinding(binding); });
+        _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => {
+            ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding);
+            ReadingExperience.BindingChanged(binding); _island?.SetBinding(binding);
+            if (_banbanVoiceWindow is null || !_banbanVoiceWindow.Matches(binding)) StartBanbanVoice(binding, _banbanVoiceWindow?.IsVisible != true);
+        });
         CreateTray();
         DesktopShortcut.EnsureCreated();
         InstanceActivation.Listen(() => Dispatcher.UIThread.Post(ShowStudentVoice),
@@ -65,6 +71,7 @@ public sealed class App : Application
             _ = _receiver.StartAsync(config);
             _readingReminders.Start(config);
             _island.SetBinding(config);
+            Dispatcher.UIThread.Post(() => StartBanbanVoice(config, true));
             StartAutomaticUpdates(config);
             // Keep the student entry point visible on classroom screens so nobody has to find the tray menu.
             if (desktop.Args?.Contains("--island-shout-preview") == true) Dispatcher.UIThread.Post(PreviewShout);
@@ -92,14 +99,24 @@ public sealed class App : Application
         var studentVoice = new NativeMenuItem { Header = "打开教室首页" };
         studentVoice.Click += (_, _) => ShowStudentVoice();
         menu.Items.Add(studentVoice);
-        _islandMenuItem = new NativeMenuItem { Header = "隐藏顶部悬浮岛" };
+        var banbanVoice = new NativeMenuItem { Header = "班班语音助手" };
+        banbanVoice.Click += (_, _) => ShowBanbanVoice();
+        menu.Items.Add(banbanVoice);
+        var banbanPet = new NativeMenuItem { Header = "显示班班桌宠" };
+        banbanPet.Click += (_, _) =>
+        {
+            if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
+            StartBanbanVoice(config, true); _banbanVoiceWindow?.ShowPet();
+        };
+        menu.Items.Add(banbanPet);
+        _islandMenuItem = new NativeMenuItem { Header = "隐藏教室浮岛" };
         _islandMenuItem.Click += (_, _) =>
         {
             if (!ReceiverConfig.TryLoad(out _)) { ShowEnrollment(); return; }
             _island?.SetEnabled(!_island.Enabled);
         };
         menu.Items.Add(_islandMenuItem);
-        var islandDemo = new NativeMenuItem { Header = "播放悬浮岛完整演示" };
+        var islandDemo = new NativeMenuItem { Header = "播放教室浮岛演示" };
         islandDemo.Click += (_, _) => _island?.PlayDemo();
         menu.Items.Add(islandDemo);
         var shoutPreview = new NativeMenuItem { Header = "预览班班喊话" };
@@ -112,6 +129,16 @@ public sealed class App : Application
             catch (Exception error) { AppLog.Error("Open reading failed", error); ShowStudentVoice(); }
         };
         menu.Items.Add(reading);
+        var computerControl = new NativeMenuItem { Header = "班班电脑控制设置" };
+        computerControl.Click += (_, _) =>
+        {
+            ReceiverConfig.TryLoad(out var binding);
+            new ComputerControlSettingsWindow(_receiver!.ComputerAgent, binding).Show();
+        };
+        menu.Items.Add(computerControl);
+        var stopComputer = new NativeMenuItem { Header = "停止班班电脑操作" };
+        stopComputer.Click += (_, _) => _receiver?.ComputerAgent.Stop();
+        menu.Items.Add(stopComputer);
         var test = new NativeMenuItem { Header = "本机测试" };
         test.Click += async (_, _) => await TestAsync();
         menu.Items.Add(test);
@@ -137,6 +164,27 @@ public sealed class App : Application
             _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         }
         _aboutWindow.Show(); _aboutWindow.WindowState = WindowState.Normal; _aboutWindow.Activate();
+    }
+
+    private void ShowBanbanVoice()
+    {
+        if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
+        StartBanbanVoice(config, false);
+    }
+
+    private async void StartBanbanVoice(ReceiverConfig config, bool background)
+    {
+        if (_banbanVoiceWindow is not null && !_banbanVoiceWindow.Matches(config)) { _banbanVoiceWindow.Shutdown(); _banbanVoiceWindow = null; }
+        if (_banbanVoiceWindow is null)
+        {
+            var window = new BanbanVoiceWindow(config, () => _receiver?.ComputerAgent.Stop());
+            window.SetInClass(_island?.InClass == true);
+            _banbanVoiceWindow = window;
+            window.Closed += (_, _) => { if (ReferenceEquals(_banbanVoiceWindow, window)) _banbanVoiceWindow = null; };
+        }
+        try { await _banbanVoiceWindow.StartAsync(background); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { AppLog.Error("Start Banban voice failed", error); }
     }
 
     private async void PreviewShout()
@@ -176,6 +224,7 @@ public sealed class App : Application
             await _receiver!.RestartAsync(saved);
             _readingReminders?.Start(saved);
             _island?.SetBinding(saved);
+            StartBanbanVoice(saved, _banbanVoiceWindow?.IsVisible != true);
             StartAutomaticUpdates(saved);
             _enrollmentWindow?.Close();
             _studentVoiceWindow?.Close();
@@ -207,7 +256,7 @@ public sealed class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls());
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), ShowBanbanVoice);
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
         KeepInTray(_studentVoiceWindow);
@@ -241,6 +290,7 @@ public sealed class App : Application
 
     private async Task ShutdownAsync()
     {
+        _banbanVoiceWindow?.Shutdown();
         _shoutPreviewWindow?.Close();
         _island?.Dispose();
         await ReadingExperience.StopAsync();
@@ -393,6 +443,6 @@ public sealed class App : Application
 
     private void UpdateIslandMenu()
     {
-        if (_islandMenuItem is not null) _islandMenuItem.Header = _island?.Enabled == true ? "隐藏顶部悬浮岛" : "显示顶部悬浮岛";
+        if (_islandMenuItem is not null) _islandMenuItem.Header = _island?.Enabled == true ? "隐藏教室浮岛" : "显示教室浮岛";
     }
 }

@@ -19,13 +19,13 @@ internal sealed class IslandDemoWindow : Window
     public IslandDemoWindow(Action toggle, Action restart, Action<int> select)
     {
         ClassroomStyle.Apply(this);
-        Title = "悬浮岛完整演示 · ICeClass 班伴";
+        Title = "教室浮岛演示 · ICeClass 班伴";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
         Width = 550; MinWidth = 380; CanResize = false; SizeToContent = SizeToContent.Height;
         Background = DesktopStyle.Brush("#FCFDFF");
         DesktopStyle.KeepWindowInWorkingArea(this);
         var body = new StackPanel { Spacing = 14, Margin = new Thickness(24, 20) };
-        body.Children.Add(ClassroomStyle.SectionTitle("悬浮岛完整演示"));
+        body.Children.Add(ClassroomStyle.SectionTitle("教室浮岛演示"));
         body.Children.Add(ClassroomStyle.Caption("请看屏幕顶部。点击下方阶段，可以停下来查看细节。"));
         var heading = new Grid { ColumnDefinitions = new("*,Auto") };
         heading.Children.Add(_status); _time.VerticalAlignment = VerticalAlignment.Center;

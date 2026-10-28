@@ -7,20 +7,28 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.4.0</Version>
+    <Version>2.5.0</Version>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
     <Description>班级伴学与管理平台</Description>
     <Company>ICeCreamChat</Company>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Voice\*" LogicalName="ICeClass.Voice.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Voice\Asr\*" LogicalName="ICeClass.Voice.Asr.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Voice\Tts\*" LogicalName="ICeClass.Voice.Tts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Voice\Vad\*" LogicalName="ICeClass.Voice.Vad.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Voice\Speaker\*" LogicalName="ICeClass.Voice.Speaker.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\assets\banban\rig\forearm-right.webp;..\web_controller\assets\banban\rig\socket-*.webp;..\web_controller\assets\banban\rig\iris-*.webp;..\web_controller\assets\banban\rig\lash-*.webp;..\web_controller\assets\banban\rig\smile-*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\reading\**\*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\*" LogicalName="ICeClass.Local/assets/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\favicon.ico" LogicalName="ICeClass.Local/favicon.ico" />
@@ -37,6 +45,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="System.Speech" Version="8.0.0" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="2.0.0" />
   </ItemGroup>
   <Target Name="UseWebViewCoreOnly" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup>

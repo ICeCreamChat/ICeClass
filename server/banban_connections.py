@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 import socket
 from urllib.parse import urlsplit, urlunsplit
 
-from aiohttp import TCPConnector
+from aiohttp import ClientConnectionError, ClientError, ClientSession, ClientSSLError, ClientTimeout, TCPConnector
 from aiohttp.abc import AbstractResolver
 from aiohttp.resolver import DefaultResolver
 
@@ -100,9 +101,56 @@ class PublicResolver(AbstractResolver):
 
     async def resolve(self, host, port=0, family=socket.AF_INET):
         addresses = await self.resolver.resolve(host, port, family)
+        # Some local network proxies answer every public hostname with a
+        # synthetic benchmark address. Never connect the upstream (or send its
+        # key) there: resolve it over authenticated HTTPS, then apply the same
+        # public-address checks to the real answers. Private/loopback DNS
+        # answers still fail closed and never trigger this fallback.
+        synthetic = ipaddress.ip_network('198.18.0.0/15')
+        if addresses and all(ipaddress.ip_address(item['host']) in synthetic for item in addresses):
+            addresses = await self.public_dns(host, port, family)
         if not addresses or any(not public_address(item['host']) for item in addresses):
             raise ValueError('该服务地址解析到了本机或内网，无法连接。请检查 Base URL。')
         return addresses
+
+    async def public_dns(self, host, port, family):
+        record_type = 28 if family == socket.AF_INET6 else 1
+        try:
+            # Fixed resolver, TLS validation and no redirects. No credentials
+            # or user content are sent to the DNS service.
+            # Retry DNS transport once within the original eight-second budget.
+            # Never replay a model request or computer action, and never retry
+            # certificate failures, redirected, malformed or private answers.
+            for attempt in range(2):
+                try:
+                    async with ClientSession(timeout=ClientTimeout(total=4)) as client:
+                        async with client.get('https://dns.alidns.com/resolve',
+                                              params={'name': host, 'type': 'AAAA' if record_type == 28 else 'A'},
+                                              headers={'Accept': 'application/dns-json'}, allow_redirects=False) as response:
+                            if response.status != 200 or response.content_length and response.content_length > 16000:
+                                raise ValueError()
+                            raw = await response.content.read(16001)
+                            if len(raw) > 16000:
+                                raise ValueError()
+                            result = json.loads(raw)
+                    break
+                except ClientSSLError:
+                    raise
+                except (ClientConnectionError, TimeoutError):
+                    if attempt:
+                        raise
+            if not isinstance(result, dict) or result.get('Status') != 0 or not isinstance(result.get('Answer'), list):
+                raise ValueError()
+            if any(not isinstance(item, dict) for item in result['Answer']):
+                raise ValueError()
+            records = [item['data'] for item in result['Answer'] if item.get('type') == record_type]
+            if not records or any(not public_address(address) for address in records):
+                raise ValueError()
+            return [{'hostname': host, 'host': address, 'port': port,
+                     'family': socket.AF_INET6 if record_type == 28 else socket.AF_INET,
+                     'proto': 0, 'flags': socket.AI_NUMERICHOST | socket.AI_NUMERICSERV} for address in records]
+        except (ClientError, TimeoutError, ValueError, KeyError, TypeError):
+            raise ValueError('无法核实模型服务的公网地址，请检查网络后重试。') from None
 
     async def close(self):
         await self.resolver.close()

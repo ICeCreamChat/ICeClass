@@ -4,12 +4,45 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from aiohttp import ClientConnectionError, ClientSSLError, TCPConnector, web
+from aiohttp.test_utils import TestServer
+
 import app as service
 import test_banban as fixtures
 from banban import Banban
 from banban_agent import BanbanAgent
 from banban_connections import AccountConnections, PublicResolver, completion_url, normalize_base_url, provider_options
 from test_app import ServerTestCase
+
+
+class ConnectionReuseTest(ServerTestCase):
+    async def test_upstream_reuses_connection_without_sharing_account_headers_or_cookies(self):
+        agent = next(r.handler.__self__ for r in self.app.router.routes()
+                     if r.method == 'POST' and r.resource.canonical == '/api/banban/chat/stream')
+        received = []
+
+        async def completion(request):
+            received.append((request.transport, request.headers.get('Authorization'), request.headers.get('Cookie')))
+            await request.json()
+            response = web.Response(text='data: {"choices":[{"delta":{"content":"收到"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+                                    content_type='text/event-stream')
+            response.set_cookie('upstream-account', 'must-not-cross-accounts')
+            return response
+
+        upstream = web.Application()
+        upstream.router.add_post('/chat/completions', completion)
+        async with TestServer(upstream, host='localhost') as server:
+            cfg = {'baseUrl': 'https://llm.example.org/v1', 'model': 'fixture', 'apiKey': 'first-account'}
+            # Only this controlled HTTP fixture uses a local connector. The
+            # production resolver still validates every new public connection.
+            with patch('banban_agent.upstream_connector', side_effect=lambda: TCPConnector()), \
+                    patch('banban_agent.completion_url', return_value=str(server.make_url('/chat/completions'))):
+                first = [event async for event in agent.provider(cfg, [], allow_tools=False)]
+                second = [event async for event in agent.provider({**cfg, 'apiKey': 'second-account'}, [], allow_tools=False)]
+            self.assertEqual(first, [{'text': '收到'}])
+            self.assertEqual(second, [{'text': '收到'}])
+            self.assertIs(received[0][0], received[1][0], 'consecutive tool/model rounds should reuse the live transport')
+            self.assertEqual([item[1:] for item in received], [('Bearer first-account', None), ('Bearer second-account', None)])
 
 
 class ConnectionTest(ServerTestCase):
@@ -222,9 +255,8 @@ class ConnectionTest(ServerTestCase):
         manager = AsyncMock()
         manager.__aenter__.return_value = response
         post = unittest.mock.Mock(return_value=manager)
-        session = AsyncMock()
-        session.__aenter__.return_value = SimpleNamespace(post=post)
-        with patch('banban_agent.ClientSession', return_value=session):
+        session = SimpleNamespace(post=post, closed=False)
+        with patch.object(self.agent, '_upstream_client', session):
             events = [event async for event in self.agent.provider(cfg, [], allow_tools=True)]
         self.assertEqual(events, [{'text': '连接成功'}])
         args, kwargs = post.call_args
@@ -258,10 +290,9 @@ class ConnectionTest(ServerTestCase):
                 manager = AsyncMock()
                 manager.__aenter__.return_value = response
                 post = unittest.mock.Mock(return_value=manager)
-                session = AsyncMock()
-                session.__aenter__.return_value = SimpleNamespace(post=post)
+                session = SimpleNamespace(post=post, closed=False)
                 messages = [{'role': 'user', 'content': '分析晨读'}]
-                with patch('banban_agent.ClientSession', return_value=session):
+                with patch.object(self.agent, '_upstream_client', session):
                     events = [event async for event in self.agent.provider({**self.personal(), 'baseUrl': base, 'model': model}, messages, allow_tools='required')]
                 payload = post.call_args.kwargs['json']
                 self.assertEqual(payload['tool_choice'], choice)
@@ -301,3 +332,88 @@ class AddressTest(unittest.TestCase):
                         'https://host.local/v1', 'https://api.example.org:99999/v1']:
             with self.subTest(address=address), self.assertRaises(ValueError):
                 normalize_base_url(address)
+
+
+class ProxyDnsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_https_dns_retries_one_transient_transport_failure_only(self):
+        resolver = PublicResolver()
+        body = {'Status': 0, 'Answer': [{'type': 1, 'data': '8.8.8.8'}]}
+        response = SimpleNamespace(status=200, content_length=None,
+            content=SimpleNamespace(read=AsyncMock(return_value=json.dumps(body).encode())))
+        manager = AsyncMock()
+        session = AsyncMock()
+        session.__aenter__.return_value = SimpleNamespace(get=unittest.mock.Mock(return_value=manager))
+        try:
+            for error in [ClientConnectionError('temporary disconnect'), TimeoutError()]:
+                manager.__aenter__.side_effect = [error, response]
+                with patch('banban_connections.ClientSession', return_value=session):
+                    answers = await resolver.public_dns('api.example.org', 443, 2)
+                self.assertEqual(answers[0]['host'], '8.8.8.8')
+                self.assertEqual(manager.__aenter__.await_count, 2)
+                manager.__aenter__.reset_mock()
+            manager.__aenter__.side_effect = ClientConnectionError('still disconnected')
+            with patch('banban_connections.ClientSession', return_value=session), self.assertRaises(ValueError):
+                await resolver.public_dns('api.example.org', 443, 2)
+            self.assertEqual(manager.__aenter__.await_count, 2)
+        finally:
+            await resolver.close()
+
+    async def test_https_dns_never_retries_failed_tls_validation(self):
+        resolver = PublicResolver()
+        manager = AsyncMock()
+        manager.__aenter__.side_effect = ClientSSLError(None, OSError('TLS verification failed'))
+        session = AsyncMock()
+        session.__aenter__.return_value = SimpleNamespace(get=unittest.mock.Mock(return_value=manager))
+        try:
+            with patch('banban_connections.ClientSession', return_value=session), self.assertRaises(ValueError):
+                await resolver.public_dns('api.example.org', 443, 2)
+            self.assertEqual(manager.__aenter__.await_count, 1)
+        finally:
+            await resolver.close()
+
+    async def test_only_synthetic_proxy_answers_use_public_dns_and_revalidate(self):
+        resolver = PublicResolver()
+        resolver.resolver.resolve = AsyncMock(return_value=[{'host':'198.18.1.22'}])
+        resolver.public_dns = AsyncMock(return_value=[{'hostname':'api.example.org','host':'8.8.8.8'}])
+        try:
+            self.assertEqual((await resolver.resolve('api.example.org', 443))[0]['host'], '8.8.8.8')
+            resolver.public_dns.assert_awaited_once_with('api.example.org', 443, 2)
+            resolver.public_dns.return_value = [{'host':'127.0.0.1'}]
+            with self.assertRaises(ValueError):
+                await resolver.resolve('api.example.org', 443)
+        finally:
+            await resolver.close()
+
+    async def test_private_mixed_and_loopback_dns_cannot_fall_back(self):
+        resolver = PublicResolver()
+        resolver.public_dns = AsyncMock()
+        try:
+            for answers in [['127.0.0.1'], ['10.0.0.1'], ['169.254.169.254'], ['::1'], ['198.18.1.22','192.168.1.5']]:
+                resolver.resolver.resolve = AsyncMock(return_value=[{'host':ip} for ip in answers])
+                with self.subTest(answers=answers), self.assertRaises(ValueError):
+                    await resolver.resolve('api.example.org', 443)
+            resolver.public_dns.assert_not_called()
+        finally:
+            await resolver.close()
+
+    async def test_https_dns_rejects_private_malformed_and_redirected_results(self):
+        resolver = PublicResolver()
+        try:
+            for status, body in [(200, {'Status':0,'Answer':[{'type':1,'data':'127.0.0.1'}]}),
+                                 (200, {'Status':0,'Answer':[None]}), (200, {'Status':3}),
+                                 (302, {'Status':0,'Answer':[{'type':1,'data':'8.8.8.8'}]})]:
+                response = SimpleNamespace(status=status, content_length=None,
+                    content=SimpleNamespace(read=AsyncMock(return_value=json.dumps(body).encode())))
+                manager = AsyncMock()
+                manager.__aenter__.return_value = response
+                session = AsyncMock()
+                session.__aenter__.return_value = SimpleNamespace(get=unittest.mock.Mock(return_value=manager))
+                with patch('banban_connections.ClientSession', return_value=session):
+                    with self.subTest(status=status, body=body), self.assertRaises(ValueError):
+                        await resolver.public_dns('api.example.org', 443, 2)
+                call = session.__aenter__.return_value.get.call_args
+                self.assertEqual(manager.__aenter__.await_count, 1)
+                self.assertFalse(call.kwargs['allow_redirects'])
+                self.assertEqual(call.kwargs['headers'], {'Accept':'application/dns-json'})
+        finally:
+            await resolver.close()

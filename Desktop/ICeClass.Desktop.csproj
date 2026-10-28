@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ICeClass.Desktop</AssemblyName>
     <RootNamespace>ICeClass.Desktop</RootNamespace>
-    <Version>2.4.0</Version>
+    <Version>2.5.0</Version>
     <Product>ICeClass 班伴 · 教师端</Product>
     <Title>ICeClass 班伴 · 教师端</Title><Company>ICeCreamChat</Company>
     <Description>供教师与管理员使用的 Windows 工作台</Description>

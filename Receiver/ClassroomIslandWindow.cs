@@ -55,7 +55,7 @@ internal sealed class ClassroomIslandWindow : Window
         _hide = hide;
         ClassroomStyle.Apply(this);
         Styles.Add(new StyleInclude(new Uri("avares://ICeClass/")) { Source = new Uri("avares://ICeClass/ClassroomIslandStyles.axaml") });
-        Title = "顶部悬浮岛 · ICeClass 班伴";
+        Title = "教室浮岛 · ICeClass 班伴";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
         SystemDecorations = SystemDecorations.None;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
@@ -73,7 +73,7 @@ internal sealed class ClassroomIslandWindow : Window
         _expand.MinHeight = ClassroomIslandRibbon.RibbonHeight;
         _expand.Click += (_, _) => { if (_shoutShown) SetShoutExpanded(!_shoutExpanded); else SetExpanded(!_expanded); };
         ToolTip.SetTip(_expand, "点击查看早读、今日课表与操作；Esc 收起");
-        AutomationProperties.SetName(_expand, "展开教室岛操作");
+        AutomationProperties.SetName(_expand, "展开教室浮岛操作");
         _ribbon.Attention += color =>
         {
             _pulse ??= new IslandAttentionPulseWindow();

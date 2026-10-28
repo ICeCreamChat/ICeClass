@@ -17,11 +17,11 @@
     return match ? '高' + ({1: '一', 2: '二', 3: '三'}[match[1]] || match[1]) : '其他';
   }
   function scope(user) {
-    if (user.role === 'principal') return ['全校管理', '包含新增年级与班级'];
-    if (user.role === 'director') return ['高一 · 高二 · 高三', '自动包含三个年级的新增班级'];
-    if (user.role === 'grade_leader') return [user.grade ? user.grade + '全部班级' : '待分配年级', '自动包含本年级的新增班级'];
+    if (user.role === 'principal') return ['全校管理', ''];
+    if (user.role === 'director') return ['高一 · 高二 · 高三', ''];
+    if (user.role === 'grade_leader') return [user.grade ? user.grade + '全部班级' : '待分配年级', ''];
     const classes = user.classes || [];
-    return [classes.map(c => c.name).join('、') || '待分配班级', classes.length ? '仅限所分配班级' : '请在“编辑权限”中分配'];
+    return [classes.map(c => c.name).join('、') || '待分配班级', ''];
   }
   function matchesGrade(user, selected) {
     if (selected === 'all') return true;
@@ -64,7 +64,6 @@
     if (!context) return;
     closeMenu();
     const users = context.teachers;
-    $('userScopeNote').textContent = context.user.role === 'grade_leader' ? `您负责${context.user.grade || '所选年级'}，可管理本年级的班主任教师。` : context.user.role === 'director' ? '您负责高一、高二、高三，可管理年级部长与班主任教师。' : '按学校职责分配权限，年级范围自动包含新增班级。';
     const tabs = $('userRoleTabs');
     const visibleRoles = roles.filter(role => users.some(user => user.role === role) || context.user.permissions?.assignableRoles?.includes(role));
     const existingTabs = new Map([...tabs.children].map(tab => [tab.dataset.roleFilter, tab]));
@@ -110,7 +109,8 @@
       const name = node('div'); name.append(node('strong', user.display_name), node('small', user.username)); identity.append(name); row.insertCell().append(identity);
       row.insertCell().append(node('span', labels[user.role] || user.role, 'user-role-badge role-' + user.role));
       const range = row.insertCell(), [title, hint] = scope(user); range.className = 'user-scope';
-      range.append(node('span', title, isUnassigned(user) ? 'user-unassigned' : ''), node('small', hint));
+      range.append(node('span', title, isUnassigned(user) ? 'user-unassigned' : ''));
+      if (hint) range.append(node('small', hint));
       row.insertCell().append(node('span', Number(user.enabled) === 1 ? '启用' : '已停用', 'status ' + (Number(user.enabled) === 1 ? 'enabled' : 'disabled')));
       const actions = node('div', undefined, 'user-row-actions');
       if (user.canManage) {

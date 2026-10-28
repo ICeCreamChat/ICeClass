@@ -12,7 +12,8 @@
 .bb-compact .bb-launcher { min-width: 88px; padding: 4px 6px 6px; }
 .bb-compact .bb-launcher .bb-mascot { width: 80px; }
 .bb-compact .bb-launcher-name { font-size: 14px; line-height: 26px; padding: 0 12px; }
-.bb-panel { width: 456px; height: min(660px, calc(100dvh - 40px)); border-color: #dae4ee; box-shadow: 0 20px 64px #243e5a20, 0 3px 12px #243e5a0b; isolation: isolate; }
+/* Keep focus scrolling inside the content panes, never on the window shell. */
+.bb-panel { width: 456px; height: min(660px, calc(100dvh - 40px)); border-color: #dae4ee; box-shadow: 0 20px 64px #243e5a20, 0 3px 12px #243e5a0b; isolation: isolate; overflow: clip; }
 .bb-panel.bb-expanded { width: min(800px, calc(100vw - 40px)); height: min(780px, calc(100dvh - 40px)); }
 .bb-header { gap: 10px; min-height: 64px; padding: 5px 16px 5px 22px; background: #fff; border-bottom: 0; }
 .bb-avatar { width: 48px; height: 54px; margin: 0; }
@@ -57,7 +58,8 @@
 .bb-scope-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid #e9eef4; }
 .bb-scope-actions .bb-send { width: auto; padding-inline: 16px; }
 .bb-scope-editor .form-error:empty { display: none; }
-.bb-scroll { scrollbar-color: #cfdae5 transparent; scrollbar-gutter: stable; overflow-x: hidden; }
+/* Contain positioned accessibility feedback in the conversation's scroll area. */
+.bb-scroll { position: relative; scrollbar-color: #cfdae5 transparent; scrollbar-gutter: stable; overflow-x: hidden; }
 @supports not (scrollbar-gutter: stable) {
   .bb-scroll { overflow-y: scroll; }
 }
@@ -76,7 +78,6 @@
 .bb-prompt-copy { display: grid; gap: 3px; min-width: 0; }
 .bb-prompt strong { font-weight: 500; }
 .bb-prompt small { color: #60758a; font-size: 12px; line-height: 20px; }
-.bb-prompt .bb-icon { width: 17px; height: 17px; opacity: .5; }
 .bb-messages { gap: 24px; width: 100%; max-width: none; margin: 0; padding: 22px 20px 18px; }
 .bb-message { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 10px; align-items: start; }
 .bb-message > :not(.bb-message-avatar) { grid-column: 2; min-width: 0; }
@@ -84,20 +85,26 @@
 .bb-message-avatar-assistant { background: #f1f7fd; border: 1px solid #e2ecf5; }
 .bb-message-avatar-assistant img { width: 100%; height: 100%; object-fit: contain; padding: 1px; }
 .bb-message-avatar-user { color: #0969c2; background: #e8f2ff; border: 1px solid #d7e8fa; font-size: 13px; font-weight: 650; border-radius: 50%; }
-.bb-message-author { color: #5a7187; font-size: 13px; margin-bottom: 6px; line-height: 22px; }
-.bb-message-author strong { font-weight: 550; }
 .bb-message-content { font-size: 15px; line-height: 1.8; color: var(--bb-ink); }
+.bb-message-body { justify-self: start; max-width: 100%; padding: 10px 14px; border-radius: 5px 16px 16px 16px; background: #f3f7fc; }
+.bb-message-body:has(.bb-operation, .bb-results) { width: 100%; }
+.bb-message-body > .bb-message-content:empty { display: none; }
+.bb-message-body .bb-answer-extra > summary { min-height: 44px; padding-block: 9px; }
+.bb-message-body .bb-answer-extra { margin-bottom: 0; }
 .bb-answer-lead { font-weight: 500; color: #20364d; }
 .bb-answer-body { margin-top: 8px; }
 .bb-message-user { grid-template-columns: minmax(0, 1fr) 36px; padding: 0; border-radius: 0; background: transparent; }
 .bb-message-user > .bb-message-avatar { grid-column: 2; grid-row: 1; }
 .bb-message-user > .bb-message-content { grid-column: 1; grid-row: 1; color: #204f79; background: #eaf3ff; padding: 10px 15px; border-radius: 16px 16px 5px 16px; }
 .bb-answer-mode { font-size: 12px; border: 0; border-radius: 6px; padding: 1px 6px; color: #536f87; background: #f0f5fa; }
-.bb-presence { align-items: flex-start; gap: 12px; min-height: 0; width: auto; max-width: none; padding: 14px 0 20px; margin: 0 20px; border: 0; background: transparent; }
-.bb-presence-copy strong { font-size: 14px; line-height: 1.6; font-weight: 500; color: #3c5871; }
-.bb-presence-copy p { margin: 3px 0 0; color: #5e7489; font-size: 13px; line-height: 1.7; }
-.bb-thinking-mark { display: block; width: 10px; height: 10px; margin-top: 7px; flex: none; border-radius: 50%; background: #71afe3; animation: bb-thinking 1.4s ease-in-out infinite; }
-@keyframes bb-thinking { 50% { opacity: .35; transform: scale(.8); } }
+.bb-presence { align-items: center; gap: 9px; min-height: 27px; width: auto; max-width: none; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; color: #3c5871; font-size: 15px; line-height: 1.8; }
+.bb-message-body:has(> .bb-message-content:not(:empty), > .bb-operation, > .bb-results) .bb-presence:not([hidden]) { margin-top: 10px; }
+.bb-thinking-mark { display: flex; align-items: center; gap: 3px; flex: none; }
+.bb-thinking-mark i { width: 4px; height: 4px; border-radius: 50%; background: #579bd1; animation: bb-thinking 1.4s ease-in-out infinite; }
+.bb-thinking-mark i:nth-child(2) { animation-delay: .16s; }
+.bb-thinking-mark i:nth-child(3) { animation-delay: .32s; }
+@keyframes bb-thinking { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .bb-thinking-mark i { animation: none; } }
 .bb-nudge p { font-size: 14px; color: #294b68; }
 .bb-nudge .bb-tool { min-height: 44px; }
 .bb-source { min-height: 44px; padding: 9px 12px; border-color: #dce7f1; border-radius: 10px; color: #1665aa; font-size: 13px; cursor: pointer; }
@@ -125,15 +132,17 @@
 .bb-live-status { max-width: none; margin: 0 20px 16px 66px; font-size: 13px; }
 .bb-incomplete { font-size: 13px; }
 .bb-error { font-size: 14px; }
+.bb-message-body .bb-error { margin: 0; padding: 0; border: 0; background: transparent; color: #8b3733; }
+.bb-message-body .bb-error .bb-source { display: block; min-height: 44px; margin: 4px 0 -4px; }
+.bb-message-body > .bb-message-content:not(:empty) ~ .bb-error { margin-top: 8px; }
+.bb-message-body .bb-incomplete { display: block; margin-top: 8px; }
 .bb-compose { padding: 8px 20px 6px; border-top-color: #edf1f5; }
 .bb-input-box { display: flex; align-items: flex-end; gap: 6px; max-width: none; margin: 0; border-color: #dce5ef; border-radius: 14px; padding: 2px; background: #f7f9fc; }
 .bb-input-box:focus-within { border-color: #78afe0; box-shadow: 0 0 0 3px #eaf3fc; background: #fff; }
 .bb-input-box textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 120px; padding: 9px 10px; font-size: 16px; color: var(--bb-ink); line-height: 26px; overflow-y: auto; }
 .bb-input-box textarea::placeholder { color: #6e8092; }
 .bb-send { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: none; border-radius: 11px; background: #086cc9; font-size: 14px; line-height: 24px; min-height: 44px; padding: 10px 14px; cursor: pointer; }
-.bb-send .bb-icon { width: 16px; height: 16px; filter: invert(1); }
 .bb-send:disabled { background: #e4ecf5; color: #5c7590; opacity: 1; }
-.bb-send:disabled .bb-icon { filter: none; opacity: .5; }
 .bb-compose-footer { max-width: none; margin: 4px 0 0; min-height: 20px; font-size: 12px; color: #627689; }
 .bb-compose-footer small, .bb-privacy { color: #627689; font-size: 12px; }
 .bb-compose-footer:has(#bbInputCount:not([hidden])) .bb-key-hint { display: none; }
@@ -146,7 +155,6 @@
 .bb-settings { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding: 0; }
 .bb-settings-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #cfdae5 transparent; scrollbar-gutter: stable; padding: 0 22px 12px; }
 .bb-settings .bb-settings-back { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin: 0 0 0 -8px; padding: 7px 8px; font-size: 13px; }
-.bb-back-icon { width: 16px; height: 16px; transform: rotate(180deg); opacity: .65; }
 .bb-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .bb-settings-heading h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 28px; color: var(--bb-ink); }
 .bb-connection-badge { flex: none; border-radius: 20px; padding: 3px 9px; font-size: 12px; font-weight: 550; color: #24618f; background: #edf5fc; }
@@ -192,7 +200,6 @@
 .bb-settings .bb-field p { font-size: 12px; line-height: 1.65; margin: 7px 0 0; color: #607589; text-wrap: pretty; }
 .bb-settings-link { display: inline-flex; flex: none; align-items: center; gap: 3px; min-height: 44px; color: #146ab3; text-decoration: none; font-size: 12px; }
 .bb-settings-link:hover { text-decoration: underline; }
-.bb-settings-link .bb-icon { width: 13px; height: 13px; opacity: .65; transform: rotate(-45deg); }
 .bb-settings input[aria-invalid=true] { border-color: #b76053; }
 .bb-settings-privacy { border-top: 1px solid #e9eef4; margin-top: 2px; }
 .bb-settings-privacy > summary { display: list-item; min-height: 44px; padding: 12px 0; font-size: 12px; color: #607589; cursor: pointer; }
@@ -230,15 +237,11 @@
   .bb-message-user > .bb-message-content { padding: 9px 12px; }
   .bb-followups { padding-left: 54px; padding-right: 14px; }
   .bb-live-status { margin-left: 54px; margin-right: 14px; }
-  .bb-presence { margin-left: 14px; margin-right: 14px; }
+  .bb-message-body { padding: 9px 12px; }
   .bb-panel input:not([type=checkbox]), .bb-panel select { font-size: 16px; }
   .bb-settings #bbProvider { font-size: 16px; line-height: 24px; padding-block: 9px; }
   .bb-compose { padding-left: 12px; padding-right: 12px; }
-  .bb-send { width: 44px; padding: 0; }
-  .bb-send .bb-icon { width: 18px; height: 18px; }
-  #bbSendLabel { display: none; }
-  .bb-send[aria-label="停止回答"] #bbSendLabel { display: block; }
-  .bb-send[aria-label="停止回答"] .bb-icon { display: none; }
+  .bb-send { min-width: 56px; padding: 10px 12px; }
   .bb-key-hint { display: none; }
   .bb-result-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bb-scope-editor { left: 10px; right: 10px; }

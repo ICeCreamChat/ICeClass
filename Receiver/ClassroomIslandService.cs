@@ -39,6 +39,8 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     public bool IsCurrent(ShoutData data) => ReferenceEquals(_activeShout?.Data, data);
     public bool Enabled => _preferences.Enabled;
     public event Action? PreferenceChanged;
+    internal bool InClass { get; private set; }
+    internal event Action<bool>? ClassTimeChanged;
     public event Action? ShoutPreviewRequested;
 
     public ClassroomIslandService(Func<ReceiverConfig, Task> openReading, Action openHome)
@@ -295,11 +297,19 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         Refresh();
     }
 
+    private void SetClassTime(bool value)
+    {
+        if (InClass == value) return;
+        InClass = value;
+        ClassTimeChanged?.Invoke(value);
+    }
+
     private void Refresh()
     {
         if (_disposed) return;
         if (_binding is null || _offline is null)
         {
+            SetClassTime(false);
             if (_demo is not null) { RenderDemo(); return; }
             var unbound = _state.Present(null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _connection, ReadingExperience.IsOpen);
             if (unbound.Notice is not { Category: "班级通知" } && _activeShout is not null) { CompleteShout(ShoutCloseReason.TimedOut); return; }
@@ -331,6 +341,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var localNow = now.ToOffset(TimeSpan.FromHours(8));
         var lessons = profile is not null ? IslandSchedule.On(profile, DateOnly.FromDateTime(localNow.DateTime)) : [];
         var current = lessons.FirstOrDefault(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End));
+        SetClassTime(current is not null);
         if (profile is not null && profile.Enabled && _ledger is not null)
         {
             foreach (var e in IslandSchedule.Due(profile, _lastTick ?? now.AddMilliseconds(-1100), now))

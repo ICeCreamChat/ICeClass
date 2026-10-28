@@ -11,6 +11,7 @@
   let conversationId = null, threads = [], threadCursor = null, threadLoading = false, threadRevision = 0;
   let olderCursor = null, olderLoading = false, historyPolicy = null, historyPolicyBusy = false, conversationLoaded = false;
   let accountGeneration = 0;
+  let voice = null;
   let deletingThread = null, deleteBusy = false;
   const drafts = new Map();
   let character = null;
@@ -111,7 +112,7 @@
   function modeNote() {
     const enabled = connection?.configured && connection?.enabled;
     $('bbModeNote').textContent = enabled ? '智能分析' : '数据速览';
-    $('bbModeNote').title = enabled ? '仅分析您有权限查看的数据' : '智能分析尚未启用，当前提供服务器计算的数据速览';
+    $('bbModeNote').title = enabled ? '按您的权限分析和操作' : '智能分析尚未启用，当前提供服务器计算的数据速览';
     $('bbModeNote').dataset.state = enabled ? 'ready' : 'overview';
   }
   async function loadContext() {
@@ -206,6 +207,7 @@
     if (matchMedia('(pointer: fine)').matches) $('bbInput').focus({preventScroll: true});
   }
   function close() {
+    if (window.ICeClassVoiceHost) { voice?.hide(); return; }
     options(false);
     setScopeEditor(false, false);
     $('bbPanel').hidden = true; $('bbLauncher').hidden = false; $('bbLauncher').setAttribute('aria-expanded', 'false');
@@ -229,7 +231,7 @@
     const avatar = node('span', undefined, 'bb-message-avatar bb-message-avatar-' + role);
     if (role === 'assistant') {
       const image = document.createElement('img');
-      image.src = asset('portrait'); image.alt = ''; image.draggable = false;
+      image.src = asset('portrait'); image.alt = ''; image.draggable = false; image.width = 36; image.height = 36;
       avatar.append(image); avatar.setAttribute('aria-hidden', 'true');
     } else {
       const user = window.ICeClass.state.user;
@@ -240,15 +242,15 @@
     }
     block.append(avatar);
     if (role === 'assistant') {
-      const author = node('div', undefined, 'bb-message-author');
-      author.append(node('strong', '班班'));
-      if (mode === 'overview') author.append(node('span', '数据速览', 'bb-answer-mode'));
-      block.append(author);
+      block.setAttribute('aria-label', '班班');
     }
     const content = node('div', undefined, 'bb-message-content');
     // Render only text and emphasis. Model/user HTML and links never become executable markup.
     if (role === 'assistant') renderAnswer(content, text, detailRequested); else renderText(content, text);
-    block.append(content); $('bbMessages').append(block); return block;
+    if (role === 'assistant') {
+      const body = node('div', undefined, 'bb-message-body'); body.append(content); block.append(body);
+    } else block.append(content);
+    $('bbMessages').append(block); return block;
   }
   function renderText(content, text) {
     content.replaceChildren();
@@ -286,7 +288,7 @@
     if (!data?.scope || !Array.isArray(data.metrics)) return;
     const key = [data.topic, data.scope.start, data.scope.end, data.scope.classId, String(data.scope.grades)].join('|');
     let group = block.querySelector('.bb-results');
-    if (!group) { group = node('details', undefined, 'bb-results'); group.append(node('summary', '查看依据', 'bb-evidence-toggle')); block.append(group); }
+    if (!group) { group = node('details', undefined, 'bb-results'); group.append(node('summary', '查看依据', 'bb-evidence-toggle')); block.querySelector('.bb-message-body').append(group); }
     const existing = [...group.children].find(c => c.dataset.sourceKey === key);
     const card = node('section', undefined, 'bb-result'); card.dataset.sourceKey = key;
     card.setAttribute('aria-label', data.title + '数据来源');
@@ -365,10 +367,13 @@
     messages.forEach(m => {
       const block = appendMessage(m.role, m.content, m.mode, m.detailRequested);
       (m.cards || []).forEach(c => sourceCard(block, c)); fragment.append(block);
+      queueMicrotask(() => window.ICeClassBanbanOperations?.hydrate(block.querySelector('.bb-message-body') || block, m.operations));
     });
     return fragment;
   }
   function applyConversation(saved) {
+    // Keep the shared waiting indicator when replacing the previous conversation.
+    $('bbConversation').append($('bbPresence'));
     conversationLoaded = true; conversationId = saved.id;
     history = saved.messages.map(m => ({role: m.role, content: m.content})); lastIncomplete = null;
     $('bbMessages').replaceChildren(renderSaved(saved.messages));
@@ -582,11 +587,14 @@
     } catch (error) { if (!disposed) window.ICeClass.toast('历史消息未读取：' + error.message); }
     finally { if (rev === revision) { olderLoading = false; if (!disposed) { $('bbOlder').disabled = false; $('bbOlder').textContent = '查看更早的消息'; } } }
   }
-  async function streamQuestion(text, signal, receive) {
+  async function streamQuestion(text, signal, receive, inputMode = 'text') {
     const page = document.querySelector('#mainNav button.active')?.dataset.view || 'reading';
     const response = await fetch('/api/banban/chat/stream', {method: 'POST', credentials: 'same-origin', cache: 'no-store',
-      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.ICeClass.state.csrf}, body: JSON.stringify({message: text, scope: {...scope}, page, conversationId}), signal});
-    if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `请求失败 (${response.status})`); }
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.ICeClass.state.csrf}, body: JSON.stringify({message: text, scope: {...scope}, page, conversationId, ...(inputMode === 'voice' ? {voice: voice?.context() || {mode:'voice'}} : {})}), signal});
+    if (!response.ok) {
+      if (response.status === 401) location.reload();
+      const error = await response.json().catch(() => ({})); throw new Error(error.error || `请求失败 (${response.status})`);
+    }
     if (!response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) throw new Error('连接未返回完整回复，请刷新后重试。');
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let buffer = '', finished = false, received = 0;
@@ -646,8 +654,7 @@
     $('bbPrompts').replaceChildren();
     prompts.forEach(([title, note, question]) => {
       const b = button('', 'bb-prompt', () => ask(question)), copy = node('span', undefined, 'bb-prompt-copy');
-      const arrow = node('img', undefined, 'bb-icon'); arrow.src = icon('arrow-right'); arrow.alt = '';
-      copy.append(node('strong', title), node('small', note)); b.append(copy, arrow); $('bbPrompts').append(b);
+      copy.append(node('strong', title), node('small', note)); b.append(copy); $('bbPrompts').append(b);
     });
   }
   function scrollBottom() { const el = $('bbScroll'); el.scrollTop = el.scrollHeight; }
@@ -655,31 +662,30 @@
     character?.busy(value);
     headerMascot();
     $('bbSendLabel').textContent = value ? '停止' : '发送';
-    $('bbSendIcon').src = icon(value ? 'minus' : 'arrow-up');
     $('bbSend').setAttribute('aria-label', value ? '停止回答' : '发送问题');
     composeState();
     $('bbMessages').setAttribute('aria-busy', String(value));
     $('bbScopeToggle').disabled = value; $('bbSettingsOpen').disabled = value;
     $('bbOlder').disabled = value; renderThreads();
   }
-  async function ask(text, reuse = false) {
+  async function ask(text, reuse = false, inputMode = 'text', valid = () => true) {
     await conversationReady;
-    text = text.trim(); if (disposed || !conversationLoaded || changingConversation || !text || text.length > 2000 || pending) return;
+    text = text.trim(); if (!valid() || disposed || !conversationLoaded || changingConversation || !text || text.length > 2000 || pending) return;
     options(false); showHistory(false, false);
     const rev = ++revision; lastQuestion = text;
     $('bbWelcome').hidden = true;
     setScopeEditor(false, false);
+    const waiting = $('bbPresence'); $('bbConversation').append(waiting);
     if (!reuse) appendMessage('user', text);
     if (reuse && lastIncomplete) { lastIncomplete.remove(); lastIncomplete = null; }
     $('bbFollowups').hidden = true;
     $('bbInput').value = ''; composeState();
-    $('bbMessages').querySelectorAll('.bb-error').forEach(n => n.remove());
-    const waiting = $('bbPresence'); waiting.hidden = false;
-    $('bbPresenceTitle').textContent = '我在看。';
-    $('bbPresenceNote').textContent = '正在连接班班';
+    let reply = appendMessage('assistant', '', 'deepseek'), answer = '', replyMode = 'deepseek', replyDetail = false, completed = false, confirming = false, cards = [];
+    reply.querySelector('.bb-message-body').append(waiting); waiting.hidden = false;
+    $('bbPresenceTitle').textContent = '正在思考…';
     $('bbHeaderStatus').textContent = '正在连接';
     const controller = new AbortController(); pending = controller; busy(true); scrollBottom();
-    let reply = null, answer = '', replyMode = 'deepseek', replyDetail = false, completed = false, cards = [];
+    voice?.begin(inputMode);
     const scroller = $('bbScroll'); let followAnswer = true;
     const readingAbove = e => { if (e.type !== 'wheel' || e.deltaY < 0) followAnswer = false; else if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60) followAnswer = true; };
     const resumeAtEnd = () => { if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 20) followAnswer = true; };
@@ -689,12 +695,13 @@
     const ensureReply = () => reply ||= appendMessage('assistant', '', replyMode);
     const slowTimer = setTimeout(() => {
       if (revision !== rev || pending !== controller) return;
-      if (!answer) { $('bbPresenceTitle').textContent = '还在处理这次问题。'; $('bbPresenceNote').textContent = '可以继续等，也可以停止。'; }
+      if (!answer && !waiting.hidden) $('bbPresenceTitle').textContent = '仍在处理，可随时停止…';
     }, 8100);
-    const timer = setTimeout(() => controller.abort('timeout'), 100000);
+    let timer = setTimeout(() => controller.abort('timeout'), 100000);
     try {
       await streamQuestion(text, controller.signal, event => {
-        if (revision !== rev) return;
+        if (revision !== rev || controller.signal.aborted) return;
+        if (inputMode === 'voice') voice?.event(event);
         if (event.type === 'meta') {
           conversationId = event.conversationId || conversationId;
           replyMode = event.mode;
@@ -703,18 +710,38 @@
             $('bbModeNote').textContent = replyMode === 'deepseek' ? '智能分析' : '数据速览';
             $('bbModeNote').dataset.state = replyMode === 'deepseek' ? 'ready' : 'overview';
           }
+        } else if (event.type === 'confirmation') {
+          confirming = Boolean(event.waiting);
+          clearTimeout(timer);
+          timer = setTimeout(() => controller.abort('timeout'), event.waiting ? 310000 : 100000);
+          $('bbMessages').setAttribute('aria-busy', String(!event.waiting));
+          if (event.waiting) {
+            clearTimeout(slowTimer);
+            $('bbPresence').hidden = true;
+            $('bbLiveStatus').hidden = true;
+            character?.busy(false);
+          } else {
+            $('bbPresenceTitle').textContent = '正在继续…'; waiting.hidden = false; character?.busy(true);
+          }
         } else if (event.type === 'status') {
-          $('bbPresenceNote').textContent = event.text; $('bbHeaderStatus').textContent = event.text;
-          if (answer) { character?.busy(true); $('bbLiveStatus').textContent = event.text; $('bbLiveStatus').hidden = false; }
+          $('bbPresenceTitle').textContent = event.text.replace(/[。…]+$/, '') + '…';
+          $('bbHeaderStatus').textContent = event.text;
+          waiting.hidden = confirming; character?.busy(!confirming);
+        } else if (event.type === 'answer_reset') {
+          answer = ''; renderAnswer(ensureReply().querySelector('.bb-message-content'), '');
+          reply.classList.remove('bb-streaming'); waiting.hidden = false;
         } else if (event.type === 'delta') {
           answer += event.text; waiting.hidden = true; $('bbLiveStatus').hidden = true;
           ensureReply().classList.add('bb-streaming'); renderAnswer(reply.querySelector('.bb-message-content'), answer, replyDetail);
           character?.speak(event.text); headerMascot(); $('bbHeaderStatus').textContent = '正在回答';
         } else if (event.type === 'card') {
           cards.push(event.card); sourceCard(ensureReply(), event.card);
+        } else if (event.type === 'operation') {
+          waiting.hidden = true;
+          window.ICeClassBanbanOperations?.render(ensureReply().querySelector('.bb-message-body'), event.operation);
         } else if (event.type === 'done') {
           conversationId = event.conversationId || conversationId; drafts.delete(conversationId || 'new');
-          completed = true; answer = event.message.content; replyMode = event.message.mode; cards = event.message.cards || [];
+          completed = true; waiting.hidden = true; answer = event.message.content; replyMode = event.message.mode; cards = event.message.cards || [];
           renderAnswer(ensureReply().querySelector('.bb-message-content'), answer, event.message.detailRequested);
           const evidenceOpen = reply.querySelector('.bb-results')?.open;
           reply.querySelector('.bb-results')?.remove(); cards.forEach(c => sourceCard(reply, c));
@@ -726,16 +753,27 @@
           character?.reply(cards.some(c => c.attention || c.note?.includes('待确认同步')) ? 'careful' : 'neutral');
         }
         if (followAnswer) scrollBottom();
-      });
+      }, inputMode);
     } catch (e) {
       if (revision !== rev) return;
       waiting.hidden = true;
       $('bbHeaderStatus').textContent = controller.signal.aborted && controller.signal.reason !== 'timeout' ? '问题还在，随时可以继续' : '这次没连上，陪您再试一次';
       if (!controller.signal.aborted || controller.signal.reason === 'timeout') character?.fail();
       else character?.reset();
-      if (reply && !completed) { lastIncomplete = reply; reply.classList.remove('bb-streaming'); reply.append(node('small', '回复未完成', 'bb-incomplete')); }
+      if (!completed) {
+        lastIncomplete = reply; reply.classList.remove('bb-streaming');
+        if (answer) reply.querySelector('.bb-message-body').append(node('small', '回复未完成', 'bb-incomplete'));
+      }
+      if (controller.signal.aborted && controller.signal.reason === 'voice') {
+        if (!reply.querySelector('.bb-operation')) renderAnswer(reply.querySelector('.bb-message-content'), '已停止。');
+        return;
+      }
       const error = node('div', controller.signal.aborted ? (controller.signal.reason === 'timeout' ? '等待时间较长，问题已保留，可以稍后重试。' : '已停止等待，问题已保留。') : e.message, 'bb-error');
-      error.setAttribute('role', 'alert'); error.append(button('重试这个问题', 'bb-source', () => ask(lastQuestion, true))); $('bbMessages').append(error);
+      if (inputMode === 'voice' && !controller.signal.aborted) voice?.failed(e.message);
+      error.setAttribute('role', 'alert'); error.append(button('重试这个问题', 'bb-source', () => {
+        if (pending) return;
+        lastIncomplete = reply; ask(text, true);
+      })); reply.querySelector('.bb-message-body').append(error);
     } finally {
       clearTimeout(timer);
       clearTimeout(slowTimer);
@@ -743,6 +781,7 @@
       if (revision === rev) {
         waiting.hidden = true; $('bbLiveStatus').hidden = true;
         pending = null; busy(false);
+        voice?.settled();
         headerMascot();
         if (!completed || followAnswer) scrollBottom();
       }
@@ -960,7 +999,7 @@
     const root = node('div', undefined, 'banban-root'); root.id = 'banbanRoot';
     root.innerHTML = `
       <button id="bbLauncher" class="bb-launcher" type="button" aria-label="打开班班" aria-controls="bbPanel" aria-expanded="false"><span class="bb-launcher-name">班班</span></button>
-      <aside id="bbNudge" class="bb-nudge" aria-label="班班轻提醒" hidden><p id="bbNudgeText" role="status" aria-live="polite"></p><div><button id="bbNudgeOpen" class="bb-source bb-nudge-open" type="button">一起看看<img class="bb-icon" src="${icon('arrow-right')}" alt=""></button><button id="bbNudgeDismiss" class="bb-tool bb-nudge-dismiss" type="button" aria-label="收起提醒">知道了</button></div></aside>
+      <aside id="bbNudge" class="bb-nudge" aria-label="班班轻提醒" hidden><p id="bbNudgeText" role="status" aria-live="polite"></p><div><button id="bbNudgeOpen" class="bb-source bb-nudge-open" type="button">一起看看</button><button id="bbNudgeDismiss" class="bb-tool bb-nudge-dismiss" type="button" aria-label="收起提醒">知道了</button></div></aside>
       <section id="bbPanel" class="bb-panel" role="dialog" aria-labelledby="bbTitle" hidden>
         <header id="bbDragHandle" class="bb-header" title="按住这里拖动窗口"><span id="bbHeaderMascot" class="bb-avatar" aria-hidden="true" hidden></span><div class="bb-heading"><strong id="bbTitle">班班</strong><span id="bbModeNote" class="bb-mode-note" role="status"></span><span id="bbHeaderStatus" class="sr-only" role="status">您的校园数据助手</span></div><div class="bb-window-tools"><button id="bbHistoryToggle" class="bb-tool bb-icon-button bb-history-toggle" type="button" aria-expanded="false" aria-controls="bbHistory" aria-label="历史对话" title="历史对话">历史</button><button id="bbMore" class="bb-tool bb-icon-button" type="button" aria-expanded="false" aria-controls="bbOptions" aria-label="班班更多选项" title="更多选项"><img class="bb-icon" src="${icon('ellipsis')}" alt=""></button><button id="bbExpand" class="bb-tool bb-icon-button bb-expand" type="button" aria-pressed="false" aria-label="放大窗口" title="放大窗口"><img id="bbExpandIcon" class="bb-icon" src="${icon('maximize-2')}" alt=""></button><button id="bbClose" class="bb-tool bb-icon-button" type="button" aria-label="收起班班" title="收起班班"><img class="bb-icon" src="${icon('minus')}" alt=""></button></div></header>
         <div id="bbOptions" class="bb-options" role="group" aria-label="班班更多操作" hidden><button id="bbNew" class="bb-tool bb-new" type="button" title="开始新的对话，保留历史"><img class="bb-icon" src="${icon('plus')}" alt="">新对话</button><button id="bbSettingsOpen" class="bb-tool" type="button"><img class="bb-icon" src="${icon('settings-2')}" alt="">连接设置</button></div>
@@ -968,14 +1007,14 @@
         <button id="bbHistoryScrim" class="bb-history-scrim" type="button" aria-label="返回当前对话" tabindex="-1" hidden></button>
         <aside id="bbHistory" class="bb-history" aria-labelledby="bbHistoryTitle" hidden>
           <div id="bbHistoryOverview" class="bb-history-overview">
-          <div class="bb-history-head"><div><h2 id="bbHistoryTitle">历史对话</h2><p>仅您可见</p></div><button id="bbHistoryClose" class="bb-tool bb-history-back" type="button" aria-label="返回对话"><img class="bb-icon bb-back-icon" src="${icon('arrow-right')}" alt="">返回</button></div>
+          <div class="bb-history-head"><div><h2 id="bbHistoryTitle">历史对话</h2><p>仅您可见</p></div><button id="bbHistoryClose" class="bb-tool bb-history-back" type="button" aria-label="返回对话">返回</button></div>
           <button id="bbHistoryNew" class="bb-history-new bb-tool" type="button"><img class="bb-icon" src="${icon('plus')}" alt="">新对话</button>
           <div class="bb-history-records"><p id="bbHistoryEmpty" class="bb-history-empty" hidden>还没有历史对话<br>开始提问后，对话会保存在这里。</p><nav id="bbHistoryList" class="bb-history-list" aria-label="我的历史对话" aria-busy="false"></nav><button id="bbHistoryMore" class="bb-tool bb-history-more" type="button" hidden>加载更多对话</button><p id="bbHistoryStatus" class="bb-history-status" role="status"></p><button id="bbHistoryRetry" class="bb-tool" type="button" hidden>重试</button></div>
-          <div class="bb-history-footer"><div><strong id="bbHistoryPolicy">每月1日清理</strong><button id="bbHistoryAdmin" class="bb-tool" type="button" aria-controls="bbHistoryPolicyEditor" aria-label="清理设置" title="清理设置" disabled hidden>设置<img class="bb-icon" src="${icon('arrow-right')}" alt=""></button></div><small id="bbHistoryNext"></small></div>
+          <div class="bb-history-footer"><div><strong id="bbHistoryPolicy">每月1日清理</strong><button id="bbHistoryAdmin" class="bb-tool" type="button" aria-controls="bbHistoryPolicyEditor" aria-label="清理设置" title="清理设置" disabled hidden>设置</button></div><small id="bbHistoryNext"></small></div>
           </div>
           <form id="bbHistoryPolicyEditor" class="bb-history-policy-editor" aria-labelledby="bbHistoryPolicyTitle" hidden>
             <div class="bb-history-policy-body">
-              <button id="bbHistoryPolicyBack" class="bb-tool bb-history-back" type="button"><img class="bb-icon bb-back-icon" src="${icon('arrow-right')}" alt="">返回历史</button>
+              <button id="bbHistoryPolicyBack" class="bb-tool bb-history-back" type="button">返回历史</button>
               <h2 id="bbHistoryPolicyTitle">清理设置</h2><p class="bb-history-policy-intro">此设置对全校账号生效</p>
               <label for="bbHistoryCycle">统一清理周期</label><select id="bbHistoryCycle" aria-describedby="bbHistoryPolicyHelp"><option value="monthly">每月 1 日</option><option value="weekly">每周一</option></select>
               <p id="bbHistoryPolicyPlan" class="bb-history-policy-plan"></p>
@@ -1000,22 +1039,22 @@
           <p id="bbScopeError" class="form-error" role="alert"></p>
           <div class="bb-scope-actions"><button id="bbFollowPage" class="bb-tool" type="button" title="使用当前页面已选择的日期和班级">使用页面范围</button><button class="bb-send" type="submit">应用范围</button></div>
         </form>
-        <div id="bbScroll" class="bb-scroll"><div id="bbConversation" class="bb-conversation"><button id="bbRestore" class="bb-tool bb-older" type="button" hidden>历史对话未读取，点击重试</button><button id="bbOlder" class="bb-tool bb-older" type="button" hidden>查看更早的消息</button><div id="bbWelcome" class="bb-welcome"><div id="bbWelcomeIntro" class="bb-welcome-intro"><button id="bbSayHello" class="bb-say-hello" type="button" aria-label="和班班打个招呼" title="点点班班，打个招呼"></button><div><h2>您好，我是班班</h2><p id="bbWelcomeLine" aria-live="polite">学校里的变化，陪您一起看清楚。</p></div></div><p class="bb-prompt-heading">想先了解什么？</p><div id="bbPrompts" class="bb-prompts"></div></div><div id="bbMessages" class="bb-messages" aria-label="与班班的对话" aria-busy="false"></div><div id="bbFollowups" class="bb-followups" aria-label="继续聊聊" hidden></div><p id="bbLiveStatus" class="bb-live-status" role="status" hidden></p><div id="bbPresence" class="bb-presence" hidden><span class="bb-thinking-mark" aria-hidden="true"></span><div class="bb-presence-copy" role="status" aria-live="polite"><strong id="bbPresenceTitle">我来陪您看看。</strong><p id="bbPresenceNote">正在等待这次请求的回复。</p></div></div></div>
+        <div id="bbScroll" class="bb-scroll"><div id="bbConversation" class="bb-conversation"><button id="bbRestore" class="bb-tool bb-older" type="button" hidden>历史对话未读取，点击重试</button><button id="bbOlder" class="bb-tool bb-older" type="button" hidden>查看更早的消息</button><div id="bbWelcome" class="bb-welcome"><div id="bbWelcomeIntro" class="bb-welcome-intro"><button id="bbSayHello" class="bb-say-hello" type="button" aria-label="和班班打个招呼" title="点点班班，打个招呼"></button><div><h2>您好，我是班班</h2><p id="bbWelcomeLine" aria-live="polite">学校里的变化，陪您一起看清楚。</p></div></div><p class="bb-prompt-heading">想先了解什么？</p><div id="bbPrompts" class="bb-prompts"></div></div><div id="bbMessages" class="bb-messages" aria-label="与班班的对话" aria-busy="false"></div><div id="bbFollowups" class="bb-followups" aria-label="继续聊聊" hidden></div><p id="bbLiveStatus" class="bb-live-status" role="status" hidden></p><div id="bbPresence" class="bb-presence" hidden><span class="bb-thinking-mark" aria-hidden="true"><i></i><i></i><i></i></span><span id="bbPresenceTitle" role="status" aria-live="polite">正在思考…</span></div></div>
           <form id="bbSettings" class="bb-settings" aria-label="班班连接设置" novalidate hidden>
             <div class="bb-settings-body">
-            <button id="bbSettingsBack" class="bb-tool bb-settings-back" type="button"><img class="bb-icon bb-back-icon" src="${icon('arrow-right')}" alt="">返回对话</button>
+            <button id="bbSettingsBack" class="bb-tool bb-settings-back" type="button">返回对话</button>
             <div class="bb-settings-heading"><h2 id="bbSettingsTitle">连接设置</h2><span id="bbConnectionBadge" class="bb-connection-badge" role="status">读取中</span></div>
             <p id="bbSettingsIntro" class="bb-settings-intro">选择班班使用的 AI 服务。</p>
             <fieldset id="bbSourceChoices" class="bb-connection-choices"><legend class="sr-only">选择连接方式</legend><label class="bb-connection-choice"><input id="bbSourceSchool" name="bbSource" type="radio" value="school" checked><span><strong>学校提供</strong><small>无需填写密钥</small></span></label><label class="bb-connection-choice"><input id="bbSourcePersonal" name="bbSource" type="radio" value="personal"><span><strong>自行配置</strong><small>使用您的 API</small></span></label></fieldset>
             <div id="bbSchoolSummary" class="bb-school-summary"><strong id="bbSchoolTitle">正在读取学校服务</strong><p id="bbSchoolNote">按您的账号权限分析。</p></div>
             <div id="bbProviderFields" hidden>
-            <div class="bb-field"><div class="bb-field-heading bb-provider-heading"><label for="bbProvider">AI 服务商</label><a id="bbProviderLink" class="bb-settings-link" target="_blank" rel="noopener noreferrer" hidden>配置说明<img class="bb-icon" src="${icon('arrow-right')}" alt=""></a></div><select id="bbProvider" aria-describedby="bbProviderNote"><option value="custom">自定义</option>${connectionProviders.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join('')}</select><p id="bbProviderNote">选择常用服务商可自动填写地址和模型。</p></div>
+            <div class="bb-field"><div class="bb-field-heading bb-provider-heading"><label for="bbProvider">AI 服务商</label><a id="bbProviderLink" class="bb-settings-link" target="_blank" rel="noopener noreferrer" hidden>配置说明</a></div><select id="bbProvider" aria-describedby="bbProviderNote"><option value="custom">自定义</option>${connectionProviders.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join('')}</select><p id="bbProviderNote">选择常用服务商可自动填写地址和模型。</p></div>
             <div class="bb-field"><label for="bbBaseUrl">服务地址 <span class="bb-field-translation">Base URL</span></label><input id="bbBaseUrl" type="url" inputmode="url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="1000" aria-describedby="bbBaseNote"><p id="bbBaseNote">填写兼容 OpenAI 的 HTTPS 接口地址，不含 /chat/completions。</p></div>
             <div class="bb-field"><div class="bb-field-heading"><label for="bbKey">API 密钥 <span>API Key</span></label><span id="bbKeyState" class="bb-key-state">未设置</span></div><input id="bbKey" name="banban-api-key" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="4096" aria-describedby="bbKeyNote"><p id="bbKeyNote"></p></div>
             <div class="bb-field"><label for="bbModel">模型 <span class="bb-field-translation">Model ID</span></label><input id="bbModel" type="text" placeholder="填写平台提供的模型 ID" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="200" aria-describedby="bbModelNote"><datalist id="bbModelSuggestions"></datalist><p id="bbModelNote"></p></div>
             <label class="bb-enable-row" for="bbEnabled"><span><strong>智能分析</strong><small>关闭后仅查看数据速览</small></span><input id="bbEnabled" class="bb-toggle" type="checkbox" role="switch" aria-label="启用智能分析" aria-describedby="bbDataUse" checked></label>
             </div>
-            <details class="bb-settings-privacy"><summary>数据与密钥如何使用</summary><p id="bbDataUse">智能分析会将您的问题、当前对话的相关内容和分析所需的授权数据发送至所选服务，可能包含统计与通知文字样本。教室来音仅使用数量和时长，不发送录音。</p><p>密钥保存在本平台服务器，调用时用于所选服务的身份验证，保存后不回显。测试连接不发送班级数据。</p><p>个人配置仅作用于当前账号。更换连接不改变数据权限，也不会删除历史对话。</p></details>
+            <details class="bb-settings-privacy"><summary>数据与密钥如何使用</summary><p id="bbDataUse">智能分析会将您的问题、当前对话的相关内容和所需的授权数据发送至所选服务，包括统计与通知文字样本。要求管理账号或操作电脑时，还可能包含目标账号、设备和应用名称、控件文字及所选文稿内容。教室来音不发送录音；密码仅在确认卡填写，不交给模型。</p><p>密钥保存在本平台服务器，调用时用于所选服务的身份验证，保存后不回显。测试连接不发送班级数据。</p><p>个人配置仅作用于当前账号。更换连接不改变数据权限，也不会删除历史对话。</p></details>
             <button id="bbManageSchool" class="bb-tool bb-school-manage" type="button" hidden>管理学校服务</button>
             </div>
             <div class="bb-settings-footer">
@@ -1024,11 +1063,25 @@
             </div>
           </form>
         </div>
-        <form id="bbComposer" class="bb-compose"><div class="bb-input-box"><label for="bbInput" class="sr-only">向班班提问</label><textarea id="bbInput" placeholder="问问班班…" maxlength="2000" rows="1"></textarea><button id="bbSend" class="bb-send" type="submit" aria-label="发送问题" disabled><span id="bbSendLabel">发送</span><img id="bbSendIcon" class="bb-icon" src="${icon('arrow-up')}" alt=""></button></div><div class="bb-compose-footer"><span class="bb-privacy">仅分析您有权限查看的数据</span><small id="bbInputCount" hidden>0 / 2000</small><span class="bb-key-hint">Enter 发送</span></div></form>
+        <form id="bbComposer" class="bb-compose"><div class="bb-input-box"><label for="bbInput" class="sr-only">向班班提问</label><textarea id="bbInput" name="message" autocomplete="off" placeholder="问问班班…" maxlength="2000" rows="1"></textarea><button id="bbSend" class="bb-send" type="submit" aria-label="发送问题" disabled><span id="bbSendLabel">发送</span></button></div><div class="bb-compose-footer"><span class="bb-privacy">按您的权限分析和操作</span><small id="bbInputCount" hidden>0 / 2000</small><span class="bb-key-hint">Enter 发送</span></div></form>
         </div></div>
       </section>`;
     document.body.append(root); $('bbLauncher').prepend(mascot()); $('bbSayHello').append(mascot()); $('bbHeaderMascot').append(mascot());
+    window.ICeClassBanbanOperations?.mount(root);
     character = window.ICeClassBanbanMotion(root);
+    voice = window.ICeClassBanbanVoice?.mount({root, open, ask: (text, valid) => ask(text, false, 'voice', valid),
+      interrupt: async () => {
+        const active = pending;
+        if (!active) return;
+        active.abort('voice');
+        await api('/api/banban/chat/cancel', {method:'POST'});
+        if (pending === active) { pending = null; busy(false); }
+      },
+      setBinding: binding => {
+        if (!window.ICeClass.state.classes?.some(c => c.id === binding.classId)) return false;
+        scope = {...scope, classId:binding.classId, grades:''};
+        syncScope(); return true;
+      }});
     renderPrompts();
     $('bbHistoryAdmin').hidden = !['superadmin', 'principal'].includes(window.ICeClass.state.user.role);
     const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
@@ -1168,7 +1221,7 @@
       finally { if (generation === accountGeneration) { settingsBusy = false; if (!disposed) settingsControls(); } }
     };
     root.onkeydown = e => { if (e.key === 'Escape' && !$('bbPanel').hidden) { e.stopPropagation(); if (!$('bbHistory').hidden) { if (!$('bbHistoryDeleteEditor').hidden) { if (!deleteBusy) closeHistoryDelete(true); } else if (!$('bbHistoryPolicyEditor').hidden) showHistoryPolicy(false); else showHistory(false); } else if (!$('bbOptions').hidden) { options(false); $('bbMore').focus(); } else if (!$('bbScopeEditor').hidden) setScopeEditor(false); else close(); } };
-    function dispose() { if (disposed) return; disposed = true; initialized = false; accountGeneration++; revision++; contextRevision++; threadRevision++; pending?.abort(); clearTimeout(reminder); hideReminder(); motionPreference.removeEventListener('change', motion); window.removeEventListener('pagehide', dispose); window.removeEventListener('resize', syncHistoryInert); document.removeEventListener('pointerdown', activity); document.removeEventListener('keydown', activity); document.removeEventListener('pointerdown', dismissOptions); character.dispose(); history = []; drafts.clear(); analysisClasses = null; schoolAnalysis = false; }
+    function dispose() { if (disposed) return; voice?.dispose(); voice = null; window.ICeClassBanbanOperations?.dispose(); disposed = true; initialized = false; accountGeneration++; revision++; contextRevision++; threadRevision++; pending?.abort(); clearTimeout(reminder); hideReminder(); motionPreference.removeEventListener('change', motion); window.removeEventListener('pagehide', dispose); window.removeEventListener('resize', syncHistoryInert); document.removeEventListener('pointerdown', activity); document.removeEventListener('keydown', activity); document.removeEventListener('pointerdown', dismissOptions); character.dispose(); history = []; drafts.clear(); analysisClasses = null; schoolAnalysis = false; }
     $('logoutButton').addEventListener('click', () => { dispose(); root.remove(); }, {once:true});
     window.addEventListener('pagehide', dispose, {once: true});
     composeState(); dragLauncher(); dragPanel(); fromPage(); conversationReady = restoreConversation();

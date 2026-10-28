@@ -9,30 +9,53 @@
   class IslandRibbon {
     constructor(root, stage) {
       this.root = root; this.stage = stage; this.data = null; this.key = ''; this.playing = false; this.elapsed = null;
+      this.active = false; this.scene = 'daily'; this.rotationElapsed = 0; this.demoEnd = 22;
       this.animations = []; this.frameRequest = 0;
       this.measure = document.createElement('canvas').getContext('2d');
-      this.observer = new ResizeObserver(() => this.draw()); this.observer.observe(root);
-      this.onMotionChange = () => { this.cancelAnimations(); this.draw(); }; reduced.addEventListener('change', this.onMotionChange);
-      this.onVisibility = () => { if (document.hidden || this.stage.closest('.view')?.classList.contains('hidden')) this.pause(); };
+      this.observer = new ResizeObserver(() => { this.dock(); this.draw(); }); this.observer.observe(stage);
+      this.onMotionChange = () => { this.cancelAnimations(); this.signature = ''; this.draw(); }; reduced.addEventListener('change', this.onMotionChange);
+      this.onVisibility = () => {
+        if (document.hidden) { this.resumeOnVisible = this.playing; this.pause(); }
+        else if (this.active && this.resumeOnVisible) { this.resumeOnVisible = false; this.play(); }
+      };
       document.addEventListener('visibilitychange', this.onVisibility);
+      this.scheme = matchMedia('(prefers-color-scheme: dark)');
+      this.scheme.addEventListener('change', () => { if (this.data?.appearance.theme === 'system') this.update(this.data); });
     }
     update(data) {
-      const changedClass = this.data && this.data.className !== data.className;
+      const changedClass = this.data && this.data.classId !== data.classId;
+      if (this.active && !this.playing && !changedClass && data.live && this.data?.live) {
+        data = { ...data, date: this.data.date, minute: this.data.minute, second: this.data.second, epochSeconds: this.data.epochSeconds };
+      }
+      const clockKey = JSON.stringify([data.classId, data.date, data.minute, data.live, data.epochSeconds]);
+      if (clockKey !== this.clockKey) { this.rotationElapsed = 0; this.clockKey = clockKey; }
       this.data = data;
-      if (changedClass) this.stop();
-      this.root.dataset.theme = data.appearance.theme === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : data.appearance.theme;
-      this.root.style.width = `${data.appearance.width || 560}px`;
+      if (changedClass) { this.elapsed = null; this.scene = 'daily'; }
+      this.root.dataset.theme = data.appearance.theme === 'system' ? (this.scheme.matches ? 'dark' : 'light') : data.appearance.theme;
+      this.root.style.width = `${Math.max(380, Math.min(1000, Number(data.appearance.width) || 560))}px`;
       this.root.style.opacity = Math.max(.3, (Number(data.appearance.opacity) || 100) / 100);
+      this.dock();
       this.draw();
+    }
+    dock() {
+      if (!this.active || !this.data) return;
+      const a = this.data.appearance, width = this.root.clientWidth, height = this.root.clientHeight;
+      const availableWidth = this.stage.clientWidth, availableHeight = this.stage.clientHeight;
+      const x = a.position === 'top-left' ? 12 : a.position === 'top-right' ? availableWidth - width - 12 : (availableWidth - width) / 2;
+      const y = a.position === 'bottom-center' ? availableHeight - height - 12 : 12;
+      this.root.style.left = `${Math.max(12, Math.min(availableWidth - width - 12, x + (Number(a.offsetX) || 0)))}px`;
+      this.root.style.top = `${Math.max(12, Math.min(availableHeight - height - 12, y + (Number(a.offsetY) || 0)))}px`;
+      this.stage.dataset.position = a.position;
     }
     state() {
       const d = this.data;
       if (!d) return { key: 'empty', text: '选择班级后预览', items: [] };
+      if (d.valid === false) return { key: 'invalid', text: d.message, hidden: true, items: [] };
       const date = new Date(d.date + 'T12:00:00Z');
       const dateText = Number.isNaN(+date) ? '预览日期' : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getUTCDay()] + ' ' + d.date.slice(5).replace('-', '/');
-      const selected = d.lessons.find(l => l.start > d.minute) || d.lessons.find(l => l.start <= d.minute && d.minute < l.end) || d.lessons[0];
-      let m = d.minute;
-      if (this.elapsed !== null && selected) m = this.elapsed < 17 ? selected.start - 1 : selected.start;
+      const selected = d.lessons.find(l => l.start > d.minute) || d.lessons.find(l => l.start <= d.minute && d.minute < l.end) || d.lessons[0] || d.demoLesson;
+      let m = d.minute + (d.live ? ((d.second || 0) + this.rotationElapsed) / 60 : 0);
+      if (this.elapsed !== null && selected) m = this.elapsed < 17 ? selected.start - 1 : this.elapsed < 22 ? selected.start : selected.end;
       const items = d.lessons.map((l,index) => ({ id: l.id, subject: l.subject, time: `${time(l.start)}-${time(l.end)}`, current: l.start <= m && m < l.end, past: l.end <= m, separatorBefore:index>0 && l.start-d.lessons[index-1].end>=40, progress: Math.max(0, Math.min(1, (m-l.start)/(l.end-l.start))) }));
       const next = d.lessons.find(l => l.start > m);
       if (!items.some(i => i.current) && next) {
@@ -52,8 +75,23 @@
             : { ...base, key: 'demo:countdown', text: `距上课还有 ${left} 秒`, detail: `下节课是：${selected.subject} ${time(selected.start)}-${time(selected.end)}`, progress: left/60 };
         }
         if (t >= 17 && t < 20) return { ...base, key: 'demo:start', accent: true, text: '上课' };
-      } else if (next && d.reminders.enabled && d.reminders.prepare && seconds <= d.reminders.prepareMinutes * 60) {
-        return { ...base, key: 'prepare:countdown', text: `距上课还有 ${Math.ceil(seconds)} 秒`, detail: `下节课是：${next.subject} ${time(next.start)}-${time(next.end)}`, progress: seconds/(d.reminders.prepareMinutes*60) };
+        if (t >= 22 && t < 25) return { ...base, key: 'demo:end', accent: true, text: '下课' };
+      } else {
+        if (d.enabled === false) return { ...base, key: 'hidden:disabled', hidden: true, text: '教室浮岛已关闭' };
+        if (d.appearance.hideDuringLessons && items.some(i => i.current && i.id !== 'break')) return { ...base, key: 'hidden:lesson', hidden: true, text: '上课期间自动隐藏' };
+        if (next && d.reminders.enabled && d.reminders.prepare && seconds > 0 && seconds <= d.reminders.prepareMinutes * 60) {
+          const progress = seconds / (d.reminders.prepareMinutes * 60);
+          return Math.floor((d.reminders.prepareMinutes * 60 - seconds) / 10) % 2 === 1
+            ? { ...base, key: 'prepare:message', text: '准备上课，请回到座位并保持安静，做好上课准备。', progress }
+            : { ...base, key: 'prepare:countdown', text: `距上课还有 ${Math.ceil(seconds)} 秒`, detail: `下节课是：${next.subject} ${time(next.start)}-${time(next.end)}`, progress };
+        }
+        // Match IslandRibbonPresentation: the timetable occupies three beats,
+        // then an enabled information item gets one beat. Empty days rotate items directly.
+        const components = d.components || [], interval = Math.max(3, Number(d.rotationSeconds) || 8);
+        const epoch = Number.isFinite(d.epochSeconds) ? d.epochSeconds : Date.parse(d.date + 'T' + time(d.minute) + ':00+08:00') / 1000;
+        const beat = Math.floor((epoch + this.rotationElapsed) / interval);
+        const component = components.length ? components[(beat % components.length + components.length) % components.length] : null;
+        if (component && (!items.length || beat % 4 === 3)) return { ...base, key: 'component:' + component.id, text: component.text, label: component.title };
       }
       return { ...base, key: 'timetable', text: items.length ? '' : d.message || '这一天没有课程' };
     }
@@ -111,7 +149,7 @@
         message.append(make('span', 'ir-primary', state.text));
         if(state.accent && ['即将上课','上课','下课'].includes(state.text)) { const icon=make('img','ir-icon'); icon.src='/assets/island-book-open.svg'; icon.alt=''; message.append(icon); }
         if (state.detail) message.append(make('span', 'ir-secondary', state.detail));
-        if (!state.accent) { const progress = make('span', 'ir-progress'); progress.style.transform = `scaleX(${Math.min(1, Math.max(0, state.progress))})`; message.append(progress); }
+        if (!state.accent && state.progress > 0) { const progress = make('span', 'ir-progress'); progress.style.transform = `scaleX(${Math.min(1, Math.max(0, state.progress))})`; message.append(progress); }
         layer.append(message);
         this.fillMessage(layer,state);
       } else {
@@ -144,10 +182,17 @@
       return layer;
     }
     draw() {
+      if (!this.active || !this.root.clientWidth) return;
       const state = this.state();
+      this.currentState = state;
+      this.root.style.visibility = state.hidden ? 'hidden' : 'visible';
+      this.root.setAttribute('aria-hidden', String(!!state.hidden));
+      this.root.dataset.state = state.key;
       const signature = JSON.stringify([state, this.root.clientWidth]);
       if (signature === this.signature) return;
       this.signature = signature;
+      this.onChange?.();
+      if (state.hidden) { this.cancelAnimations(); this.key = state.key; return; }
       const next = this.layer(state), previous = this.current;
       const transition = previous && state.key !== this.key && !reduced.matches && !this.reduceMotion;
       this.root.setAttribute('aria-label', [this.data?.className, state.date, state.text, state.detail, ...state.items.map(i => `${i.subject} ${i.time}`)].filter(Boolean).join('，'));
@@ -206,30 +251,47 @@
       const wave = make('span', 'ir-pulse'); wave.setAttribute('aria-hidden', 'true');
       wave.style.background=getComputedStyle(this.root).getPropertyValue('--ir-accent');
       const diameter = Math.hypot(this.stage.clientWidth, this.stage.clientHeight)*2;
-      wave.style.width = wave.style.height = `${diameter}px`; this.stage.prepend(wave);
+      wave.style.width = wave.style.height = `${diameter}px`;
+      wave.style.left = `${parseFloat(this.root.style.left) + this.root.clientWidth / 2}px`;
+      wave.style.top = `${parseFloat(this.root.style.top) + 24}px`; this.stage.prepend(wave);
       const animation = wave.animate([{transform:'translate(-50%,-50%) scale(0)',opacity:.23},{transform:'translate(-50%,-50%) scale(1)',opacity:0}], {duration:700,easing:'cubic-bezier(.45,0,.8,.5)'});
       animation.finished.catch(() => {}).finally(() => wave.remove());
     }
     cancelAnimations() { this.animations.forEach(a => a.cancel()); this.animations = []; }
+    setActive(value) {
+      this.active = value; this.resumeOnVisible = false;
+      if (value) { this.signature = ''; this.dock(); this.play(); this.draw(); }
+      else {
+        this.stop(); this.cancelAnimations();
+        this.stage.querySelectorAll('.ir-pulse').forEach(n => { n.getAnimations().forEach(a => a.cancel()); n.remove(); });
+      }
+    }
+    show(scene) {
+      this.scene = scene;
+      this.elapsed = scene === 'prepare' ? 2 : scene === 'start' ? 17 : scene === 'end' ? 22 : null;
+      this.demoEnd = scene === 'end' ? 26 : 22;
+      this.play(); this.draw(); this.onChange?.();
+    }
     play() {
-      if (!this.data?.lessons.length) return;
-      if (this.playing) { this.pause(); return; }
-      if (this.elapsed === null || this.elapsed >= 22) this.elapsed = 0;
-      this.playing = true; this.anchor = performance.now()-this.elapsed*1000;
+      if (!this.active || this.playing) return;
+      this.playing = true; this.lastFrame = performance.now();
       const tick = now => {
         if (!this.playing) return;
-        this.elapsed = Math.min(22, (now-this.anchor)/1000);
+        const delta = Math.max(0, Math.min(1, (now - this.lastFrame) / 1000));
+        this.lastFrame = now; this.rotationElapsed += delta;
+        if (this.elapsed !== null) {
+          this.elapsed += delta;
+          if (this.elapsed >= this.demoEnd) { this.elapsed = null; this.scene = 'daily'; }
+        }
         // The browser composites the masks. Only update text/progress at 10 Hz.
         if (now-(this.lastTick || 0) >= 100) { this.lastTick = now; this.draw(); this.onChange?.(); }
-        if (this.elapsed >= 22) { this.holdDemoEnd ? this.pause() : this.stop(); return; }
         this.frameRequest = requestAnimationFrame(tick);
       };
       this.frameRequest = requestAnimationFrame(tick); this.onChange?.();
     }
     pause() { this.playing = false; cancelAnimationFrame(this.frameRequest); this.onChange?.(); }
-    seek(seconds) { this.elapsed = Math.min(22, Math.max(0, seconds)); this.anchor = performance.now()-this.elapsed*1000; this.draw(); this.onChange?.(); }
-    stop() { this.pause(); this.elapsed = null; this.draw(); this.onChange?.(); }
-    reset() { this.pause(); this.elapsed = 0; this.play(); }
+    seek(seconds) { this.elapsed = Math.min(26, Math.max(0, seconds)); this.demoEnd = 26; this.draw(); this.onChange?.(); }
+    stop() { this.pause(); this.elapsed = null; this.scene = 'daily'; this.rotationElapsed = 0; this.draw(); this.onChange?.(); }
     clear() { this.data = null; this.stop(); }
   }
   window.ICeClassIslandRibbon = IslandRibbon;

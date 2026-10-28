@@ -4,4 +4,7 @@ https://unpkg.com/lucide-static@0.468.0/icons/book-open.svg
 https://unpkg.com/lucide-static@0.468.0/icons/info.svg
 See island-icons-LICENSE.txt.
 
+2026-10-24: panel-top uses the original Lucide geometry inline in index.html for the classroom floating island navigation. Stroke, size, and state colors follow the shared nav-icon styles.
+https://unpkg.com/lucide-static@0.468.0/icons/panel-top.svg
+
 2026-10-19: info and book-open retain the original Lucide geometry; stroke tinted #1c517f for the ICeClass light ribbon. ISC license retained.

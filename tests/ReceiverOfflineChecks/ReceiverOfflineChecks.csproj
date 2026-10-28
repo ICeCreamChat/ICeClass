@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>ICeClass.ReceiverOfflineChecks</AssemblyName>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>../../Receiver/app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../Receiver/Receiver.csproj" /></ItemGroup>
   <Target Name="UseWebViewCoreOnly" BeforeTargets="ResolveAssemblyReferences">

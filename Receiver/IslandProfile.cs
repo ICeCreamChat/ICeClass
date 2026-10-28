@@ -11,6 +11,7 @@ internal sealed class IslandProfile
     public List<IslandSlot> Slots { get; set; } = [];
     public List<IslandLesson> Lessons { get; set; } = [];
     public List<IslandOverride> Overrides { get; set; } = [];
+    public Dictionary<string, IslandDutyRotation> DutyRotations { get; set; } = [];
     public IslandReminders Reminders { get; set; } = new();
     public IslandAppearance Appearance { get; set; } = new();
     public List<IslandComponent> Components { get; set; } = [];
@@ -20,9 +21,9 @@ internal sealed class IslandProfile
 
     public static IslandProfile Parse(string json)
     {
-        var p = JsonSerializer.Deserialize<IslandProfile>(json, Json) ?? throw new InvalidDataException("教室岛配置为空。");
+        var p = JsonSerializer.Deserialize<IslandProfile>(json, Json) ?? throw new InvalidDataException("教室浮岛配置为空。");
         if (p.SchemaVersion != 1 || p.Slots is null || p.Lessons is null || p.Overrides is null ||
-            p.Reminders is null || p.Appearance is null || p.Components is null || p.Automation is null ||
+            p.Reminders is null || p.Appearance is null || p.Components is null || p.Automation is null || p.DutyRotations is null ||
             p.Slots.Count > 32 || p.Lessons.Count > 448 || p.Overrides.Count > 500 || p.Components.Count > 16 || p.Automation.Count > 40 ||
             !DateOnly.TryParseExact(p.WeekAnchor, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var anchor) || anchor.DayOfWeek != DayOfWeek.Monday ||
             p.Slots.Any(s => s is null || !ValidText(s.Id, 60, false) || !ValidText(s.Label, 30, false) || s.Start < 0 || s.End > 1440 || s.Start >= s.End) ||
@@ -36,13 +37,27 @@ internal sealed class IslandProfile
             p.Automation.Any(r => r is null || !ValidText(r.Id, 60, false) || !ValidText(r.Name, 60, false) || !ValidText(r.Value, 500, r.Action == "reading") ||
                 r.Weekdays is null || r.Weekdays.Length is < 1 or > 7 || r.Weekdays.Any(d => d is < 1 or > 7) || r.Trigger is not ("time" or "prepare" or "start" or "end") ||
                 r.Action is not ("reminder" or "website" or "app" or "reading") || r.Minute is < 0 or > 1439))
-            throw new InvalidDataException("教室岛配置格式无效，保留上次配置。");
+            throw new InvalidDataException("教室浮岛配置格式无效，保留上次配置。");
         var lessonKeys = p.Lessons.SelectMany(l => (l.Week == "all" ? new[] { "odd", "even" } : new[] { l.Week }).Select(w => (l.SlotId, l.Weekday, w))).ToList();
         if (lessonKeys.Distinct().Count() != lessonKeys.Count || p.Overrides.Select(o => (o.Date, o.SlotId)).Distinct().Count() != p.Overrides.Count ||
             p.Components.Select(c => c.Id).Distinct().Count() != p.Components.Count || p.Automation.Select(r => r.Id).Distinct().Count() != p.Automation.Count)
-            throw new InvalidDataException("教室岛配置包含重复课程、调课、组件或规则。");
+            throw new InvalidDataException("教室浮岛配置包含重复课程、调课、组件或规则。");
         p.Slots = p.Slots.OrderBy(s => s.Start).ToList();
         if (p.Slots.Zip(p.Slots.Skip(1)).Any(pair => pair.First.End > pair.Second.Start)) throw new InvalidDataException("作息时段重叠。");
+        var dutySlots = new HashSet<string>();
+        foreach (var (kind, duty) in p.DutyRotations)
+        {
+            if (kind is not ("midday" or "evening") || duty is null || duty.CycleWeeks is < 1 or > 20 ||
+                !DateOnly.TryParseExact(duty.WeekAnchor, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dutyAnchor) || dutyAnchor.DayOfWeek != DayOfWeek.Monday ||
+                duty.SlotIds is null || duty.SlotIds.Count > (kind == "midday" ? 1 : 2) || duty.Enabled && duty.SlotIds.Count == 0 ||
+                duty.SlotIds.Any(id => !p.Slots.Any(s => s.Id == id) || !dutySlots.Add(id)) ||
+                duty.Enabled && p.Lessons.Any(l => duty.SlotIds.Contains(l.SlotId)) ||
+                duty.Lessons is null || duty.Lessons.Count > 280 ||
+                duty.Lessons.Any(l => l is null || !duty.SlotIds.Contains(l.SlotId) || l.Weekday is < 1 or > 7 ||
+                    l.CycleWeek < 1 || l.CycleWeek > duty.CycleWeeks || !ValidText(l.Subject, 40, false) || !ValidText(l.Teacher, 40) || !ValidText(l.Location, 60)) ||
+                duty.Lessons.Select(l => (l.SlotId, l.Weekday, l.CycleWeek)).Distinct().Count() != duty.Lessons.Count)
+                throw new InvalidDataException("午间静校或晚自习循环设置无效，保留上次配置。");
+        }
         p.RotationSeconds = Math.Clamp(p.RotationSeconds, 3, 120);
         p.Reminders.PrepareMinutes = Math.Clamp(p.Reminders.PrepareMinutes, 1, 30);
         p.Reminders.DisplaySeconds = Math.Clamp(p.Reminders.DisplaySeconds, 3, 60);
@@ -74,6 +89,18 @@ internal sealed class IslandOverride : IslandLesson
 {
     public string Date { get; set; } = "";
     public bool Cancelled { get; set; }
+}
+internal sealed class IslandDutyLesson : IslandLesson
+{
+    public int CycleWeek { get; set; } = 1;
+}
+internal sealed class IslandDutyRotation
+{
+    public bool Enabled { get; set; }
+    public int CycleWeeks { get; set; } = 2;
+    public string WeekAnchor { get; set; } = "2026-09-07";
+    public List<string> SlotIds { get; set; } = [];
+    public List<IslandDutyLesson> Lessons { get; set; } = [];
 }
 internal sealed class IslandReminders
 {
@@ -130,7 +157,7 @@ internal sealed class IslandAutomation
 internal sealed record IslandResolvedLesson(DateOnly Date, IslandSlot Slot, IslandLesson Lesson, bool Temporary)
 {
     public DateTimeOffset At(int minute) => new(Date.ToDateTime(TimeOnly.MinValue).AddMinutes(minute), TimeSpan.FromHours(8));
-    public string Summary => $"{Slot.Start / 60:00}:{Slot.Start % 60:00}—{Slot.End / 60:00}:{Slot.End % 60:00}  {Lesson.Subject}" +
+    public string Summary => $"{Slot.Start / 60:00}:{Slot.Start % 60:00}-{Slot.End / 60:00}:{Slot.End % 60:00}  {Lesson.Subject}" +
         (string.IsNullOrWhiteSpace(Lesson.Teacher) ? "" : $" · {Lesson.Teacher}") + (string.IsNullOrWhiteSpace(Lesson.Location) ? "" : $" · {Lesson.Location}") + (Temporary ? " · 调课" : "");
 }
 internal sealed record IslandDueEvent(string Key, DateTimeOffset At, string Title, string Text, IslandAutomation? Automation = null);
@@ -142,11 +169,20 @@ internal static class IslandSchedule
         var week = (int)Math.Floor((day.DayNumber - DateOnly.ParseExact(p.WeekAnchor, "yyyy-MM-dd").DayNumber) / 7.0);
         var parity = week % 2 == 0 ? "odd" : "even";
         var weekday = day.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)day.DayOfWeek;
+        var regular = p.Lessons.Where(l => l.Weekday == weekday && (l.Week == "all" || l.Week == parity)).ToDictionary(l => l.SlotId);
+        foreach (var duty in p.DutyRotations.Values.Where(d => d.Enabled))
+        {
+            var anchor = DateOnly.ParseExact(duty.WeekAnchor, "yyyy-MM-dd");
+            if (day < anchor) continue;
+            var cycleWeek = (day.DayNumber - anchor.DayNumber) / 7 % duty.CycleWeeks + 1;
+            foreach (var slotId in duty.SlotIds) regular.Remove(slotId);
+            foreach (var lesson in duty.Lessons.Where(l => l.Weekday == weekday && l.CycleWeek == cycleWeek)) regular[lesson.SlotId] = lesson;
+        }
         var result = new List<IslandResolvedLesson>();
         foreach (var s in p.Slots)
         {
             var change = p.Overrides.FirstOrDefault(o => o.Date == day.ToString("yyyy-MM-dd") && o.SlotId == s.Id);
-            var lesson = change ?? p.Lessons.FirstOrDefault(l => l.SlotId == s.Id && l.Weekday == weekday && (l.Week == "all" || l.Week == parity));
+            var lesson = change ?? regular.GetValueOrDefault(s.Id);
             if (lesson is null || change?.Cancelled == true) continue;
             result.Add(new(day, s, lesson, change is not null));
         }
@@ -169,9 +205,18 @@ internal static class IslandSchedule
     public static IslandResolvedLesson? Next(IslandProfile p, DateTimeOffset now)
     {
         var day = DateOnly.FromDateTime(now.ToOffset(TimeSpan.FromHours(8)).DateTime);
-        for (var i = 0; i <= 7; i++)
+        var rotations = p.DutyRotations.Values.Where(d => d.Enabled).ToList();
+        var lookahead = Math.Max(7, rotations.Select(d => d.CycleWeeks * 7).DefaultIfEmpty(7).Max());
+        var days = Enumerable.Range(0, lookahead + 1).Where(i => i <= DateOnly.MaxValue.DayNumber - day.DayNumber).Select(day.AddDays).ToHashSet();
+        foreach (var duty in rotations)
         {
-            var next = On(p, day.AddDays(i)).FirstOrDefault(l => l.At(l.Slot.Start) > now);
+            var anchor = DateOnly.ParseExact(duty.WeekAnchor, "yyyy-MM-dd");
+            if (anchor > day)
+                foreach (var i in Enumerable.Range(0, duty.CycleWeeks * 7).Where(i => i <= DateOnly.MaxValue.DayNumber - anchor.DayNumber)) days.Add(anchor.AddDays(i));
+        }
+        foreach (var on in days.Order())
+        {
+            var next = On(p, on).FirstOrDefault(l => l.At(l.Slot.Start) > now);
             if (next is not null) return next;
         }
         return null;

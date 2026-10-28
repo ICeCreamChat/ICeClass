@@ -52,6 +52,8 @@ try {
     foreach ($name in @('README.md', 'LICENSE', 'docs')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination $serverRoot -Recurse
     }
+    # Local operations handoff is intentionally never distributed.
+    Remove-Item -LiteralPath (Join-Path $serverRoot 'docs\腾讯云API运维.md') -Force -ErrorAction SilentlyContinue
     $windowsZip = Join-Path $releaseRoot "ICeClass-$version-windows-x64.zip"
     $serverZip = Join-Path $releaseRoot "ICeClass-$version-server.zip"
     $classroomZip = Join-Path $releaseRoot "ICeClass-$version-classroom.zip"

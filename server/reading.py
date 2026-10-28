@@ -419,7 +419,7 @@ class ReadingFeature:
         volume = volume if type(volume) is int and 0 <= volume <= 100 else None
         if message.get("type") == "device_status":
             capabilities = message.get("capabilities", [])
-            capabilities = [v for v in capabilities if isinstance(v, str) and v in {"reading", "volume"}] if isinstance(capabilities, list) else []
+            capabilities = [v for v in capabilities if isinstance(v, str) and v in {"reading", "volume", "agent_control_v1"}] if isinstance(capabilities, list) else []
             self.db.run("""INSERT INTO device_telemetry(device_id,volume,receiver_version,capabilities,reported_at) VALUES(?,?,?,?,?)
                 ON CONFLICT(device_id) DO UPDATE SET volume=excluded.volume,receiver_version=excluded.receiver_version,capabilities=excluded.capabilities,reported_at=excluded.reported_at""",
                 (device_id, volume, str(message.get("version", ""))[:30], json.dumps(capabilities), self.clock()))

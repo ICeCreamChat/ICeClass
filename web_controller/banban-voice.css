@@ -1,0 +1,21 @@
+.bb-voice-button { flex: none; display: grid; place-items: center; align-self: flex-end; width: 44px; height: 44px; min-width: 44px; margin: 0 2px 2px 0; padding: 10px; border: 0; border-radius: 12px; background: transparent; color: #466784; cursor: pointer; touch-action: manipulation; }
+.bb-voice-button svg { width: 21px; height: 23px; }
+.bb-voice-button:hover { background: #e8f2fc; color: #0969ba; }
+.bb-voice-button[aria-pressed=true] { background: #e6f1ff; color: #075fae; }
+.bb-voice-button[data-state=listening], .bb-voice-button[data-state=speaking] { background: #dcecff; color: #07569c; }
+.bb-voice-button[data-state=error] { color: #9c3b35; }
+.bb-voice-button:focus-visible { outline: 2px solid #0969ba; outline-offset: 2px; }
+.bb-voice-button[aria-pressed=true][data-level="1"] { box-shadow: 0 0 0 2px #bad7f5; }
+.bb-voice-button[aria-pressed=true][data-level="2"] { box-shadow: 0 0 0 4px #a0c8f0; }
+.bb-voice-button[aria-pressed=true][data-level="3"] { box-shadow: 0 0 0 6px #8ab9e9; }
+.bb-privacy[data-voice-state] { min-width: 0; overflow-wrap: anywhere; }
+.bb-privacy[data-voice-state=error] { color: #9c3b35; }
+.bb-native-voice-page body:has(#banbanRoot) > :not(#banbanRoot):not(script) { display: none !important; }
+.bb-native-voice-page:has(#banbanRoot), .bb-native-voice-page:has(#banbanRoot) body { margin: 0; height: 100%; overflow: hidden; }
+.bb-native-voice-page .banban-root { position: fixed; inset: 0 !important; width: 100%; height: 100%; }
+.bb-native-voice-page .bb-panel, .bb-native-voice-page .bb-panel.bb-expanded { position: fixed; inset: 0 !important; width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+.bb-native-voice-page .bb-launcher, .bb-native-voice-page .bb-expand, .bb-native-voice-page .bb-nudge { display: none !important; }
+.bb-native-voice-page .bb-header { cursor: default; }
+.bb-native-voice-page .auth-story { display: none; }
+.bb-native-voice-page .auth-page { grid-template-columns: minmax(0, 1fr); min-height: 100dvh; padding: 20px; }
+.bb-native-voice-page .auth-card { width: 100%; max-width: 420px; margin: auto; }

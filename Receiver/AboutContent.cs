@@ -29,8 +29,15 @@ internal static class AboutContent
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(28, 16) };
         brand.Children.Add(DesktopStyle.Logo(48));
+        var metadata = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        metadata.Children.Add(DesktopStyle.Text($"{edition} · 版本 {version}", 14, muted: true));
+        var registration = DesktopStyle.Text("皖ICP备2025106471号", 14, muted: true);
+        registration.Margin = new Thickness(16, 0, 0, 0);
+        registration.HorizontalAlignment = HorizontalAlignment.Right;
+        registration.TextWrapping = TextWrapping.NoWrap;
+        Grid.SetColumn(registration, 1); metadata.Children.Add(registration);
         var words = new StackPanel { Spacing = 3, Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            Children = { DesktopStyle.Text("ICeClass 班伴", 22, true), DesktopStyle.Text($"{edition} · 版本 {version}", 14, muted: true) } };
+            Children = { DesktopStyle.Text("ICeClass 班伴", 22, true), metadata } };
         Grid.SetColumn(words, 1); brand.Children.Add(words);
         root.Children.Add(new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(0, 0, 0, 1), Child = brand });
 

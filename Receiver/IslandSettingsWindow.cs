@@ -14,7 +14,7 @@ internal sealed class IslandSettingsWindow : Window
 {
     public IslandSettingsWindow(IslandLocalSettings saved, IslandAppearance school, Action<IslandLocalSettings> apply, Action testReminder, Action? playDemo = null, Action? previewShout = null)
     {
-        ClassroomStyle.Apply(this); Title = "教室岛设置 · ICeClass 班伴";
+        ClassroomStyle.Apply(this); Title = "教室浮岛设置 · ICeClass 班伴";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
         Width = 760; Height = 780; MinWidth = 440; MinHeight = 400;
         Background = DesktopStyle.Brush("#F5F7FB");
@@ -26,7 +26,7 @@ internal sealed class IslandSettingsWindow : Window
         var root = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         var body = new StackPanel { Spacing = 16, MaxWidth = 656, HorizontalAlignment = HorizontalAlignment.Stretch };
         body.Children.Add(new StackPanel { Spacing = 4, Children = {
-            ClassroomStyle.Title("教室岛设置"),
+            ClassroomStyle.Title("教室浮岛设置"),
             ClassroomStyle.Caption("课表与提醒由教师端配置；在这里管理本机外观、自动化应用与预览。") } });
         var pairedFields = new List<(Grid Grid, Control Left, Control Right)>();
         var previewRows = new List<(Grid Grid, Control Action)>();

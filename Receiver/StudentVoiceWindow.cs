@@ -27,7 +27,7 @@ public sealed class StudentVoiceWindow : Window
     private DateTimeOffset _startedAt;
     private bool _recording, _sending, _closing;
 
-    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null)
+    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null)
     {
         ClassroomStyle.Apply(this);
         _send = send; _config = config; Title = $"ICeClass 班伴 · {config.ClassName}";
@@ -47,11 +47,16 @@ public sealed class StudentVoiceWindow : Window
         var settings = ClassroomStyle.Button("教室设置"); settings.MinHeight = 44; settings.Click += (_, _) => openSettings?.Invoke();
         settings.VerticalAlignment = VerticalAlignment.Center;
         var toolbarActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        if (showBanban is not null)
+        {
+            var banban = ClassroomStyle.Button("班班"); banban.MinHeight = 44;
+            banban.Click += (_, _) => showBanban(); toolbarActions.Children.Add(banban);
+        }
         if (showIsland is not null)
         {
-            var island = ClassroomStyle.Button("顶部悬浮岛"); island.MinHeight = 44;
+            var island = ClassroomStyle.Button("教室浮岛"); island.MinHeight = 44;
             island.Click += (_, _) => showIsland();
-            ToolTip.SetTip(island, "显示并展开顶部悬浮岛"); toolbarActions.Children.Add(island);
+            ToolTip.SetTip(island, "显示并展开教室浮岛"); toolbarActions.Children.Add(island);
         }
         toolbarActions.Children.Add(settings); Grid.SetColumn(toolbarActions, 2); toolbar.Children.Add(toolbarActions);
         root.Children.Add(new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E1E7EF"), BorderThickness = new Thickness(0, 0, 0, 1), Child = toolbar });
@@ -82,7 +87,7 @@ public sealed class StudentVoiceWindow : Window
         var activityNames = new[] { "兔拔萝卜", "诗词镌刻", "粒子浮雕", "火箭升空" };
         for (var i = 0; i < activityNames.Length; i++)
         {
-            var name = ClassroomStyle.Text(activityNames[i], 15);
+            var name = ClassroomStyle.Text(activityNames[i], 15, true);
             var item = new Border { Background = Brushes.White, CornerRadius = new CornerRadius(7), Padding = new Thickness(10, 6),
                 Margin = new Thickness(i % 2 == 0 ? 0 : 4, i < 2 ? 0 : 8, i % 2 == 0 ? 4 : 0, 0), Child = name };
             Grid.SetColumn(item, i % 2); Grid.SetRow(item, i / 2); activities.Children.Add(item);
@@ -131,10 +136,18 @@ public sealed class StudentVoiceWindow : Window
         _computerCaption.VerticalAlignment = VerticalAlignment.Center;
         _computerCaption.MaxLines = 2; _computerCaption.TextTrimming = TextTrimming.CharacterEllipsis;
         footer.Children.Add(_computerCaption);
+        var footerInfo = new StackPanel { Height = 40, Spacing = 2, Margin = new Thickness(16, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         var about = ClassroomStyle.Button($"关于 · {ReceiverUpdateService.CurrentVersionText}");
-        about.Padding = new Thickness(12, 6); about.Classes.Add("native-quiet");
-        about.Margin = new Thickness(16, 0, 0, 0); about.Click += (_, _) => openAbout?.Invoke();
-        Grid.SetColumn(about, 1); footer.Children.Add(about);
+        about.FontSize = 12;
+        about.Padding = new Thickness(12, 0); about.Classes.Add("native-quiet");
+        about.MinHeight = 22; about.Height = 22; about.HorizontalAlignment = HorizontalAlignment.Right;
+        about.Click += (_, _) => openAbout?.Invoke(); footerInfo.Children.Add(about);
+        var registration = ClassroomStyle.Text("皖ICP备2025106471号", 12, muted: true);
+        registration.Height = 16; registration.LineHeight = 16; registration.TextWrapping = TextWrapping.NoWrap;
+        registration.Margin = new Thickness(12, 0); registration.HorizontalAlignment = HorizontalAlignment.Right;
+        footerInfo.Children.Add(registration);
+        Grid.SetColumn(footerInfo, 1); footer.Children.Add(footerInfo);
         var footerBox = new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E1E7EF"), BorderThickness = new Thickness(0, 1, 0, 0), Child = footer };
         Grid.SetRow(footerBox, 2); root.Children.Add(footerBox); Content = root;
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };

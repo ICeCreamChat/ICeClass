@@ -4,9 +4,21 @@ from __future__ import annotations
 import json
 import re
 from datetime import date
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from aiohttp import web
+
+from reading import class_grade
+
+DUTY_KINDS = {'midday': '午间静校', 'evening': '晚自习'}
+
+
+def duty_defaults(slots=()):
+    ids = {s['id'] for s in slots}
+    return {kind: {'enabled': False, 'cycleWeeks': 2, 'weekAnchor': '2026-09-07',
+                   'slotIds': [sid for sid in ('evening-study-1', 'evening-study-2') if sid in ids]
+                              if kind == 'evening' else [], 'lessons': []}
+            for kind in DUTY_KINDS}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS island_profiles(
@@ -20,9 +32,27 @@ CREATE TABLE IF NOT EXISTS island_delivery(
 """
 
 
-def defaults():
+def defaults(grade=None):
+    slots = []
+    if grade in ('高一', '高二', '高三'):
+        # School timetable effective 2026-09-10; saved class profiles take precedence.
+        periods = [
+            ('morning-reading', '晨读', 450, 473),
+            ('period-1', '第一节', 475, 520),
+            ('period-2', '第二节', 530, 575),
+            ('period-3', '第三节', 605, 650),
+            ('period-4', '第四节', 660, 705 if grade == '高一' else 700),
+            ('period-5', '第五节', 840, 885),
+            ('period-6', '第六节', 895, 940),
+            ('period-7', '第七节（眼保健操）', 950, 995),
+            ('period-8', '第八节（活动课）', 1005, 1045 if grade == '高三' else 1050),
+            ('evening-study-1', '晚自习第一节', 1100, 1190),
+            ('evening-study-2', '晚自习第二节', 1200, 1290),
+        ]
+        slots = [{'id': sid, 'label': label, 'start': start, 'end': end}
+                 for sid, label, start, end in periods]
     return {'schemaVersion': 1, 'enabled': True, 'weekAnchor': '2026-09-07',
-            'slots': [], 'lessons': [], 'overrides': [],
+            'slots': slots, 'lessons': [], 'overrides': [], 'dutyRotations': duty_defaults(slots),
             'reminders': {'enabled': True, 'prepare': True, 'start': True, 'end': True,
                           'prepareMinutes': 2, 'sound': False, 'speech': False, 'volume': 65, 'displaySeconds': 8},
             'appearance': {'position': 'top-center', 'width': 560, 'opacity': 100, 'theme': 'light',
@@ -76,9 +106,9 @@ def items(value, label, maximum):
 
 def normalize(value):
     if not isinstance(value, dict) or value.get('schemaVersion', 1) != 1:
-        raise ValueError('不支持的教室岛配置。')
+        raise ValueError('不支持的教室浮岛配置。')
     result = defaults()
-    result['enabled'] = boolean(value.get('enabled', True), '启用教室岛')
+    result['enabled'] = boolean(value.get('enabled', True), '启用教室浮岛')
     result['weekAnchor'] = day(value.get('weekAnchor', result['weekAnchor']), '第一周周一')
     if date.fromisoformat(result['weekAnchor']).weekday() != 0:
         raise ValueError('第一周起始日期必须是周一。')
@@ -118,6 +148,45 @@ def normalize(value):
         result['overrides'].append({'date': on, 'slotId': sid, 'cancelled': cancelled,
             'subject': text(o.get('subject', ''), '调课科目', 40, cancelled),
             'teacher': text(o.get('teacher', ''), '教师', 40, True), 'location': text(o.get('location', ''), '地点', 60, True)})
+    raw_duties = value.get('dutyRotations', {})
+    if not isinstance(raw_duties, dict) or any(kind not in DUTY_KINDS for kind in raw_duties):
+        raise ValueError('值班安排只支持午间静校和晚自习。')
+    result['dutyRotations'] = duty_defaults(result['slots'])
+    owned = set()
+    for kind, name in DUTY_KINDS.items():
+        raw = raw_duties.get(kind, result['dutyRotations'][kind])
+        if not isinstance(raw, dict):
+            raise ValueError(f'{name}循环设置格式不正确。')
+        enabled = boolean(raw.get('enabled', False), name + '循环开关')
+        weeks = integer(raw.get('cycleWeeks', 2), name + '循环周数', 1, 20)
+        anchor = day(raw.get('weekAnchor', result['weekAnchor']), name + '第一周周一')
+        if date.fromisoformat(anchor).weekday() != 0:
+            raise ValueError(f'{name}第一周起始日期必须是周一。')
+        slot_ids = raw.get('slotIds', [])
+        if (not isinstance(slot_ids, list) or len(slot_ids) > (1 if kind == 'midday' else 2)
+                or any(not isinstance(sid, str) or sid not in ids for sid in slot_ids)
+                or len(set(slot_ids)) != len(slot_ids) or owned.intersection(slot_ids)):
+            raise ValueError(f'{name}时段不存在、重复或已被其他值班使用。')
+        owned.update(slot_ids)
+        if enabled and not slot_ids:
+            raise ValueError(f'请先为{name}设置作息时段。')
+        if enabled and any(l['slotId'] in slot_ids for l in result['lessons']):
+            raise ValueError(f'{name}时段已有固定课程，请先清空该时段的周课表，再启用循环值班。')
+        rows, seen = [], set()
+        for l in items(raw.get('lessons', []), name + '循环课程', 280):
+            sid = text(l.get('slotId'), '值班时段', 60)
+            weekday = integer(l.get('weekday'), '值班星期', 1, 7)
+            cycle_week = integer(l.get('cycleWeek'), '循环内周次', 1, weeks)
+            key = (sid, weekday, cycle_week)
+            if sid not in slot_ids or key in seen:
+                raise ValueError(f'{name}课程引用了其他时段，或同一周、星期、时段重复。')
+            seen.add(key)
+            rows.append({'slotId': sid, 'weekday': weekday, 'cycleWeek': cycle_week,
+                         'subject': text(l.get('subject'), '值班学科', 40),
+                         'teacher': text(l.get('teacher', ''), '值班教师', 40, True),
+                         'location': text(l.get('location', ''), '值班地点', 60, True)})
+        result['dutyRotations'][kind] = {'enabled': enabled, 'cycleWeeks': weeks,
+                                       'weekAnchor': anchor, 'slotIds': slot_ids, 'lessons': rows}
     for group in ('reminders', 'appearance'):
         raw = value.get(group, {})
         if not isinstance(raw, dict):
@@ -174,6 +243,15 @@ def lessons_on(config, on):
     parity = 'odd' if ((on - anchor).days // 7) % 2 == 0 else 'even'
     overrides = {x['slotId']: x for x in config['overrides'] if x['date'] == on.isoformat()}
     regular = {x['slotId']: x for x in config['lessons'] if x['weekday'] == on.isoweekday() and x['week'] in ('all', parity)}
+    for kind, duty in config.get('dutyRotations', {}).items():
+        anchor = date.fromisoformat(duty['weekAnchor'])
+        if not duty['enabled'] or on < anchor:
+            continue
+        cycle_week = ((on - anchor).days // 7) % duty['cycleWeeks'] + 1
+        for sid in duty['slotIds']:
+            regular.pop(sid, None)
+        regular.update({l['slotId']: {**l, 'dutyKind': kind} for l in duty['lessons']
+                        if l['weekday'] == on.isoweekday() and l['cycleWeek'] == cycle_week})
     result = []
     for slot in config['slots']:
         lesson = overrides.get(slot['id'], regular.get(slot['id']))
@@ -190,9 +268,14 @@ class IslandFeature:
 
     def profile(self, cid):
         row = self.db.one('SELECT * FROM island_profiles WHERE class_id=?', (cid,))
+        if row:
+            config = json.loads(row['value'])
+        else:
+            classroom = self.db.one('SELECT name FROM classes WHERE id=?', (cid,))
+            config = defaults(class_grade(classroom['name']) if classroom else None)
         return {'classId': cid, 'revision': row['revision'] if row else 0,
                 'updatedAt': row['updated_at'] if row else None,
-                'config': json.loads(row['value']) if row else defaults()}
+                'config': config}
 
     def authorize(self, request):
         user = self.s.require_user(request)
@@ -200,7 +283,7 @@ class IslandFeature:
             return user
         cid = request.match_info['class_id']
         if not self.s.can_access_class(self.db, user, cid):
-            return self.s.json_response({'error': '没有配置该班教室岛的权限。'}, 403)
+            return self.s.json_response({'error': '没有配置该班教室浮岛的权限。'}, 403)
         return user
 
     def delivery(self, cid, revision):
@@ -224,7 +307,11 @@ class IslandFeature:
         try:
             if not body:
                 raise ValueError('配置格式不正确。')
-            config = normalize(body.get('config'))
+            incoming = body.get('config')
+            # An older open editor must not silently erase the newly added rotations.
+            if isinstance(incoming, dict) and 'dutyRotations' not in incoming:
+                incoming = {**incoming, 'dutyRotations': self.profile(request.match_info['class_id'])['config'].get('dutyRotations', {})}
+            config = normalize(incoming)
             expected = integer(body.get('revision'), '配置版本', 0, 2**31-1)
         except ValueError as error:
             return self.s.json_response({'error': str(error)}, 400)
@@ -265,9 +352,13 @@ class IslandFeature:
         if isinstance(user, web.Response):
             return user
         from island_xlsx import export_schedule
-        data = export_schedule(self.profile(request.match_info['class_id'])['config'])
+        cid = request.match_info['class_id']
+        classroom = self.db.one('SELECT name FROM classes WHERE id=?', (cid,))
+        class_name = classroom['name'] if classroom else ''
+        data = export_schedule(self.profile(cid)['config'], class_name=class_name)
+        filename = quote('ICeClass-' + (class_name or '班级') + '-课表.xlsx', safe='')
         return web.Response(body=data, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                            headers={'Content-Disposition': 'attachment; filename="ICeClass-timetable.xlsx"'})
+                            headers={'Content-Disposition': 'attachment; filename="ICeClass-timetable.xlsx"; filename*=UTF-8\'\'' + filename})
 
     async def import_preview(self, request):
         user = self.authorize(request)
@@ -276,8 +367,9 @@ class IslandFeature:
         from island_xlsx import import_schedule
         try:
             content = await request.read()
-            config = import_schedule(content, self.profile(request.match_info['class_id'])['config'])
-            return self.s.json_response({'config': normalize(config)})
+            metadata = {}
+            config = import_schedule(content, self.profile(request.match_info['class_id'])['config'], metadata=metadata)
+            return self.s.json_response({'config': normalize(config), **metadata})
         except (ValueError, KeyError) as error:
             return self.s.json_response({'error': str(error)}, 400)
 

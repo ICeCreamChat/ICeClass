@@ -15,7 +15,7 @@ internal sealed class IslandSyncService : IDisposable
     private readonly ReceiverConfig _binding;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _gate = new();
-    private IslandSnapshot _snapshot = new(null, 0, false, false, "正在同步教室岛");
+    private IslandSnapshot _snapshot = new(null, 0, false, false, "正在同步教室浮岛");
     private string _detail = "";
     private readonly IslandLocalStore _store;
     public IslandLocalStore Store => _store;
@@ -30,7 +30,7 @@ internal sealed class IslandSyncService : IDisposable
             var cache = _store.Read<JsonObject>("profile.json");
             if (cache is not null && cache["classId"]?.GetValue<string>() == binding.ClassId)
                 _snapshot = new(IslandProfile.Parse(cache["config"]!.ToJsonString()), cache["revision"]!.GetValue<int>(), false,
-                    cache["revoked"]?.GetValue<bool>() == true, "使用本机教室岛配置");
+                    cache["revoked"]?.GetValue<bool>() == true, "使用本机教室浮岛配置");
         }
         catch (Exception error) { AppLog.Error("Load island cache failed", error); }
         if (start) _ = Task.Run(() => Run(_lifetime.Token));
@@ -61,11 +61,11 @@ internal sealed class IslandSyncService : IDisposable
             try
             {
                 var cache = await Send(HttpMethod.Get, "device", token);
-                if (cache["classId"]?.GetValue<string>() != _binding.ClassId) throw new InvalidDataException("教室岛班级绑定不一致。");
+                if (cache["classId"]?.GetValue<string>() != _binding.ClassId) throw new InvalidDataException("教室浮岛班级绑定不一致。");
                 var p = IslandProfile.Parse(cache["config"]!.ToJsonString());
                 var revision = cache["revision"]!.GetValue<int>();
                 _store.Write("profile.json", cache); // Acknowledge only after the durable cache has been written.
-                lock (_gate) _snapshot = new(p, revision, true, false, $"教室岛版本 {revision}");
+                lock (_gate) _snapshot = new(p, revision, true, false, $"教室浮岛版本 {revision}");
                 string detail;
                 lock (_gate) detail = _detail;
                 await Send(HttpMethod.Post, "device/ack", token, new JsonObject { ["revision"] = revision, ["detail"] = detail });
@@ -73,7 +73,7 @@ internal sealed class IslandSyncService : IDisposable
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (Exception error)
             {
-                lock (_gate) _snapshot = _snapshot with { Online = false, Status = _snapshot.Revoked ? "绑定失效，请重新绑定" : _snapshot.Profile is null ? "教室岛尚未同步，联网后重试" : "离线 · 使用已保存的课表与规则" };
+                lock (_gate) _snapshot = _snapshot with { Online = false, Status = _snapshot.Revoked ? "绑定失效，请重新绑定" : _snapshot.Profile is null ? "教室浮岛尚未同步，联网后重试" : "离线 · 使用已保存的课表与规则" };
                 AppLog.Error("Sync classroom island failed", error);
             }
             try { await Task.Delay(TimeSpan.FromSeconds(15), token); }
@@ -99,7 +99,7 @@ internal sealed class IslandLocalStore(string root)
         {
             var path = Path.Combine(root, file);
             if (!File.Exists(path)) return default;
-            if (new FileInfo(path).Length > 4_000_000) throw new InvalidDataException("教室岛缓存过大。");
+            if (new FileInfo(path).Length > 4_000_000) throw new InvalidDataException("教室浮岛缓存过大。");
             return JsonSerializer.Deserialize<T>(File.ReadAllText(path), IslandProfile.Json);
         }
     }

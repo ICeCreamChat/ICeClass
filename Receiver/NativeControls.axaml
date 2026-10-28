@@ -12,7 +12,8 @@
   </Style>
   <Style Selector="Button.native-button">
     <Setter Property="FontSize" Value="15" />
-    <Setter Property="FontWeight" Value="Medium" />
+    <!-- YaHei UI can resolve Medium to the regular face; keep action labels at SemiBold. -->
+    <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="MinHeight" Value="40" />
     <Setter Property="Padding" Value="16,7" />
     <Setter Property="CornerRadius" Value="8" />
@@ -70,6 +71,7 @@
     <Setter Property="BorderBrush" Value="#005BB8" />
   </Style>
   <Style Selector="Button.native-quiet">
+    <Setter Property="FontWeight" Value="Normal" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Foreground" Value="#697586" />
@@ -93,6 +95,7 @@
     <Setter Property="MinHeight" Value="40" />
     <Setter Property="Padding" Value="8,6" />
     <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="Normal" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="1" />
