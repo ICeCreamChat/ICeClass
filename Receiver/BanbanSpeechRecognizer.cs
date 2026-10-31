@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using SherpaOnnx;
 
 namespace ICeClass.Receiver;
 
@@ -7,22 +6,12 @@ namespace ICeClass.Receiver;
 internal sealed class BanbanSpeechRecognizer : IDisposable
 {
     internal const string EngineName = "sherpa-onnx SenseVoiceSmall INT8 (local utterance recognition)";
-    private readonly OfflineRecognizer _recognizer;
+    private readonly SenseVoiceRecognizer _recognizer;
 
     internal BanbanSpeechRecognizer(string? modelFolder = null, string language = "auto", bool useInverseTextNormalization = true)
     {
         var folder = modelFolder ?? BanbanVoiceModels.Extract("ICeClass.Voice.Asr.", "sensevoice-small-int8-2365baea");
-        var config = new OfflineRecognizerConfig();
-        config.FeatConfig.SampleRate = 16000;
-        config.FeatConfig.FeatureDim = 80;
-        config.ModelConfig.SenseVoice.Model = Path.Combine(folder, "model.int8.onnx");
-        config.ModelConfig.SenseVoice.Language = language;
-        config.ModelConfig.SenseVoice.UseInverseTextNormalization = useInverseTextNormalization ? 1 : 0;
-        config.ModelConfig.Tokens = Path.Combine(folder, "tokens.txt");
-        config.ModelConfig.NumThreads = Math.Min(2, Environment.ProcessorCount);
-        config.ModelConfig.Provider = "cpu";
-        config.DecodingMethod = "greedy_search";
-        _recognizer = new OfflineRecognizer(config);
+        _recognizer = new SenseVoiceRecognizer(folder, language, useInverseTextNormalization);
         if (modelFolder is null) BanbanVoiceModels.RetireSpeechModels();
     }
 
@@ -30,10 +19,7 @@ internal sealed class BanbanSpeechRecognizer : IDisposable
     {
         if (samples.Length == 0) return new("", true);
         if (samples.Length > BanbanSpeechSegmenter.MaximumSamples) return new("", true, Unrecognized: true);
-        using var stream = _recognizer.CreateStream();
-        stream.AcceptWaveform(16000, samples);
-        _recognizer.Decode(stream);
-        return new(stream.Result.Text.Trim(), true);
+        return new(_recognizer.Recognize(samples), true);
     }
 
     public void Dispose() => _recognizer.Dispose();

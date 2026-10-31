@@ -7,6 +7,15 @@ if (args is ["--export-updater", var output])
     return;
 }
 
+if (args is ["--voice-transcription-review", var audioPath, var modelFolder, var resultPath])
+{
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    var text = await ClassroomVoiceTranscriber.TranscribeAsync(File.ReadAllBytes(audioPath), default, modelFolder);
+    File.WriteAllText(resultPath, System.Text.Json.JsonSerializer.Serialize(new { text, elapsedMs = clock.ElapsedMilliseconds }), Encoding.UTF8);
+    Console.WriteLine(text);
+    return;
+}
+
 var checks = 0;
 void Assert(bool condition, string message) { if (!condition) throw new Exception(message); checks++; }
 void Reject(string address)
@@ -50,4 +59,6 @@ Assert(options.RestartArguments().Contains("http://127.0.0.1:8838"), "Update kee
 Assert(!options.RestartArguments(preserveEndpoint: false).Contains("--server"), "Settings restart uses saved server");
 Assert(LaunchOptions.Parse([]).RestartArguments() == "", "Production restart uses saved user settings");
 checks += await DownloadChecks.Run();
-Console.WriteLine($"Desktop settings and update checks passed: {checks}");
+checks += await ClassroomVoiceChecks.Run();
+checks += await VoiceTranscriptionChecks.Run();
+Console.WriteLine($"Desktop settings, update and classroom voice checks passed: {checks}");
