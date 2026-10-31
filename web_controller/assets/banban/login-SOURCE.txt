@@ -1,42 +1,50 @@
 Banban teacher login motion - 2026-10-31
 
 Current runtime artwork:
-login-motion.webp: 80 transparent cells in an 8-column, 10-row atlas.
-Cell 220 x 240; atlas 1760 x 2400; open=0, covered=50, peek=79.
+login-motion.webp: 6 transparent cells in a 3-column, 2-row lossless atlas.
+Cell 220 x 240; atlas 660 x 480; open=0, covered=3, peek=4.
+Atlas size: 209086 bytes. Pose 1 prepares the hands at the cheeks, pose 2
+closes the eyes before covering, and pose 5 lowers both hands after peeking.
 login-rest.webp: the matching 440 x 480 loading still.
 
-Congee / gpt-image-2 supplied 40 main drawings and 24 targeted corrections.
-The request used the approved current mascot as a PNG editing reference.
-51 artist drawings are selected, removing repeated holds and replacing the
-large initial arm-lift and hand-release gaps with smaller artist-drawn steps.
-The 80 runtime cells are NOT 80 independently generated illustrations.
+Congee / gpt-image-2 supplied six complete key poses in one transparent sheet,
+using the approved open, cover and peek drawings as PNG editing references.
+The user requested a few deliberate pose changes after finding the dense
+frame sequence stiff. No optical-flow retiming, procedural hand deformation
+or silhouette crossfade is used by the current runtime.
 
-Offline preparation cleans isolated alpha fragments and registers each whole
-drawing. Short bidirectional motion fields retime the selected drawings into
-80 positions. Each intermediate cell warps ONE complete source drawing, never
-alpha-dissolving two silhouettes or splicing static book rectangles. This
-retains the artist's book, arms and face without procedural limb drawing.
+Offline preparation extracts alpha components and aligns the book and badge.
+The same bookmark, feet and badge artwork is reused across poses. The exposed
+upper-left spine continues from the reference down to the moving hand; its
+shared layer ends underneath the hand instead of cutting across the visible
+book outline at a horizontal mask boundary. Hand interiors and warm ink are
+isolated from the source sheet offline to keep the drawn hand in front.
+The moving face and hands remain artist drawn. This fixes the visible step
+identified in the closed-eye and peek frames of the earlier 212756-byte atlas.
+Preparation requires Pillow, NumPy and OpenCV only as offline tooling.
+Prepared with Python 3.12.8, Pillow 12.2.0, NumPy 2.3.5 and OpenCV 5.0.0.
+Other raster-library versions may produce slightly different edge pixels.
 
 The browser only paints the local atlas while focus/visibility state changes.
-Cover takes about 840 ms; peek about 487 ms; lowering from cover about 720 ms.
+Each gesture starts with a 70 ms hold. Cover uses poses 1, 2 and 3 at 145 ms
+intervals (about 360 ms total). Returning from cover uses 2, 1 and 0 at 110 ms
+intervals (about 290 ms); leaving peek goes directly through 5 then 0.
 The gesture is interruptible, respects reduced motion and stops when hidden.
 No password values are read. No new runtime library or background image API.
 
 Editable sources, prompts, preparation and review:
-outputs/teacher-login-smooth-20261031/approved-current-keyposes.png
-outputs/teacher-login-smooth-20261031/banban-smooth-sheet.png
-outputs/teacher-login-smooth-20261031/banban-corrections.png
-outputs/teacher-login-smooth-20261031/smooth-prompt.txt
-outputs/teacher-login-smooth-20261031/corrections-prompt.txt
-outputs/teacher-login-smooth-20261031/prepare-smooth.py
-outputs/teacher-login-smooth-20261031/preparation.json
+outputs/teacher-login-keyposes-20261031/banban-six-poses.png
+outputs/teacher-login-keyposes-20261031/prompt.txt
+outputs/teacher-login-keyposes-20261031/prepared/preparation.json
+outputs/teacher-login-keyposes-20261031/prepared/keyposes-review.png
+scripts/prepare-auth-keyposes.py
+scripts/test-auth-keyposes.py
+scripts/test-auth-mascot.cjs
 
-Main Congee request: 2b1bcde3-51a1-43d4-94ce-3048dea24d2d
-Main imagegen request: cd90629d-31c4-4646-98e0-6e6a75d67d0a
-Correction Congee request: 5f0816a4-f177-4e71-a32c-4ed84d1be5ae
-Correction imagegen request: 6de8a6a9-0210-4aa9-ab33-a59fdf94095c
+Congee request: 1495372c-b99a-4a9e-8480-e05f131a92b0
+Imagegen request: ac615667-166d-48d9-a24e-0e7789225ff7
 
 The original classroom illustration remains app-icon.png. Existing three-pose
 login-open/cover/peek.webp files remain as prior source artwork. Desktop pet
-and classroom animation resources are unchanged. The superseded 24-drawing
-and procedural-arm drafts are not used by this runtime.
+and classroom animation resources are unchanged. The superseded 80-cell atlas
+and layered or procedural-arm experiments are not used by this runtime.

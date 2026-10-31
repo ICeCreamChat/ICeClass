@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=14">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=7">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=22">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=7">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
@@ -29,25 +29,29 @@
       <h2>班级的每一天，<br>都有好陪伴。</h2>
       <p>从一声晨读，到一次温暖的回应。<br>陪伴课堂，也连接您与每一个班级。</p>
       <img class="auth-art" src="/assets/app-icon.png?v=5" alt="班级陪伴：老师和同学们在黑板前相伴学习" width="512" height="512">
-      <div class="auth-features"><span>早读陪伴</span><span>课堂连接</span><span>校园协同</span></div>
+      <ul class="auth-features" aria-label="班伴功能"><li>早读陪伴</li><li>课堂连接</li><li>校园协同</li></ul>
     </aside>
     <div class="auth-card">
       <div id="authMascot" class="auth-mascot" data-state="open" aria-hidden="true">
-        <img class="auth-mascot-still" src="/assets/banban/login-rest.webp?v=4" alt="" width="440" height="480" draggable="false">
-        <canvas id="authMascotCanvas" class="auth-mascot-motion" width="220" height="240" data-sprite="/assets/banban/login-motion.webp?v=4"></canvas>
+        <img class="auth-mascot-still" src="/assets/banban/login-rest.webp?v=6" alt="" width="440" height="480" draggable="false">
+        <canvas id="authMascotCanvas" class="auth-mascot-motion" width="220" height="240" data-sprite="/assets/banban/login-motion.webp?v=7"></canvas>
       </div>
       <form id="loginForm" class="hidden" aria-labelledby="loginHeading">
-        <h1 id="loginHeading">欢迎回来</h1>
-        <p class="muted">使用学校账号，进入教师工作台。</p>
+        <header class="auth-intro">
+          <h1 id="loginHeading">欢迎回来</h1>
+          <p class="muted">使用学校账号，进入教师工作台。</p>
+        </header>
         <div class="field"><label for="loginUsername">用户名</label><input id="loginUsername" name="username" autocomplete="username" spellcheck="false" autocapitalize="none" required maxlength="64"></div>
         <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="128" aria-describedby="loginError"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false" aria-controls="loginPassword">显示</button></div></div>
         <p id="loginError" class="form-error" role="alert" tabindex="-1"></p>
         <button id="loginSubmit" class="btn primary block" type="submit">进入工作台</button>
       </form>
 
-      <form id="bootstrapForm" class="hidden">
-        <h1>初始化超级管理员</h1>
-        <p class="muted">系统将创建唯一的超级管理员账号 <strong>ICe</strong>。</p>
+      <form id="bootstrapForm" class="hidden" aria-labelledby="bootstrapHeading">
+        <header class="auth-intro">
+          <h1 id="bootstrapHeading">初始化超级管理员</h1>
+          <p class="muted">系统将创建唯一的超级管理员账号 <strong>ICe</strong>。</p>
+        </header>
         <div class="field"><label for="bootstrapToken">部署初始化密钥</label><input id="bootstrapToken" name="bootstrap-token" type="password" autocomplete="off" required></div>
         <div class="field"><label for="bootstrapPassword">设置 ICe 密码</label><input id="bootstrapPassword" name="new-password" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
         <div class="field"><label for="bootstrapPasswordConfirm">再次输入密码</label><input id="bootstrapPasswordConfirm" name="new-password-confirm" type="password" autocomplete="new-password" required></div>
@@ -1512,7 +1516,7 @@
     })();
   </script>
   <script nonce="__CSP_NONCE__" src="/ui.js?v=9" defer></script>
-  <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=5" defer></script>
+  <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=10" defer></script>
