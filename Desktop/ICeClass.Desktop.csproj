@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ICeClass.Desktop</AssemblyName>
     <RootNamespace>ICeClass.Desktop</RootNamespace>
-    <Version>2.5.0</Version>
+    <Version>2.5.1</Version>
     <Product>ICeClass 班伴 · 教师端</Product>
     <Title>ICeClass 班伴 · 教师端</Title><Company>ICeCreamChat</Company>
     <Description>供教师与管理员使用的 Windows 工作台</Description>
@@ -17,6 +17,8 @@
     <Compile Include="..\Receiver\ReadingBrowser.cs" Link="Shared\ReadingBrowser.cs" />
     <Compile Include="..\Receiver\DesktopStyle.cs" Link="Shared\DesktopStyle.cs" />
     <Compile Include="..\Receiver\AboutContent.cs" Link="Shared\AboutContent.cs" />
+    <Compile Include="..\Receiver\AboutThankYouMascot.cs" Link="Shared\AboutThankYouMascot.cs" />
+    <EmbeddedResource Include="..\Receiver\Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
     <AvaloniaResource Include="..\Receiver\NativeControls.axaml" Link="Shared\NativeControls.axaml" />
     <Compile Include="..\Receiver\AppIconFactory.cs" Link="Shared\AppIconFactory.cs" />
     <EmbeddedResource Include="..\branding\teacher\app.ico" LogicalName="ICeClass.Branding.app.ico" />

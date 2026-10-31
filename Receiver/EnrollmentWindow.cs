@@ -143,6 +143,10 @@ public sealed class EnrollmentWindow : Window
         device.Children.Add(_startup);
         body.Children.Add(Section("连接与设备", device));
 
+        var computerSettings = ClassroomStyle.Button("管理电脑操作"); CompactAction(computerSettings);
+        computerSettings.Click += (_, _) => ComputerSettingsRequested?.Invoke(this, EventArgs.Empty);
+        body.Children.Add(Section("班班", SettingRow("电脑操作", ClassroomStyle.Caption("管理应用、文件访问和当前任务。"), computerSettings)));
+
         _updateStatus.FontSize = 13;
         var maintenance = new StackPanel { Spacing = 12, Children = {
             SettingRow("客户端更新", _updateStatus, _checkUpdate), Divider(), BuildPreviewPanel() } };
@@ -169,6 +173,7 @@ public sealed class EnrollmentWindow : Window
     public event EventHandler? UpdateRequested;
     public event Action<string>? PreviewRequested;
     public event EventHandler? AudioTestRequested;
+    public event EventHandler? ComputerSettingsRequested;
 
     public void SetConnectionState(ReceiverConnectionState state)
     {

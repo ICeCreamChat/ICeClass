@@ -89,15 +89,17 @@ internal sealed class ReadingCompanionWindow : Window
 
     private static Border CreateToolbar(TextBlock classLabel, Button home, Button fullscreen)
     {
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), Margin = new Thickness(16, 4) };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*"), Margin = new Thickness(16, 4) };
         home.HorizontalAlignment = HorizontalAlignment.Left; header.Children.Add(home);
         classLabel.MaxWidth = 360; classLabel.TextTrimming = TextTrimming.CharacterEllipsis;
         classLabel.TextWrapping = TextWrapping.NoWrap; classLabel.Foreground = DesktopStyle.Brush("#636366");
         classLabel.VerticalAlignment = VerticalAlignment.Center;
         var classTag = new Border { Background = DesktopStyle.Brush("#E8F2FF"), CornerRadius = new CornerRadius(10),
             Padding = new Thickness(12, 4), VerticalAlignment = VerticalAlignment.Center, Child = classLabel };
-        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0), Children = { DesktopStyle.Logo(26), classTag } };
+        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(12, 0) };
+        var logo = DesktopStyle.Logo(26); logo.Margin = new Thickness(0, 0, 8, 0); title.Children.Add(logo);
+        Grid.SetColumn(classTag, 1); title.Children.Add(classTag);
         Grid.SetColumn(title, 1); header.Children.Add(title);
         fullscreen.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(fullscreen, 2); header.Children.Add(fullscreen);
         return new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E5E5EA"),

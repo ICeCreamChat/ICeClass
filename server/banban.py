@@ -289,10 +289,10 @@ class Banban:
             return self.s.json_response({'error': str(error)}, 400)
         except PermissionError:
             return self.s.json_response({'error': '没有查看该班级的权限。'}, 403)
-        reply = local_reply(message, user['role'])
+        cfg = self.config(user)
+        reply = local_reply(message, user['role'], model_available=bool(cfg['enabled'] and cfg['apiKey']))
         if reply:
             return self.s.json_response({'mode': 'local', 'answer': reply, 'snapshot': snapshot})
-        cfg = self.config(user)
         if not cfg['enabled'] or not cfg['apiKey']:
             return self.s.json_response({'mode': 'overview', 'answer': self.overview(snapshot, message), 'snapshot': snapshot})
         cfg = {**cfg, 'answerTokens': 1800 if detail_requested(message) else 700}

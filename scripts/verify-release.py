@@ -25,6 +25,7 @@ async def boot_packaged_server(root):
     with tempfile.TemporaryDirectory(prefix="iceclass-package-db-") as database:
         application = service.create_app(Path(database) / "test.db", root / "receiver_release")
         assert "/api/island/device" in {route.resource.canonical for route in application.router.routes()}
+        assert "/api/receiver/computer/stop" in {route.resource.canonical for route in application.router.routes()}
         runner = web.AppRunner(application)
         await runner.setup()
         try:
@@ -69,6 +70,10 @@ def verify(args):
             assert executable.read_bytes()[:2] == b"MZ", filename
             hashes[filename] = manifest["sha256"]
             checks.append(directory + ": version, size and executable checksum")
+        if tuple(map(int, version.split("."))) >= (2, 5, 1):
+            for filename in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
+                assert (server / "receiver_release" / filename).is_file(), "server classroom download missing " + filename
+            checks.append("server classroom download includes the installation and upgrade entry point")
         assert (server / "web_controller/island-admin.js").is_file()
         assert (server / "web_controller/island-ribbon.css").is_file()
         assert (server / "web_controller/banban-voice.js").is_file()
@@ -88,11 +93,40 @@ def verify(args):
             cwd=temporary, capture_output=True, text=True, encoding="utf-8", timeout=40)
         assert result.returncode == 0, result.stdout + result.stderr
         checks.append("extracted backend imports, initializes a fresh database and serves authenticated island routes")
-        for kind, filename in [("classroom", "ICeClass.exe"), ("desktop-windows-x64", "ICeClass.Desktop.exe")]:
+        if tuple(map(int, version.split("."))) >= (2, 5, 1):
+            # Run only the update script's Python package-preparation block.
+            # No shell commands, service changes or deployment are performed.
+            update_script = (server / "scripts/update-ubuntu.sh").read_text("utf-8-sig")
+            preflight = update_script.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+            prepared = Path(temporary) / "server-download"
+            prepared.mkdir()
+            result = subprocess.run([sys.executable, "-c", preflight,
+                str(root / f"ICeClass-{version}-server.zip"), str(prepared), version],
+                capture_output=True, text=True, encoding="utf-8", timeout=300)
+            assert result.returncode == 0, result.stdout + result.stderr
+            with zipfile.ZipFile(prepared / "ICeClass-classroom.zip") as download, \
+                    zipfile.ZipFile(root / f"ICeClass-{version}-classroom.zip") as classroom:
+                assert download.testzip() is None
+                for filename in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
+                    name = "ICeClass/教室端/" + filename
+                    assert download.read(name) == classroom.read(name), filename
+            checks.append("Ubuntu preparation generates the same classroom installer and instructions without deploying")
+        for kind, filename in [("classroom", "ICeClass.exe"), ("desktop-windows-x64", "ICeClass.Desktop.exe"),
+                               ("windows-x64", "ICeClass.exe"), ("windows-x64", "ICeClass.Desktop.exe")]:
             with zipfile.ZipFile(root / f"ICeClass-{version}-{kind}.zip") as archive:
                 names = [name for name in archive.namelist() if name.endswith("/" + filename)]
                 assert len(names) == 1, names
                 assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashes[filename], filename
+                if filename == "ICeClass.exe" and tuple(map(int, version.split("."))) >= (2, 5, 1):
+                    directory = names[0].rsplit("/", 1)[0] + "/"
+                    install = archive.read(directory + "install.ps1")
+                    assert install.startswith(b"\xef\xbb\xbf"), "Windows PowerShell installer requires UTF-8 BOM"
+                    assert b"powershell.exe" in archive.read(directory + "安装或升级.cmd")
+                    manifest = json.loads(archive.read(directory + "program-manifest.json").decode("utf-8-sig"))
+                    assert tuple(map(int, manifest["version"].split(".")))[:3] == tuple(map(int, version.split(".")))
+                    assert manifest["size"] == archive.getinfo(names[0]).file_size
+                    assert manifest["sha256"] == hashes[filename]
+                    checks.append(kind + ": classroom installer encoding, entry point and verified program manifest")
             checks.append(kind + ": client executable matches server update manifest")
     report = {"version": version, "checks": checks, "artifacts": artifacts, "executables": hashes}
     args.output.parent.mkdir(parents=True, exist_ok=True)

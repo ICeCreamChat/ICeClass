@@ -72,7 +72,7 @@ SOFTWARE.
 
 ### System.Speech
 
-Windows 教室端的普通通知使用 System.Speech 8.0.0 连接本机语音合成组件。班班对话的识别和播报使用下述 sherpa-onnx 与 MeloTTS 本地模型。Windows 语音组件由 Microsoft 提供，系统语音包不随本项目分发。System.Speech 的 MIT 许可如下：
+Windows 教室端包含 System.Speech 8.0.0 组件，用于连接本机语音合成组件。普通通知默认静音；需要语音的通知与班班对话共用下述 sherpa-onnx 与 MeloTTS 本地音色。Windows 语音组件由 Microsoft 提供，系统语音包不随本项目分发。System.Speech 的 MIT 许可如下：
 
 ```text
 The MIT License (MIT)

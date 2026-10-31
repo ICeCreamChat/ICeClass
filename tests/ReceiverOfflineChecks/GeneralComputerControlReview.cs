@@ -10,9 +10,18 @@ using ICeClass.Receiver;
 
 internal static class GeneralComputerControlReview
 {
-    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
-        .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Capture(Path.GetFullPath(output))))
-        .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+    internal static void Run(string output)
+    {
+        if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+        {
+            var thread = new Thread(() => Run(output));
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start(); thread.Join(); return;
+        }
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+            .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Capture(Path.GetFullPath(output))))
+            .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+    }
 
     private static async Task Capture(string output)
     {
@@ -76,7 +85,8 @@ internal static class GeneralComputerControlReview
             Check(!snapshot.ToJsonString().Contains("fixture-private-password") && !snapshot["controls"]!.AsArray().Any(c => c?["name"]?.GetValue<string>() == "验收密码"), "password fields and values are excluded");
 
             var changed = await Send("set_control_value", new { targetId = id, controlId = Control(snapshot, "课程标题"), text = "今天开始上课" });
-            Check(title.Text == "今天开始上课" && changed["verified"]?.GetValue<bool>() == true, "generic text field is filled and read back");
+            Check(title.Text == "今天开始上课" && changed["verified"]?.GetValue<bool>() == true,
+                $"generic text field is filled and read back (actual={title.Text}; verified={changed["verified"]})");
             Check(Find(changed, "课程标题")["value"]?.GetValue<string>() == title.Text, "action receipt includes the fresh interface");
             var toggled = await Send("set_control_toggle", new { targetId = id, controlId = Control(changed, "开启课堂提醒"), @checked = true });
             Check(enabled.IsChecked == true && toggled["verified"]?.GetValue<bool>() == true, "checkbox reaches the requested state");
@@ -85,7 +95,10 @@ internal static class GeneralComputerControlReview
             var ranged = await Send("set_control_range", new { targetId = id, controlId = Control(repeated, "朗读音量"), value = 65 });
             Check(volume.Value == 65 && ranged["verified"]?.GetValue<bool>() == true, "generic slider is set within its reported range");
             var expanded = await Send("expand_control", new { targetId = id, controlId = Control(ranged, "任教学科") });
-            Check(subject.IsDropDownOpen && expanded["verified"]?.GetValue<bool>() == true, "generic dropdown expands with observed state");
+            File.WriteAllText(Path.Combine(output, "dropdown-state.json"), JsonSerializer.Serialize(new { open = subject.IsDropDownOpen,
+                receipt = expanded["verified"]?.GetValue<bool>(), state = Find(expanded, "任教学科")["expandState"]?.GetValue<string>() }));
+            Check(subject.IsDropDownOpen && expanded["verified"]?.GetValue<bool>() == true,
+                $"generic dropdown expands with observed state (open={subject.IsDropDownOpen}; verified={expanded["verified"]})");
             var collapsed = await Send("collapse_control", new { targetId = id, controlId = Control(expanded, "任教学科") });
             Check(!subject.IsDropDownOpen && collapsed["verified"]?.GetValue<bool>() == true, "generic dropdown collapses with observed state");
             var keyboard = await Send("press_control_key", new { targetId = id, controlId = Control(collapsed, "教学资料"), key = "right" });

@@ -49,27 +49,18 @@ for directory, filename in (
 executable = root / 'receiver_release/ICeClass.exe'
 endpoint = 'https://iceclass.icecreamchat.top'
 prefix = 'ICeClass/教室端/'
-note = '''ICeClass 班伴 · 教室端
-
-将“教室端”整个文件夹解压到固定位置，双击 ICeClass.exe。
-首次输入管理员提供的当前全校绑定码，依次选择年级和班级。班级名单可刷新。
-新版首次运行创建桌面图标。关闭窗口只收起到托盘。
-早读在客户端内全屏打开；长按屏幕空白处 2 秒退出全屏。
-四种早读活动已内置，可离线使用；统计保存在本机，联网后自动补传。
-窗口顶栏“返回”结束本次早读并返回教室首页，“全屏”继续沉浸显示。
-首次使用麦克风需允许权限。Windows 10/11 x64 需要 WebView2，缺少时提供官方安装入口。
-已绑定的设备优先使用托盘或设置里的“检查更新”，原班级绑定和设置保留。
-正式网址已内置。绑定资料保存在本机用户数据目录，无需放在分发文件夹。
-从旧版升级时，先保留旧 config.json；新版首次启动验证并迁移成功后自动移走。
-许可与第三方说明可在托盘菜单“关于 ICeClass 班伴”查看。
-班班语音：从教室首页“班班”登录教师账号，开启麦克风后说“你好班班”。
-收起窗口仍可后台唤醒；连续安排、语音反馈、口头确认、打断和取消沿用账号权限。
-Windows 需有中文语音识别与中文语音、可用的默认麦克风和扬声器。
-说“班班停一下”停止播报，“班班取消操作”请求停止任务，“再见班班”结束对话。
-'''
+program_files = ('install.ps1', '安装或升级.cmd', 'program-manifest.json', '一步使用说明.txt')
+for filename in program_files:
+    assert (root / 'receiver_release' / filename).is_file(), filename
+program = json.loads((root / 'receiver_release/program-manifest.json').read_text('utf-8-sig'))
+release = json.loads((root / 'receiver_release/manifest.json').read_text('utf-8-sig'))
+assert program['sha256'] == release['sha256'] and program['size'] == release['size']
+assert tuple(map(int, program['version'].split('.')))[:3] == tuple(map(int, version.split('.')))
+assert (root / 'receiver_release/install.ps1').read_bytes().startswith(b'\xef\xbb\xbf')
 with zipfile.ZipFile(stage / 'ICeClass-classroom.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
     archive.write(executable, prefix + 'ICeClass.exe')
-    archive.writestr(prefix + '一步使用说明.txt', ('\ufeff版本 ' + version + '\n\n' + note).encode('utf8'))
+    for filename in program_files:
+        archive.write(root / 'receiver_release' / filename, prefix + filename)
     archive.writestr('ICeClass/教师端.url', '[InternetShortcut]\r\nURL=' + endpoint + '\r\n')
 print('Package and classroom download ready.', flush=True)
 PY

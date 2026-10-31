@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
@@ -43,6 +44,31 @@ public sealed class CloudReceiverService
         await StopConnectionAsync();
         await Dispatcher.UIThread.InvokeAsync(() => NotificationPresenter?.Clear());
         await StartAsync(config);
+    }
+
+    internal async Task StopComputerTaskAsync(ReceiverConfig config)
+    {
+        ComputerAgent.BeginTaskStop();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        try
+        {
+            var endpoint = config.Endpoint.TrimEnd('/') + "/api/receiver/computer/stop?deviceId=" + Uri.EscapeDataString(config.DeviceId);
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) {
+                Content = JsonContent.Create(new { classId = config.ClassId }) };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.DeviceToken);
+            using var response = await Http.SendAsync(request, timeout.Token);
+            response.EnsureSuccessStatusCode();
+            using var data = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+            var result = data.RootElement;
+            if (!result.GetProperty("ok").GetBoolean()) throw new InvalidOperationException("平台未确认任务已停止。");
+            ComputerAgent.CompleteTaskStop(result.GetProperty("stoppedThrough").GetInt64(),
+                result.GetProperty("cancelledTurns").GetInt32() + result.GetProperty("cancelledOperations").GetInt32() > 0);
+        }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
+        {
+            AppLog.Error("Stop computer task failed", error);
+            ComputerAgent.TaskStopFailed();
+        }
     }
 
     public async Task StopAsync()
@@ -392,9 +418,9 @@ public sealed class CloudReceiverService
                 {
                     Query = $"deviceId={Uri.EscapeDataString(config.DeviceId)}",
                 }.Uri;
-                playback = _audio.PlayAsync(authenticatedAudioUri, config.DeviceToken, token);
+                playback = _audio.PlayAsync(authenticatedAudioUri, config.DeviceToken, token, NotificationChime.ForLevel(payload.Data.AlertLevel));
             }
-            else _speech.SpeakLatest(payload.Data.Text, payload.Data.TtsSpeed, payload.Data.TtsVolume);
+            else _speech.SpeakLatest(payload.Data.Text, payload.Data.TtsSpeed, payload.Data.TtsVolume, NotificationChime.ForLevel(payload.Data.AlertLevel));
         });
         return playback;
     }

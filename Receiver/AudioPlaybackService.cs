@@ -15,7 +15,10 @@ public sealed class AudioPlaybackService : IDisposable
     private IWavePlayer? _output;
     private bool _disposed;
 
-    public async Task PlayAsync(Uri uri, string deviceToken, CancellationToken cancellationToken)
+    public Task PlayAsync(Uri uri, string deviceToken, CancellationToken cancellationToken)
+        => PlayAsync(uri, deviceToken, cancellationToken, NotificationCue.None);
+
+    internal async Task PlayAsync(Uri uri, string deviceToken, CancellationToken cancellationToken, NotificationCue cue)
     {
         if (!uri.IsAbsoluteUri) throw new InvalidOperationException("语音地址无效。");
         var temporaryPath = Path.Combine(Path.GetTempPath(), $"ICeClass-{Guid.NewGuid():N}.wav");
@@ -46,7 +49,7 @@ public sealed class AudioPlaybackService : IDisposable
                 if (total < 44) throw new InvalidOperationException("语音文件内容不完整。");
             }
 
-            await PlayFileAsync(temporaryPath, linked.Token);
+            await PlayFileAsync(temporaryPath, linked.Token, cue);
         }
         finally
         {
@@ -73,13 +76,13 @@ public sealed class AudioPlaybackService : IDisposable
         }
     }
 
-    private async Task PlayFileAsync(string path, CancellationToken token)
+    private async Task PlayFileAsync(string path, CancellationToken token, NotificationCue cue = NotificationCue.None)
     {
         using var reader = new WaveFileReader(path);
         ValidateWave(reader);
         try
         {
-            await PlayWithOutputAsync(reader, () => new WaveOutEvent(), token);
+            await PlayWithOutputAsync(reader, () => new WaveOutEvent(), token, cue);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -90,11 +93,11 @@ public sealed class AudioPlaybackService : IDisposable
             // Some Windows audio drivers cannot open WaveOutEvent's callback worker.
             AppLog.Error("WaveOutEvent playback failed; trying WaveOut", firstException);
             reader.Position = 0;
-            await PlayWithOutputAsync(reader, () => new WaveOut(), token);
+            await PlayWithOutputAsync(reader, () => new WaveOut(), token, cue);
         }
     }
 
-    private async Task PlayWithOutputAsync(WaveStream reader, Func<IWavePlayer> createOutput, CancellationToken token)
+    private async Task PlayWithOutputAsync(WaveStream reader, Func<IWavePlayer> createOutput, CancellationToken token, NotificationCue cue)
     {
         using var output = createOutput();
         var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -103,7 +106,8 @@ public sealed class AudioPlaybackService : IDisposable
             if (args.Exception is not null) stopped.TrySetException(args.Exception);
             else stopped.TrySetResult();
         };
-        output.Init(reader);
+        if (cue == NotificationCue.None) output.Init(reader);
+        else output.Init(NotificationChime.Prepend(reader.ToSampleProvider(), cue));
         lock (_sync)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(AudioPlaybackService));

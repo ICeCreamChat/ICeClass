@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.5.0</Version>
+    <Version>2.5.1</Version>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
     <Description>班级伴学与管理平台</Description>
@@ -21,12 +21,14 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
     <EmbeddedResource Include="Assets\Banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Voice\*" LogicalName="ICeClass.Voice.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Voice\Asr\*" LogicalName="ICeClass.Voice.Asr.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Voice\Tts\*" LogicalName="ICeClass.Voice.Tts.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Voice\Vad\*" LogicalName="ICeClass.Voice.Vad.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Voice\Speaker\*" LogicalName="ICeClass.Voice.Speaker.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Sounds\notification-*.wav" LogicalName="ICeClass.Notification.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\banban\rig\forearm-right.webp;..\web_controller\assets\banban\rig\socket-*.webp;..\web_controller\assets\banban\rig\iris-*.webp;..\web_controller\assets\banban\rig\lash-*.webp;..\web_controller\assets\banban\rig\smile-*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\reading\**\*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />

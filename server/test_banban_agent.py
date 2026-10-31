@@ -313,9 +313,42 @@ class AgentTest(ServerTestCase):
         self.assertEqual(events[-1]['message']['cards'][0]['topic'], 'platform')
         self.assertIn('platform', json.loads(seen[-1][-1]['content'])['current'])
 
-    async def test_identity_is_local_stable_and_not_overridden_by_previous_chat(self):
+    async def test_connected_identity_answers_keep_generated_wording_and_followup_context(self):
         await self.seed()
         await self.configure()
+        answers = [
+            ('你是谁？', '我是班班，马鞍山市第二十二中学的校园智能助手，由数学学科的许斌老师开发，AI 建模社参与共建。'),
+            ('许斌是谁？', '许斌老师是学校数学学科的教师，也是班班的开发者。'),
+            ('AI 建模社和你有什么关系？', 'AI 建模社由许斌老师创办，参与了我的共建。'),
+        ]
+        previous = []
+        async def provider(agent, cfg, messages, allow_tools=True):
+            question, answer = answers[len(previous)]
+            self.assertEqual(messages[-1]['content'], question)
+            for old_answer in previous:
+                self.assertTrue(any(m['role'] == 'assistant' and m['content'] == old_answer for m in messages))
+            previous.append(answer)
+            for char in answer:
+                yield {'text': char}
+        conversation_id = None
+        with patch.object(BanbanAgent, 'provider', provider):
+            for question, answer in answers:
+                body = {'message': question}
+                if conversation_id:
+                    body['conversationId'] = conversation_id
+                response, events = await self.events(body)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(events[-1]['type'], 'done', events)
+                self.assertEqual(events[-1]['message']['mode'], 'deepseek')
+                self.assertEqual(events[-1]['message']['content'], answer)
+                self.assertEqual(''.join(e['text'] for e in events if e['type'] == 'delta'), answer)
+                self.assertEqual(events[-1]['message']['cards'], [])
+                conversation_id = events[-1]['conversationId']
+        _, saved = await self.json_request('GET', '/api/banban/conversation?conversationId=' + conversation_id)
+        self.assertEqual([m['content'] for m in saved['messages'] if m['role'] == 'assistant'], previous)
+
+    async def test_disconnected_identity_remains_available_without_calling_provider(self):
+        await self.seed()
         user = {'id': self.uid, 'role': 'superadmin'}
         saved = self.agent.history.create(user)
         self.agent.history.append(user, saved['id'], self.agent.access(user), self.scope(),
@@ -329,7 +362,6 @@ class AgentTest(ServerTestCase):
                 self.assertEqual(events[-1]['message']['content'], IDENTITY, question)
                 self.assertEqual(events[-1]['message']['mode'], 'local')
                 self.assertEqual(events[-1]['message']['cards'], [])
-        await self.json_request('PUT', '/api/banban/settings', {'enabled': False, 'model': 'deepseek-flash'}, csrf=True)
         _, events = await self.events({'message': '你叫什么名字？'})
         self.assertEqual(events[-1]['message']['content'], IDENTITY)
 

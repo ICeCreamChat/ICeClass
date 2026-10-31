@@ -107,6 +107,30 @@ internal static class SpeakerFocusChecks
         before = input.Delivered.Count;
         input.Feed(ownerCommand);
         Check(input.Delivered.Count == before, "a new wake replaces the former conversation's speaker instead of accumulating identities");
+        using (var clicked = new OfflineMicrophone(observations.Enqueue))
+        {
+            clicked.StartManually();
+            clicked.Playback(true);
+            clicked.Feed(otherQuestion);
+            Check(clicked.Delivered.IsEmpty && clicked.Barges.IsEmpty,
+                "speech captured during playback cannot establish a clicked conversation's speaker");
+            clicked.Playback(false);
+            clicked.Feed(ownerCommand);
+            Check(clicked.Delivered.Any(r => BanbanVoiceService.Normalize(r.Text) == "打开数学课件"),
+                "a clicked conversation accepts its first complete question without a spoken wake");
+            var clickedBefore = clicked.Delivered.Count;
+            clicked.Feed(otherQuestion);
+            Check(clicked.Delivered.Count == clickedBefore,
+                "a clicked conversation rejects bystanders after its first speaker is established");
+            clicked.Feed(WindowsVoice("需要你打开它"));
+            Check(clicked.Delivered.Count > clickedBefore,
+                "a clicked conversation keeps following its first speaker");
+            clicked.Standby();
+            clickedBefore = clicked.Delivered.Count;
+            clicked.Feed(otherQuestion, waitForResult: false);
+            Check(clicked.Delivered.Count == clickedBefore && clicked.Failures.IsEmpty,
+                "ending a clicked conversation clears speaker enrollment and does not accept another speaker");
+        }
         Check(input.Failures.IsEmpty, "the complete input path finishes without capture or inference errors");
         File.WriteAllText(Path.Combine(output, "speaker-focus-checks.json"), JsonSerializer.Serialize(new {
             source = "two synthetic voices fed directly into the real keyword/VAD/recognition path; no microphone capture or playback",
@@ -137,6 +161,21 @@ internal static class SpeakerFocusChecks
             passed &= matched == expected;
             rows.Add(new { name, matched, expected, milliseconds = watch.Elapsed.TotalMilliseconds });
             Console.WriteLine($"{(matched == expected ? "PASS" : "FAIL")} public spoken fixture {name}: {matched}; {watch.ElapsedMilliseconds} ms");
+        }
+        // The same speaker can score lower on a short phrase than on the
+        // complete recording. Keep this real acoustic regression alongside
+        // equally short excerpts from the other speakers.
+        foreach (var (name, expected) in new[] {
+            ("test-fangjun-test-sr-1.wav", true),
+            ("test-leijun-test-sr-1.wav", false),
+            ("test-liudehua-test-sr-1.wav", false)
+        })
+        {
+            var samples = Audio(name).Skip(2 * 16000).Take(16000).ToArray();
+            var matched = focus.Matches(samples);
+            passed &= matched == expected;
+            rows.Add(new { name, excerptStartSeconds = 2, excerptSeconds = 1, matched, expected });
+            Console.WriteLine($"{(matched == expected ? "PASS" : "FAIL")} short public spoken fixture {name}: {matched}");
         }
         focus.Clear();
         var cleared = !focus.Matches(Audio("test-fangjun-test-sr-1.wav"));
@@ -211,6 +250,12 @@ internal static class SpeakerFocusChecks
             typeof(BanbanEchoMicrophone).GetField("_ready", Private)!.SetValue(_echo, enabled ? 1 : 0);
         }
         internal void Standby() => _audio.SetConversation(false, DateTime.MinValue);
+        internal void StartManually()
+        {
+            _audio.DiscardUtterance();
+            _audio.SetConversation(true, DateTime.MinValue);
+            _audio.FocusNextUtterance();
+        }
         internal void Feed(float[] samples, bool waitForResult = true)
         {
             _finished.Reset();

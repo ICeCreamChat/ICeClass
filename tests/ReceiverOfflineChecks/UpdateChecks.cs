@@ -15,7 +15,8 @@ internal static class UpdateChecks
         using var stop = new CancellationTokenSource();
         var bytes = new byte[512 * 1024]; new Random(17).NextBytes(bytes);
         var version = "99.0.1"; var mode = "interrupt"; string? observedRange = null; var downloadCount = 0;
-        var sha = () => Convert.ToHexString(SHA256.HashData(bytes));
+        long? declaredSize = null; string? declaredHash = null;
+        var sha = () => declaredHash ?? Convert.ToHexString(SHA256.HashData(bytes));
         var serving = Task.Run(async () =>
         {
             while (!stop.IsCancellationRequested)
@@ -28,11 +29,18 @@ internal static class UpdateChecks
                     if (context.Request.Headers["Authorization"] != "Bearer fixture") { response.StatusCode = 401; response.Close(); continue; }
                     if (context.Request.Url!.AbsolutePath == "/api/receiver/update")
                     {
-                        var manifest = JsonSerializer.SerializeToUtf8Bytes(new { available = true, version, size = bytes.Length, sha256 = sha(), downloadUrl = "/file" });
+                        var manifest = JsonSerializer.SerializeToUtf8Bytes(new { available = true, version, size = declaredSize ?? bytes.Length, sha256 = sha(), downloadUrl = "/file" });
                         response.ContentLength64 = manifest.Length; response.ContentType = "application/json";
                         await response.OutputStream.WriteAsync(manifest); response.Close(); continue;
                     }
                     ++downloadCount; observedRange = context.Request.Headers["Range"];
+                    if (mode == "large")
+                    {
+                        response.ContentLength64 = declaredSize!.Value;
+                        for (long written = 0; written < declaredSize; written += bytes.Length)
+                            await response.OutputStream.WriteAsync(bytes.AsMemory(0, (int)Math.Min(bytes.Length, declaredSize.Value - written)));
+                        response.Close(); continue;
+                    }
                     var offset = observedRange is null ? 0 : int.Parse(observedRange.Split('=')[1].TrimEnd('-'));
                     if (mode == "ignore-range") offset = 0;
                     if (offset > 0)
@@ -72,7 +80,7 @@ internal static class UpdateChecks
         try
         {
             // Unique fixture versions only; never install or touch a running application.
-            foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4" })
+            foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4", "99.0.5", "99.0.6" })
                 foreach (var suffix in new[] { ".download", ".download.json", ".exe" }) File.Delete(Path.Combine(directory, "ICeClass-" + name + suffix));
             await Interrupted();
             Check(File.Exists(Partial()) && new FileInfo(Partial()).Length is > 0 and < 524288, "interrupted update retains downloaded bytes");
@@ -98,12 +106,27 @@ internal static class UpdateChecks
             Check(File.Exists(Partial()) && new FileInfo(Partial()).Length > 0, "pausing an update for a lesson retains its partial download");
             ready = await updates.CheckAndDownloadAsync(config, null, default);
             Check(File.ReadAllBytes(ready.DownloadedPath!).SequenceEqual(bytes), "a paused update can finish on the next idle check");
+            version = "99.0.5"; mode = "large"; declaredSize = 251L * 1024 * 1024;
+            using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                for (long written = 0; written < declaredSize; written += bytes.Length)
+                    hash.AppendData(bytes.AsSpan(0, (int)Math.Min(bytes.Length, declaredSize.Value - written)));
+                declaredHash = Convert.ToHexString(hash.GetHashAndReset());
+            }
+            ready = await updates.CheckAndDownloadAsync(config, null, default);
+            Check(new FileInfo(ready.DownloadedPath!).Length == declaredSize,
+                "a bundled voice update larger than the old 250 MiB limit downloads and passes SHA256");
+            version = "99.0.6"; declaredSize = 1024L * 1024 * 1024 + 1; before = downloadCount;
+            var rejected = false;
+            try { await updates.CheckAndDownloadAsync(config, null, default); }
+            catch (InvalidOperationException) { rejected = true; }
+            Check(rejected && downloadCount == before, "an update above the 1 GiB bound is rejected before download");
             return checks;
         }
         finally
         {
             stop.Cancel(); listener.Stop(); await serving;
-            foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4" })
+            foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4", "99.0.5", "99.0.6" })
                 foreach (var suffix in new[] { ".download", ".download.json", ".exe" }) File.Delete(Path.Combine(directory, "ICeClass-" + name + suffix));
         }
     }

@@ -178,6 +178,7 @@ internal sealed class BanbanLocalAudio : IDisposable
     private readonly Action<int, BanbanSpeechResult>? _bargeIn;
     private readonly object _listeningLock = new();
     private ListeningWindow _listening = new(false, false, DateTime.MinValue, 0);
+    private bool _focusNextUtterance;
     private long _lastLevel;
     private int _stopped, _faulted;
     private bool _started, _disposed;
@@ -212,7 +213,13 @@ internal sealed class BanbanLocalAudio : IDisposable
             () => { recognizer.Dispose(); _speakerFocus.Dispose(); });
         _capture = new WaveInEvent { DeviceNumber = index, WaveFormat = new WaveFormat(16000, 16, 1), BufferMilliseconds = 50 };
         _capture.DataAvailable += Capture;
-        _capture.RecordingStopped += (_, e) => { if (e.Exception is not null) Fail(e.Exception); };
+        _capture.RecordingStopped += (_, e) =>
+        {
+            // Some drivers end capture without an exception after an audio
+            // interruption. Our own Stop marks _stopped before stopping capture.
+            // Treat any other stop as a lost input so the voice service retries.
+            Fail(e.Exception ?? new IOException("麦克风录音意外停止，正在重新连接。"));
+        };
         _echo = new BanbanEchoMicrophone((pcm, count) => {
             var window = Volatile.Read(ref _listening);
             Capture(pcm, count, window, echoCancelled: true);
@@ -245,13 +252,22 @@ internal sealed class BanbanLocalAudio : IDisposable
         {
             var current = _listening;
             if (current.Enabled == enabled && (!enabled || current.NotBefore == notBefore && current.ControlsOnly == controlsOnly)) return;
-            if (current.Enabled && !enabled) _speakerFocus.Clear();
+            if (current.Enabled && !enabled) { _speakerFocus.Clear(); _focusNextUtterance = false; }
             Volatile.Write(ref _listening, new(enabled, controlsOnly, notBefore, current.Generation + 1,
                 preserveUtterance && current.ControlsOnly && enabled && !controlsOnly ? current.Generation : -1));
         }
     }
     internal bool IsCurrent(int generation) => Volatile.Read(ref _listening) is { Enabled: true } window
         && (window.Generation == generation || window.ContinueFrom == generation);
+    internal void FocusNextUtterance()
+    {
+        lock (_listeningLock)
+        {
+            // A click has no spoken wake to identify its speaker. Establish the
+            // conversation from its first complete utterance instead.
+            _speakerFocus.Clear(); _focusNextUtterance = true;
+        }
+    }
     internal void DiscardUtterance()
     {
         lock (_listeningLock)
@@ -331,7 +347,10 @@ internal sealed class BanbanLocalAudio : IDisposable
                     var samples = wakeFrames.SelectMany(samples => samples).ToArray();
                     var wake = BanbanVoiceService.WakeRemainder(keyword) is not null;
                     if (wake ? _speakerFocus.Focus(samples) : _speakerFocus.Matches(samples))
-                    { _observe?.Invoke(new("keyword", frame.Window.ControlsOnly, frame.Window.Generation, keyword)); _keyword(keyword); }
+                    {
+                        if (wake) { lock (_listeningLock) _focusNextUtterance = false; }
+                        _observe?.Invoke(new("keyword", frame.Window.ControlsOnly, frame.Window.Generation, keyword)); _keyword(keyword);
+                    }
                     else _observe?.Invoke(new("speaker-rejected", frame.Window.ControlsOnly, frame.Window.Generation));
                 }
                 if (!window.Enabled || frame.CapturedAt < window.NotBefore) continue;
@@ -361,8 +380,20 @@ internal sealed class BanbanLocalAudio : IDisposable
                             else _observe?.Invoke(new("speaker-rejected", false, window.Generation, Final: true));
                         }
                     }
-                    else if (!_decoder.Enqueue(audio, window.Generation, window.ControlsOnly))
-                        Fail(new IOException("本机语音识别暂时繁忙，请稍后重新说一遍。"));
+                    else
+                    {
+                        if (audio.Final && !audio.DuringPlayback && !window.ControlsOnly)
+                        {
+                            lock (_listeningLock)
+                            {
+                                if (_focusNextUtterance && ReferenceEquals(window, _listening)
+                                    && _speakerFocus.Focus(audio.Samples))
+                                    _focusNextUtterance = false;
+                            }
+                        }
+                        if (!_decoder.Enqueue(audio, window.Generation, window.ControlsOnly))
+                            Fail(new IOException("本机语音识别暂时繁忙，请稍后重新说一遍。"));
+                    }
                 }
             }
         }
@@ -385,7 +416,9 @@ internal sealed class BanbanLocalAudio : IDisposable
         if (result.DuringPlayback)
         {
             var control = BanbanVoiceService.SpeechControl(result.Text);
-            if (control is not null)
+            // A preview may be only the opening of “退下吧是什么意思”.
+            // Pausing playback may happen early; leaving waits for the full utterance.
+            if (control is not null && (result.Final || BanbanVoiceService.Intent(control) != "leave"))
             {
                 _observe?.Invoke(new("control", true, job.Generation, control));
                 _result(new(control, true, DuringPlayback: true), job.Generation);

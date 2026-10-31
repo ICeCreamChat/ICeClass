@@ -1697,7 +1697,7 @@ window.ReadingPoems = [
       }
     },
     showVideoFailure() {
-      if (active && mode === 'classic') showMessage('兔子视频没有找到。请把“早读陪伴素材”文件夹与这个 HTML 放在一起，或保留原来的两个视频文件，再点“返回开始”重试。', 'error');
+      if (active && mode === 'classic') showMessage('兔子视频未找到。请检查素材文件后重新开始活动。', 'error');
     }
   };
   window.ReadingRocketBridge = {
@@ -1720,7 +1720,7 @@ window.ReadingPoems = [
     let source;
     try { source = await window.ReadingAssets.text(rocket ? 'rocket.txt' : 'classic.txt'); }
     catch (error) {
-      if (attempt === gameLoad && active && mode === selected) showMessage(error.message + ' 点“返回开始”重试。', 'error');
+      if (attempt === gameLoad && active && mode === selected) showMessage(error.message + ' 请重新开始活动。', 'error');
       return;
     }
     if (attempt !== gameLoad || !active || mode !== selected) return;

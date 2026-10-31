@@ -345,11 +345,31 @@ internal static class ClassroomAgentDocuments
         // window, including a particular Excel instance. PowerPoint's editor
         // DocumentWindow does not publish an HWND property.
         GetWindowThreadProcessId(handle, out var process);
+        // WPS hosts its visible frame and native editor in separate processes.
+        // Only admit descendant editors from the exact same executable; the
+        // global active object may belong to an unrelated WPS document.
+        var editorProcesses = new Dictionary<uint, bool>();
+        string ProcessPath(uint pid)
+        {
+            try
+            {
+                using var owner = Process.GetProcessById(checked((int)pid));
+                return ClassroomAgentPolicy.ApplicationPath(owner.MainModule?.FileName ?? "");
+            }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException) { return ""; }
+        }
+        var hostPath = kind.StartsWith("wps-", StringComparison.Ordinal) ? ProcessPath(process) : "";
         var children = new List<nint> { handle };
         EnumChildWindows(handle, (child, _) =>
         {
             GetWindowThreadProcessId(child, out var pid);
-            if (IsWindowVisible(child) && pid == process && children.Count < 120) children.Add(child);
+            if (!IsWindowVisible(child)) return true;
+            if (!editorProcesses.TryGetValue(pid, out var approved))
+            {
+                approved = pid == process || hostPath.Length > 0 && string.Equals(hostPath, ProcessPath(pid), StringComparison.OrdinalIgnoreCase);
+                editorProcesses[pid] = approved;
+            }
+            if (approved && children.Count < 120) children.Add(child);
             return children.Count < 120;
         }, 0);
         object? selected = null;

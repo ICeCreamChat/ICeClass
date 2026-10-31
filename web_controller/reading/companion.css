@@ -6,8 +6,14 @@
 .particle-preparation-art::after { display: none; }
 .particle-preparation-art .particle-cover { position: absolute; width: 100%; height: 100%; inset: 0; object-fit: contain; filter: drop-shadow(0 12px 14px #2b64a820); }
 html[data-desktop="true"] #classic-fullscreen { display: none; }
-/* The native toolbar already provides the title and navigation on the desktop home. */
+/* Match the native toolbar's 16 DIP edge inset across both rows. */
+html[data-desktop="true"] .classic-toolbar { padding-inline: 16px; gap: 16px; }
+html[data-desktop="true"] .classic-toolbar .quiet-button { font-weight: 600; }
+html[data-desktop="true"] .classic-toolbar .brand { min-width: 0; }
+html[data-desktop="true"] .classic-toolbar .brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-desktop="true"] .classic-toolbar > div:last-child { flex-shrink: 0; }
 html[data-desktop="true"] body:has(#home-view:not([hidden])) .classic-toolbar { display: none; }
+html[data-desktop="true"] #reading-session-status > strong { display: none; }
 html[data-desktop="true"] #home-view { height: 100%; }
 @media (max-width: 760px) { .particle-preparation-art { max-width: 310px; max-height: none; } }
 

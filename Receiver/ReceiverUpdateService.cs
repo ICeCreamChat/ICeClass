@@ -8,7 +8,8 @@ namespace ICeClass.Receiver;
 
 public sealed class ReceiverUpdateService
 {
-    private const long MaximumDownloadBytes = 250L * 1024 * 1024;
+    // Offline ASR and neural speech are bundled in the classroom executable.
+    private const long MaximumDownloadBytes = 1024L * 1024 * 1024;
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(10) };
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 

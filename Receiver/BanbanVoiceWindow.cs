@@ -9,7 +9,7 @@ using Microsoft.Win32;
 
 namespace ICeClass.Receiver;
 
-/// <summary>A persistent authenticated teacher session; hiding the window keeps wake listening alive.</summary>
+/// <summary>A classroom-bound teacher session; hiding the window keeps wake listening alive.</summary>
 internal sealed class BanbanVoiceWindow : Window
 {
     private readonly ReceiverConfig _binding;
@@ -19,20 +19,23 @@ internal sealed class BanbanVoiceWindow : Window
     private readonly BanbanPetWindow _pet;
     private readonly Action _stopComputer;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly TextBlock _status = ClassroomStyle.Text("正在打开班班…", 16, muted: true);
+    private readonly TextBlock _status = ClassroomStyle.Text("正在关联班主任账号…", 16, muted: true);
     private readonly Border _notice;
-    private bool _canClose, _started, _background, _pageReady, _authorized, _suspended;
+    private bool _canClose, _started, _background, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed;
     internal event Action<string>? VoiceStatusChanged;
 
     internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null)
     {
         // The receiver updates its configuration object in place on re-binding.
-        // Keep an immutable identity snapshot, without retaining the device token.
-        _binding = new ReceiverConfig { Endpoint = binding.Endpoint, DeviceId = binding.DeviceId, ClassId = binding.ClassId, ClassName = binding.ClassName };
+        // Keep an immutable identity snapshot. The device token stays in native
+        // memory and is only attached to this origin's API requests, never JS.
+        _binding = new ReceiverConfig { Endpoint = binding.Endpoint, DeviceId = binding.DeviceId, DeviceToken = binding.DeviceToken,
+            ClassId = binding.ClassId, ClassName = binding.ClassName };
         _stopComputer = stopComputer;
         _origin = new Uri(binding.Endpoint.TrimEnd('/') + "/");
         _voice = new BanbanVoiceService(enabled ?? BanbanVoicePreferences.Load());
-        _pet = new BanbanPetWindow(BringForward, StartConversation, () => _voice.CancelTask(), SetVoiceEnabled, petPreferencePath);
+        _pet = new BanbanPetWindow(BringForward, StartConversation, () => _voice.CancelTask(), SetVoiceEnabled, petPreferencePath)
+            { SpeechOpening = () => _voice.SpeechMouthOpening };
         SystemEvents.SessionSwitch += SessionSwitch;
         SystemEvents.PowerModeChanged += PowerChanged;
         ClassroomStyle.Apply(this);
@@ -56,8 +59,9 @@ internal sealed class BanbanVoiceWindow : Window
             if (_canClose) return;
             _pet.Present(e);
             if (e.Kind == "cancel") _stopComputer();
+            if (e.Kind == "leave") Hide();
             if (e.Kind == "state") VoiceStatusChanged?.Invoke(e.Text);
-            Send(new { type = "banban-voice", kind = e.Kind, text = e.Text, state = e.State, enabled = e.Enabled, level = e.Level });
+            Send(new { type = "banban-voice", kind = e.Kind, text = e.Text, state = e.State, enabled = e.Enabled, level = e.Level, conversation = e.Conversation });
         });
         Closing += (_, e) =>
         {
@@ -67,7 +71,10 @@ internal sealed class BanbanVoiceWindow : Window
         Closed += (_, _) => { _pet.Shutdown(); SystemEvents.SessionSwitch -= SessionSwitch; SystemEvents.PowerModeChanged -= PowerChanged; _lifetime.Cancel(); _voice.Dispose(); _browser.DisposeBrowser(); _lifetime.Dispose(); };
     }
 
-    internal bool Matches(ReceiverConfig binding) => _binding.Endpoint == binding.Endpoint && _binding.DeviceId == binding.DeviceId && _binding.ClassId == binding.ClassId;
+    internal bool Matches(ReceiverConfig binding) => _binding.Endpoint == binding.Endpoint && _binding.DeviceId == binding.DeviceId
+        && _binding.DeviceToken == binding.DeviceToken && _binding.ClassId == binding.ClassId && _binding.ClassName == binding.ClassName;
+
+    internal void CancelCurrentTask() => _voice.CancelTask();
 
     internal async Task StartAsync(bool background = false)
     {
@@ -89,10 +96,22 @@ internal sealed class BanbanVoiceWindow : Window
             core.Settings.IsPasswordAutosaveEnabled = false;
             core.Settings.IsGeneralAutofillEnabled = false;
             core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.Document);
+            core.WebResourceRequested += (_, e) =>
+            {
+                if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var address)
+                    || address.Scheme != _origin.Scheme || address.Authority != _origin.Authority
+                    || !address.AbsolutePath.StartsWith("/api/", StringComparison.Ordinal)) return;
+                e.Request.Headers.SetHeader("Authorization", "Bearer " + _binding.DeviceToken);
+                e.Request.Headers.SetHeader("X-ICeClass-Device", _binding.DeviceId);
+                e.Request.Headers.SetHeader("X-ICeClass-Class", _binding.ClassId);
+                e.Request.Headers.RemoveHeader("Cookie");
+            };
             core.NavigationStarting += (_, e) =>
             {
                 if (!Allowed(e.Uri)) { e.Cancel = true; return; }
-                _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); _notice.IsVisible = true;
+                _connectionFailed = _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); _notice.IsVisible = true;
+                _status.Text = "正在关联班主任账号…";
             };
             core.NewWindowRequested += (_, e) => e.Handled = true;
             core.DownloadStarting += (_, e) => e.Cancel = true;
@@ -107,12 +126,12 @@ internal sealed class BanbanVoiceWindow : Window
             };
             core.NavigationCompleted += (_, e) =>
             {
-                if (!e.IsSuccess) { _status.Text = "班班暂时连不上，请检查网络后重新连接。"; _notice.IsVisible = true; return; }
-                _notice.IsVisible = false;
+                if (!e.IsSuccess) { _status.Text = "班班暂时连不上，请检查网络后重新连接。"; _notice.IsVisible = true; ReportCallFailure(); return; }
+                _notice.IsVisible = !_authorized;
                 if (_background) { Hide(); Opacity = 1; ShowInTaskbar = true; _background = false; }
             };
-            core.ProcessFailed += (_, _) => { _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); _notice.IsVisible = true; _status.Text = "班班窗口已中断，请重新连接。"; };
-            await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window, 'ICeClassVoiceHost', {value:Object.freeze({version:1}),writable:false});document.addEventListener('DOMContentLoaded',()=>document.documentElement.classList.add('bb-native-voice-page'),{once:true});");
+            core.ProcessFailed += (_, _) => { _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); _notice.IsVisible = true; _status.Text = "班班窗口已中断，请重新连接。"; ReportCallFailure(); };
+            await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window, 'ICeClassVoiceHost', {value:Object.freeze({version:1,classroomAccount:true}),writable:false});document.addEventListener('DOMContentLoaded',()=>document.documentElement.classList.add('bb-native-voice-page'),{once:true});");
             core.Navigate(_origin.AbsoluteUri);
         }
         catch (Exception error) when (error is not OperationCanceledException)
@@ -121,6 +140,7 @@ internal sealed class BanbanVoiceWindow : Window
             AppLog.Error("Open Banban voice window failed", error);
             _status.Text = "班班窗口无法打开，请检查 WebView2 运行组件后重试。";
             _notice.IsVisible = true; Opacity = 1; ShowInTaskbar = true;
+            ReportCallFailure();
         }
     }
 
@@ -143,9 +163,24 @@ internal sealed class BanbanVoiceWindow : Window
         if (kind == "authorized")
         {
             _authorized = _pageReady && root.TryGetProperty("value", out var ready) && ready.ValueKind == JsonValueKind.True;
-            _voice.SetReady(!_suspended && _authorized); return;
+            if (_authorized) _connectionFailed = false;
+            _notice.IsVisible = !_authorized;
+            if (!_authorized) _status.Text = "班级关联已变化，请重新连接班班。";
+            _voice.SetReady(!_suspended && _authorized);
+            // Chat can mount before its class list arrives; the page rechecks
+            // authorization once that request completes. Keep the call queued.
+            if (_pendingConversation && _authorized) StartConversation();
+            return;
         }
-        if (kind == "logout") { _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); return; }
+        if (kind == "identity-error")
+        {
+            _authorized = false; _voice.SetReady(false); _stopComputer();
+            var message = root.TryGetProperty("text", out var error) && error.ValueKind == JsonValueKind.String
+                ? error.GetString() : null;
+            _status.Text = string.IsNullOrWhiteSpace(message) ? "班主任账号暂时无法关联，请重新连接。" : message[..Math.Min(message.Length, 300)];
+            _notice.IsVisible = true; ReportCallFailure(); return;
+        }
+        if (kind == "logout") { _pendingConversation = _pageReady = _authorized = false; _pet.SetPreparing(false); _voice.SetReady(false); _stopComputer(); return; }
         if (kind == "hide") { Hide(); return; }
         if (kind == "enabled")
         {
@@ -165,7 +200,14 @@ internal sealed class BanbanVoiceWindow : Window
                 break;
             case "stop-speech": _voice.StopSpeaking(); break;
             case "standby": _voice.Standby(); break;
+            case "leave":
+                if (root.TryGetProperty("conversation", out var conversation) && conversation.TryGetInt64(out var generation))
+                    _voice.Leave(generation);
+                break;
             case "work": _voice.SetWorkState(text); break;
+            case "task-result":
+                if (text is "succeeded" or "failed" or "cancelled") _pet.Present(new("task-result", State: text));
+                break;
         }
     }
     private void Send(object message)
@@ -186,17 +228,41 @@ internal sealed class BanbanVoiceWindow : Window
     {
         if (_canClose) return;
         _suspended = value;
+        if (value) _pendingConversation = false;
         _pet.Suspend(value);
         _voice.SetReady(!value && _pageReady && _authorized);
         if (value) { _stopComputer(); Send(new { type = "banban-voice", kind = "suspended" }); }
     });
-    private void SetVoiceEnabled(bool enabled) { BanbanVoicePreferences.Save(enabled); _voice.SetEnabled(enabled); }
-    private void StartConversation()
+    private void SetVoiceEnabled(bool enabled)
+    {
+        if (!enabled) { _pendingConversation = false; _pet.SetPreparing(false); }
+        BanbanVoicePreferences.Save(enabled); _voice.SetEnabled(enabled);
+    }
+    internal void StartConversation()
     {
         if (_suspended || _canClose) return;
-        if (!_pageReady || !_authorized) { BringForward(); return; }
+        _pet.ShowPet(true);
+        // Keep the invisible host alive until WebView initialization finishes.
+        if (!_background) Hide();
+        if (!_pageReady || !_authorized)
+        {
+            if (_connectionFailed) { BringForward(); return; }
+            _pendingConversation = true;
+            _pet.SetPreparing(true);
+            return;
+        }
+        _pendingConversation = false;
+        _pet.SetPreparing(true);
         if (!_voice.Enabled) SetVoiceEnabled(true);
         _voice.StartConversation();
+    }
+    private void ReportCallFailure()
+    {
+        _connectionFailed = true;
+        _pet.SetPreparing(false);
+        if (!_pendingConversation) return;
+        _pendingConversation = false;
+        BringForward();
     }
     internal bool CompanionVisible => _pet.IsVisible;
     internal void SetInClass(bool value) => _pet.SetInClass(value);

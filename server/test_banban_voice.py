@@ -216,6 +216,28 @@ class VoiceTest(ServerTestCase):
         self.assertEqual(''.join(e['text'] for e in speech), events[-1]['message']['content'])
         self.assertEqual(len({e['turnId'] for e in speech}), 1)
 
+    async def test_connected_voice_identity_uses_generated_words_for_display_speech_and_history(self):
+        await self.enroll_test_device()
+        await self.json_request('PUT', '/api/banban/settings', {
+            'enabled': True, 'model': 'deepseek-flash', 'apiKey': 'fixture-only-not-a-secret'}, csrf=True)
+        answer = '我叫班班，是马鞍山市第二十二中学的校园助手。许斌老师负责开发，他创办的 AI 建模社参与共建。'
+        async def provider(agent, config, messages, allow_tools=True):
+            for char in answer:
+                yield {'text': char}
+        with patch.object(BanbanAgent, 'provider', provider):
+            response, events = await self.events({'message': '你是谁', 'voice': {'mode': 'voice'}})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(events[-1]['type'], 'done', events)
+        self.assertEqual(events[-1]['message']['mode'], 'deepseek')
+        self.assertEqual(events[-1]['message']['content'], answer)
+        self.assertEqual(events[-1]['message']['cards'], [])
+        self.assertEqual(''.join(e['text'] for e in events if e['type'] == 'delta'), answer)
+        speech = [e for e in events if e['type'] == 'speech']
+        self.assertTrue(speech and speech[-1]['end'])
+        self.assertEqual(''.join(e['text'] for e in speech), answer)
+        _, saved = await self.json_request('GET', '/api/banban/conversation')
+        self.assertEqual(saved['messages'][-1]['content'], answer)
+
 
 class SpokenAnswerTest(TestCase):
     def test_sum_formula_reads_subscripts_and_preserves_the_grouped_numerator(self):

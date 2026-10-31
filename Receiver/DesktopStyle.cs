@@ -4,11 +4,19 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using System.Runtime.InteropServices;
 
 namespace ICeClass.Receiver;
 
 internal static class DesktopStyle
 {
+    internal static bool AnimationsEnabled() => !OperatingSystem.IsWindows() ||
+        !SystemParametersInfo(0x1042 /* SPI_GETCLIENTAREAANIMATION */, 0, out var enabled, 0) || enabled != 0;
+
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint action, uint parameter, out int value, uint flags);
+
     public static void KeepWindowInWorkingArea(Window window)
     {
         var queued = false;
