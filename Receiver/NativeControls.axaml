@@ -12,6 +12,13 @@
   </Style>
   <!-- The Windows tray and in-window context menus share one surface and item
        styling while retaining their own native keyboard and dismissal handling. -->
+  <Style Selector="Border.native-flyout-surface">
+    <Setter Property="Background" Value="#F5F6F6F6" />
+    <Setter Property="BorderBrush" Value="#18000000" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="BoxShadow" Value="0 5 18 0 #24000000" />
+  </Style>
   <Style Selector="MenuFlyoutPresenter, ContextMenu">
     <Style.Resources>
       <SolidColorBrush x:Key="MenuFlyoutPresenterBackground">#F5F6F6F6</SolidColorBrush>
@@ -30,10 +37,8 @@
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Template">
       <ControlTemplate>
-        <Border Name="LayoutRoot" Margin="16,12,16,20" Padding="6" RenderOptions.TextRenderingMode="Antialias"
-                Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
-                BorderBrush="#18000000" BorderThickness="1"
-                BoxShadow="0 5 18 0 #24000000">
+        <Border Name="LayoutRoot" Classes="native-flyout-surface" Margin="16,12,16,20" Padding="6" RenderOptions.TextRenderingMode="Antialias"
+                Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
           <ScrollViewer Theme="{StaticResource FluentMenuScrollViewer}"
                         HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"
@@ -163,6 +168,27 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Foreground" Value="#697586" />
+  </Style>
+  <Style Selector="Button.native-flyout-action">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Foreground" Value="#36516E" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="8,6" />
+  </Style>
+  <Style Selector="Button.native-flyout-action:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#14000000" />
+    <Setter Property="Foreground" Value="#171717" />
+  </Style>
+  <Style Selector="Button.native-flyout-action:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#20000000" />
+    <Setter Property="Foreground" Value="#171717" />
+  </Style>
+  <Style Selector="Button.native-flyout-action:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="#8C939B" />
   </Style>
   <Style Selector="Button.native-stop">
     <Setter Property="Foreground" Value="#A5362F" />

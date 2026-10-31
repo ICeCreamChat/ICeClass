@@ -31,6 +31,8 @@ internal sealed class DesktopWindow : Window
     private bool _initialized, _disposed, _checkingUpdate, _navigated, _needsRestart;
     private WindowState _beforeFullscreen;
     private CancellationTokenSource? _navigationTimeout;
+    private ClassroomVoiceInbox? _voiceInbox;
+    private ClassroomVoiceNoticeWindow? _voiceNotice;
 
     internal DesktopWindow(App app, string endpoint, bool main, string? address = null)
     {
@@ -157,6 +159,12 @@ internal sealed class DesktopWindow : Window
             };
             core.DownloadStarting += DownloadStarting;
             _initialized = true; Navigate();
+            if (_main)
+            {
+                _voiceInbox = new ClassroomVoiceInbox(_endpoint, ReadVoiceSessionAsync);
+                _voiceInbox.Changed += UpdateVoiceNotice;
+                _ = WatchClassroomVoiceAsync(_lifetime.Token);
+            }
         }
         catch (OperationCanceledException) { }
         catch (WebView2RuntimeNotFoundException)
@@ -168,6 +176,41 @@ internal sealed class DesktopWindow : Window
         if (_disposed || _browser.Core is null) return;
         try { await _browser.Core.ExecuteScriptAsync("if(document.fullscreenElement) document.exitFullscreen();"); }
         catch (Exception error) { DesktopLog.Write(error); ShowError("全屏页面暂时中断", "请点击“重新连接”恢复工作台。"); _needsRestart = true; }
+    }
+
+    private async Task<string?> ReadVoiceSessionAsync()
+    {
+        if (_disposed || _browser.Core is null) return null;
+        var cookies = await _browser.Core.CookieManager.GetCookiesAsync(_endpoint + "/api/classroom-voice");
+        return _disposed ? null : cookies.FirstOrDefault(cookie => cookie.Name == "iceclass_session")?.Value;
+    }
+
+    private async Task WatchClassroomVoiceAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            do
+            {
+                try { await _voiceInbox!.RefreshAsync(token); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                catch (Exception error) when (error is HttpRequestException or IOException or System.Text.Json.JsonException)
+                { /* Keep the current reminder through temporary connection failures. */ }
+            }
+            while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { if (!_disposed) DesktopLog.Write(error); }
+    }
+
+    private void UpdateVoiceNotice()
+    {
+        if (_disposed || _voiceInbox is null) return;
+        if (_voiceNotice is not null) { _voiceNotice.UpdateMessages(); return; }
+        if (_voiceInbox.Pending.Count == 0) return;
+        _voiceNotice = new ClassroomVoiceNoticeWindow(_voiceInbox, this);
+        _voiceNotice.Closed += (_, _) => _voiceNotice = null;
+        _voiceNotice.Show();
     }
 
     private void Navigate()
@@ -257,6 +300,7 @@ internal sealed class DesktopWindow : Window
     internal void DisposePage()
     {
         if (_disposed) return; _disposed = true; _lifetime.Cancel(); _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose();
+        _voiceNotice?.Close(); _voiceInbox?.Dispose();
         foreach (var child in _children.ToArray()) child.Close(); _browser.DisposeBrowser();
     }
 }

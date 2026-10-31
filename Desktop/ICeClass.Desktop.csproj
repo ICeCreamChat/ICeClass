@@ -16,6 +16,8 @@
   <ItemGroup>
     <Compile Include="..\Receiver\ReadingBrowser.cs" Link="Shared\ReadingBrowser.cs" />
     <Compile Include="..\Receiver\DesktopStyle.cs" Link="Shared\DesktopStyle.cs" />
+    <Compile Include="..\Receiver\SenseVoiceRecognizer.cs" Link="Shared\SenseVoiceRecognizer.cs" />
+    <EmbeddedResource Include="..\Receiver\Assets\Voice\Asr\manifest.json" LogicalName="ICeClass.Voice.Asr.manifest.json" />
     <Compile Include="..\Receiver\AboutContent.cs" Link="Shared\AboutContent.cs" />
     <Compile Include="..\Receiver\AboutThankYouMascot.cs" Link="Shared\AboutThankYouMascot.cs" />
     <EmbeddedResource Include="..\Receiver\Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
@@ -31,6 +33,8 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.2.5" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
+    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="2.0.0" />
   </ItemGroup>
   <Target Name="UseWebViewCoreOnly" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup><Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" /></ItemGroup>

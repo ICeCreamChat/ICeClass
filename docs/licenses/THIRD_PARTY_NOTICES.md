@@ -102,11 +102,25 @@ SOFTWARE.
 
 其他第三方依赖遵循各自软件包附带的许可证。本说明不改变第三方组件的版权归属及许可条件，也不改变 ICeCreamChat 对项目自身代码所享有的权利。
 
+### NAudio
+
+Windows 教室端和教师端使用 Mark Heath 的 NAudio 2.2.1；教师端仅引用 NAudio.WinMM 及其 NAudio.Core 依赖，用于点击收听后的本地 WAV 播放与转写前的采样率转换。项目来源为 https://github.com/naudio/NAudio ，许可如下：
+
+Copyright 2020 Mark Heath
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ### sherpa-onnx 与本地语音模型
 
 Windows 教室端使用 sherpa-onnx 2.0.0（The Next-gen Kaldi development team / Xiaomi Corporation）和 wenetspeech 3.3M 关键词模型（2024-01-01，epoch-12/avg-2 的量化 encoder、decoder、joiner 与 tokens），用于本机唤醒和带名字的停止口令。引擎及模型声明为 Apache-2.0。模型来源与文件校验值随源码保存在 Receiver/Assets/Voice/manifest.json；录音不随模型保存或上传。
 
 整句识别使用 Alibaba Group / FunAudioLLM 的 SenseVoiceSmall，经 csukuangfj 转换为 sherpa-onnx INT8。转换仓库固定到提交 `2365baeacb507f821a0c8120fcee3d484dba7a07`，分发 `model.int8.onnx` 和 `tokens.txt`，未修改模型权重。模型采用独立的 FunASR Model Open Source License Agreement 1.1，非下方的引擎 Apache-2.0 许可；完整模型协议见本说明末尾及 `SenseVoice-MODEL-LICENSE.txt`。下载来源和文件 SHA-256 保存在 `Receiver/Assets/Voice/Asr/manifest.json`，可使用 `scripts/prepare-banban-asr.py` 重建。
+
+Windows 教师端的可选“转文字”使用同版本 sherpa-onnx 与 SenseVoiceSmall，和班班共用识别实现及本机模型缓存；模型不随教师端程序打包，也不强制下载。仅在用户选择“下载并转文字”时从上述固定版本下载约 228.45 MiB 文件，校验大小与 SHA-256 后使用。音频与转写结果仅在本次弹窗内存中处理，不发送到模型下载站点或新增的识别服务。
 
 对话中的说话人比对使用 Alibaba Group / ModelScope 3D-Speaker 的 CAM++ 中英模型，由 sherpa-onnx 提供 ONNX 转换与本地运行接口。分发的 `3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx` 重命名为 `speaker.onnx`，未修改权重，遵循 Apache-2.0；完整许可见下方及 `3D-Speaker-LICENSE.txt`。来源和 SHA-256 保存在 `Receiver/Assets/Voice/Speaker/manifest.json`，重建脚本为 `scripts/prepare-banban-speaker.py`。当前对话的说话人特征仅保存在内存中，不作为身份认证凭据，不保存为用户声纹档案。
 
