@@ -1,4 +1,20 @@
-# Native island running layers
+# Native Banban artwork
+
+## Original desktop pet artwork (2026-10-30)
+
+The desktop pet again uses `arm-right.webp` and `rig/forearm-right.webp` from
+`web_controller/assets/banban/`, shared with the existing character artwork.
+The original 146 × 219 painted arm keeps its existing bend and palm shape;
+ordinary gestures move the whole cutout, following the island's approach.
+Only the existing cheek-contact reach bends the arm. The book, eyes, mouth,
+badge, bookmark and left arm retain their existing resources.
+
+Both generated right-arm studies were rejected during local review. Their
+`pet-*.webp` resources are no longer used or packaged. Study images remain
+in local `output/` review folders; the retired preparation script is retained
+at `output/banban-original-audit-20261030/rejected-redraw-preparation.py`.
+
+## Native island running layers
 
 `body-running.webp`, `leg-left.webp` and `leg-right.webp` are lossless separations
 of the existing user-supplied Banban artwork at

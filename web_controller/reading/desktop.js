@@ -34,7 +34,11 @@
     cancelHold(); exitPending = false;
     const fullscreen = isFullscreen();
     document.documentElement.dataset.desktopFullscreen = String(fullscreen);
-    for (const doc of documents.keys()) doc.documentElement.dataset.readingTouchFullscreen = String(fullscreen);
+    for (const doc of documents.keys()) {
+      doc.documentElement.dataset.readingTouchFullscreen = String(fullscreen);
+      const button = doc.getElementById('fullscreen-btn');
+      if (button) button.textContent = fullscreen ? '退出全屏' : '全屏';
+    }
     clearTimeout(hintTimer);
     hintEligible = fullscreen;
     updateOverlayState();
@@ -100,8 +104,10 @@
     documents.set(doc, { abort, observer });
     doc.documentElement.dataset.readingTouchFullscreen = String(isFullscreen());
     const style = doc.createElement('style');
-    style.textContent = 'html[data-reading-touch-fullscreen="true"] body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}input,textarea,[contenteditable="true"]{user-select:text;-webkit-user-select:text}';
+    style.textContent = 'html[data-reading-touch-fullscreen="true"] body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}input,textarea,[contenteditable="true"]{user-select:text;-webkit-user-select:text}html[data-reading-touch-fullscreen="false"] #fullscreen-btn{display:none}html[data-reading-touch-fullscreen="false"] #settings-btn{grid-column:1/-1}';
     doc.head.append(style);
+    const fullscreenButton = doc.getElementById('fullscreen-btn');
+    if (fullscreenButton) fullscreenButton.textContent = isFullscreen() ? '退出全屏' : '全屏';
     doc.addEventListener('pointerdown', event => startHold(event, doc), options);
     doc.addEventListener('pointermove', event => {
       if (hold?.doc === doc && event.pointerId === hold.id && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 18) cancelHold();

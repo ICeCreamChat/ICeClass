@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace ICeClass.Receiver;
 
-internal sealed record BanbanVoiceEvent(string Kind, string Text = "", string State = "", bool Enabled = false, int Level = 0);
+internal sealed record BanbanVoiceEvent(string Kind, string Text = "", string State = "", bool Enabled = false, int Level = 0, long Conversation = 0);
 
 /// <summary>Local neural wake, recognition and speech. Microphone audio stays on this computer.</summary>
 internal sealed class BanbanVoiceService : IDisposable
@@ -19,6 +19,7 @@ internal sealed class BanbanVoiceService : IDisposable
     private BanbanLocalAudio? _audio;
     private BanbanSpeechPlayer? _speaker;
     private long _speechGeneration;
+    private long _conversationGeneration;
     private string _streamId = "";
     private int _streamSequence;
     private bool _streamEnded;
@@ -27,6 +28,7 @@ internal sealed class BanbanVoiceService : IDisposable
     private bool _enabled, _ready, _active, _speaking, _disposed;
     private string _workState = "listening", _lastText = "";
     private DateTime _lastActivity = DateTime.UtcNow, _lastHeard, _ignoreUntil, _retryAfter, _speechRetryAfter, _speechProgress;
+    private long _inputDiagnosticAt;
     internal event Action<BanbanVoiceEvent>? Changed;
     internal event Action<BanbanSpeechResult>? Recognition;
     internal event Action<BanbanAudioObservation>? AudioObservation;
@@ -35,6 +37,7 @@ internal sealed class BanbanVoiceService : IDisposable
     internal bool EchoCancellation => _audio?.EchoCancellation == true;
     internal bool NaturalInterruption => _audio?.NaturalInterruption == true;
     internal bool NeuralVoiceReady => _speaker?.Ready == true;
+    internal double SpeechMouthOpening => _speaker?.MouthOpening ?? 0;
     internal string Status { get; private set; } = "语音已关闭";
 
     internal BanbanVoiceService(bool enabled = false)
@@ -75,7 +78,8 @@ internal sealed class BanbanVoiceService : IDisposable
         }
         if (value is "班班取消操作" or "取消操作" or "先别做了" or "算了" or "取消刚才的操作") return "cancel";
         if (InterruptPhrases.Any(phrase => value == phrase || value == "班班" + phrase)) return "interrupt";
-        if (value is "再见班班" or "班班再见" or "结束对话") return "leave";
+        if (value is "再见班班" or "班班再见" or "结束对话"
+            || Regex.IsMatch(value, @"^(?:班班)?请?你?先?(?:退下|离开|回去|去休息|休息)(?:吧|了)?$")) return "leave";
         return "transcript";
     }
 
@@ -84,6 +88,7 @@ internal sealed class BanbanVoiceService : IDisposable
     internal static string? SpeechControl(string text)
     {
         if (HasUnrecognizedSpeech(text)) return null;
+        if (Intent(text) == "leave") return "再见班班";
         var value = Normalize(text);
         foreach (var name in Names)
         {
@@ -98,6 +103,7 @@ internal sealed class BanbanVoiceService : IDisposable
 
     internal static string SpeechText(string text)
     {
+        if (Intent(text) == "leave") return "我先安静等候，需要时再叫我。";
         string Replace(string value, string phrase, string replacement) => Regex.Replace(value,
             string.Join(@"[\s\p{P}\p{S}]*", phrase.Select(c => Regex.Escape(c.ToString()))), replacement);
         foreach (var wake in WakeWords) text = Replace(text, wake, "唤醒词");
@@ -116,7 +122,7 @@ internal sealed class BanbanVoiceService : IDisposable
     internal void SetReady(bool ready) => Post(() =>
     {
         _ready = ready;
-        if (!ready) { StopEngine(); State(_enabled ? "login" : "off", _enabled ? "登录教师账号后启用语音" : "语音已关闭"); }
+        if (!ready) { StopEngine(); State(_enabled ? "login" : "off", _enabled ? "正在关联班主任账号" : "语音已关闭"); }
         else EnsureEngine();
     });
     internal void SetEnabled(bool enabled) => Post(() =>
@@ -129,9 +135,9 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         if (!_enabled || !_ready) return;
         EnsureEngine();
-        if (_audio is null) return;
+        if (_audio is null) { State("error", "麦克风正在恢复，请稍后再呼叫班班。"); return; }
         _lastText = "";
-        BeginConversation("");
+        BeginConversation("", manual: true);
     });
     internal void CancelTask() => Post(() =>
     {
@@ -164,6 +170,16 @@ internal sealed class BanbanVoiceService : IDisposable
     });
     internal void StopSpeaking() => Post(() => { StopSpeech(); _audio?.DiscardUtterance(); if (_active) State(_workState, StateText(_workState)); });
     internal void Standby() => Post(() => { StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭"); });
+    internal void Leave(long conversation) => Post(() =>
+    {
+        if (_active && conversation == _conversationGeneration) LeaveConversation();
+    });
+    private void LeaveConversation()
+    {
+        StopSpeech(); _audio?.DiscardUtterance(); _active = false; _workState = "listening";
+        UpdateListening(); Emit("leave");
+        State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭");
+    }
 
     private void Post(Action action)
     {
@@ -188,7 +204,7 @@ internal sealed class BanbanVoiceService : IDisposable
     private void EnsureEngine()
     {
         if (!_enabled) { State("off", "语音已关闭"); return; }
-        if (!_ready) { State("login", "登录教师账号后启用语音"); return; }
+        if (!_ready) { State("login", "正在关联班主任账号"); return; }
         if (_audio is not null || DateTime.UtcNow < _retryAfter) return;
         State("connecting", "正在准备本机语音…");
         BanbanLocalAudio? audio = null;
@@ -211,7 +227,7 @@ internal sealed class BanbanVoiceService : IDisposable
                 AppLog.Error("Banban microphone capture failed", error);
                 StopEngine(); _retryAfter = DateTime.UtcNow.AddSeconds(5);
                 State("error", "麦克风输入已中断，正在重新连接…");
-            }), observation => AudioObservation?.Invoke(observation), (generation, result) => Post(() =>
+            }), ObserveAudio, (generation, result) => Post(() =>
             {
                 if (!ReferenceEquals(audio, _audio) || !audio!.IsCurrent(generation) || !_active || !audio.NaturalInterruption) return;
                 _bargeUtterance = true;
@@ -225,6 +241,20 @@ internal sealed class BanbanVoiceService : IDisposable
         audio.Start();
         EnsureSpeaker();
         _active = false; State("standby", "等候“你好班班”");
+    }
+
+    private void ObserveAudio(BanbanAudioObservation observation)
+    {
+        AudioObservation?.Invoke(observation);
+        if (observation.Kind == "frames")
+        {
+            var now = Environment.TickCount64;
+            if (now - _inputDiagnosticAt < 5000) return;
+            _inputDiagnosticAt = now;
+        }
+        // Keep microphone decisions diagnosable without recording samples,
+        // transcripts, speaker embeddings or any account information.
+        AppLog.Info(FormattableString.Invariant($"Banban audio: {observation.Kind}; controls={observation.ControlsOnly}; generation={observation.Generation}; final={observation.Final}; characters={observation.Text.Length}; peak={observation.Peak:F4}; frames={observation.Frames}; delayMs={observation.DelayMs:F0}"));
     }
 
     private void Recognized(BanbanSpeechResult result)
@@ -260,22 +290,27 @@ internal sealed class BanbanVoiceService : IDisposable
         if (HasUnrecognizedSpeech(text)) { AskToRepeat(); return; }
         var intent = Intent(text);
         _lastActivity = DateTime.UtcNow;
+        if (intent == "leave") { LeaveConversation(); return; }
         StopSpeech();
-        if (intent == "leave")
-        {
-            _active = false; UpdateListening(); State("standby", "等候“你好班班”"); Emit("leave"); return;
-        }
         if (intent == "interrupt") { _audio?.DiscardUtterance(); _workState = "listening"; State("listening", "您说，我在听"); Emit("interrupt"); return; }
         if (intent == "cancel") { _audio?.DiscardUtterance(); _workState = "listening"; State("listening", "正在停止…"); Emit("cancel"); return; }
         State("thinking", "正在处理…"); Emit("transcript", text.Trim()[..Math.Min(text.Trim().Length, 2000)]);
     }
 
-    private void BeginConversation(string remainder)
+    private void BeginConversation(string remainder, bool manual = false)
     {
+        _conversationGeneration++;
         _audio?.DiscardUtterance();
         StopSpeech(); _active = true; _lastActivity = DateTime.UtcNow; _workState = "listening";
         UpdateListening(); Emit("wake");
-        if (HasUnrecognizedSpeech(remainder)) AskToRepeat();
+        if (manual)
+        {
+            // Clicking already acknowledges the start. Listen immediately so
+            // playback cannot be mistaken for the first conversation speaker.
+            _audio?.FocusNextUtterance(); State("listening", "您说，我在听");
+            Emit("caption", "我在，请说。");
+        }
+        else if (HasUnrecognizedSpeech(remainder)) AskToRepeat();
         else if (remainder.Length == 0) SpeakCore("我在，请说。");
         else { State("thinking", "正在处理…"); Emit("transcript", remainder); }
     }
@@ -385,12 +420,20 @@ internal sealed class BanbanVoiceService : IDisposable
             }
         }
         if (!_active || _speaking || _workState == "thinking") return;
-        if ((DateTime.UtcNow - _lastActivity).TotalSeconds < 90) return;
+        if ((DateTime.UtcNow - _lastActivity).TotalMinutes < 3) return;
         StopSpeech(); _active = false; UpdateListening(); State("standby", "等候“你好班班”"); Emit("idle");
     }
     private static string StateText(string state) => state switch { "thinking" => "正在处理…", "confirming" => "等您确认", _ => "您说，我在听" };
-    private void State(string state, string text) { Status = text; Changed?.Invoke(new("state", text, state, _enabled)); }
-    private void Emit(string kind, string text = "") => Changed?.Invoke(new(kind, text, Enabled: _enabled));
+    private void State(string state, string text)
+    {
+        if (Status != text) AppLog.Info($"Banban voice state: {state}; enabled={_enabled}; ready={_ready}");
+        Status = text; Changed?.Invoke(new("state", text, state, _enabled, Conversation: _conversationGeneration));
+    }
+    private void Emit(string kind, string text = "")
+    {
+        if (kind == "wake") AppLog.Info("Banban voice wake accepted");
+        Changed?.Invoke(new(kind, text, Enabled: _enabled, Conversation: _conversationGeneration));
+    }
     public void Dispose()
     {
         if (_disposed) return;

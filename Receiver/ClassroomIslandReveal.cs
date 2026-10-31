@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -125,10 +124,5 @@ internal sealed class ClassroomIslandReveal : Decorator, IDisposable
         _running = false; _disposed = true;
     }
 
-    internal static bool AnimationsEnabled() => !OperatingSystem.IsWindows() ||
-        !SystemParametersInfo(0x1042 /* SPI_GETCLIENTAREAANIMATION */, 0, out var enabled, 0) || enabled != 0;
-
-    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(uint action, uint parameter, out int value, uint flags);
+    internal static bool AnimationsEnabled() => DesktopStyle.AnimationsEnabled();
 }

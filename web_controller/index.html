@@ -8,7 +8,8 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=13">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=14">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=5">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=22">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=7">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
@@ -23,30 +24,37 @@
   <div id="loading" class="app-loading"><div class="spinner" aria-label="正在加载"></div></div>
 
   <section id="authPage" class="auth-page hidden">
-    <aside class="auth-story" aria-label="ICeClass 班伴介绍"><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>班级陪伴</small></div></div>
+    <div class="auth-layout">
+    <aside class="auth-story" aria-label="ICeClass 班伴介绍"><div class="brand-lockup" translate="no"><strong>ICeClass 班伴</strong></div>
       <h2>班级的每一天，<br>都有好陪伴。</h2>
       <p>从一声晨读，到一次温暖的回应。<br>陪伴课堂，也连接您与每一个班级。</p>
       <img class="auth-art" src="/assets/app-icon.png?v=5" alt="班级陪伴：老师和同学们在黑板前相伴学习" width="512" height="512">
       <div class="auth-features"><span>早读陪伴</span><span>课堂连接</span><span>校园协同</span></div>
     </aside>
-    <div class="auth-card"><div class="brand-lockup"><img src="/assets/app-icon.png?v=5" alt="" width="48" height="48"><div><strong>ICeClass 班伴</strong><small>班级陪伴</small></div></div>      <form id="loginForm" class="hidden">
-        <h1>登录 ICeClass 班伴</h1>
-        <p class="muted">使用学校分配的账号，进入您的班级工作台。</p>
+    <div class="auth-card">
+      <div id="authMascot" class="auth-mascot" data-state="open" aria-hidden="true">
+        <img class="auth-mascot-still" src="/assets/banban/login-rest.webp?v=4" alt="" width="440" height="480" draggable="false">
+        <canvas id="authMascotCanvas" class="auth-mascot-motion" width="220" height="240" data-sprite="/assets/banban/login-motion.webp?v=4"></canvas>
+      </div>
+      <form id="loginForm" class="hidden" aria-labelledby="loginHeading">
+        <h1 id="loginHeading">欢迎回来</h1>
+        <p class="muted">使用学校账号，进入教师工作台。</p>
         <div class="field"><label for="loginUsername">用户名</label><input id="loginUsername" name="username" autocomplete="username" spellcheck="false" autocapitalize="none" required maxlength="64"></div>
-        <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" type="password" autocomplete="current-password" required maxlength="128"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false">显示</button></div></div>
-        <p id="loginError" class="form-error" role="alert"></p>
+        <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="128" aria-describedby="loginError"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false" aria-controls="loginPassword">显示</button></div></div>
+        <p id="loginError" class="form-error" role="alert" tabindex="-1"></p>
         <button id="loginSubmit" class="btn primary block" type="submit">进入工作台</button>
       </form>
 
       <form id="bootstrapForm" class="hidden">
         <h1>初始化超级管理员</h1>
         <p class="muted">系统将创建唯一的超级管理员账号 <strong>ICe</strong>。</p>
-        <div class="field"><label for="bootstrapToken">部署初始化密钥</label><input id="bootstrapToken" type="password" autocomplete="off" required></div>
-        <div class="field"><label for="bootstrapPassword">设置 ICe 密码</label><input id="bootstrapPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
-        <div class="field"><label for="bootstrapPasswordConfirm">再次输入密码</label><input id="bootstrapPasswordConfirm" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="bootstrapToken">部署初始化密钥</label><input id="bootstrapToken" name="bootstrap-token" type="password" autocomplete="off" required></div>
+        <div class="field"><label for="bootstrapPassword">设置 ICe 密码</label><input id="bootstrapPassword" name="new-password" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
+        <div class="field"><label for="bootstrapPasswordConfirm">再次输入密码</label><input id="bootstrapPasswordConfirm" name="new-password-confirm" type="password" autocomplete="new-password" required></div>
         <p id="bootstrapError" class="form-error" role="alert"></p>
         <button class="btn primary block" type="submit">完成初始化</button>
       </form>
+    </div>
     </div>
   </section>
 
@@ -413,6 +421,8 @@
       "use strict";
       const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
+      const nativeClassroom = window.ICeClassVoiceHost?.classroomAccount === true && Boolean(window.chrome?.webview);
+      let classroomIdentityTimer = null;
       const viewVisible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
       let voiceRequest = 0, recentRequest = 0, presenceRequest = 0;
       let recordingRequest = 0, recordingRequested = false, recordingTimer = null;
@@ -621,13 +631,14 @@
       async function api(path, options = {}) {
         const headers = new Headers(options.headers || {});
         if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-        if (state.csrf && !["GET", "HEAD"].includes(options.method || "GET")) headers.set("X-CSRF-Token", state.csrf);
+        if (state.csrf && (nativeClassroom && path !== "/api/session" || !["GET", "HEAD"].includes(options.method || "GET"))) headers.set("X-CSRF-Token", state.csrf);
         const response = await fetch(path, { credentials: "same-origin", ...options, headers });
         const type = response.headers.get("Content-Type") || "";
         const data = type.includes("application/json") ? await response.json() : await response.text();
         if (response.status === 401 && !["/api/session", "/api/auth/login"].includes(path)) {
+          if (nativeClassroom) window.chrome.webview.postMessage({type: "banban-voice", kind: "logout"});
           location.reload();
-          throw new Error("登录已过期，请重新登录。");
+          throw new Error(nativeClassroom ? "班级关联已变化，正在重新连接。" : "登录已过期，请重新登录。");
         }
         if (!response.ok) {
           const error = new Error(data?.error || `请求失败 (${response.status})`);
@@ -641,12 +652,22 @@
       async function start() {
         try {
           const session = await api("/api/session");
-          if (session.authenticated && session.user) enterApp(session.user);
+          if (session.authenticated && session.user) await enterApp(session.user);
+          else if (nativeClassroom) throw new Error("班主任账号暂时无法关联，请重新连接。");
           else {
             const boot = await api("/api/bootstrap");
             showAuth(Boolean(boot.required));
           }
-        } catch {
+        } catch (failure) {
+          if (nativeClassroom) {
+            $("loading").classList.add("hidden");
+            $("authPage").classList.add("hidden");
+            $("appShell").classList.add("hidden");
+            window.chrome.webview.postMessage({type: "banban-voice", kind: "identity-error", text: failure.message || "班主任账号暂时无法关联，请重新连接。"});
+            clearTimeout(classroomIdentityTimer);
+            classroomIdentityTimer = setTimeout(() => state.user ? location.reload() : start(), 15000);
+            return;
+          }
           try {
             const boot = await api("/api/bootstrap");
             showAuth(Boolean(boot.required));
@@ -655,6 +676,21 @@
             $("loginError").textContent = error.message;
           }
         }
+      }
+
+      function watchClassroomIdentity() {
+        if (!nativeClassroom) return;
+        clearTimeout(classroomIdentityTimer);
+        classroomIdentityTimer = setTimeout(async () => {
+          try {
+            const session = await api("/api/session", {cache: "no-store"});
+            if (!session.authenticated || session.user?.id !== state.user?.id || session.user?.csrfToken !== state.csrf) throw new Error("班级关联已变化。");
+            watchClassroomIdentity();
+          } catch {
+            window.chrome.webview.postMessage({type: "banban-voice", kind: "logout"});
+            location.reload();
+          }
+        }, 15000);
       }
 
       function showAuth(needsBootstrap) {
@@ -687,6 +723,7 @@
         state.classroomVoiceTimer = setInterval(() => {
           if (viewVisible('classroom-voice') && !classroomVoiceInUse()) void loadClassroomVoice({background: true}).catch(() => {});
         }, 15000);
+        watchClassroomIdentity();
       }
 
       async function loadClasses() {
@@ -1269,12 +1306,13 @@
           event.preventDefault(); $("loginError").textContent = "";
           const submit = $("loginSubmit");
           if (submit.disabled) return;
-          submit.disabled = true;
+          submit.disabled = true; submit.textContent = "正在登录…";
+          $("loginForm").setAttribute("aria-busy", "true");
           try {
             const result = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ username: $("loginUsername").value, password: $("loginPassword").value }) });
             await enterApp(result.user);
-          } catch (error) { $("loginError").textContent = error.message; }
-          finally { submit.disabled = false; }
+          } catch (error) { $("loginError").textContent = error.message; $("loginError").focus(); }
+          finally { submit.disabled = false; submit.textContent = "进入工作台"; $("loginForm").removeAttribute("aria-busy"); }
         });
         $("bootstrapForm").addEventListener("submit", async event => {
           event.preventDefault(); $("bootstrapError").textContent = "";
@@ -1474,6 +1512,7 @@
     })();
   </script>
   <script nonce="__CSP_NONCE__" src="/ui.js?v=9" defer></script>
+  <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=5" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=10" defer></script>
@@ -1484,7 +1523,7 @@
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=8" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-voice.js?v=6" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-voice.js?v=7" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban.js?v=48" defer></script>
 </body>
 </html>

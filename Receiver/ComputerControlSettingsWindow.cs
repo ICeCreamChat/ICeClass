@@ -10,7 +10,7 @@ namespace ICeClass.Receiver;
 
 internal sealed class ComputerControlSettingsWindow : Window
 {
-    internal ComputerControlSettingsWindow(ClassroomAgentService agent, ReceiverConfig? binding, ClassroomAgentPolicy? initialPolicy = null)
+    internal ComputerControlSettingsWindow(ClassroomAgentService agent, ReceiverConfig? binding, ClassroomAgentPolicy? initialPolicy = null, Func<Task>? stopTask = null)
     {
         ClassroomStyle.Apply(this); Title = "班班电脑控制 · ICeClass 班伴";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
@@ -21,8 +21,16 @@ internal sealed class ComputerControlSettingsWindow : Window
         var enabled = new CheckBox { Content = "允许有本班操作权限的教师使用班班控制本机", IsChecked = policy.Enabled, FontSize = 14 };
         var interaction = new CheckBox { Content = "允许打开课件、操作应用与填写内容", IsChecked = policy.AllowInteraction, FontSize = 14 };
         var status = ClassroomStyle.Text(agent.Status, 14);
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         var stop = ClassroomStyle.Button("立即停止电脑操作");
-        stop.Click += (_, _) => { agent.Stop(); status.Text = agent.Status; };
+        stop.Classes.Add("native-stop");
+        async Task StopTask()
+        {
+            stop.IsEnabled = false; stop.Content = "正在停止…";
+            try { if (stopTask is not null) await stopTask(); else agent.Stop(); }
+            finally { status.Text = agent.Status; stop.Content = "立即停止电脑操作"; stop.IsEnabled = true; }
+        }
+        stop.Click += async (_, _) => await StopTask();
         var error = ClassroomStyle.Caption("");
         AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Polite);
         var body = new StackPanel { Spacing = 18, Children = { ClassroomStyle.Title("班班电脑控制"),
@@ -88,7 +96,8 @@ internal sealed class ComputerControlSettingsWindow : Window
             catch (Exception exception) { error.Text = exception.Message; }
         };
         RenderApps(); RenderFolders();
-        body.Children.Add(ClassroomStyle.SettingsSection("应用", new StackPanel { Spacing = 12, Children = { apps, addApp,
+        var appDetails = new Expander { Header = "已识别的应用", Content = apps, HorizontalAlignment = HorizontalAlignment.Stretch };
+        body.Children.Add(ClassroomStyle.SettingsSection("应用", new StackPanel { Spacing = 12, Children = { appDetails, addApp,
             ClassroomStyle.Caption("自动识别常用教学应用，并沿用浮岛允许的程序；其他程序在本机添加。WPS 和希沃的实际操作取决于安装版本。") } }));
         var selectedFolders = new StackPanel { Spacing = 12, Children = { folders, addFolder } };
         var folderHint = ClassroomStyle.Caption("");
@@ -104,11 +113,11 @@ internal sealed class ComputerControlSettingsWindow : Window
         var root = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         root.Children.Add(new ScrollViewer { Content = new Border { Padding = new Thickness(24), Child = body }, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(24, 12) };
-        var cancel = ClassroomStyle.Button("取消"); cancel.HorizontalAlignment = HorizontalAlignment.Left; cancel.Click += (_, _) => Close(); footer.Children.Add(cancel);
+        var cancel = ClassroomStyle.Button("取消"); cancel.IsCancel = true; cancel.HorizontalAlignment = HorizontalAlignment.Left; cancel.Click += (_, _) => Close(); footer.Children.Add(cancel);
         var save = ClassroomStyle.Button("保存本机设置", true); Grid.SetColumn(save, 1); footer.Children.Add(save);
-        save.Click += (_, _) =>
+        save.Click += async (_, _) =>
         {
-            try { policy.Enabled = enabled.IsChecked == true; policy.AllowInteraction = interaction.IsChecked == true; policy.AllowAllFolders = allFolders.IsChecked == true; policy.Save(); if (!policy.Enabled || !policy.AllowInteraction) agent.Stop(); Close(); }
+            try { policy.Enabled = enabled.IsChecked == true; policy.AllowInteraction = interaction.IsChecked == true; policy.AllowAllFolders = allFolders.IsChecked == true; policy.Save(); if (!policy.Enabled || !policy.AllowInteraction) await StopTask(); Close(); }
             catch (Exception exception) { error.Text = "保存失败：" + exception.Message; }
         };
         Grid.SetRow(footer, 1); root.Children.Add(footer); Content = root;

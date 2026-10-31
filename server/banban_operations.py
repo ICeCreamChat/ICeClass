@@ -177,8 +177,9 @@ class OperationRequest:
 class Operations:
     command_timeout = 22
 
-    def __init__(self, feature):
+    def __init__(self, feature, computer_target=None):
         self.f, self.s, self.db = feature, feature.s, feature.db
+        self.computer_target = computer_target
         self.app, self.rooms = feature.app, feature.app[feature.s.ROOMS_KEY]
         self.events = {}
         self.frames = {}
@@ -562,6 +563,8 @@ class Operations:
         else:
             prepared, target, device = self.prepare_computer(user, args)
             cid, did = device['class_id'], device['id']
+            if self.computer_target:
+                self.computer_target(did, cid)
             title, confirm = COMPUTER[args['action']]
         # The authenticated voice turn is the user's execution request. This
         # flag comes from the chat handler, never from model/tool arguments or

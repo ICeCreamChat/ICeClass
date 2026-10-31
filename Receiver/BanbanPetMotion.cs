@@ -2,7 +2,7 @@ using Avalonia;
 
 namespace ICeClass.Receiver;
 
-// The same painted rig, curved wrist path and damped springs as banban-rig.js.
+// Continuous painted rig with joint rotations, a curved reach and damped springs.
 // A new intent changes targets; it never resets an arm or body already in motion.
 internal sealed class BanbanPetMotion
 {
@@ -24,32 +24,57 @@ internal sealed class BanbanPetMotion
 
     private BanbanPetPose _pose = BanbanPetPose.Rest, _velocity;
     private string _state = "off", _gesture = "";
-    private double _time, _stateTime, _gestureTime, _duration;
-    private int _variants;
+    private double _time, _stateTime, _gestureTime, _duration, _idleAfter = 4;
+    private double _speechOpening;
+    private int _variants, _idleVariant;
+    private string _following = "";
     private bool _right = true;
     internal BanbanPetPose Pose => _pose;
     internal string Gesture => _gesture;
 
-    internal void SetState(string state)
+    internal void SetState(string state, bool right = true)
     {
+        _right = right;
         if (_state == state) return;
         var previous = _state;
-        _state = state; _stateTime = 0;
+        _state = state; _stateTime = 0; _idleAfter = 4;
+        if (state != "speaking") { _speechOpening = 0; _pose.MouthOpen = 0; }
         // Short state updates must not restart an entrance which is still playing.
-        if (_gesture == "wake" && state == "listening") return;
-        if (state == "thinking") Play("think");
-        else if (state == "speaking") Play((++_variants % 3) switch { 0 => "explain", 1 => "point-right", _ => "nod" });
-        else if (state == "confirming") Play("shrug");
-        else if (state == "error") Play("shake");
-        else if (state == "listening") Play(previous == "speaking" ? "listen" : "nod");
-        else { _gesture = ""; _gestureTime = 0; }
+        if ((state is "listening" or "speaking") && (_gesture is "wake" or "wave" or "happy" or "hop" or "double-nod")) return;
+        if (state == "thinking") Play("think", _right);
+        else if (state == "speaking") PlaySpeaking();
+        else if (state == "confirming") Play("shrug", _right);
+        else if (state == "error") Play("shake", _right);
+        else if (state == "listening") Play(previous == "speaking" ? "listen" : "nod", _right);
+        else { _gesture = _following = ""; _gestureTime = 0; }
+        _idleAfter = 4;
     }
+
+    internal void SetSpeechOpening(double opening)
+        => _speechOpening = double.IsFinite(opening) ? Math.Clamp(opening, 0, 1) : 0;
+
+    internal void PlayIdle(bool right)
+        => Play((_idleVariant++ % 10) switch
+        {
+            0 => right ? "peek-left" : "peek-right", 1 => "wink", 2 => "wave", 3 => "sway",
+            4 => "nod", 5 => "think", 6 => "listen", 7 => "stretch",
+            8 => right ? "peek-right" : "peek-left", _ => "sleepy"
+        }, right);
+
+    private void PlaySpeaking()
+        => Play((_variants++ % 5) switch
+        {
+            0 => "explain", 1 => _right ? "point-left" : "point-right", 2 => "nod",
+            3 => _right ? "point-right" : "point-left", _ => "double-nod"
+        }, _right);
 
     internal bool Play(string action, bool right = true)
     {
         var item = Array.Find(Actions, item => item.Id == action);
         if (item is null) return false;
         _gesture = action; _gestureTime = 0; _duration = item.Seconds; _right = right;
+        _idleAfter = _stateTime + (_state == "speaking" ? 5 : 10);
+        _following = _state is "standby" or "listening" or "speaking" ? action switch { "wake" => "wave", "sleepy" => "awaken", _ => "" } : "";
         return true;
     }
 
@@ -57,7 +82,18 @@ internal sealed class BanbanPetMotion
     {
         var dt = Math.Clamp(seconds, 0, .08);
         if (!reduced) { _time += dt; _stateTime += dt; _gestureTime += dt; }
-        if (_gestureTime >= _duration) _gesture = "";
+        if (_gestureTime >= _duration)
+        {
+            _gesture = "";
+            if (!reduced && _following.Length > 0) { var next = _following; _following = ""; Play(next, _right); }
+        }
+        // Expanded listening has its own conversational gestures. The mascot
+        // schedules sparse docked gestures and sleeps between those sequences.
+        if (!reduced && _gesture.Length == 0 && _stateTime >= _idleAfter)
+        {
+            if (_state == "listening") PlayIdle(_right);
+            else if (_state == "speaking") PlaySpeaking();
+        }
         var target = Targets(reduced);
         if (reduced) { _pose = target; _velocity = default; return _pose; }
 
@@ -74,11 +110,12 @@ internal sealed class BanbanPetMotion
         Spring(ref _pose.Concern, ref _velocity.Concern, target.Concern, dt);
         Spring(ref _pose.CloseLeft, ref _velocity.CloseLeft, target.CloseLeft, dt, 52);
         Spring(ref _pose.CloseRight, ref _velocity.CloseRight, target.CloseRight, dt, 48);
-        Spring(ref _pose.MouthOpen, ref _velocity.MouthOpen, target.MouthOpen, dt, 27);
+        // Speech already has a 20 ms energy envelope. Body springs would add
+        // another visible delay and keep the mouth open across short pauses.
+        _pose.MouthOpen = target.MouthOpen;
         Spring(ref _pose.LeftX, ref _velocity.LeftX, target.LeftX, dt);
         Spring(ref _pose.LeftY, ref _velocity.LeftY, target.LeftY, dt);
-        Spring(ref _pose.RightX, ref _velocity.RightX, target.RightX, dt);
-        Spring(ref _pose.RightY, ref _velocity.RightY, target.RightY, dt);
+        Spring(ref _pose.RightShoulder, ref _velocity.RightShoulder, target.RightShoulder, dt, 8);
         Spring(ref _pose.Ribbon, ref _velocity.Ribbon, target.Ribbon, dt, 8, .58);
         Spring(ref _pose.Hop, ref _velocity.Hop, target.Hop, dt, 22);
         Spring(ref _pose.Squash, ref _velocity.Squash, target.Squash, dt, 24);
@@ -89,7 +126,7 @@ internal sealed class BanbanPetMotion
 
     internal void Rest()
     {
-        _gesture = ""; _gestureTime = 0;
+        _gesture = _following = ""; _gestureTime = 0;
         _pose = Targets(true); _velocity = default;
     }
 
@@ -106,7 +143,6 @@ internal sealed class BanbanPetMotion
         var blinkTime = _time % 5.9;
         var blink = Smooth(5.48, 5.56, blinkTime) * (1 - Smooth(5.62, 5.76, blinkTime));
         p.CloseLeft = p.CloseRight = blink;
-        if (_state == "speaking") p.MouthOpen = Math.Max(0, Math.Sin(_stateTime * 8.2)) * .64;
         var t = _gestureTime;
         var envelope = Smooth(0, .3, t) * (1 - Smooth(_duration - .52, _duration, t));
         var round = Math.Sin(Math.Clamp(t / Math.Max(.01, _duration), 0, 1) * Math.PI);
@@ -117,7 +153,7 @@ internal sealed class BanbanPetMotion
                 p.Hop -= Math.Sin(phase * Math.PI) * 72;
                 p.Squash = .065 * Math.Sin(phase * Math.PI * 3) * (1 - phase);
                 p.OffsetX = (_right ? 1 : -1) * 105 * Math.Pow(1 - phase, 3);
-                p.LeftY -= round * 35; p.RightY -= round * 58;
+                p.LeftY -= round * 35; p.RightShoulder -= round * .35;
                 p.Smile = .8; p.CloseLeft = p.CloseRight = round * .55;
                 break;
             case "wave":
@@ -139,7 +175,7 @@ internal sealed class BanbanPetMotion
                 p.GazeX -= envelope * .2; p.GazeY -= envelope * .2; p.Concern += envelope * .18;
                 break;
             case "explain":
-                p.RightX += envelope * 38; p.RightY -= envelope * (65 + Math.Sin(t * 3.3) * 9);
+                p.RightShoulder -= envelope * (.8 + Math.Sin(t * 3.3) * .08);
                 p.GazeX += envelope * .2; p.Lean += envelope * .02;
                 break;
             case "point-left":
@@ -147,7 +183,10 @@ internal sealed class BanbanPetMotion
                 p.GazeX -= envelope * .65; p.Lean -= envelope * .035;
                 break;
             case "point-right":
-                p.RightX += envelope * 45; p.RightY -= envelope * 150;
+                // Raise the original painted arm as a whole. Its existing
+                // bend and palm remain intact throughout the arc.
+                var pointing = Smooth(0, .48, t) * (1 - Smooth(_duration - .6, _duration, t));
+                p.RightShoulder -= pointing * 1.5;
                 p.GazeX += envelope * .65; p.Lean += envelope * .025;
                 break;
             case "shake":
@@ -155,7 +194,7 @@ internal sealed class BanbanPetMotion
                 p.Turn += shake * .065; p.GazeX += shake * .3; p.Lean += shake * .025;
                 break;
             case "shrug":
-                p.LeftY -= envelope * 17; p.RightX += envelope * 28; p.RightY -= envelope * 97;
+                p.LeftY -= envelope * 17; p.RightShoulder -= envelope * 1.05;
                 p.Lean -= envelope * .05; p.Concern += envelope * .4;
                 break;
             case "bow":
@@ -168,33 +207,35 @@ internal sealed class BanbanPetMotion
                 break;
             case "happy":
                 p.CloseLeft = p.CloseRight = Math.Max(blink, envelope * .82);
-                p.Smile += envelope * .6; p.LeftY -= envelope * 16; p.RightY -= envelope * 43;
+                p.Smile += envelope * .6; p.LeftY -= envelope * 16; p.RightShoulder -= envelope * .45;
                 break;
             case "hop":
                 p.Hop -= Math.Sin(Math.Clamp((t - .22) / .83, 0, 1) * Math.PI) * 48;
                 p.Squash = .06 * Math.Sin(Math.Clamp(t / 1.25, 0, 1) * Math.PI * 3) * envelope;
-                p.LeftY -= envelope * 38; p.RightY -= envelope * 85;
+                p.LeftY -= envelope * 38; p.RightShoulder -= envelope * .7;
                 p.Smile += envelope * .6;
                 break;
             case "sway":
                 p.Lean += Math.Sin(t * 4.6) * envelope * .07;
                 p.LeftY -= envelope * (15 + Math.Sin(t * 4.6) * 10);
-                p.RightY -= envelope * (43 - Math.Sin(t * 4.6) * 15); p.Smile += envelope * .45;
+                p.RightShoulder -= envelope * (.42 - Math.Sin(t * 4.6) * .12); p.Smile += envelope * .45;
                 break;
             case "stretch":
                 p.LeftX += envelope * 66; p.LeftY -= envelope * 57;
-                p.RightX -= envelope * 9; p.RightY -= envelope * 235;
+                var stretching = Smooth(0, .85, t) * (1 - Smooth(_duration - 1.05, _duration, t));
+                p.RightShoulder -= stretching * 1.95;
                 p.Lift -= envelope * 7; p.CloseLeft = p.CloseRight = Math.Max(blink, envelope * .92);
                 break;
             case "sleepy":
                 p.Lean += envelope * .055; p.Lift += envelope * 5;
-                p.CloseLeft = p.CloseRight = Math.Max(blink, envelope * .995);
+                var doze = _following == "awaken" ? Smooth(0, .5, t) : envelope;
+                p.CloseLeft = p.CloseRight = Math.Max(blink, doze * .995);
                 p.Smile += envelope * .1;
                 break;
             case "awaken":
                 var opening = 1 - Smooth(.25, 1.1, t);
                 p.CloseLeft = p.CloseRight = Math.Max(blink, opening);
-                p.RightY -= envelope * 115; p.LeftY -= envelope * 26;
+                p.RightShoulder -= envelope * 1.25; p.LeftY -= envelope * 26;
                 p.Lean -= envelope * .035; p.Smile += envelope * .35;
                 break;
             case "peek-left":
@@ -209,12 +250,13 @@ internal sealed class BanbanPetMotion
                 break;
             case "walk":
                 p.Step = Math.Sin(t * 12) * envelope; p.Hop -= Math.Abs(p.Step) * 5;
-                p.LeftY -= p.Step * 17; p.RightY += p.Step * 22; p.Lean += envelope * .035;
+                p.LeftY -= p.Step * 17; p.RightShoulder += p.Step * .15; p.Lean += envelope * .035;
                 break;
             case "settle":
                 p.Lean += round * .025; p.Bow += round * .12; p.GazeY += round * .15;
                 break;
         }
+        if (_state == "speaking") p.MouthOpen = _speechOpening;
         p.Turn += p.GazeX * .035;
         p.Ribbon = p.Lean * 1.9 + Math.Sin(_time * 1.1) * .012;
         return p;
@@ -228,9 +270,6 @@ internal sealed class BanbanPetMotion
     }
     internal static double Smooth(double a, double b, double value)
     { var t = Math.Clamp((value - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
-
-    internal static Point RightWrist(BanbanPetPose p) => ThinkWrist(p.Think)
-        + new Vector(p.RightX - 607, p.RightY - 548) * (1 - Smooth(0, .5, p.Think));
 
     internal static Point ThinkWrist(double amount)
     {
@@ -246,6 +285,6 @@ internal sealed class BanbanPetMotion
 internal struct BanbanPetPose
 {
     internal double GazeX, GazeY, Lean, Lift, Turn, Bow, Think, Smile, Concern, CloseLeft, CloseRight,
-        MouthOpen, LeftX, LeftY, RightX, RightY, Ribbon, Hop, Squash, OffsetX, Step;
-    internal static BanbanPetPose Rest => new() { LeftX = 39, LeftY = 365, RightX = 607, RightY = 548, Smile = .3 };
+        MouthOpen, LeftX, LeftY, RightShoulder, Ribbon, Hop, Squash, OffsetX, Step;
+    internal static BanbanPetPose Rest => new() { LeftX = 39, LeftY = 365, Smile = .3 };
 }

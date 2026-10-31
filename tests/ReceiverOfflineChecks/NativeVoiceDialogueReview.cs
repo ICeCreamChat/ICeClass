@@ -105,7 +105,7 @@ internal static class NativeVoiceDialogueReview
                 File.AppendAllText(Path.Combine(output, "native-events.jsonl"), JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), status = value }) + "\n");
             });
             editor.Show(); Save(); await receiver.StartAsync(config);
-            var voiceBinding = new ReceiverConfig { Endpoint = config.Endpoint, DeviceId = config.DeviceId, ClassId = config.ClassId, ClassName = config.ClassName };
+            var voiceBinding = new ReceiverConfig { Endpoint = config.Endpoint, DeviceId = config.DeviceId, DeviceToken = config.DeviceToken, ClassId = config.ClassId, ClassName = config.ClassName };
             assistant = new BanbanVoiceWindow(voiceBinding, () => receiver.ComputerAgent.Stop(), enabled:manual ? BanbanVoicePreferences.Load() : true,
                 petPreferencePath: Path.Combine(output, "pet-preferences.json"));
             voiceBinding.ClassId = "changed-in-place";
@@ -153,11 +153,7 @@ internal static class NativeVoiceDialogueReview
                 await heard.Task.WaitAsync(TimeSpan.FromSeconds(20));
             }
             await Until(() => Is("document.readyState === 'complete'"), "Page did not load");
-            if (!await Is("!!window.ICeClass?.state?.user"))
-            {
-                await browser.Core!.ExecuteScriptAsync("fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'ICe',password:'LocalDemo2026'})}).then(r=>{if(r.ok)location.reload()})");
-            }
-            await Until(() => Is("!!document.querySelector('#bbInput') && !!window.ICeClass?.state?.user"), "Demo teacher login failed");
+            await Until(() => Is("!!document.querySelector('#bbInput') && window.ICeClass?.state?.user?.role === 'teacher'"), "Bound homeroom teacher did not enter Banban automatically");
             if (manual)
             {
                 // Observe the real class schedule without running lesson reminders or automation.

@@ -49,7 +49,8 @@ public sealed class StudentVoiceWindow : Window
         var toolbarActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
         if (showBanban is not null)
         {
-            var banban = ClassroomStyle.Button("班班"); banban.MinHeight = 44;
+            var banban = ClassroomStyle.Button("呼叫班班"); banban.MinHeight = 44;
+            ToolTip.SetTip(banban, "叫出班班，直接开始语音对话");
             banban.Click += (_, _) => showBanban(); toolbarActions.Children.Add(banban);
         }
         if (showIsland is not null)

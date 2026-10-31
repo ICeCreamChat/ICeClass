@@ -18,6 +18,27 @@ class AnswerPolicyTest(unittest.TestCase):
                 result = ''.join(stream.feed(c) for c in source) + stream.feed('', final=True)
                 self.assertEqual(result, IDENTITY)
 
+    def test_factual_identity_wording_survives_streaming_without_becoming_a_template(self):
+        answers = [
+            '我是班班，是马鞍山市第二十二中学的校园智能助手。',
+            '我叫班班，由学校数学学科的许斌老师开发，AI 建模社参与共建。',
+            '我是服务于本校师生的校园智能助手，名字叫班班。',
+            '我是马鞍山市第二十二中学的校园智能助手。',
+            '我是一款服务于师生的校园助手。',
+            '我是由学校数学学科的许斌老师开发的，AI 建模社参与共建。',
+            '我的开发者是许斌老师，AI 建模社参与共建。',
+            '我由马鞍山市第二十二中学数学学科的许斌老师开发。',
+            '班班由许斌老师开发，他创办的 AI 建模社参与共建。',
+            '我是您的校园助手。AI 建模社由许斌老师创办，也参与了班班的共建。',
+            "I'm Banban, a campus assistant developed by Xu Bin.",
+        ]
+        for source in answers:
+            for chunks in [[source], list(source)]:
+                with self.subTest(source=source, split=len(chunks) > 1):
+                    stream = AnswerStream()
+                    result = ''.join(stream.feed(chunk) for chunk in chunks) + stream.feed('', final=True)
+                    self.assertEqual(result, source)
+
     def test_key_and_vendor_are_not_quoted_into_public_answer(self):
         for source in ['我的模型是DeepSeek。', '技术来源是OpenAI。', 'API Key是sk-fixture-secret-not-real。']:
             stream = AnswerStream()

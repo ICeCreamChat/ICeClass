@@ -36,7 +36,10 @@ internal sealed class BanbanSpeakerFocus : IDisposable
         {
             if (!_focused) return false;
             var embedding = Embedding(samples);
-            return embedding is not null && _speakers.Verify("conversation", embedding, .5f);
+            // Short follow-ups contain less phonetic context than the wake
+            // phrase. Keep speaker filtering, with a conversational threshold
+            // that also accepts the same speaker's shorter utterances.
+            return embedding is not null && _speakers.Verify("conversation", embedding, .4f);
         }
     }
 

@@ -9,9 +9,18 @@ using ICeClass.Receiver;
 
 internal static class OfficeComputerControlReview
 {
-    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
-        .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Review(Path.GetFullPath(output))))
-        .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+    internal static void Run(string output)
+    {
+        if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+        {
+            var thread = new Thread(() => Run(output));
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start(); thread.Join(); return;
+        }
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+            .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Review(Path.GetFullPath(output))))
+            .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+    }
 
     private static async Task Review(string output)
     {
@@ -118,6 +127,7 @@ internal static class OfficeComputerControlReview
                         Check(alreadyShowing["verified"]!.GetValue<bool>() && (int)doc.SlideShowWindow.View.CurrentShowPosition == 2,
                             "starting an already running slideshow preserves its current page");
                         var endResult = await worker.OperateAsync("presentation_end", Args(new { targetId = id }), apps, timeout.Token); await Task.Delay(150);
+                        File.WriteAllText(Path.Combine(output, "wps-end-receipt.json"), endResult.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
                         var ended = false; try { _ = doc.SlideShowWindow.View; } catch (Exception exception) when (exception is COMException or MissingMemberException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { ended = true; }
                         Check(ended, "the selected WPS slideshow actually ends");
                         Check(endResult["verified"]!.GetValue<bool>(), "the end receipt is grounded in the slideshow disappearing");
@@ -130,6 +140,13 @@ internal static class OfficeComputerControlReview
                         Console.WriteLine($"{kind}: {checks.Count} real shortcut checks passed; document interface unavailable in this version.");
                         continue;
                     }
+                }
+                if (kind == "wps-writer")
+                {
+                    var editor = (nint)Convert.ToInt64(doc.Windows.Item(1).HWND);
+                    var bound = ClassroomAgentDocuments.NativeDocument(kind, GetAncestor(editor, 2), timeout.Token, owned);
+                    Check(bound is not null && (string)((dynamic)bound).FullName == (string)doc.FullName,
+                        "visible WPS frame binds its actual native editor across process boundaries");
                 }
                 var read = await worker.OperateAsync("read_document", Args(new { targetId = id }), apps, timeout.Token);
                 Check(read["text"]!.GetValue<string>().Contains(marker), "reads only the selected temporary document");
@@ -197,4 +214,5 @@ internal static class OfficeComputerControlReview
     }
     [DllImport("ole32.dll", CharSet = CharSet.Unicode)] private static extern int CLSIDFromProgID(string id, out Guid clsid);
     [DllImport("oleaut32.dll", PreserveSig = true)] private static extern int GetActiveObject(ref Guid clsid, nint reserved, [MarshalAs(UnmanagedType.IUnknown)] out object? value);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint handle, uint flags);
 }

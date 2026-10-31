@@ -11,6 +11,8 @@ ROLE_LABELS = {'superadmin': '超级管理员', 'principal': '校长', 'director
 
 def scope_sql(user, class_id='c.id'):
     """Return a SQL predicate and bound arguments; class_id is a code-owned expression."""
+    if user.get('classroom'):
+        return f'{class_id}=?', (user['classroom']['classId'],)
     role = user['role']
     if role in SCHOOL_ROLES:
         return '1', ()

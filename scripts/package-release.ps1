@@ -1,7 +1,9 @@
-﻿param([switch]$SkipBuild)
+﻿param([switch]$SkipBuild, [string]$DistributionDirectory = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
+if ($DistributionDirectory -and -not $SkipBuild) { throw '使用已有构建目录时请同时传入 -SkipBuild。' }
+$distributionRoot = if ($DistributionDirectory) { [IO.Path]::GetFullPath($DistributionDirectory) } else { Join-Path $projectRoot 'dist' }
 if (-not $SkipBuild) {
     $env:ICECLASS_NO_PAUSE = '1'
     & (Join-Path $projectRoot 'build.bat')
@@ -9,22 +11,22 @@ if (-not $SkipBuild) {
     & (Join-Path $PSScriptRoot 'build-desktop.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Windows 教师端构建失败。' }
 }
-$desktopExecutable = Join-Path $projectRoot 'dist\desktop\ICeClass.Desktop.exe'
+$desktopExecutable = Join-Path $distributionRoot 'desktop\ICeClass.Desktop.exe'
 if (-not (Test-Path -LiteralPath $desktopExecutable)) { throw '缺少Windows 教师端，请先运行 build-desktop.bat。' }
-$receiver = Join-Path $projectRoot 'dist\receiver\ICeClass.exe'
+$receiver = Join-Path $distributionRoot 'receiver\ICeClass.exe'
 if (-not (Test-Path -LiteralPath $receiver)) { throw '缺少 dist\receiver\ICeClass.exe，请先构建。' }
 $project = [xml](Get-Content -LiteralPath (Join-Path $projectRoot 'Receiver\Receiver.csproj') -Raw -Encoding UTF8)
 $version = [string]$project.Project.PropertyGroup.Version
-$releaseRoot = Join-Path $projectRoot 'dist\release'
+$releaseRoot = Join-Path $distributionRoot 'release'
 $stage = Join-Path $releaseRoot ('stage-' + [Guid]::NewGuid().ToString('N'))
 $windowsRoot = Join-Path $stage 'ICeClass'
 $serverRoot = Join-Path $stage 'ICeClass-server'
 $classroomRoot = Join-Path $stage 'classroom\ICeClass'
 New-Item -ItemType Directory -Force -Path $windowsRoot, $serverRoot | Out-Null
 try {
-    & (Join-Path $PSScriptRoot 'prepare-delivery.ps1') -Unconfigured -OutputDirectory $windowsRoot
+    & (Join-Path $PSScriptRoot 'prepare-delivery.ps1') -Unconfigured -OutputDirectory $windowsRoot -DistributionDirectory $distributionRoot
     New-Item -ItemType Directory -Force -Path (Join-Path $classroomRoot '教室端') | Out-Null
-    foreach ($name in @('ICeClass.exe', '一步使用说明.txt')) {
+    foreach ($name in @('ICeClass.exe', '一步使用说明.txt', 'install.ps1', '安装或升级.cmd', 'program-manifest.json')) {
         Copy-Item -LiteralPath (Join-Path $windowsRoot "教室端\$name") -Destination (Join-Path $classroomRoot "教室端\$name")
     }
     [IO.File]::WriteAllText((Join-Path $classroomRoot '网页端.url'), "[InternetShortcut]`r`nURL=https://iceclass.icecreamchat.top/`r`n", [Text.Encoding]::ASCII)
@@ -43,6 +45,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'web_controller') -Destination $serverRoot -Recurse
     Copy-Item -LiteralPath (Join-Path $projectRoot 'cloud\migrations\0001_initial.sql') -Destination (Join-Path $serverRoot 'cloud\migrations\0001_initial.sql')
     Copy-Item -LiteralPath $receiver -Destination (Join-Path $serverRoot 'receiver_release\ICeClass.exe')
+    foreach ($name in @('install.ps1', '安装或升级.cmd', 'program-manifest.json', '一步使用说明.txt')) {
+        Copy-Item -LiteralPath (Join-Path $windowsRoot "教室端\$name") -Destination (Join-Path $serverRoot "receiver_release\$name")
+    }
     $manifest = [ordered]@{ version = $version; sha256 = (Get-FileHash -LiteralPath $receiver -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item -LiteralPath $receiver).Length } | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $serverRoot 'receiver_release\manifest.json'), $manifest, (New-Object Text.UTF8Encoding($false)))
     Copy-Item -LiteralPath $desktopExecutable -Destination (Join-Path $serverRoot 'desktop_release\ICeClass.Desktop.exe')

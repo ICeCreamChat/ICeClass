@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using SherpaOnnx;
 
 namespace ICeClass.Receiver;
@@ -78,9 +79,33 @@ internal static class BanbanNeuralVoicePack
 /// <summary>Offline Chinese neural voice, sharing the already bundled ONNX runtime.</summary>
 internal sealed class BanbanNeuralSynthesizer : IDisposable
 {
+    internal const float DefaultSpeed = 1.03f;
+    private static readonly object SharedGate = new();
+    private static BanbanNeuralSynthesizer? _shared;
+    private static int _sharedUsers;
+    private readonly object _gate = new();
     private readonly OfflineTts _model;
     private readonly int _speaker;
+    private float[]? _welcome;
     internal int SampleRate => _model.SampleRate;
+    internal static BanbanNeuralSynthesizer AcquireShared()
+    {
+        lock (SharedGate)
+        {
+            _shared ??= new BanbanNeuralSynthesizer();
+            _sharedUsers++;
+            return _shared;
+        }
+    }
+    internal static void ReleaseShared(BanbanNeuralSynthesizer voice)
+    {
+        lock (SharedGate)
+        {
+            if (!ReferenceEquals(_shared, voice) || --_sharedUsers != 0) return;
+            _shared = null;
+            voice.Dispose();
+        }
+    }
     internal BanbanNeuralSynthesizer(string? folder = null, int? threads = null, bool debug = false)
     {
         folder ??= BanbanNeuralVoicePack.Extract();
@@ -98,12 +123,20 @@ internal sealed class BanbanNeuralSynthesizer : IDisposable
         _model = new OfflineTts(config);
         if (_model.SampleRate < 16000 || _model.NumSpeakers <= _speaker) { _model.Dispose(); throw new InvalidDataException("班班自然语音模型无法加载。"); }
     }
-    internal float[] Generate(string text, Func<bool>? valid = null)
+    internal float[] Generate(string text, Func<bool>? valid = null, float speed = DefaultSpeed)
+    {
+        if (!float.IsFinite(speed) || speed <= 0) throw new ArgumentOutOfRangeException(nameof(speed));
+        // Notifications, timetable reminders and conversations share one model.
+        // Serialize inference; waiting callers check cancellation before generating.
+        lock (_gate) return GenerateCore(text, valid, speed);
+    }
+    private float[] GenerateCore(string text, Func<bool>? valid, float speed)
     {
         if (valid?.Invoke() == false) return [];
+        if (text == "我在，请说。" && speed == DefaultSpeed && _welcome is not null) return _welcome;
         // The wrapper's convenience method defaults to aggressive silence
         // shortening, which also clips quiet Chinese consonants and short words.
-        var generation = new OfflineTtsGenerationConfig { Speed = 1.03f, Sid = _speaker, SilenceScale = 1 };
+        var generation = new OfflineTtsGenerationConfig { Speed = speed, Sid = _speaker, SilenceScale = 1 };
         var audio = _model.GenerateWithConfig(text, generation, (_, _, _, _) => valid?.Invoke() == false ? 0 : 1);
         try
         {
@@ -120,18 +153,19 @@ internal sealed class BanbanNeuralSynthesizer : IDisposable
             // the Windows volume or clipping louder parts of a sentence.
             var gain = (float)Math.Min(15, Math.Min(.92 / peak, .09 / Math.Sqrt(energy / samples.Length)));
             for (var i = 0; i < samples.Length; i++) samples[i] *= gain;
+            if (text == "我在，请说。" && speed == DefaultSpeed) _welcome = samples;
             return samples;
         }
         finally { audio.Dispose(); }
     }
-    public void Dispose() => _model.Dispose();
+    public void Dispose() { lock (_gate) _model.Dispose(); }
 }
 
 /// <summary>Bounded text/audio queues; stopping invalidates synthesis and playback together.</summary>
 internal sealed class BanbanSpeechPlayer : IDisposable
 {
-    private sealed record TextPart(long Generation, string Text, bool End);
-    private sealed record AudioPart(long Generation, float[] Samples, int Rate, string Text, bool End);
+    private sealed record TextPart(long Generation, string Text, bool End, float Speed, float Volume, NotificationCue Cue);
+    private sealed record AudioPart(long Generation, float[] Samples, int Rate, string Text, bool End, float Volume, NotificationCue Cue);
     private readonly BlockingCollection<TextPart> _text = new(48);
     private readonly BlockingCollection<AudioPart> _audio = new(3);
     private readonly object _gate = new();
@@ -141,10 +175,13 @@ internal sealed class BanbanSpeechPlayer : IDisposable
     private readonly Action<Exception> _failed;
     private WasapiOut? _output;
     private long _generation;
+    private long _mouthGeneration;
+    private double _mouthOpening;
     private int _disposed;
     internal long Generation => Volatile.Read(ref _generation);
     private int _ready;
     internal bool Ready => Volatile.Read(ref _ready) != 0;
+    internal double MouthOpening => Volatile.Read(ref _mouthGeneration) == Generation ? Volatile.Read(ref _mouthOpening) : 0;
 
     internal BanbanSpeechPlayer(Action<long> completed, Action<long, string> playing, Action<Exception> failed)
     {
@@ -153,18 +190,20 @@ internal sealed class BanbanSpeechPlayer : IDisposable
         _playback = new Thread(Play) { IsBackground = true, Name = "ICeClass.BanbanVoicePlayback" };
         _synthesis.Start(); _playback.Start();
     }
-    internal void Enqueue(string text, bool end)
+    internal void Enqueue(string text, bool end, float speed = BanbanNeuralSynthesizer.DefaultSpeed, float volume = 1,
+        NotificationCue cue = NotificationCue.None)
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         try
         {
-            if (!_text.TryAdd(new(Generation, text, end))) { Stop(); _failed(new IOException("语音播报队列已满，文字结果已保留。")); }
+            if (!_text.TryAdd(new(Generation, text, end, speed, Math.Clamp(volume, 0, 1), cue))) { Stop(); _failed(new IOException("语音播报队列已满，文字结果已保留。")); }
         }
         catch (InvalidOperationException) { }
     }
     internal void Stop()
     {
         Interlocked.Increment(ref _generation);
+        Volatile.Write(ref _mouthOpening, 0);
         while (_text.TryTake(out _)) { }
         while (_audio.TryTake(out _)) { }
         lock (_gate)
@@ -176,22 +215,27 @@ internal sealed class BanbanSpeechPlayer : IDisposable
     private bool Valid(long generation) => Volatile.Read(ref _disposed) == 0 && generation == Generation;
     private void Synthesize()
     {
+        BanbanNeuralSynthesizer? synth = null;
         try
         {
-            using var synth = new BanbanNeuralSynthesizer();
-            var welcome = synth.Generate("我在，请说。");
+            synth = BanbanNeuralSynthesizer.AcquireShared();
+            synth.Generate("我在，请说。", () => Volatile.Read(ref _disposed) == 0);
             Volatile.Write(ref _ready, 1);
             foreach (var item in _text.GetConsumingEnumerable())
             {
                 if (!Valid(item.Generation)) continue;
-                var samples = string.IsNullOrWhiteSpace(item.Text) ? [] : item.Text == "我在，请说。" ? welcome
-                    : synth.Generate(item.Text, () => Valid(item.Generation));
-                var output = new AudioPart(item.Generation, samples, synth.SampleRate, item.Text, item.End);
+                var samples = string.IsNullOrWhiteSpace(item.Text) ? [] : synth.Generate(item.Text, () => Valid(item.Generation), item.Speed);
+                var output = new AudioPart(item.Generation, samples, synth.SampleRate, item.Text, item.End, item.Volume, item.Cue);
                 while (Valid(item.Generation) && !_audio.TryAdd(output, 50)) { }
             }
         }
         catch (Exception error) { if (Volatile.Read(ref _disposed) == 0) _failed(error); }
-        finally { Volatile.Write(ref _ready, 0); _audio.CompleteAdding(); }
+        finally
+        {
+            Volatile.Write(ref _ready, 0);
+            if (synth is not null) BanbanNeuralSynthesizer.ReleaseShared(synth);
+            _audio.CompleteAdding();
+        }
     }
     private void Play()
     {
@@ -206,27 +250,41 @@ internal sealed class BanbanSpeechPlayer : IDisposable
                     Buffer.BlockCopy(item.Samples, 0, bytes, 0, bytes.Length);
                     using var memory = new MemoryStream(bytes, false);
                     using var source = new RawSourceWaveStream(memory, WaveFormat.CreateIeeeFloatWaveFormat(item.Rate, 1));
+                    var prepared = NotificationChime.Prepend(source.ToSampleProvider(), item.Cue);
+                    var volume = new VolumeSampleProvider(prepared) { Volume = item.Volume };
+                    var envelope = new BanbanSpeechEnvelope(item.Samples, item.Rate, item.Volume);
+                    var speechOffset = prepared is NotificationChime chime ? chime.SpeechOffsetSeconds : 0;
                     using var devices = new MMDeviceEnumerator();
                     using var device = devices.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
                     using var output = new WasapiOut(device, AudioClientShareMode.Shared, false, 40);
                     using var ended = new ManualResetEventSlim();
                     Exception? playbackError = null;
                     output.PlaybackStopped += (_, e) => { playbackError = e.Exception; ended.Set(); };
-                    output.Init(source);
+                    output.Init(volume);
                     try
                     {
                         lock (_gate)
                         {
                             if (!Valid(item.Generation)) continue;
-                            _output = output; _playing(item.Generation, item.Text); output.Play();
+                            _output = output; Volatile.Write(ref _mouthGeneration, item.Generation);
+                            _playing(item.Generation, item.Text); output.Play();
                         }
-                        while (!ended.Wait(40) && Valid(item.Generation)) { }
+                        while (!ended.Wait(20) && Valid(item.Generation))
+                        {
+                            // Reader position includes buffered audio that has not sounded
+                            // yet. WASAPI reports played bytes in its negotiated format,
+                            // which may differ from the mono synthesis sample rate.
+                            var seconds = (double)output.GetPosition() / output.OutputWaveFormat.AverageBytesPerSecond;
+                            Volatile.Write(ref _mouthOpening, output.PlaybackState == PlaybackState.Playing
+                                ? envelope.OpeningAt(seconds - speechOffset) : 0);
+                        }
                         if (playbackError is not null && Valid(item.Generation)) throw new IOException("音频输出中断。", playbackError);
                     }
                     finally
                     {
                         lock (_gate)
                         {
+                            Volatile.Write(ref _mouthOpening, 0);
                             if (ReferenceEquals(_output, output)) _output = null;
                             output.Stop();
                         }

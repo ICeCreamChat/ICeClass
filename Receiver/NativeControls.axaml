@@ -10,6 +10,94 @@
   <Style Selector="TextBlock">
     <Setter Property="FontFamily" Value="Microsoft YaHei UI, Microsoft YaHei, Segoe UI" />
   </Style>
+  <!-- The Windows tray and in-window context menus share one surface and item
+       styling while retaining their own native keyboard and dismissal handling. -->
+  <Style Selector="MenuFlyoutPresenter, ContextMenu">
+    <Style.Resources>
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBackground">#F5F6F6F6</SolidColorBrush>
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush">#18000000</SolidColorBrush>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemChevron">#666666</SolidColorBrush>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemChevronPointerOver">#333333</SolidColorBrush>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemChevronSubMenuOpened">#333333</SolidColorBrush>
+      <Thickness x:Key="MenuFlyoutPresenterThemePadding">6</Thickness>
+      <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+    </Style.Resources>
+    <Setter Property="MinWidth" Value="292" />
+    <Setter Property="MaxWidth" Value="390" />
+    <Setter Property="Background" Value="#F5F6F6F6" />
+    <Setter Property="Foreground" Value="#242424" />
+    <Setter Property="FontFamily" Value="Microsoft YaHei UI, Microsoft YaHei, Segoe UI" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="LayoutRoot" Margin="16,12,16,20" Padding="6" RenderOptions.TextRenderingMode="Antialias"
+                Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                BorderBrush="#18000000" BorderThickness="1"
+                BoxShadow="0 5 18 0 #24000000">
+          <ScrollViewer Theme="{StaticResource FluentMenuScrollViewer}"
+                        HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"
+                            KeyboardNavigation.TabNavigation="Continue" Grid.IsSharedSizeScope="True" />
+          </ScrollViewer>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem, ContextMenu MenuItem">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="#242424" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="HeaderTemplate">
+      <DataTemplate>
+        <AccessText Text="{Binding}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem:selected /template/ Border#PART_LayoutRoot, ContextMenu MenuItem:selected /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="#14000000" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem:selected /template/ ContentPresenter#PART_HeaderPresenter, ContextMenu MenuItem:selected /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="Foreground" Value="#171717" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem:pressed /template/ Border#PART_LayoutRoot:pointerover, ContextMenu MenuItem:pressed /template/ Border#PART_LayoutRoot:pointerover">
+    <Setter Property="Background" Value="#20000000" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem:pressed /template/ ContentPresenter#PART_HeaderPresenter, ContextMenu MenuItem:pressed /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="Foreground" Value="#171717" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem:disabled, ContextMenu MenuItem:disabled">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem:disabled /template/ ContentPresenter#PART_HeaderPresenter, ContextMenu MenuItem:disabled /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="Foreground" Value="#686868" />
+  </Style>
+  <!-- Popup children keep the same surface while Fluent retains submenu focus,
+       pointer routing, arrow keys and light-dismiss behaviour. -->
+  <Style Selector="MenuFlyoutPresenter MenuItem /template/ Popup#PART_Popup, ContextMenu MenuItem /template/ Popup#PART_Popup">
+    <Setter Property="VerticalOffset" Value="-12" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter MenuItem /template/ Popup#PART_Popup > Border, ContextMenu MenuItem /template/ Popup#PART_Popup > Border">
+    <Setter Property="MinWidth" Value="236" />
+    <Setter Property="Margin" Value="16,12,16,20" />
+    <Setter Property="BoxShadow" Value="0 5 18 0 #24000000" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter Separator, ContextMenu Separator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="MinHeight" Value="1" />
+    <Setter Property="Margin" Value="6,4" />
+    <Setter Property="Background" Value="#10000000" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}" Height="1" />
+      </ControlTemplate>
+    </Setter>
+  </Style>
   <Style Selector="Button.native-button">
     <Setter Property="FontSize" Value="15" />
     <!-- YaHei UI can resolve Medium to the regular face; keep action labels at SemiBold. -->
@@ -76,6 +164,20 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Foreground" Value="#697586" />
   </Style>
+  <Style Selector="Button.native-stop">
+    <Setter Property="Foreground" Value="#A5362F" />
+    <Setter Property="Background" Value="#FFF8F7" />
+    <Setter Property="BorderBrush" Value="#E8C7C3" />
+  </Style>
+  <Style Selector="Button.native-stop:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="#8F2420" />
+    <Setter Property="Background" Value="#FCEAE7" />
+    <Setter Property="BorderBrush" Value="#D6A49E" />
+  </Style>
+  <Style Selector="Button.native-stop:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#F8DDD8" />
+    <Setter Property="Foreground" Value="#7B211D" />
+  </Style>
   <Style Selector="Button.classroom-recording">
     <Setter Property="Background" Value="#B74C43" />
     <Setter Property="Foreground" Value="White" />
@@ -111,6 +213,15 @@
   <Style Selector="Button.native-document.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="White" />
     <Setter Property="BorderBrush" Value="#BDD3EE" />
+  </Style>
+  <Style Selector="Button.about-mascot">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="Button.about-mascot:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.about-mascot:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
   </Style>
   <Style Selector="Button.native-button:disabled">
     <Setter Property="Opacity" Value="0.5" />

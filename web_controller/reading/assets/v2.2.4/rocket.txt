@@ -514,7 +514,7 @@ body[data-controls-visible="true"] #rocket-reveal { width: 0; pointer-events: no
     } catch (error) {
       if (disposed || token !== epoch) return;
       ++epoch; stopAudio(); phase = previousPhase; paintState();
-      if (error.message?.startsWith('video-')) host.fail('火箭视频未能加载。请确认素材文件夹中的 rocket.mp4 和 rocket-final.mp4 均在原位，再点“返回开始”重试。', requester);
+      if (error.message?.startsWith('video-')) host.fail('火箭视频未能加载。请检查 rocket.mp4 和 rocket-final.mp4 后重新开始活动。', requester);
       else if (['NotAllowedError', 'PermissionDeniedError'].includes(error.name)) host.fail(`未获麦克风权限。请在 Edge 允许使用麦克风，再点“${previousPhase === 'paused' ? '继续' : '开始蓄能'}”重试。`, requester);
       else if (previousPhase === 'paused') host.fail('麦克风未能连接。请检查连接与权限后点“继续”。', requester);
       else host.fail('麦克风未能连接。请检查连接与浏览器权限，再点“开始蓄能”重试。', requester);
@@ -585,7 +585,7 @@ body[data-controls-visible="true"] #rocket-reveal { width: 0; pointer-events: no
     document.body.dataset.controlsPinned = String(settingsOpen || pointerInside || focus);
   }
   function syncControls() {
-    const immersive = Boolean(window.parent.document.fullscreenElement);
+    const immersive = window.parent.ReadingDesktop?.isFullscreen() ?? Boolean(window.parent.document.fullscreenElement);
     const visible = window.parent.document.getElementById('classic-view').dataset.panelVisible === 'true';
     if (!visible) { pointerInside = false; updatePinned(); }
     document.body.dataset.immersive = String(immersive);
@@ -632,7 +632,7 @@ body[data-controls-visible="true"] #rocket-reveal { width: 0; pointer-events: no
     video.addEventListener('error', () => {
       if (disposed) return;
       if (!fallback) { fallback = true; video.src = video === mainVideo ? 'rocket.mp4' : 'rocket-final.mp4'; video.load(); return; }
-      video.dataset.failed = 'true'; pause(); host.fail('火箭视频没有找到。请保留“早读陪伴素材”文件夹中的 rocket.mp4 和 rocket-final.mp4，再点“返回开始”重试。', requester);
+      video.dataset.failed = 'true'; pause(); host.fail('火箭视频未找到。请检查 rocket.mp4 和 rocket-final.mp4 后重新开始活动。', requester);
     });
   }
   reveal.addEventListener('pointermove', event => { if (event.pointerType !== 'touch') host.controls(event.pointerType); });

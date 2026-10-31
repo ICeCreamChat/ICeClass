@@ -1,111 +1,52 @@
-using System.Reflection;
-using System.Runtime.InteropServices;
-
 namespace ICeClass.Receiver;
 
+/// <summary>Notification and timetable speech use Banban's existing offline voice.</summary>
 public sealed class SpeechService : IDisposable
 {
     private readonly object _sync = new();
-    private readonly AutoResetEvent _signal = new(false);
-    private readonly Thread _thread;
-    private SpeechRequest? _pending;
-    private bool _stopRequested;
+    private BanbanSpeechPlayer? _player;
+    private int _failed;
     private bool _disposed;
 
-    public SpeechService()
-    {
-        _thread = new Thread(Run)
-        {
-            IsBackground = true,
-            Name = "ICeClass.Speech",
-        };
-        _thread.SetApartmentState(ApartmentState.STA);
-        _thread.Start();
-    }
-
     public void SpeakLatest(string text, int speed, double volume)
+        => SpeakLatest(text, speed, volume, NotificationCue.None);
+
+    internal void SpeakLatest(string text, int speed, double volume, NotificationCue cue)
     {
         lock (_sync)
         {
             if (_disposed) return;
-            _pending = new SpeechRequest(text, Math.Clamp(speed, -10, 10), Math.Clamp(volume, 0, 1));
-            _stopRequested = false;
+            _player?.Stop();
+            if (string.IsNullOrWhiteSpace(text) || !double.IsFinite(volume) || volume <= 0) return;
+            if (Volatile.Read(ref _failed) != 0) { _player?.Dispose(); _player = null; }
+            if (_player is null)
+            {
+                Volatile.Write(ref _failed, 0);
+                _player = new BanbanSpeechPlayer(_ => { }, (_, _) => { }, error =>
+                {
+                    Volatile.Write(ref _failed, 1);
+                    AppLog.Error("Notification neural speech failed", error);
+                });
+            }
+            var rate = BanbanNeuralSynthesizer.DefaultSpeed * (float)Math.Pow(2, Math.Clamp(speed, -10, 10) / 10.0);
+            _player.Enqueue(BanbanVoiceService.SpeechText(text), true, rate, (float)Math.Clamp(volume, 0, 1), cue);
         }
-        _signal.Set();
     }
 
     public void Stop()
     {
-        lock (_sync)
-        {
-            if (_disposed) return;
-            _pending = null;
-            _stopRequested = true;
-        }
-        _signal.Set();
+        lock (_sync) { if (!_disposed) _player?.Stop(); }
     }
 
     public void Dispose()
     {
+        BanbanSpeechPlayer? player;
         lock (_sync)
         {
             if (_disposed) return;
             _disposed = true;
-            _pending = null;
-            _stopRequested = true;
+            player = _player; _player = null;
         }
-        _signal.Set();
-        if (Thread.CurrentThread != _thread) _thread.Join(TimeSpan.FromSeconds(2));
-        _signal.Dispose();
+        player?.Dispose();
     }
-
-    private void Run()
-    {
-        if (!OperatingSystem.IsWindows()) return;
-        object? voice = null;
-        try
-        {
-            var type = Type.GetTypeFromProgID("SAPI.SpVoice");
-            if (type is null) return;
-            voice = Activator.CreateInstance(type);
-            while (true)
-            {
-                _signal.WaitOne();
-                SpeechRequest? request;
-                bool stop;
-                bool dispose;
-                lock (_sync)
-                {
-                    request = _pending;
-                    _pending = null;
-                    stop = _stopRequested;
-                    _stopRequested = false;
-                    dispose = _disposed;
-                }
-
-                if (stop || request is not null)
-                {
-                    // SVSFlagsAsync | SVSFPurgeBeforeSpeak clears speech already queued by SAPI.
-                    type.InvokeMember("Speak", BindingFlags.InvokeMethod, null, voice, new object[] { "", 3 });
-                }
-                if (request is not null)
-                {
-                    type.InvokeMember("Rate", BindingFlags.SetProperty, null, voice, new object[] { request.Speed });
-                    type.InvokeMember("Volume", BindingFlags.SetProperty, null, voice, new object[] { (int)Math.Round(request.Volume * 100) });
-                    type.InvokeMember("Speak", BindingFlags.InvokeMethod, null, voice, new object[] { request.Text, 1 });
-                }
-                if (dispose) break;
-            }
-        }
-        catch (Exception exception)
-        {
-            AppLog.Error("Windows TTS failed", exception);
-        }
-        finally
-        {
-            if (voice is not null && Marshal.IsComObject(voice)) Marshal.FinalReleaseComObject(voice);
-        }
-    }
-
-    private sealed record SpeechRequest(string Text, int Speed, double Volume);
 }

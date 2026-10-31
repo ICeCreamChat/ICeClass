@@ -1,0 +1,42 @@
+Banban teacher login motion - 2026-10-31
+
+Current runtime artwork:
+login-motion.webp: 80 transparent cells in an 8-column, 10-row atlas.
+Cell 220 x 240; atlas 1760 x 2400; open=0, covered=50, peek=79.
+login-rest.webp: the matching 440 x 480 loading still.
+
+Congee / gpt-image-2 supplied 40 main drawings and 24 targeted corrections.
+The request used the approved current mascot as a PNG editing reference.
+51 artist drawings are selected, removing repeated holds and replacing the
+large initial arm-lift and hand-release gaps with smaller artist-drawn steps.
+The 80 runtime cells are NOT 80 independently generated illustrations.
+
+Offline preparation cleans isolated alpha fragments and registers each whole
+drawing. Short bidirectional motion fields retime the selected drawings into
+80 positions. Each intermediate cell warps ONE complete source drawing, never
+alpha-dissolving two silhouettes or splicing static book rectangles. This
+retains the artist's book, arms and face without procedural limb drawing.
+
+The browser only paints the local atlas while focus/visibility state changes.
+Cover takes about 840 ms; peek about 487 ms; lowering from cover about 720 ms.
+The gesture is interruptible, respects reduced motion and stops when hidden.
+No password values are read. No new runtime library or background image API.
+
+Editable sources, prompts, preparation and review:
+outputs/teacher-login-smooth-20261031/approved-current-keyposes.png
+outputs/teacher-login-smooth-20261031/banban-smooth-sheet.png
+outputs/teacher-login-smooth-20261031/banban-corrections.png
+outputs/teacher-login-smooth-20261031/smooth-prompt.txt
+outputs/teacher-login-smooth-20261031/corrections-prompt.txt
+outputs/teacher-login-smooth-20261031/prepare-smooth.py
+outputs/teacher-login-smooth-20261031/preparation.json
+
+Main Congee request: 2b1bcde3-51a1-43d4-94ce-3048dea24d2d
+Main imagegen request: cd90629d-31c4-4646-98e0-6e6a75d67d0a
+Correction Congee request: 5f0816a4-f177-4e71-a32c-4ed84d1be5ae
+Correction imagegen request: 6de8a6a9-0210-4aa9-ab33-a59fdf94095c
+
+The original classroom illustration remains app-icon.png. Existing three-pose
+login-open/cover/peek.webp files remain as prior source artwork. Desktop pet
+and classroom animation resources are unchanged. The superseded 24-drawing
+and procedural-arm drafts are not used by this runtime.

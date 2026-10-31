@@ -5,10 +5,11 @@
   const unrecognized = text => /(?:<|\[)\s*(?:unk|unknown)\s*(?:>|\])|\uFFFD/i.test(String(text || ''));
   const stopPhrases = ['停一下','停止播报','别说了','等一下','先停一下','暂停播报','别念了'];
   const intent = text => {
-    const value = normalize(text);
+    const value = normalize(text).replace(/^(?:斑斑|班伴|斑班)/u, '班班').replace(/^再见(?:斑斑|班伴|斑班)$/u, '再见班班');
     if (['取消操作','班班取消操作','先别做了','算了','取消刚才的操作'].includes(value)) return 'cancel';
     if (stopPhrases.some(phrase => value === phrase || value === '班班' + phrase)) return 'interrupt';
-    if (['再见班班','班班再见','结束对话'].includes(value)) return 'leave';
+    if (['再见班班','班班再见','结束对话'].includes(value)
+      || /^(?:班班)?请?你?先?(?:退下|离开|回去|去休息|休息)(?:吧|了)?$/u.test(value)) return 'leave';
     if (['确认执行','确认这项操作'].includes(value)) return 'confirm';
     if (['好','好的','好哒','嗯','嗯嗯','知道了','明白了','收到'].includes(value)) return 'acknowledge';
     if (/^(?:班班)?(?:你好|您好|谢谢|谢谢你|谢谢您|辛苦了)(?:班班)?$/.test(value)) return 'social';
@@ -40,7 +41,8 @@
     input.before(mic);
     caption.setAttribute('role', 'status'); caption.setAttribute('aria-live', 'polite');
     let enabled = false, active = false, disposed = false, speaking = false, working = false, voiceTurn = false, speechPaused = false;
-    let state = 'off', binding = null, recognition = null, restart = 0, failures = 0, generation = 0;
+    let state = 'off', binding = null, recognition = null, restart = 0, failures = 0, generation = 0, dismissed = false;
+    let nativeConversation = 0;
     let lastActivity = Date.now(), lastText = '', lastHeard = 0, prompt = null, cancelling = 0, consentBusy = false;
     let inputSequence = 0, speechSequence = 0, ignoreUntil = 0, cancelTask = null, startTimeout = 0;
     let speechStream = null, streamed = false, streamEnded = false, streamPlaying = false;
@@ -138,7 +140,7 @@
       binding = value;
       const allowed = client.setBinding(value);
       post('authorized', {value:allowed});
-      if (!allowed) { enabled = false; paint('error', '当前账号无权使用此教室，请更换教师账号'); }
+      if (!allowed) { enabled = false; paint('error', '班级关联已变化，请重新连接班班'); }
     }
     function refreshAuthorization() {
       // A restored session can mount the chat before its class request finishes.
@@ -161,10 +163,22 @@
           : results.some(o => o.status === 'succeeded') ? '任务已经完成，无法取消。'
           : results.some(o => o.status === 'cancelled') ? '已取消。' : '这轮已停止。');
         else work();
-      } catch (error) { if (!disposed) paint('error', '停止结果未确认：' + error.message); throw error; }
+      } catch (error) { if (token === generation && !disposed && active) paint('error', '停止结果未确认：' + error.message); throw error; }
       finally { cancelling--; }
       })();
       try { return await cancelTask; } finally { cancelTask = null; }
+    }
+    function leave(notify = true) {
+      if (dismissed) return;
+      dismissed = true; active = false; speechPaused = true;
+      void cancelCurrent(false).catch(() => {});
+      stopSpeech(); prompt = null;
+      if (notify) post('leave', {conversation:nativeConversation});
+      paint('standby');
+    }
+    function resumeConversation() {
+      if (dismissed) generation++;
+      dismissed = false; active = true; lastActivity = Date.now();
     }
     async function confirm() {
       const waiting = [...operations.values()].filter(o => o.status === 'awaiting_confirmation');
@@ -189,7 +203,10 @@
     }
     function observe(operation, allowPrompt = true) {
       if (!operation?.id || disposed) return;
+      const previous = operations.get(operation.id)?.status;
       operations.set(operation.id, operation);
+      if (voiceTurn && enabled && active && allowPrompt && previous !== operation.status && ['succeeded','failed','cancelled'].includes(operation.status))
+        post('task-result', {text:operation.status});
       if (prompt?.operation.id === operation.id && operation.status !== 'awaiting_confirmation') prompt = null;
       if (!enabled || !active || !allowPrompt || cancelling || operation.status !== 'awaiting_confirmation') return;
       const stamp = JSON.stringify([operation.id, operation.title, operation.target, operation.impact, operation.parameters, operation.expiresAt]);
@@ -220,12 +237,12 @@
       speechPaused = false;
       if (kind === 'cancel') { await cancelCurrent().catch(() => {}); return; }
       if (kind === 'leave') {
-        await cancelCurrent(false).catch(() => {}); active = false; post('standby'); paint('standby'); return;
+        leave(); return;
       }
       if (kind === 'confirm') { await confirm(); return; }
       stopSpeech();
       // A new request replaces a pending plan. Never replay or blindly retry a write.
-      if (working || prompt || [...operations.values()].some(o => ['running','stopping'].includes(o.status))) {
+      if (cancelTask || working || prompt || [...operations.values()].some(o => ['running','stopping'].includes(o.status))) {
         try { await cancelCurrent(false, false); } catch { return; }
       }
       if (ticket !== inputSequence || disposed || !enabled || !active) return;
@@ -246,7 +263,7 @@
       lastText = value; lastHeard = now;
       const wake = wakeWords.find(word => value.startsWith(word));
       if (wake) {
-        active = true; stopSpeech();
+        resumeConversation(); stopSpeech();
         let count = 0, position = 0;
         for (const char of text) { position += char.length; count += normalize(char).length; if (count >= wake.length) break; }
         const rest = text.slice(position).replace(/^[\s\p{P}\p{S}]+/u, '');
@@ -254,7 +271,7 @@
         else { const paused = speechPaused; speechPaused = false; say('我在，请说。'); speechPaused = paused; }
         return;
       }
-      if (!active || speaking && !value.startsWith('班班') && value !== '再见班班') return;
+      if (!active || speaking && !value.startsWith('班班') && intent(text) !== 'leave') return;
       void question(text);
     }
     function startBrowser() {
@@ -326,15 +343,17 @@
         return;
       }
       if (data.kind === 'state') {
+        if (data.conversation < nativeConversation) return;
         const wasEnabled = enabled; enabled = data.enabled === true;
         if (!enabled || data.state === 'standby' || data.state === 'login' || data.state === 'error') active = false;
         paint(data.state, data.text);
         if (wasEnabled && !enabled) void cancelCurrent(false).catch(() => {});
-      } else if (data.kind === 'wake') { active = true; lastActivity = Date.now(); }
+      } else if (data.kind === 'wake') { nativeConversation = data.conversation; resumeConversation(); }
       else if (data.kind === 'transcript') void question(data.text);
       else if (data.kind === 'cancel') void cancelCurrent().catch(() => {});
       else if (['interrupt','barge-in'].includes(data.kind)) interruptSpeech(data.kind === 'barge-in');
-      else if (['idle','leave'].includes(data.kind)) { void cancelCurrent(false).catch(() => {}); active = false; prompt = null; }
+      else if (data.kind === 'leave') { if (data.conversation === nativeConversation) leave(false); }
+      else if (data.kind === 'idle') { void cancelCurrent(false).catch(() => {}); active = false; prompt = null; }
       else if (data.kind === 'suspended') { void cancelCurrent(false).catch(() => {}); active = false; prompt = null; paint('off', '电脑已锁定或休眠，语音已暂停'); }
       else if (data.kind === 'audio-device-changed') { void cancelCurrent(false).catch(() => {}); active = false; prompt = null; paint('connecting', '音频设备已切换，正在重新连接…'); }
     }
@@ -346,7 +365,7 @@
     }
     function offline() { if (enabled && active) { void cancelCurrent(false).catch(() => {}); paint('error', '网络已断开，联网后请重新下达指令'); } }
     const timer = setInterval(() => {
-      if (!native && active && !working && !speaking && Date.now() - lastActivity > 90000) {
+      if (!native && active && !working && !speaking && Date.now() - lastActivity > 180000) {
         void cancelCurrent(false).catch(() => {}); active = false; paint('standby');
       }
     }, 1000);

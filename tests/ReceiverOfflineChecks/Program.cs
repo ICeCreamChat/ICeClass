@@ -2,6 +2,40 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--banban-departure-review", var departureOutput]) { BanbanDepartureReview.Run(departureOutput); return; }
+
+if (args is ["--conversation-checks", var conversationOutput])
+{
+    try { BanbanConversationChecks.Run(conversationOutput); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--listening-waveform-review", var waveformOutput]) { BanbanListeningWaveformReview.Run(waveformOutput); return; }
+
+if (args is ["--speech-mouth-checks", var mouthOutput])
+{
+    try { BanbanSpeechMouthChecks.Run(mouthOutput); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--speech-mouth-playback-checks", var mouthPlaybackOutput])
+{
+    try { BanbanSpeechMouthChecks.Run(mouthPlaybackOutput, playback: true); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--task-stop-checks", var taskStopOutput]) { await TaskStopChecks.Run(taskStopOutput); return; }
+if (args is ["--shell-settings-review", var shellSettingsOutput]) { ShellSettingsReview.Run(shellSettingsOutput); return; }
+
+if (args is ["--notification-voice-checks", var notificationVoiceOutput]) { NotificationVoiceChecks.Run(notificationVoiceOutput); return; }
+
+if (args is ["--classroom-banban-review", var classroomBinding, var classroomOutput]) { ClassroomBanbanReview.Run(classroomBinding, classroomOutput); return; }
+if (args is ["--banban-call-review", var callBinding, var callOutput]) { BanbanCallReview.Run(callBinding, callOutput); return; }
+if (args is ["--banban-background-review", var backgroundBinding, var backgroundOutput]) { BanbanBackgroundReview.Run(backgroundBinding, backgroundOutput); return; }
+if (args is ["--banban-background-dialogue-review", var backgroundDialogueBinding, var backgroundDialogueOutput]) { BanbanBackgroundReview.Run(backgroundDialogueBinding, backgroundDialogueOutput, dialogue: true); return; }
+
 if (args is ["--file-access-review", var fileAccessOutput])
 {
     try { await FileAccessReview.Run(fileAccessOutput); }
@@ -22,8 +56,12 @@ if (args is ["--file-recycle-review", var recycleOutput])
 }
 if (args is ["--banban-pet-review", var petOutput]) { BanbanPetReview.Run(petOutput); return; }
 if (args is ["--banban-pet-playground", var petPlayground]) { BanbanPetReview.Playground(petPlayground); return; }
+if (args is ["--banban-bubble-preview", var bubblePreview]) { BanbanPetReview.Playground(bubblePreview, speechBubble: true); return; }
+if (args is ["--banban-pet-demo", var petDemo]) { BanbanPetReview.Playground(petDemo, demonstrate: true); return; }
 if (args is ["--banban-motion-review", var motionOutput]) { BanbanPetMotionReview.Run(motionOutput); return; }
 if (args is ["--banban-motion-playground"]) { BanbanPetMotionReview.Playground(); return; }
+if (args is ["--banban-speaking-playground"]) { BanbanPetMotionReview.Playground(speaking: true); return; }
+if (args is ["--banban-pointing-playground"]) { BanbanPetMotionReview.Playground(actionId: "point-right"); return; }
 
 if (args is ["--vision-popup-diagnostics", var popupDiagnostics]) { VisionPopupChecks.Diagnose(popupDiagnostics); return; }
 if (args is ["--vision-popup-review", var popupOutput]) { VisionPopupChecks.Run(popupOutput); return; }

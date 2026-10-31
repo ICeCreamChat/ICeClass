@@ -188,6 +188,17 @@ class BanbanTest(ServerTestCase):
             _, second = await self.json_request('POST', '/api/banban/chat', {'message': '继续', 'scope': self.scope()}, csrf=True)
             self.assertEqual(second['snapshot']['scope']['classCount'], 0)
 
+    async def test_connected_legacy_chat_generates_identity_instead_of_using_local_template(self):
+        await self.seed()
+        await self.json_request('PUT', '/api/banban/settings', {
+            'enabled': True, 'model': 'deepseek-flash', 'apiKey': 'sk-test-key-not-real'}, csrf=True)
+        answer = '我是班班，许斌老师开发的校园智能助手，AI 建模社参与共建。'
+        with patch.object(Banban, 'complete', new_callable=AsyncMock, return_value=answer):
+            response, result = await self.json_request('POST', '/api/banban/chat', {'message': '你是谁？'}, csrf=True)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(result['mode'], 'deepseek')
+        self.assertEqual(result['answer'], answer)
+
     async def test_request_validation_rejects_injected_roles_and_invalid_ranges(self):
         await self.seed()
         for body in [

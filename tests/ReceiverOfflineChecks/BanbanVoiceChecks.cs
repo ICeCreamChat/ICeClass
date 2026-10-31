@@ -88,6 +88,7 @@ internal static class BanbanVoiceChecks
         var corpus = new (string Expected, (string Text, string Language)[] Segments)[] {
             ("把验收文字改成今天开始上课", [("把验收文字改成今天开始上课", "zh")]),
             ("确认执行", [("确认执行", "zh")]), ("取消操作", [("取消操作", "zh")]), ("打开数学课件", [("打开数学课件", "zh")]),
+            ("退下吧", [("退下吧", "zh")]),
             ("Open Word", [("Open Word", "en")]), ("Open Excel", [("Open Excel", "en")]),
             ("Open PowerPoint", [("Open PowerPoint", "en")]), ("Open Google Chrome", [("Open Google Chrome", "en")]),
             ("Open Steam", [("Open Steam", "en")]),
@@ -139,6 +140,8 @@ internal static class BanbanVoiceChecks
             Save();
             if (unsegmented is not null) Console.WriteLine("WHOLE " + unsegmented);
             Check(matches, "actual neural decoding: " + sentence);
+            if (sentence == "退下吧") Check(BanbanVoiceService.Intent(actual) == "leave"
+                && BanbanVoiceService.SpeechControl(actual) == "再见班班", "decoded departure reaches the local control during listening or playback");
             Check(finals.Length == 1, "one complete utterance is finalized exactly once: " + sentence);
             Check(milliseconds < audioSeconds * 1000, "recognition keeps up with real time on this machine: " + sentence);
         }

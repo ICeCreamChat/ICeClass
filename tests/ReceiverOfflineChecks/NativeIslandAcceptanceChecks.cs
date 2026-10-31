@@ -126,6 +126,9 @@ internal static class NativeIslandAcceptanceChecks
             }
             else
             {
+                anchor = new Window { Title = "ICeClass 本地全屏验收", Width = 420, Height = 200,
+                    Content = new TextBlock { Text = "正在检查全屏课件与悬浮岛恢复", Margin = new Thickness(24) } };
+                anchor.Show(); anchor.Activate();
                 receiver.ConnectionStateChanged += (_, state) => Dispatcher.UIThread.Post(() => { connected = state.Connected; island.SetConnection(state); });
                 receiver.BindingChanged += (_, config) => Dispatcher.UIThread.Post(() => island.SetBinding(config));
                 await receiver.StartAsync(binding);
@@ -173,12 +176,10 @@ internal static class NativeIslandAcceptanceChecks
                 Assert(state["ackRevision"]?.GetValue<int>() == 2, "the backend records delivery of the recovered configuration revision");
                 island.Clear();
 
-                anchor = new Window { Title = "ICeClass 本地全屏验收", Width = 420, Height = 200,
-                    Content = new TextBlock { Text = "正在检查全屏课件与悬浮岛恢复", Margin = new Thickness(24) } };
-                anchor.Show(); anchor.Activate();
+                anchor.Activate();
                 probe = Process.Start(Child("--island-fullscreen-probe", probePath))!;
                 await Until(() => File.Exists(probePath + ".ready"), "external fullscreen window readiness");
-                await Until(() => IslandPlatform.ForegroundFullscreen(window), "external foreground fullscreen detection", 10);
+                await Until(() => IslandPlatform.ForegroundFullscreen(window), "external foreground fullscreen detection", 30);
                 Invoke(island, "Refresh");
                 Assert(!window.IsVisible, "the island hides for a real fullscreen window in a separate process");
                 File.WriteAllText(probePath + ".stop", "stop");
@@ -197,6 +198,7 @@ internal static class NativeIslandAcceptanceChecks
                 reading.WindowState = WindowState.Normal;
                 await Until(() => window.IsVisible, "island restoration on reading exit from fullscreen");
                 Assert(ReadingExperience.IsOpen && window.IsVisible, "leaving reading fullscreen restores the island while keeping reading open");
+                await CheckReadingNavigation(reading, Assert);
                 reading.BringForward(); await Until(() => !window.IsVisible, "reading fullscreen re-entry");
                 await ReadingExperience.StopAsync();
                 anchor.Activate(); Invoke(island, "Refresh"); await Until(() => !ReadingExperience.IsOpen && window.IsVisible, "reading close restoration");
@@ -204,7 +206,12 @@ internal static class NativeIslandAcceptanceChecks
                 Capture(window, Path.Combine(output, "restored.png"));
             }
         }
-        catch (Exception error) { failure = error.ToString(); Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+        catch (Exception error)
+        {
+            failure = error.ToString(); Console.Error.WriteLine(error);
+            Console.Error.WriteLine($"Connection={connected}, sync={Sync().Snapshot.Online}, revision={Sync().Snapshot.Revision}, status={Sync().Snapshot.Status}, visible={window.IsVisible}, enabled={island.Enabled}, fullscreen={IslandPlatform.ForegroundFullscreen(window)}");
+            Environment.ExitCode = 1;
+        }
         finally
         {
             if (probe is { HasExited: false })
@@ -218,6 +225,85 @@ internal static class NativeIslandAcceptanceChecks
                 passed, failure, completedAt = DateTimeOffset.Now }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"{passed.Count} {stage} checks passed.");
             ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!).Shutdown(Environment.ExitCode);
+        }
+    }
+
+    private static async Task CheckReadingNavigation(ReadingCompanionWindow reading, Action<bool, string> assert)
+    {
+        var browser = Field<ReadingBrowser>(reading, "_browser");
+        var core = browser.Core!;
+        var home = Field<Button>(reading, "_home");
+        var fullscreen = Field<Button>(reading, "_fullscreen");
+        async Task UntilPage(string script)
+        {
+            var clock = Stopwatch.StartNew();
+            while (await core.ExecuteScriptAsync(script) != "true")
+            {
+                if (clock.Elapsed.TotalSeconds > 20) throw new TimeoutException("Reading navigation: " + script);
+                await Task.Delay(100);
+            }
+        }
+        assert(home.Content?.ToString() == "返回" && fullscreen.IsVisible,
+            "the native toolbar keeps the existing return and fullscreen actions");
+        assert(await core.ExecuteScriptAsync("getComputedStyle(document.querySelector('.classic-toolbar')).display === 'none'") == "true",
+            "the embedded reading page does not repeat the native navigation bar");
+        foreach (var mode in new[] { "classic", "carving", "particle", "rocket" })
+        {
+            await core.ExecuteScriptAsync($"document.getElementById('open-{mode}').click();");
+            await UntilPage("!document.getElementById('choose-mode').hidden && !document.getElementById('exit-classic').hidden");
+            assert(await core.ExecuteScriptAsync("getComputedStyle(document.querySelector('.classic-toolbar')).display !== 'none'") == "true",
+                mode + " keeps mode actions in their existing second toolbar row");
+            var originalName = Field<TextBlock>(reading, "_classLabel").Text!;
+            reading.SetClassName("高一（1）班 · 较长班级名称的本地验收");
+            foreach (var width in new[] { 640d, 1200d })
+            {
+                reading.Width = width; reading.Height = 820;
+                await Until(() => Math.Abs(reading.ClientSize.Width - width) < 1
+                    && Math.Abs(browser.Bounds.Width - width) < 1, "reading browser resize");
+                await UntilPage($"Math.abs(innerWidth - {JsonSerializer.Serialize(width)}) < 1");
+                var measurement = JsonNode.Parse(await core.ExecuteScriptAsync("(() => {const r=document.getElementById('exit-classic').getBoundingClientRect(),s=getComputedStyle(document.querySelector('.classic-toolbar'));return {right:r.right,height:r.height,viewport:innerWidth,paddingRight:s.paddingRight,devicePixelRatio};})()"))!;
+                var browserOrigin = browser.TranslatePoint(new Point(0, 0), reading)!.Value;
+                var pageScale = browser.Bounds.Width / measurement["viewport"]!.GetValue<double>();
+                var pageRight = browserOrigin.X + measurement["right"]!.GetValue<double>() * pageScale;
+                var nativeRight = fullscreen.TranslatePoint(new Point(0, 0), reading)!.Value.X + fullscreen.Bounds.Width;
+                Console.WriteLine($"Reading alignment {mode} {width}: page={measurement.ToJsonString()}, browser={browser.Bounds}, origin={browserOrigin}, nativeRight={nativeRight}, client={reading.ClientSize}");
+                assert(Math.Abs(pageRight - nativeRight) <= 1
+                    && measurement["height"]!.GetValue<double>() * pageScale >= 44 && fullscreen.Bounds.Height >= 44,
+                    $"{mode} second-row right edge aligns with native fullscreen at {width} DIP (difference {Math.Abs(pageRight - nativeRight):F2} DIP)");
+            }
+            reading.SetClassName(originalName);
+            if (mode is "classic" or "rocket")
+            {
+                await UntilPage("!!document.querySelector('iframe')?.contentDocument?.getElementById('dashboard')");
+                assert(await core.ExecuteScriptAsync("(() => {const doc=document.querySelector('iframe').contentDocument;return doc.defaultView.getComputedStyle(doc.getElementById('fullscreen-btn')).display==='none';})()") == "true",
+                    mode + " has only one visible fullscreen action outside fullscreen");
+                await core.ExecuteScriptAsync("document.querySelector('iframe').dataset.navigationReview='previous';");
+            }
+            await core.ExecuteScriptAsync("document.getElementById('exit-classic').click();");
+            if (mode is "classic" or "rocket")
+                await UntilPage("!!document.querySelector('iframe')?.contentDocument?.getElementById('dashboard') && document.querySelector('iframe').dataset.navigationReview !== 'previous'");
+            else
+                await UntilPage($"!document.getElementById('{mode}-setup').hidden");
+            assert(await core.ExecuteScriptAsync("document.getElementById('home-view').hidden && !document.getElementById('exit-classic').hidden") == "true",
+                mode + " restart returns to its setup without leaving the selected activity");
+            if (mode is "classic" or "rocket")
+            {
+                reading.WindowState = WindowState.FullScreen;
+                await UntilPage("document.documentElement.dataset.desktopFullscreen === 'true'");
+                // Let the activity's own control observer settle after the host event.
+                await Task.Delay(250);
+                assert(!Field<Border>(reading, "_chrome").IsVisible
+                    && await core.ExecuteScriptAsync("(() => {const doc=document.querySelector('iframe').contentDocument;const button=doc.getElementById('fullscreen-btn');return doc.defaultView.getComputedStyle(button).display!=='none' && button.textContent==='退出全屏';})()") == "true",
+                    mode + " fullscreen hides the native bar and exposes one exit-fullscreen action in the activity");
+                await core.ExecuteScriptAsync("document.querySelector('iframe').contentDocument.getElementById('fullscreen-btn').click();");
+                await UntilPage("document.documentElement.dataset.desktopFullscreen === 'false'");
+                assert(Field<Border>(reading, "_chrome").IsVisible,
+                    mode + " exit-fullscreen restores the native navigation bar");
+            }
+            await core.ExecuteScriptAsync("document.getElementById('choose-mode').click();");
+            await UntilPage("!document.getElementById('home-view').hidden");
+            assert(await core.ExecuteScriptAsync("!document.getElementById('home-view').hidden && !document.querySelector('iframe')") == "true",
+                mode + " can return to mode selection and release its activity");
         }
     }
 

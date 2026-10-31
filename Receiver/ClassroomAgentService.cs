@@ -16,6 +16,9 @@ internal sealed class ClassroomAgentService : IDisposable
     private readonly object _fileGate = new();
     private readonly ClassroomAgentWorker _windows = new();
     private readonly Func<ClassroomAgentPolicy> _policyLoader;
+    private readonly object _stopGate = new();
+    private bool _stopping;
+    private long _stoppedThrough;
     private string _binding = "";
     internal event Action<string>? StatusChanged;
     internal string Status { get; private set; } = "暂无电脑操作";
@@ -25,9 +28,30 @@ internal sealed class ClassroomAgentService : IDisposable
 
     internal void Stop()
     {
-        foreach (var token in _active.Values) token.Cancel();
-        SetStatus("已请求停止电脑操作");
+        var active = false;
+        foreach (var token in _active.Values)
+        {
+            try { token.Cancel(); active = true; }
+            catch (ObjectDisposedException) { }
+        }
+        lock (_stopGate) { if (_stopping) return; }
+        SetStatus(active ? "正在停止电脑操作…" : "当前没有正在执行的电脑操作");
     }
+
+    internal void BeginTaskStop()
+    {
+        lock (_stopGate) _stopping = true;
+        Stop();
+        SetStatus("正在停止本轮任务…");
+    }
+
+    internal void CompleteTaskStop(long stoppedThrough, bool hadWork)
+    {
+        lock (_stopGate) { _stoppedThrough = Math.Max(_stoppedThrough, stoppedThrough); _stopping = false; }
+        SetStatus(hadWork ? "本轮任务已停止；已完成的操作不会撤销" : "当前没有待停止的任务");
+    }
+
+    internal void TaskStopFailed() => SetStatus("本机操作已暂停，未能确认平台停止结果。请检查连接后重试。");
 
     private void SetStatus(string value) { Status = value; StatusChanged?.Invoke(value); }
     internal Task<JsonObject> ExecuteAsync(JsonElement command, ReceiverConfig binding, CancellationToken connection)
@@ -80,11 +104,18 @@ internal sealed class ClassroomAgentService : IDisposable
             lifetime = CancellationTokenSource.CreateLinkedTokenSource(connection);
             lifetime.CancelAfter(TimeSpan.FromSeconds(18));
             _active[id] = lifetime;
+            // Block arrivals while the whole turn is being cancelled, including
+            // commands already sent by the server before its stop acknowledgement.
+            lock (_stopGate)
+                if (_stopping || command.GetProperty("issuedAt").GetInt64() <= _stoppedThrough)
+                    lifetime.Cancel();
+            lifetime.Token.ThrowIfCancellationRequested();
             var bindingKey = config.Endpoint + "|" + config.DeviceId + "|" + config.ClassId;
             if (_binding != bindingKey) { _binding = bindingKey; lock (_fileGate) _files.Clear(); _windows.Reset(); }
             if (action == "capture_window")
             {
                 var captured = await RunActionAsync(action, args, policy, config, lifetime.Token);
+                lifetime.Token.ThrowIfCancellationRequested();
                 SetStatus("已读取当前窗口画面");
                 return Reply(true, captured);
             }
@@ -97,6 +128,7 @@ internal sealed class ClassroomAgentService : IDisposable
             await File.WriteAllTextAsync(receipt, Reply(true, new() { ["verified"] = false, ["detail"] = "上次操作被中断，结果未确认，未重复执行。" }).ToJsonString(), lifetime.Token);
             SetStatus("正在执行：" + action);
             var result = await RunActionAsync(action, args, policy, config, lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
             var reply = Reply(true, result);
             var stored = reply.DeepClone().AsObject();
             ReleaseFrame(stored);
@@ -107,13 +139,16 @@ internal sealed class ClassroomAgentService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            SetStatus("电脑操作已停止；已完成的操作不会撤销");
+            bool stopping;
+            lock (_stopGate) stopping = _stopping;
+            if (!stopping) SetStatus("电脑操作已停止；已完成的操作不会撤销");
             return Reply(false, new() { ["verified"] = false }, "操作已停止；已完成的操作不会撤销。", true);
         }
         catch (Exception error)
         {
             AppLog.Error("Classroom agent operation failed", error);
-            SetStatus("电脑操作未完成：" + error.Message);
+            lock (_stopGate)
+                if (!_stopping) SetStatus("电脑操作未完成：" + error.Message);
             return Reply(false, error: error.Message);
         }
         finally

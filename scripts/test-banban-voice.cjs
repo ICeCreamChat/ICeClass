@@ -19,7 +19,7 @@ function hub() {
   };
 }
 function setup({native = true, ask, interrupt, confirm, cancel, browserStarts = true, setBinding = () => true} = {}) {
-  let now = 100000, controller;
+  let now = 100000, controller, conversation = 0;
   const posts = [], asks = [], spoken = [], timers = new Map(); let nextTimer = 0;
   const element = () => ({...hub(), dataset:{}, attributes:{}, setAttribute(k,v) { this.attributes[k] = v; }, remove() { this.removed = true; }});
   const micParent = {}, caption = element(), input = {value:'',placeholder:'问问班班…',before(n) { micParent.mic = n; }};
@@ -45,16 +45,83 @@ function setup({native = true, ask, interrupt, confirm, cancel, browserStarts = 
   controller = window.ICeClassBanbanVoice.mount({root, open() {}, setBinding,
     ask:async (text, valid) => { if (!valid()) return; asks.push(text); controller.begin('voice'); await ask?.(text, valid); },
     interrupt:interrupt || (async () => {})});
-  const emit = data => bridge.dispatchEvent({type:'message',data:{type:'banban-voice',...data}});
+  const emit = data => {
+    if (data.kind === 'wake') conversation++;
+    bridge.dispatchEvent({type:'message',data:{type:'banban-voice',conversation,...data}});
+  };
   const hear = text => native ? emit({kind:'transcript',text}) : Recognition.current.onresult({resultIndex:0,results:[Object.assign([{transcript:text}], {isFinal:true})]});
   return {controller,context,window,document,bridge,posts,asks,spoken,caption,input,
     get mic() {return micParent.mic;}, enable() {native ? emit({kind:'state',state:'standby',enabled:true}) : micParent.mic.dispatchEvent({type:'click'});},
     wake() {emit({kind:'wake'});}, emit,hear,advance(ms) {now += ms;}, Recognition,
+    tick() { for (const timer of timers.values()) if (typeof timer === 'function') timer(); },
     expireTimeout(delay) { for (const [id,timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.fn(); } },
     speech() {return posts.filter(p => p.kind === 'speak').map(p=>p.text).concat(spoken.map(v=>v.text));}
   };
 }
 const operation = (id='current', overrides={}) => ({id,status:'awaiting_confirmation',title:'输入验收文字',target:'本教室',impact:'将替换文字框内容。',parameters:{text:'课程已准备'},expiresAt:400000,...overrides});
+
+test('explicit departure immediately dismisses without asking the model or waiting for cancellation', async () => {
+  for (const phrase of ['退下吧', '班班，你先离开吧', '斑斑，请先退下吧', '你先休息吧', '再见班班', '结束对话']) {
+    const gate = defer(), e = setup({interrupt:() => gate.promise}); e.enable(); e.wake();
+    e.hear(phrase);
+    assert.equal(e.posts.filter(p => p.kind === 'leave').length, 1, phrase);
+    assert.equal(e.mic.dataset.state, 'standby', phrase);
+    assert.equal(e.asks.length, 0, phrase);
+    e.hear('打开课件'); await flush(); assert.equal(e.asks.length, 0, 'departed session stays asleep');
+    gate.resolve(); await flush(); e.controller.dispose();
+  }
+});
+
+test('discussing or negating departure remains an ordinary question', async () => {
+  for (const phrase of ['不要退下吧', '退下吧是什么意思', '如果我说退下吧会怎样', '班班不要离开']) {
+    const e = setup(); e.enable(); e.wake(); e.hear(phrase); await flush();
+    assert.deepEqual(e.asks, [phrase]); assert.equal(e.posts.some(p => p.kind === 'leave'), false);
+    e.controller.dispose();
+  }
+});
+
+test('departure during browser playback stops the voice session and still accepts a fresh wake', async () => {
+  const e = setup({native:false}); e.enable(); e.hear('你好班班');
+  e.hear('退下吧'); await flush();
+  assert.equal(e.mic.dataset.state, 'standby'); assert.equal(e.asks.length, 0);
+  e.advance(1500); e.hear('你好班班，继续讲'); await flush();
+  assert.deepEqual(e.asks, ['继续讲']); e.controller.dispose();
+});
+
+test('a wake during pending departure cancellation survives its late completion', async () => {
+  const gate = defer(), e = setup({interrupt:() => gate.promise}); e.enable(); e.wake();
+  e.hear('退下吧'); e.wake(); e.hear('继续讲解'); await flush();
+  assert.equal(e.asks.length, 0, 'new task waits until the old interrupt has finished');
+  gate.resolve(); await flush();
+  assert.deepEqual(e.asks, ['继续讲解']);
+  assert.notEqual(e.mic.dataset.state, 'standby');
+  assert.equal(e.posts.filter(p => p.kind === 'leave').length, 1);
+  e.emit({kind:'leave'}); await flush();
+  assert.equal(e.posts.filter(p => p.kind === 'leave').length, 1, 'native leave does not echo a bridge command');
+  e.controller.dispose();
+});
+
+test('a delayed native leave from the previous conversation cannot dismiss a fresh wake', async () => {
+  const e = setup(); e.enable(); e.wake(); e.hear('退下吧'); await flush();
+  e.wake(); e.emit({kind:'leave',conversation:1}); e.hear('继续讲解'); await flush();
+  assert.deepEqual(e.asks, ['继续讲解']);
+  assert.notEqual(e.mic.dataset.state, 'standby');
+  assert.equal(e.posts.find(p => p.kind === 'leave').conversation, 1, 'bridge dismissal identifies the conversation it belongs to');
+  e.controller.dispose();
+});
+
+test('native pet receives only changed terminal results from the active voice turn', async () => {
+  const e=setup();e.enable();e.wake();e.hear('打开验收文件');await flush();
+  e.controller.event({type:'operation',operation:operation('done',{status:'running'})});
+  const done=operation('done',{status:'succeeded'});
+  e.controller.event({type:'operation',operation:done});
+  e.window.dispatchEvent({type:'banban-operation-updated',detail:done});
+  e.controller.event({type:'operation',operation:operation('failed',{status:'failed'})});
+  assert.deepEqual(e.posts.filter(p=>p.kind==='task-result').map(p=>p.text),['succeeded','failed']);
+  e.controller.begin('text');
+  e.window.dispatchEvent({type:'banban-operation-updated',detail:operation('done',{status:'cancelled'})});
+  assert.equal(e.posts.filter(p=>p.kind==='task-result').length,2);e.controller.dispose();
+});
 
 test('native authorization recovers when the class list finishes after chat mounts', async () => {
   let loaded = false;
@@ -86,6 +153,22 @@ test('browser waits for wake, then accepts a task and follow-up without repeatin
   e.hear('请翻到下一页'); await flush(); assert.equal(e.asks.length,0);
   e.hear('你好，班班，打开课件'); await flush(); assert.deepEqual(e.asks,['打开课件']);
   e.hear('再打开数学课件'); await flush(); assert.equal(e.asks.at(-1),'再打开数学课件');
+  e.controller.dispose();
+});
+
+test('browser keeps each follow-up open for three minutes and renews the idle wait after speech', async () => {
+  const e = setup({native:false}); e.enable();
+  e.hear('你好班班，打开课件'); await flush();
+  e.advance(100000); e.tick(); await flush();
+  assert.equal(e.mic.dataset.state, 'listening');
+  e.hear('再打开数学课件'); await flush();
+  assert.deepEqual(e.asks, ['打开课件', '再打开数学课件']);
+  e.advance(179999); e.tick(); await flush();
+  assert.equal(e.mic.dataset.state, 'listening');
+  e.advance(2); e.tick(); await flush();
+  assert.equal(e.mic.dataset.state, 'standby');
+  e.hear('打开英语课件'); await flush();
+  assert.equal(e.asks.length, 2);
   e.controller.dispose();
 });
 

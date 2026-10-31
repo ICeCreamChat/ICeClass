@@ -69,7 +69,7 @@ internal sealed partial class ClassroomAgentWindows
                     ["application"] = kind switch { "wps-presentation" => "WPS 演示", "wps-sheet" => "WPS 表格", "wps-writer" => "WPS 文字", _ => app.Name[..Math.Min(app.Name.Length, 80)] }, ["kind"] = kind, ["foreground"] = foreground == handle,
                     ["minimized"] = IsIconic(handle), ["maximized"] = IsZoomed(handle),
                     ["presentationMode"] = kind is "powerpoint" or "wps-presentation" ? LooksLikeSlideShow(target) ? "slideshow" : "editor" : null,
-                    ["presentationAdapter"] = kind is "powerpoint" or "wps-presentation" ? "COM，失败时仅向所选窗口发送放映快捷键" : kind == "seewo" ? "所选窗口的翻页快捷键，效果需回报核对" : null });
+                    ["presentationAdapter"] = kind == "powerpoint" ? "COM，失败时仅向所选窗口发送放映快捷键" : kind == "wps-presentation" ? "所选窗口的放映快捷键；页码需核对，开始和退出核验放映窗口" : kind == "seewo" ? "所选窗口的翻页快捷键，效果需回报核对" : null });
             }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException) { }
             return true;
@@ -195,7 +195,10 @@ internal sealed partial class ClassroomAgentWindows
                     target = showing;
                 }
             }
-            var result = kind == "seewo" ? null : Presentation(action, target, args, kind, token);
+            // Keep WPS slideshow input outside its COM/VBA runtime: mixing
+            // COM probes with F5/Escape can interrupt that runtime rather than
+            // end a newly started show. Receipts observe the native window.
+            var result = kind == "powerpoint" ? Presentation(action, target, args, kind, token) : null;
             if (result is not null) { result["windows"] = Inspect(apps, token)["windows"]?.DeepClone(); return result; }
             if (kind != "seewo" && !LooksLikeSlideShow(target) && action != "presentation_start")
                 target = FindSlideShow(target, apps, token) ?? throw new InvalidOperationException("此课件没有可确认的放映窗口，请先开始放映。");

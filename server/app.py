@@ -431,15 +431,16 @@ def rooms(request: web.Request) -> Rooms:
     return request.app[ROOMS_KEY]
 
 
-def authenticate_device(request: web.Request) -> dict[str, Any] | None:
+def authenticate_device(request: web.Request, device_id: str | None = None) -> dict[str, Any] | None:
     auth = request.headers.get("Authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else ""
-    device_id = request.query.get("deviceId", "")
+    if device_id is None:
+        device_id = request.query.get("deviceId", "")
     if not token or not device_id:
         return None
     return store(request).one(
         """SELECT d.id, d.class_id FROM devices d JOIN classes c ON c.id=d.class_id
-           WHERE d.id=? AND d.token_hash=? AND d.enabled=1 AND c.enabled=1""",
+           WHERE d.id=? AND d.token_hash=? AND d.enabled=1 AND d.deleted_at IS NULL AND c.enabled=1""",
         (device_id, sha256(token)),
     )
 
@@ -484,7 +485,40 @@ def load_receiver_release(request: web.Request) -> tuple[dict[str, Any], Path] |
         return None
 
 
+def is_classroom_request(request: web.Request) -> bool:
+    return "X-ICeClass-Device" in request.headers
+
+
+def classroom_identity(request: web.Request) -> tuple[dict[str, Any] | None, str]:
+    """Resolve live device -> class -> teacher; never fall back to a browser cookie."""
+    device = authenticate_device(request, request.headers.get("X-ICeClass-Device", ""))
+    if not device or device['class_id'] != request.headers.get("X-ICeClass-Class", ""):
+        return None, "教室绑定已失效，请在教室设置中重新绑定班级。"
+    teachers = store(request).all(
+        """SELECT u.id,u.username,u.display_name,u.role,u.updated_at,c.name AS class_name
+           FROM teacher_classes tc JOIN users u ON u.id=tc.user_id JOIN classes c ON c.id=tc.class_id
+           WHERE tc.class_id=? AND u.role='teacher' AND u.enabled=1 AND u.deleted_at IS NULL LIMIT 2""",
+        (device['class_id'],),
+    )
+    if not teachers:
+        return None, "此班级尚未分配可用的班主任账号，请联系管理员。"
+    if len(teachers) != 1:
+        return None, "此班级关联了多位班主任，请联系管理员保留一位。"
+    teacher = teachers[0]
+    # This proof binds every read and write to the account selected at startup.
+    # A reassignment, password/role change or token rotation invalidates old pages.
+    context = f"classroom-banban:{device['id']}:{device['class_id']}:{teacher['id']}:{teacher['updated_at']}"
+    proof = hmac.new(request.headers['Authorization'][7:].encode(), context.encode(), hashlib.sha256).hexdigest()
+    return {
+        'id': teacher['id'], 'username': teacher['username'], 'displayName': teacher['display_name'],
+        'role': 'teacher', 'csrfToken': proof, 'grade': None, 'permissions': capabilities(teacher),
+        'classroom': {'deviceId': device['id'], 'classId': device['class_id'], 'className': teacher['class_name']},
+    }, ""
+
+
 def current_user(request: web.Request) -> dict[str, Any] | None:
+    if is_classroom_request(request):
+        return classroom_identity(request)[0]
     token = request.cookies.get("iceclass_session")
     if not token:
         return None
@@ -505,13 +539,15 @@ def current_user(request: web.Request) -> dict[str, Any] | None:
 
 
 def require_user(request: web.Request) -> dict[str, Any] | web.Response:
-    user = current_user(request)
+    classroom = is_classroom_request(request)
+    user, error = classroom_identity(request) if classroom else (current_user(request), "请先登录。")
     if not user:
-        return json_response({"error": "请先登录。"}, 401)
-    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        return json_response({"error": error}, 401)
+    if classroom or request.method not in {"GET", "HEAD", "OPTIONS"}:
         supplied = request.headers.get("X-CSRF-Token", "")
-        if not supplied or not hmac.compare_digest(supplied, str(user["csrfToken"])):
-            return json_response({"error": "页面凭证已失效，请刷新后重试。"}, 403)
+        if not supplied or not supplied.isascii() or not hmac.compare_digest(supplied, str(user["csrfToken"])):
+            return json_response({"error": "班主任账号或教室绑定已变化，正在重新关联。" if classroom
+                                  else "页面凭证已失效，请刷新后重试。"}, 401 if classroom else 403)
     return user
 
 
@@ -796,6 +832,10 @@ async def login(request: web.Request) -> web.Response:
 
 
 async def session(request: web.Request) -> web.Response:
+    if is_classroom_request(request):
+        user, error = classroom_identity(request)
+        return json_response({"authenticated": bool(user), **({"user": user} if user else {"error": error})},
+                             200 if user else 401)
     user = current_user(request)
     return json_response({"authenticated": bool(user), **({"user": user} if user else {})})
 

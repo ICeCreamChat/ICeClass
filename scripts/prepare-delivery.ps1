@@ -1,7 +1,8 @@
 ﻿param(
     [string]$Endpoint = 'https://iceclass.icecreamchat.top',
     [switch]$Unconfigured,
-    [string]$OutputDirectory = ''
+    [string]$OutputDirectory = '',
+    [string]$DistributionDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -22,7 +23,8 @@ function Read-Endpoint {
     return $entered
 }
 
-$receiver = Join-Path (Get-Location) 'dist\receiver\ICeClass.exe'
+$distributionRoot = if ($DistributionDirectory) { [IO.Path]::GetFullPath($DistributionDirectory) } else { Join-Path (Get-Location) 'dist' }
+$receiver = Join-Path $distributionRoot 'receiver\ICeClass.exe'
 if (-not (Test-Path -LiteralPath $receiver)) {
     throw '找不到 dist\receiver\ICeClass.exe。请先在管理员电脑运行 build.bat。'
 }
@@ -43,7 +45,12 @@ $delivery = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } e
 $classroom = Join-Path $delivery '教室端'
 New-Item -ItemType Directory -Force -Path $classroom | Out-Null
 Copy-Item -LiteralPath $receiver -Destination (Join-Path $classroom 'ICeClass.exe') -Force
-$desktopExecutable = Join-Path (Get-Location) 'dist\desktop\ICeClass.Desktop.exe'
+# Windows PowerShell 5.1 needs the BOM to display Chinese installer messages.
+[IO.File]::WriteAllText((Join-Path $classroom 'install.ps1'), (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'install-classroom.ps1') -Raw -Encoding UTF8), (New-Object Text.UTF8Encoding($true)))
+[IO.File]::WriteAllText((Join-Path $classroom '安装或升级.cmd'), "@echo off`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
+$classroomProgram = [ordered]@{ version = (Get-Item -LiteralPath $receiver).VersionInfo.FileVersion; size = (Get-Item -LiteralPath $receiver).Length; sha256 = (Get-FileHash -LiteralPath $receiver -Algorithm SHA256).Hash.ToLowerInvariant() } | ConvertTo-Json
+[IO.File]::WriteAllText((Join-Path $classroom 'program-manifest.json'), $classroomProgram, (New-Object Text.UTF8Encoding($false)))
+$desktopExecutable = Join-Path $distributionRoot 'desktop\ICeClass.Desktop.exe'
 if (Test-Path -LiteralPath $desktopExecutable) {
     $desktopFolder = Join-Path $delivery 'Windows教师端'
     New-Item -ItemType Directory -Force -Path $desktopFolder | Out-Null
@@ -75,8 +82,8 @@ Set-Content -LiteralPath (Join-Path $delivery '网页端.url') -Value $shortcut 
 $classroomReadme = @'
 教室电脑一步使用
 
-1. 把这个文件夹复制到教室电脑的固定位置，例如 D:\ICeClass。
-2. 双击 ICeClass.exe。
+1. 完整解压安装包。已有教室端时，先从托盘菜单“退出”，然后双击“安装或升级.cmd”；程序优先升级桌面图标指向的原目录，保留绑定和设置。首次安装使用当前用户的应用目录。
+2. 安装后会自动打开。也可以把整个教室端文件夹放到固定位置，双击 ICeClass.exe 使用。
 3. 若未预置网址，先输入管理员提供的 ICeClass 班伴 HTTPS 网址。
 4. 输入管理员提供的当前全校绑定码，点击“读取班级”，依次下拉选择年级、本教室班级。无需管理员逐班生成绑定码。
 5. 点击“绑定此教室”。以后电脑开机后会自动在后台连接平台。
@@ -84,7 +91,7 @@ $classroomReadme = @'
 
 班班语音助手
 
-教室首页点击“班班”，或使用托盘“班班语音助手”。首次登录有权管理本教室的教师账号，开启输入框左侧麦克风，看到“等候‘你好班班’”后即可关闭窗口，后台仍可唤醒。学校服务器与教室端需配套 2.5.0，班班需配置可用的模型连接。唤醒、SenseVoice 整句识别与中英神经语音模型随应用携带；没听清时要求重说。班班对话不依赖 Windows 中文声音包。需要可用的麦克风、扬声器和 Windows 桌面应用麦克风权限。
+教室绑定班级后，班班自动使用该班班主任账号，无需再次登录。教室首页点击“班班”，或使用托盘“班班语音助手”；开启输入框左侧麦克风，看到“等候‘你好班班’”后即可关闭窗口，后台仍可唤醒。学校服务器与教室端需使用本次配套版本，并给班级分配唯一可用的班主任；班班沿用该账号的学校或个人模型连接。唤醒、SenseVoice 整句识别与中英神经语音模型随应用携带；没听清时要求重说。班班对话不依赖 Windows 中文声音包。需要可用的麦克风、扬声器和 Windows 桌面应用麦克风权限。
 说“你好班班”开始安排，连续对话不必重复唤醒；说“班班停一下”打断播报，“班班取消操作”请求停止当前任务，“再见班班”恢复待机。回声消除和语音活动检测可用时，也能在播报中直接说出新的完整安排；若现场效果不佳，先用停止口令。明确的语音安排直接执行，普通文字任务保留原确认规则；缺少目标、正文或密码时仍需补充，密码在窗口填写。已完成的操作不会被取消回滚。锁屏暂停语音，实际教室噪声和麦克风效果需在现场确认。详细说明见项目文档“班班语音助手”。
 
 班班桌宠平时小尺寸贴在屏幕边缘，按已同步课表在上课时间隐藏，喊“你好班班”仍可跳出办事。单击桌宠开始对话，双击查看完整聊天；右键可停止、暂停语音或隐藏。拖动后自动贴边，闲置后收回，遵循 Windows 减少动态效果设置。
@@ -102,6 +109,8 @@ ICe 在后台设置统计时段和统计声量门槛。目标、时长、速度�
 
 以后更新
 
+2.5.0 及更早教室端限制自动更新文件为 250 MiB，不能直接接收包含完整语音模型的大程序。这些版本本次须先使用“安装或升级.cmd”完成一次安装升级；不能只更新学校服务器后等旧程序自动升级。安装包会校验程序并在新版不能确认启动时恢复原程序，始终保留配置。升级到本次版本后，支持不超过 1 GiB 的程序更新和原有断点续传。
+
 学校初始预设：高一 16 班、高二 14 班、高三 14 班。班级名单来自后台，增减或更名后在绑定页点击“刷新班级”，不需要重装 EXE。
 
 管理员更新服务器后，教室端会在空闲时自动检查并安装新版；早读期间暂停更新。弱网下载中断后会续传，完整校验通过才替换，也可以在托盘或设置窗口点击“检查更新”。实时通知和语音留言仍需要联网，过期通知不会补播。
@@ -109,7 +118,7 @@ ICe 在后台设置统计时段和统计声量门槛。目标、时长、速度�
 
 通知声音
 
-通知统一显示在顶部教室岛。普通通知静音显示；重要与紧急通知由班班提示并播放声音。较长内容可点击岛查看全文；点击“已知晓”向教师确认，Esc 仅收起。紧急通知优先展示，结束后恢复被打断的通知。
+通知统一显示在顶部教室岛。普通通知静音显示；重要通知先响柔和叮咚，紧急通知先响双音，停顿 0.2 秒后播报。文字使用班班对话的自然音色，教师录音保持原声。每条通知只响一次，关闭或插播时提示音与正文一起停止；班班日常对话和课表语音提醒不加提示音。较长内容可点击岛查看全文；点击“已知晓”向教师确认，Esc 仅收起。紧急通知优先展示，结束后恢复被打断的通知。
 
 学生向老师留言
 

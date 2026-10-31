@@ -132,6 +132,7 @@ def install_agent(app, feature, system):
     app.router.add_put('/api/banban/history-policy', agent.save_history_policy)
     app.router.add_post('/api/banban/chat/stream', agent.chat)
     app.router.add_post('/api/banban/chat/cancel', agent.cancel)
+    app.router.add_post('/api/receiver/computer/stop', agent.stop_device)
     app.router.add_post('/api/banban/connection/test', agent.test_connection)
 
     async def shutdown(_):
@@ -146,12 +147,13 @@ class BanbanAgent:
     def __init__(self, feature, system):
         self.f, self.s, self.db, self.system = feature, feature.s, feature.db, system
         self.jobs = {}
+        self.job_devices = {}
         self._upstream_client = None
         feature.app.on_cleanup.append(self.close_upstream)
         self.platform = BanbanPlatform(feature)
         self.history = BanbanHistory(self.db, lambda: self.s.now_ms(), self.access)
         feature.app[HISTORY_KEY] = self.history
-        self.operations = Operations(feature)
+        self.operations = Operations(feature, self.track_device)
 
     async def close_upstream(self, _):
         if self._upstream_client is not None:
@@ -313,6 +315,37 @@ class BanbanAgent:
             return user
         await self.cancel_job(user)
         return self.s.json_response({'ok': True})
+
+    async def stop_device(self, request):
+        # The device can stop work on itself, never on an arbitrary classroom.
+        device = self.s.authenticate_device(request)
+        if not device:
+            return self.s.json_response({'error': '教室绑定无效，请重新连接。'}, 401)
+        body = await self.s.read_json(request)
+        if not isinstance(body, dict) or body.get('classId') != device['class_id']:
+            return self.s.json_response({'error': '教室绑定已变化，请重新连接。'}, 409)
+        target = (device['id'], device['class_id'])
+        tasks = [task for task, devices in self.job_devices.items() if target in devices and not task.done()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for uid, job in list(self.jobs.items()):
+            if job in tasks and self.jobs.get(uid) is job:
+                self.jobs.pop(uid, None)
+                self.f.busy.discard(uid)
+        rows = self.db.all("SELECT id FROM banban_operations WHERE device_id=? AND class_id=? "
+                           "AND kind='computer' AND status IN ('prepared','awaiting_confirmation','running','stopping','unconfirmed')",
+                           target)
+        for row in rows:
+            self.operations.update(row['id'], 'cancelled', {'detail': '已在教室电脑上停止本轮任务；已完成的操作不会撤销。'})
+        self.operations.frames = {key: frame for key, frame in self.operations.frames.items() if frame['device'] != device['id']}
+        return self.s.json_response({'ok': True, 'cancelledTurns': len(tasks), 'cancelledOperations': len(rows),
+                                     'stoppedThrough': self.s.now_ms()})
+
+    def track_device(self, device_id, class_id):
+        task = asyncio.current_task()
+        if task in self.job_devices:
+            self.job_devices[task].add((device_id, class_id))
 
     def check_access(self, request, original):
         user = self.s.require_user(request)
@@ -529,7 +562,8 @@ class BanbanAgent:
         speech = SpokenAnswer(turn_key) if voice is not None else None
         direct = social_reply(message) if voice is not None else None
         if direct is None:
-            direct = local_reply(message, user['role'], spoken=voice is not None)
+            direct = local_reply(message, user['role'], spoken=voice is not None,
+                                 model_available=bool(cfg['enabled'] and cfg['apiKey']))
         detail = detail_requested(message)
         cfg = {**cfg, 'answerTokens': 1800 if detail else 450 if voice is not None else 700}
         mode = 'local' if direct else 'deepseek' if cfg['enabled'] and cfg['apiKey'] else 'overview'
@@ -880,6 +914,7 @@ class BanbanAgent:
                 await response.write((json.dumps(event, ensure_ascii=False) + '\n').encode('utf-8'))
             job = asyncio.create_task(self.run(request, user, message.strip(), snapshot, memory, self.f.config(user), emit, page))
             self.jobs[user['id']] = job
+            self.job_devices[job] = {(voice['deviceId'], voice['classId'])} if voice and voice.get('deviceId') else set()
             async with asyncio.timeout(395):
                 ticks = 0
                 while not job.done():
@@ -891,7 +926,15 @@ class BanbanAgent:
                         await emit({'type': 'ping'})
                 await job
         except asyncio.CancelledError:
-            raise
+            if asyncio.current_task().cancelling():
+                raise
+            # A classroom's local stop cancels the model job, not the HTTP
+            # handler. Finish the stream normally so other open clients see
+            # a stopped task rather than a misleading network failure.
+            with suppress(ConnectionError, RuntimeError):
+                await emit({'type': 'done', 'conversationId': memory['id'], 'message': {
+                    'role': 'assistant', 'content': '本轮任务已停止；已完成的操作不会撤销。',
+                    'mode': 'local', 'cards': [], 'operations': []}})
         except (ConnectionError, RuntimeError):
             pass
         except (ValueError, PermissionError, ClientError, asyncio.TimeoutError) as error:
@@ -903,6 +946,7 @@ class BanbanAgent:
                 job.cancel()
             if job:
                 await asyncio.gather(job, return_exceptions=True)
+                self.job_devices.pop(job, None)
             if job is None or self.jobs.get(user['id']) is job:
                 self.jobs.pop(user['id'], None)
                 self.f.busy.discard(user['id'])

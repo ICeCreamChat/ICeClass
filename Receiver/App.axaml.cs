@@ -2,7 +2,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 
 namespace ICeClass.Receiver;
@@ -15,12 +14,12 @@ public sealed class App : Application
     private SpeechService? _speech;
     private TrayIcon? _tray;
     private NativeMenuItem? _statusMenuItem;
-    private NativeMenuItem? _updateMenuItem;
-    private Bitmap? _trayIconBitmap;
     private EnrollmentWindow? _enrollmentWindow;
     private StudentVoiceWindow? _studentVoiceWindow;
     private BanbanVoiceWindow? _banbanVoiceWindow;
     private AboutWindow? _aboutWindow;
+    private ComputerControlSettingsWindow? _computerSettingsWindow;
+    private Task? _stopTask;
     private IslandShoutPreviewWindow? _shoutPreviewWindow;
     private ReadingReminderService? _readingReminders;
     private ClassroomIslandService? _island;
@@ -88,40 +87,17 @@ public sealed class App : Application
 
     private void CreateTray()
     {
-        _trayIconBitmap = new Bitmap(AppIconFactory.CreateBitmapStream());
         var menu = new NativeMenu();
-        _statusMenuItem = new NativeMenuItem { Header = "状态：等待连接", Icon = _trayIconBitmap };
-        _statusMenuItem.Click += (_, _) => ShowEnrollment();
+        _statusMenuItem = new NativeMenuItem { Header = "未连接教室", IsEnabled = false };
         menu.Items.Add(_statusMenuItem);
-        var setup = new NativeMenuItem { Header = "打开绑定设置" };
-        setup.Click += (_, _) => ShowEnrollment();
-        menu.Items.Add(setup);
-        var studentVoice = new NativeMenuItem { Header = "打开教室首页" };
+        menu.Items.Add(new NativeMenuItemSeparator());
+        var studentVoice = new NativeMenuItem { Header = "教室首页" };
         studentVoice.Click += (_, _) => ShowStudentVoice();
         menu.Items.Add(studentVoice);
         var banbanVoice = new NativeMenuItem { Header = "班班语音助手" };
         banbanVoice.Click += (_, _) => ShowBanbanVoice();
         menu.Items.Add(banbanVoice);
-        var banbanPet = new NativeMenuItem { Header = "显示班班桌宠" };
-        banbanPet.Click += (_, _) =>
-        {
-            if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
-            StartBanbanVoice(config, true); _banbanVoiceWindow?.ShowPet();
-        };
-        menu.Items.Add(banbanPet);
-        _islandMenuItem = new NativeMenuItem { Header = "隐藏教室浮岛" };
-        _islandMenuItem.Click += (_, _) =>
-        {
-            if (!ReceiverConfig.TryLoad(out _)) { ShowEnrollment(); return; }
-            _island?.SetEnabled(!_island.Enabled);
-        };
-        menu.Items.Add(_islandMenuItem);
-        var islandDemo = new NativeMenuItem { Header = "播放教室浮岛演示" };
-        islandDemo.Click += (_, _) => _island?.PlayDemo();
-        menu.Items.Add(islandDemo);
-        var shoutPreview = new NativeMenuItem { Header = "预览班班喊话" };
-        shoutPreview.Click += (_, _) => PreviewShout(); menu.Items.Add(shoutPreview);
-        var reading = new NativeMenuItem { Header = "打开早读陪伴" };
+        var reading = new NativeMenuItem { Header = "早读陪伴" };
         reading.Click += async (_, _) =>
         {
             if (!ReceiverConfig.TryLoad(out var current)) { ShowEnrollment(); return; }
@@ -129,23 +105,31 @@ public sealed class App : Application
             catch (Exception error) { AppLog.Error("Open reading failed", error); ShowStudentVoice(); }
         };
         menu.Items.Add(reading);
-        var computerControl = new NativeMenuItem { Header = "班班电脑控制设置" };
-        computerControl.Click += (_, _) =>
+        menu.Items.Add(new NativeMenuItemSeparator());
+        var display = new NativeMenu();
+        var banbanPet = new NativeMenuItem { Header = "显示班班桌宠" };
+        banbanPet.Click += (_, _) =>
         {
-            ReceiverConfig.TryLoad(out var binding);
-            new ComputerControlSettingsWindow(_receiver!.ComputerAgent, binding).Show();
+            if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
+            StartBanbanVoice(config, true); _banbanVoiceWindow?.ShowPet();
         };
-        menu.Items.Add(computerControl);
-        var stopComputer = new NativeMenuItem { Header = "停止班班电脑操作" };
-        stopComputer.Click += (_, _) => _receiver?.ComputerAgent.Stop();
+        display.Items.Add(banbanPet);
+        _islandMenuItem = new NativeMenuItem { Header = "隐藏教室浮岛" };
+        _islandMenuItem.Click += (_, _) =>
+        {
+            if (!ReceiverConfig.TryLoad(out _)) { ShowEnrollment(); return; }
+            _island?.SetEnabled(!_island.Enabled);
+        };
+        display.Items.Add(_islandMenuItem);
+        menu.Items.Add(new NativeMenuItem { Header = "桌面显示", Menu = display });
+        var stopComputer = new NativeMenuItem { Header = "停止当前任务" };
+        stopComputer.Click += async (_, _) => await StopCurrentTaskAsync();
         menu.Items.Add(stopComputer);
-        var test = new NativeMenuItem { Header = "本机测试" };
-        test.Click += async (_, _) => await TestAsync();
-        menu.Items.Add(test);
-        _updateMenuItem = new NativeMenuItem { Header = $"检查更新（当前 {ReceiverUpdateService.CurrentVersionText}）" };
-        _updateMenuItem.Click += async (_, _) => await CheckForUpdateAsync(true);
-        menu.Items.Add(_updateMenuItem);
-        var about = new NativeMenuItem { Header = "关于 ICeClass 班伴" };
+        menu.Items.Add(new NativeMenuItemSeparator());
+        var setup = new NativeMenuItem { Header = "教室设置" };
+        setup.Click += (_, _) => ShowEnrollment();
+        menu.Items.Add(setup);
+        var about = new NativeMenuItem { Header = "关于班伴" };
         about.Click += (_, _) => ShowAbout();
         menu.Items.Add(about);
         menu.Items.Add(new NativeMenuItemSeparator());
@@ -154,6 +138,27 @@ public sealed class App : Application
         menu.Items.Add(exit);
         _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass 班伴", Menu = menu, IsVisible = true };
         _tray.Clicked += (_, _) => ShowStudentVoice();
+    }
+
+    private Task StopCurrentTaskAsync()
+    {
+        if (_stopTask is { IsCompleted: false }) return _stopTask;
+        _banbanVoiceWindow?.CancelCurrentTask();
+        if (_receiver is null) return Task.CompletedTask;
+        if (!ReceiverConfig.TryLoad(out var binding)) { _receiver.ComputerAgent.Stop(); return Task.CompletedTask; }
+        return _stopTask = _receiver.StopComputerTaskAsync(binding);
+    }
+
+    private void ShowComputerSettings()
+    {
+        if (_receiver is null) return;
+        if (_computerSettingsWindow is null)
+        {
+            ReceiverConfig.TryLoad(out var binding);
+            _computerSettingsWindow = new ComputerControlSettingsWindow(_receiver.ComputerAgent, binding, stopTask: StopCurrentTaskAsync);
+            _computerSettingsWindow.Closed += (_, _) => _computerSettingsWindow = null;
+        }
+        _computerSettingsWindow.Show(); _computerSettingsWindow.WindowState = WindowState.Normal; _computerSettingsWindow.Activate();
     }
 
     private void ShowAbout()
@@ -172,7 +177,13 @@ public sealed class App : Application
         StartBanbanVoice(config, false);
     }
 
-    private async void StartBanbanVoice(ReceiverConfig config, bool background)
+    private void CallBanban()
+    {
+        if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
+        StartBanbanVoice(config, true, listen: true);
+    }
+
+    private async void StartBanbanVoice(ReceiverConfig config, bool background, bool listen = false)
     {
         if (_banbanVoiceWindow is not null && !_banbanVoiceWindow.Matches(config)) { _banbanVoiceWindow.Shutdown(); _banbanVoiceWindow = null; }
         if (_banbanVoiceWindow is null)
@@ -182,7 +193,11 @@ public sealed class App : Application
             _banbanVoiceWindow = window;
             window.Closed += (_, _) => { if (ReferenceEquals(_banbanVoiceWindow, window)) _banbanVoiceWindow = null; };
         }
-        try { await _banbanVoiceWindow.StartAsync(background); }
+        try
+        {
+            if (listen) _banbanVoiceWindow.StartConversation();
+            await _banbanVoiceWindow.StartAsync(background);
+        }
         catch (OperationCanceledException) { }
         catch (Exception error) { AppLog.Error("Start Banban voice failed", error); }
     }
@@ -217,6 +232,7 @@ public sealed class App : Application
         _enrollmentWindow.UpdateRequested += async (_, _) => await CheckForUpdateAsync(true);
         _enrollmentWindow.PreviewRequested += level => _ = _receiver?.ShowTestAsync(level);
         _enrollmentWindow.AudioTestRequested += async (_, _) => await TestAudioAsync();
+        _enrollmentWindow.ComputerSettingsRequested += (_, _) => ShowComputerSettings();
         _enrollmentWindow.Saved += async (_, saved) =>
         {
             ReadingOfflineService.For(saved);
@@ -236,12 +252,6 @@ public sealed class App : Application
         _enrollmentWindow.Activate();
     }
 
-    private async Task TestAsync()
-    {
-        if (_receiver is null) return;
-        await _receiver.ShowTestAsync();
-    }
-
     private void ShowStudentVoice()
     {
         if (ReadingExperience.ReturnToHomeIfOpen()) return;
@@ -256,7 +266,7 @@ public sealed class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), ShowBanbanVoice);
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban);
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
         KeepInTray(_studentVoiceWindow);
@@ -300,7 +310,6 @@ public sealed class App : Application
         _automaticUpdateCancellation?.Cancel();
         _automaticUpdateCancellation?.Dispose();
         _tray?.Dispose();
-        _trayIconBitmap?.Dispose();
         if (_receiver is not null) await _receiver.StopAsync();
         _studentVoiceWindow?.Close();
         _speech?.Dispose();
@@ -419,11 +428,6 @@ public sealed class App : Application
     {
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            if (_updateMenuItem is not null)
-            {
-                _updateMenuItem.Header = checking ? text : $"检查更新（{text}）";
-                _updateMenuItem.IsEnabled = !checking;
-            }
             _enrollmentWindow?.SetUpdateState(text, checking);
         });
     }
@@ -432,7 +436,11 @@ public sealed class App : Application
     {
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            if (_statusMenuItem is not null) _statusMenuItem.Header = $"状态：{state.Text}";
+            if (_statusMenuItem is not null)
+            {
+                var name = ReceiverConfig.TryLoad(out var binding) ? binding.ClassName : "未绑定教室";
+                _statusMenuItem.Header = state.Connected ? name + " · 已连接" : name + " · 未连接";
+            }
             _tray!.ToolTipText = state.Text;
             _lastConnectionState = state;
             _enrollmentWindow?.SetConnectionState(state);
