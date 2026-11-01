@@ -16,6 +16,8 @@ public sealed class App : Application
     private TrayIcon? _tray;
     private DesktopWindow _window = null!;
     private bool _exiting;
+    private DesktopDiagnostics? _diagnostics;
+    internal DesktopDiagnostics Diagnostics => _diagnostics ??= new(DataDirectory);
     internal DesktopSettings Settings { get; private set; } = null!;
     internal bool HasTray => _tray is not null;
     internal static string DataDirectory => Program.Options.DataDirectory;
@@ -28,6 +30,7 @@ public sealed class App : Application
         Settings = DesktopSettings.Load(DataDirectory);
         if (Program.Options.Endpoint is not null) Settings.Endpoint = Program.Options.Endpoint;
         Directory.CreateDirectory(DataDirectory);
+        Diagnostics.Record("application", "启动", detail: "version=" + DesktopUpdates.CurrentVersion);
         _window = new DesktopWindow(this, Settings.Endpoint, main: true);
         desktop.MainWindow = _window;
         try
@@ -43,7 +46,11 @@ public sealed class App : Application
         }
         catch (Exception error) { DesktopLog.Write(error); }
         _ = ListenAsync();
-        desktop.Exit += (_, _) => { _lifetime.Cancel(); _tray?.Dispose(); _window.DisposePage(); };
+        desktop.Exit += (_, _) =>
+        {
+            _lifetime.Cancel(); _tray?.Dispose(); _window.DisposePage();
+            _diagnostics?.Record("application", "退出"); _diagnostics?.Dispose();
+        };
         Dispatcher.UIThread.Post(DesktopUpdates.ConfirmLaunch);
         base.OnFrameworkInitializationCompleted();
     }

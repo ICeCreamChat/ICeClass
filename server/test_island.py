@@ -217,7 +217,11 @@ class IslandTest(ServerTestCase):
                 self.assertEqual(response.status, 200, profile)
                 self.assertEqual(profile['revision'], 0)
                 self.assertIsNone(profile['updatedAt'])
-                self.assertEqual(profile['config'], defaults(grade))
+                expected = defaults(grade)
+                if grade:
+                    expected['visibility']['hiddenSlotIds'] = ['period-1', 'period-2', 'period-3', 'period-4',
+                        'period-5', 'period-6', 'period-7', 'period-8', 'evening-study-1']
+                self.assertEqual(profile['config'], expected)
                 response = await self.client.get('/api/island/device?deviceId=' + device['deviceId'],
                                                 headers={'Authorization': 'Bearer ' + device['deviceToken']})
                 self.assertEqual(response.status, 200)

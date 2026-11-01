@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { forDate, ribbonForDate } = require('../web_controller/island-schedule.js');
 
 let now = 0, nextFrame = 0;
 const frames = new Map(), visibility = new Map();
@@ -68,6 +69,44 @@ r.data.appearance.hideDuringLessons = true;
 assert.equal(r.state().key, 'hidden:lesson');
 r.data.enabled = false;
 assert.equal(r.state().key, 'hidden:disabled');
+
+r.update({ ...data(), minute: 480, visibility: { followSchool: true, hiddenSlotIds: ['one'] } });
+assert.equal(r.state().key, 'hidden:lesson', 'Resolved school selections hide the current lesson');
+r.data.minute = 525;
+assert.notEqual(r.state().hidden, true, 'The island returns at the exact break boundary');
+r.data.minute = 480;
+r.data.appearance.hideDuringLessons = true;
+r.data.visibility = { followSchool: false, hiddenSlotIds: [] };
+assert.notEqual(r.state().hidden, true, 'A teacher override takes precedence over the old hide-all flag');
+r.data.visibility.hiddenSlotIds = ['some-other-slot'];
+assert.notEqual(r.state().hidden, true, 'Unselected lessons remain visible');
+
+const study = { id: 'mid', subject: '午间静校', start: 750, end: 815 };
+r.update({ ...data(), minute: 750, components: [], ribbonLessons: [...data().lessons, study],
+  visibility: { followSchool: false, hiddenSlotIds: ['mid'] } });
+assert.equal(r.state().items.filter(i => i.current).length, 1);
+assert.equal(r.state().items.find(i => i.current).subject, '午间静校');
+assert.notEqual(r.state().hidden, true, 'Unassigned study placeholders do not create quiet lessons');
+r.data.reminders = { enabled: true, prepare: true, prepareMinutes: 2 };
+r.data.minute = 749;
+assert.equal(r.state().key, 'timetable', 'An unassigned midday placeholder does not schedule a countdown');
+r.data.ribbonLessons.push({ id: 'pm', subject: '数学', start: 840, end: 885 });
+r.data.minute = 815;
+assert.equal(r.state().items.find(i => i.current).time, '13:35-14:00', 'Breaks start after the configured study period');
+
+const groups = { weekAnchor: '2026-10-26', slots: [
+  { id: 'morning-reading', label: '晨读', start: 450, end: 473 },
+  { id: 'day', label: '第一节', start: 475, end: 520 },
+  { id: 'mid', label: '午间静校', start: 750, end: 815 },
+  { id: 'pm', label: '第五节', start: 840, end: 885 }
+], lessons: ['morning-reading', 'day', 'mid', 'pm'].map(slotId => ({ slotId, weekday: 1, week: 'all', subject: '数学' })), overrides: [] };
+r.update({ ...data(), minute: 420, components: [], lessons: forDate(groups, '2026-10-26'), ribbonLessons: ribbonForDate(groups, '2026-10-26') });
+for (const id of ['day', 'mid', 'pm']) assert.equal(r.state().items.find(i => i.id === id).separatorBefore, true, 'Morning and midday divisions use slots, not subject names');
+for (const [minute, nextId] of [[473.5, 'day'], [820, 'pm']]) {
+  r.data.minute = minute;
+  assert.equal(r.state().items.find(i => i.id === 'break').separatorBefore, true);
+  assert.equal(r.state().items.find(i => i.id === nextId).separatorBefore, false, 'Breaks do not duplicate a group boundary');
+}
 
 const demo = ribbon();
 demo.data.lessons = [];

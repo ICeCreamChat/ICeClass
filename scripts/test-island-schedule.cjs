@@ -1,6 +1,7 @@
 // Timetable behavior used by the live teacher preview; no DOM or third-party modules.
 const assert = require('node:assert/strict');
-const { forDate, cycleWeek, validDate } = require('../web_controller/island-schedule.js');
+const { forDate, cycleWeek, validDate, ribbonForDate } = require('../web_controller/island-schedule.js');
+const { schoolHiddenSlots, hiddenDuringLesson } = require('../web_controller/island-schedule.js');
 const config = { weekAnchor: '2026-09-07',
   slots: [{ id: 'p1', start: 475, end: 520 }, { id: 'mid', start: 750, end: 810 }, { id: 'e1', start: 1100, end: 1190 }],
   lessons: [{ slotId: 'p1', weekday: 1, week: 'odd', subject: '物理' }, { slotId: 'p1', weekday: 1, week: 'even', subject: '化学' }],
@@ -32,3 +33,47 @@ assert.deepEqual(forDate(config, '2026-02-30'), []);
 delete config.dutyRotations;
 assert.equal(forDate(config, '2026-09-28')[0].subject, '化学');
 console.log('PASS teacher-preview rotation, independent anchors, wrap, cancellation, substitution, disabled/old profiles and date boundaries');
+
+const quiet = { weekAnchor: '2026-09-07', slots: [
+  { id: 'read', label: '晨读', start: 450, end: 473 },
+  { id: 'custom', label: '第 一 节', start: 475, end: 520 },
+  { id: 'mid', label: '午间静校', start: 750, end: 815 },
+  { id: 'e2', label: '晚自习第二节', start: 1200, end: 1290 },
+  { id: 'e1', label: '晚自习第一节', start: 1100, end: 1190 }
+], lessons: [{ slotId: 'custom', weekday: 1, week: 'all', subject: '数学' }], overrides: [],
+  dutyRotations: { evening: { enabled: false, slotIds: ['e2', 'e1'] } },
+  visibility: { followSchool: true, hiddenSlotIds: ['custom', 'e1'] } };
+assert.deepEqual(schoolHiddenSlots(quiet, { hideDaytimeLessons: true, hideFirstEvening: true }), ['custom', 'e1']);
+assert.deepEqual(schoolHiddenSlots(quiet, { hideDaytimeLessons: false, hideFirstEvening: true }), ['e1']);
+for (const [m, hidden] of [[474, false], [475, true], [519.9, true], [520, false]]) {
+  assert.equal(hiddenDuringLesson(quiet, '2026-10-26', m), hidden, 'Start/end use the actual timetable boundaries');
+}
+assert.equal(hiddenDuringLesson(quiet, '2026-10-25', 480), false, 'An empty weekend has no invented quiet class');
+quiet.overrides = [{ date: '2026-10-26', slotId: 'custom', cancelled: true }];
+assert.equal(hiddenDuringLesson(quiet, '2026-10-26', 480), false, 'A cancelled class leaves the island visible');
+console.log('PASS school defaults, custom slot names, chronological evening selection, breaks, empty days and cancellations');
+
+const study = { weekAnchor: '2026-09-07', slots: [
+  { id: 'day', label: '第一节', start: 475, end: 520 },
+  { id: 'mid', label: '午间静校', start: 750, end: 815 },
+  { id: 'eve', label: '晚自习第一节', start: 1100, end: 1190 }
+], lessons: [{ slotId: 'day', weekday: 1, week: 'all', subject: '数学' }], overrides: [],
+  dutyRotations: { midday: { enabled: false, slotIds: ['mid'] }, evening: { enabled: false, slotIds: ['eve'] } } };
+assert.deepEqual(ribbonForDate(study, '2026-10-26').map(l => l.subject), ['数学', '午间静校', '晚自习第一节']);
+assert.deepEqual(forDate(study, '2026-10-26').map(l => l.subject), ['数学'], 'Study placeholders never become reminder lessons');
+assert.deepEqual(ribbonForDate(study, '2026-10-25'), [], 'An empty day has no invented study periods');
+study.lessons.push({ slotId: 'mid', weekday: 1, week: 'all', subject: '物理', teacher: '教师甲' });
+assert.deepEqual(ribbonForDate(study, '2026-10-26').map(l => l.subject), ['数学', '物理', '晚自习第一节']);
+study.dutyRotations.midday = { enabled: true, cycleWeeks: 2, weekAnchor: '2026-10-26', slotIds: ['mid'], lessons: [
+  { slotId: 'mid', weekday: 1, cycleWeek: 1, subject: '化学' },
+  { slotId: 'mid', weekday: 1, cycleWeek: 2, subject: '生物' }
+] };
+assert.equal(ribbonForDate(study, '2026-10-26').find(l => l.id === 'mid').subject, '化学');
+assert.equal(ribbonForDate(study, '2026-11-02').find(l => l.id === 'mid').subject, '生物');
+study.overrides = [{ date: '2026-10-26', slotId: 'mid', subject: '语文' }];
+assert.equal(ribbonForDate(study, '2026-10-26').find(l => l.id === 'mid').subject, '语文');
+study.overrides[0].cancelled = true;
+assert.equal(ribbonForDate(study, '2026-10-26').some(l => l.id === 'mid'), false, 'Cancellation does not reappear as a placeholder');
+study.slots = study.slots.filter(s => s.id !== 'mid');
+assert.equal(ribbonForDate(study, '2026-11-02').some(l => l.id === 'mid'), false, 'Missing time slots are not fabricated');
+console.log('PASS ribbon study placeholders, configured subjects, cycle weeks, substitutions, cancellation and schedule isolation');

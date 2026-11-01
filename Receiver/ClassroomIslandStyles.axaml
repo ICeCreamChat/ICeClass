@@ -9,7 +9,7 @@
     <Setter Property="FocusAdorner"><Template><Border BorderThickness="2" CornerRadius="24" BorderBrush="#64E5E7" IsHitTestVisible="False" /></Template></Setter>
   </Style>
   <Style Selector="Button.native-button.island-button">
-    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontSize" Value="16" />
     <Setter Property="FontWeight" Value="Bold" />
     <Setter Property="MinHeight" Value="36" />
     <Setter Property="Padding" Value="10,4" />
@@ -59,13 +59,13 @@
   </Style>
   <Style Selector="Window.island-light Button.native-button.island-button">
     <Setter Property="Background" Value="#E7EDF6" />
-    <Setter Property="Foreground" Value="#29486D" />
+    <Setter Property="Foreground" Value="#203D60" />
     <Setter Property="BorderBrush" Value="#C2CDDC" />
   </Style>
   <Style Selector="Window.island-light Button.native-button.island-button.island-quiet">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="Foreground" Value="#29486D" />
+    <Setter Property="Foreground" Value="#203D60" />
   </Style>
   <Style Selector="Window.island-light Button.native-button.island-button.island-primary">
     <Setter Property="Background" Value="#0071E3" />

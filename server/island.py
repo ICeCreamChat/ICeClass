@@ -9,8 +9,10 @@ from urllib.parse import quote, urlsplit
 from aiohttp import web
 
 from reading import class_grade
+from permissions import SCHOOL_ROLES
 
 DUTY_KINDS = {'midday': '午间静校', 'evening': '晚自习'}
+SCHOOL_VISIBILITY = {'hideDaytimeLessons': True, 'hideFirstEvening': True}
 
 
 def duty_defaults(slots=()):
@@ -29,6 +31,8 @@ CREATE TABLE IF NOT EXISTS island_delivery(
  device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL, synced_at INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS island_visibility(
+ id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, value TEXT NOT NULL);
 """
 
 
@@ -53,6 +57,7 @@ def defaults(grade=None):
                  for sid, label, start, end in periods]
     return {'schemaVersion': 1, 'enabled': True, 'weekAnchor': '2026-09-07',
             'slots': slots, 'lessons': [], 'overrides': [], 'dutyRotations': duty_defaults(slots),
+            'visibility': {'followSchool': True, 'hiddenSlotIds': []},
             'reminders': {'enabled': True, 'prepare': True, 'start': True, 'end': True,
                           'prepareMinutes': 2, 'sound': False, 'speech': False, 'volume': 65, 'displaySeconds': 8},
             'appearance': {'position': 'top-center', 'width': 560, 'opacity': 100, 'theme': 'light',
@@ -102,6 +107,42 @@ def items(value, label, maximum):
     if not isinstance(value, list) or len(value) > maximum or any(not isinstance(x, dict) for x in value):
         raise ValueError(f'{label}最多 {maximum} 项。')
     return value
+
+
+def normalize_visibility(raw, slots):
+    if not isinstance(raw, dict):
+        raise ValueError('课堂隐藏规则格式不正确。')
+    follow = boolean(raw.get('followSchool', True), '跟随全校隐藏规则')
+    selected = raw.get('hiddenSlotIds', [])
+    ids = {s['id'] for s in slots}
+    if (not isinstance(selected, list) or len(selected) > 32
+            or any(not isinstance(sid, str) or (not follow and sid not in ids) for sid in selected)
+            or len(set(selected)) != len(selected)):
+        raise ValueError('隐藏时段不存在或重复，请从本班作息中选择。')
+    # Inherited IDs are resolved for delivery, never persisted as class overrides.
+    return {'followSchool': follow, 'hiddenSlotIds': [] if follow else [s['id'] for s in slots if s['id'] in selected]}
+
+
+def class_visibility(config):
+    legacy = config.get('appearance', {}).get('hideDuringLessons', False)
+    return normalize_visibility(config.get('visibility', {
+        'followSchool': not legacy,
+        'hiddenSlotIds': [s['id'] for s in config['slots']] if legacy else []}), config['slots'])
+
+
+def school_hidden_slots(config, policy):
+    slots = sorted(config['slots'], key=lambda s: s['start'])
+    duties = config.get('dutyRotations', {})
+    evening_ids = set(duties.get('evening', {}).get('slotIds', []))
+    midday_ids = set(duties.get('midday', {}).get('slotIds', []))
+    evening = [s for s in slots if s['id'] in evening_ids or s['id'].startswith('evening-study-')
+               or re.search(r'晚自[习修]', s['label'])]
+    evening_ids.update(s['id'] for s in evening)
+    first_evening = evening[0]['id'] if evening else None
+    return [s['id'] for s in slots if
+            (policy['hideFirstEvening'] and s['id'] == first_evening) or
+            (policy['hideDaytimeLessons'] and s['start'] < 1080 and s['id'] not in evening_ids | midday_ids
+             and (re.fullmatch(r'period-\d+', s['id']) or re.match(r'^第\s*[一二三四五六七八九十百0-9]+\s*节', s['label'])))]
 
 
 def normalize(value):
@@ -201,6 +242,7 @@ def normalize(value):
                 lo, hi = {'prepareMinutes': (1, 30), 'volume': (0, 100), 'displaySeconds': (3, 60),
                           'width': (380, 1000), 'opacity': (30, 100), 'offsetX': (-2000, 2000), 'offsetY': (-2000, 2000)}[key]
                 result[group][key] = integer(v, key, lo, hi)
+    result['visibility'] = class_visibility({**value, 'slots': result['slots'], 'appearance': result['appearance']})
     result['rotationSeconds'] = integer(value.get('rotationSeconds', 8), '组件轮播秒数', 3, 120)
     result['components'] = []
     seen.clear()
@@ -265,6 +307,11 @@ class IslandFeature:
         self.s = service
         self.db = app[service.STORE_KEY]
         self.db.db.executescript(SCHEMA)
+        self.db.run('INSERT OR IGNORE INTO island_visibility VALUES(1,0,?)', (json.dumps(SCHOOL_VISIBILITY),))
+
+    def school_visibility(self):
+        row = self.db.one('SELECT revision,value FROM island_visibility WHERE id=1')
+        return {'revision': row['revision'], 'config': json.loads(row['value'])}
 
     def profile(self, cid):
         row = self.db.one('SELECT * FROM island_profiles WHERE class_id=?', (cid,))
@@ -273,17 +320,60 @@ class IslandFeature:
         else:
             classroom = self.db.one('SELECT name FROM classes WHERE id=?', (cid,))
             config = defaults(class_grade(classroom['name']) if classroom else None)
+        policy = self.school_visibility()
+        config['visibility'] = class_visibility(config)
+        if config['visibility']['followSchool']:
+            config['visibility']['hiddenSlotIds'] = school_hidden_slots(config, policy['config'])
         return {'classId': cid, 'revision': row['revision'] if row else 0,
                 'updatedAt': row['updated_at'] if row else None,
-                'config': config}
+                'config': config, 'schoolVisibility': policy}
 
-    def authorize(self, request):
+    async def get_visibility(self, request):
+        user = self.s.require_user(request)
+        return user if isinstance(user, web.Response) else self.s.json_response(self.school_visibility())
+
+    async def save_visibility(self, request):
+        user = self.s.require_user(request)
+        if isinstance(user, web.Response):
+            return user
+        if user['role'] not in SCHOOL_ROLES or user.get('classroom'):
+            return self.s.json_response({'error': '只有全校管理员可以修改全校隐藏规则。'}, 403)
+        body = await self.s.read_json(request)
+        try:
+            if not body or not isinstance(body.get('config'), dict):
+                raise ValueError('全校隐藏规则格式不正确。')
+            expected = integer(body.get('revision'), '全校规则版本', 0, 2**31-1)
+            policy = {key: boolean(body['config'].get(key, default), key) for key, default in SCHOOL_VISIBILITY.items()}
+        except ValueError as error:
+            return self.s.json_response({'error': str(error)}, 400)
+        with self.db.transaction():
+            previous = self.school_visibility()
+            if previous['revision'] != expected:
+                return self.s.json_response({'error': '全校规则已更新，请重新打开后再保存。'}, 409)
+            if policy == previous['config']:
+                return self.s.json_response(previous)
+            self.db.run('UPDATE island_visibility SET revision=?,value=? WHERE id=1',
+                        (expected + 1, json.dumps(policy)))
+            now = self.s.now_ms()
+            rows = self.db.all('''SELECT c.id,c.name,p.value,p.revision FROM classes c
+                LEFT JOIN island_profiles p ON p.class_id=c.id''')
+            for row in rows:
+                config = json.loads(row['value']) if row['value'] else defaults(class_grade(row['name']))
+                if not class_visibility(config)['followSchool']:
+                    continue
+                self.db.run('''INSERT INTO island_profiles VALUES(?,?,?,?,?) ON CONFLICT(class_id) DO UPDATE SET
+                    revision=excluded.revision,updated_at=excluded.updated_at,updated_by=excluded.updated_by''',
+                    (row['id'], (row['revision'] or 0) + 1, json.dumps(config, ensure_ascii=False), now, user['id']))
+            self.s.audit(self.db, user['id'], 'island.visibility', 'school', '1', json.dumps(policy))
+        return self.s.json_response(self.school_visibility())
+
+    def authorize(self, request, *, editing=False):
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
         cid = request.match_info['class_id']
-        if not self.s.can_access_class(self.db, user, cid):
-            return self.s.json_response({'error': '没有配置该班教室浮岛的权限。'}, 403)
+        if not self.s.can_access_class(self.db, user, cid, include_teaching=not editing):
+            return self.s.json_response({'error': '本班配置仅限班主任和上级修改。' if editing else '没有查看该班教室浮岛的权限。'}, 403)
         return user
 
     def delivery(self, cid, revision):
@@ -297,10 +387,11 @@ class IslandFeature:
         if isinstance(user, web.Response):
             return user
         p = self.profile(request.match_info['class_id'])
-        return self.s.json_response({**p, 'devices': self.delivery(p['classId'], p['revision']), 'serverTime': self.s.now_ms()})
+        return self.s.json_response({**p, 'devices': self.delivery(p['classId'], p['revision']), 'serverTime': self.s.now_ms(),
+            'canEdit': self.s.can_access_class(self.db, user, p['classId'], include_teaching=False)})
 
     async def save(self, request):
-        user = self.authorize(request)
+        user = self.authorize(request, editing=True)
         if isinstance(user, web.Response):
             return user
         body = await self.s.read_json(request)
@@ -311,6 +402,8 @@ class IslandFeature:
             # An older open editor must not silently erase the newly added rotations.
             if isinstance(incoming, dict) and 'dutyRotations' not in incoming:
                 incoming = {**incoming, 'dutyRotations': self.profile(request.match_info['class_id'])['config'].get('dutyRotations', {})}
+            if isinstance(incoming, dict) and 'visibility' not in incoming:
+                incoming = {**incoming, 'visibility': self.profile(request.match_info['class_id'])['config']['visibility']}
             config = normalize(incoming)
             expected = integer(body.get('revision'), '配置版本', 0, 2**31-1)
         except ValueError as error:
@@ -324,7 +417,7 @@ class IslandFeature:
                 revision=excluded.revision,value=excluded.value,updated_at=excluded.updated_at,updated_by=excluded.updated_by''',
                 (cid, expected+1, json.dumps(config, ensure_ascii=False), now, user['id']))
             self.s.audit(self.db, user['id'], 'island.save', 'class', cid, json.dumps({'revision': expected+1}))
-        return self.s.json_response({**self.profile(cid), 'devices': self.delivery(cid, expected+1)})
+        return self.s.json_response({**self.profile(cid), 'devices': self.delivery(cid, expected+1), 'canEdit': True})
 
     async def device(self, request):
         device = self.s.authenticate_device(request)
@@ -361,7 +454,7 @@ class IslandFeature:
                             headers={'Content-Disposition': 'attachment; filename="ICeClass-timetable.xlsx"; filename*=UTF-8\'\'' + filename})
 
     async def import_preview(self, request):
-        user = self.authorize(request)
+        user = self.authorize(request, editing=True)
         if isinstance(user, web.Response):
             return user
         from island_xlsx import import_schedule
@@ -375,6 +468,8 @@ class IslandFeature:
 
 def install_island(app, service):
     feature = IslandFeature(service, app)
+    app.router.add_get('/api/island/visibility', feature.get_visibility)
+    app.router.add_put('/api/island/visibility', feature.save_visibility)
     app.router.add_get('/api/island/classes/{class_id}', feature.get)
     app.router.add_put('/api/island/classes/{class_id}', feature.save)
     app.router.add_get('/api/island/classes/{class_id}/export', feature.export)

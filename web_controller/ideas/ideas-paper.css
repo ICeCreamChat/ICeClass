@@ -1,0 +1,75 @@
+.ideas-paper-dialog {
+  box-sizing: border-box;
+  color-scheme: light;
+  width: min(680px, calc(100vw - 16px));
+  height: min(600px, calc(100vh - 16px));
+  height: min(600px, calc(100dvh - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  margin: auto;
+  border: 1px solid #dce4ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #1d1d1f;
+  font: inherit;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  scrollbar-color: #a9b9cc #f3f7fc;
+}
+.ideas-paper-dialog::backdrop { background: #183454b3; }
+.ideas-paper-dialog *, .ideas-paper-dialog *::before, .ideas-paper-dialog *::after { box-sizing: border-box; }
+.ideas-paper-dialog [hidden] { display: none !important; }
+.ideas-paper-dialog ::selection { background: #cce3ff; color: #163e69; }
+.ideas-paper-dialog :focus-visible { outline: 3px solid #005bb8; outline-offset: 2px; }
+.ideas-paper-dialog .ideas-paper-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px; padding: 12px; }
+.ideas-paper-dialog .ideas-paper-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+.ideas-paper-dialog .ideas-paper-title { min-width: 0; margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; text-wrap: balance; }
+.ideas-paper-dialog .ideas-paper-help { flex: none; margin: 0; color: #435b77; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.ideas-paper-dialog .ideas-paper-content { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; overflow: auto; overscroll-behavior: contain; }
+.ideas-paper-dialog .ideas-paper-status, .ideas-paper-dialog .ideas-paper-error { flex: none; margin: 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.ideas-paper-dialog .ideas-paper-status { color: #435b77; }
+.ideas-paper-dialog .ideas-paper-status:empty { display: none; }
+.ideas-paper-dialog .ideas-paper-error { color: #a33730; }
+.ideas-paper-dialog .ideas-paper-editor { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 4px; }
+.ideas-paper-dialog .ideas-paper-workspace { display: flex; align-items: center; justify-content: center; flex: 1 0 132px; min-height: 132px; border-radius: 8px; background: #f3f7fc; }
+.ideas-paper-dialog .ideas-paper-stage { position: relative; flex: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ideas-paper-dialog .ideas-paper-canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+.ideas-paper-dialog .ideas-paper-shade { position: absolute; background: #18345499; pointer-events: none; }
+.ideas-paper-dialog .ideas-paper-selection { position: absolute; border: 2px solid #0071e3; cursor: move; touch-action: none; }
+.ideas-paper-dialog .ideas-paper-handle { position: absolute; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; touch-action: none; -webkit-tap-highlight-color: transparent; }
+.ideas-paper-dialog .ideas-paper-handle::after { content: ""; position: absolute; width: 14px; height: 14px; top: 15px; left: 15px; border: 3px solid #005bb8; border-radius: 3px; background: #fff; }
+.ideas-paper-dialog .ideas-paper-handle:hover::after { background: #cce3ff; }
+.ideas-paper-dialog .ideas-paper-handle:active::after { background: #a9d0fc; }
+.ideas-paper-dialog .ideas-paper-nw { top: -23px; left: -23px; cursor: nwse-resize; }
+.ideas-paper-dialog .ideas-paper-ne { top: -23px; right: -23px; cursor: nesw-resize; }
+.ideas-paper-dialog .ideas-paper-sw { bottom: -23px; left: -23px; cursor: nesw-resize; }
+.ideas-paper-dialog .ideas-paper-se { bottom: -23px; right: -23px; cursor: nwse-resize; }
+.ideas-paper-dialog .ideas-paper-details { flex: none; min-width: 0; }
+.ideas-paper-dialog .ideas-paper-summary { min-height: 44px; padding: 10px 4px; color: #005bb8; font-weight: 600; line-height: 24px; cursor: pointer; touch-action: manipulation; }
+.ideas-paper-dialog .ideas-paper-summary:hover { border-radius: 6px; background: #f0f6ff; }
+.ideas-paper-dialog .ideas-paper-edges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; padding: 0 4px 4px; }
+.ideas-paper-dialog .ideas-paper-field { display: grid; grid-template-columns: 1fr auto; align-items: center; min-width: 0; }
+.ideas-paper-dialog .ideas-paper-label { color: #1d1d1f; font-size: 14px; font-weight: 600; }
+.ideas-paper-dialog .ideas-paper-value { color: #435b77; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ideas-paper-dialog .ideas-paper-range { grid-column: 1 / -1; display: block; width: 100%; height: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #005bb8; accent-color: #005bb8; cursor: pointer; touch-action: pan-y; font: inherit; }
+.ideas-paper-dialog .ideas-paper-preview { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 120px; overflow: hidden; border-radius: 8px; background: #f3f7fc; }
+.ideas-paper-dialog .ideas-paper-preview-image { display: block; width: 100%; height: 100%; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
+.ideas-paper-dialog .ideas-paper-footer { display: flex; align-items: center; justify-content: flex-end; flex: none; gap: 8px; padding-top: 4px; }
+.ideas-paper-dialog .ideas-paper-button { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px 14px; border: 1px solid #becbdb; border-radius: 8px; background: #fff; color: #1d1d1f; font: inherit; font-weight: 600; line-height: 1.6; text-align: center; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.ideas-paper-dialog .ideas-paper-button:hover:enabled { border-color: #8caed6; background: #f0f6ff; }
+.ideas-paper-dialog .ideas-paper-button:active:enabled { background: #e2edfc; }
+.ideas-paper-dialog .ideas-paper-primary { border-color: #0071e3; background: #0071e3; color: #fff; }
+.ideas-paper-dialog .ideas-paper-primary:hover:enabled { border-color: #0066cd; background: #0066cd; }
+.ideas-paper-dialog .ideas-paper-primary:active:enabled { border-color: #005bb8; background: #005bb8; }
+.ideas-paper-dialog .ideas-paper-button:disabled { opacity: .55; cursor: not-allowed; }
+.ideas-paper-dialog .ideas-paper-back { margin-right: auto; }
+@media (max-width: 380px) {
+  .ideas-paper-dialog .ideas-paper-shell { padding: 8px; }
+  .ideas-paper-dialog .ideas-paper-button { padding-inline: 10px; }
+  .ideas-paper-dialog .ideas-paper-edges { gap: 4px 10px; }
+}
+@media (forced-colors: active) {
+  .ideas-paper-dialog .ideas-paper-selection { border-color: Highlight; }
+  .ideas-paper-dialog .ideas-paper-handle::after { border-color: Highlight; background: Canvas; }
+}

@@ -55,10 +55,10 @@ BUSINESS = {
         impact='将按平台规则删除班级及关联记录，无法撤销。'),
     'records.clear': BusinessAction('清理班级记录', 'DELETE', '/api/classes/{class_id}/records',
         'kind start end allDates', 'class', impact='所选范围的记录会被永久清理，无法撤销。'),
-    'user.create': BusinessAction('创建账号', 'POST', '/api/teachers', 'username displayName role classIds grade',
+    'user.create': BusinessAction('创建账号', 'POST', '/api/teachers', 'username displayName role classIds headClassIds teachingClassIds grade',
         impact='请在确认时填写初始密码；密码不会交给班班。'),
     'user.update': BusinessAction('修改账号与授权', 'PATCH', '/api/teachers/{teacher_id}',
-        'displayName role enabled classIds grade', 'user', impact='停用或调整权限后，该账号需要重新登录。'),
+        'displayName role enabled classIds headClassIds teachingClassIds grade', 'user', impact='停用或调整权限后，该账号需要重新登录。'),
     'user.password': BusinessAction('重置账号密码', 'PUT', '/api/teachers/{teacher_id}/password', '', 'user',
         impact='请在确认时填写新密码；原有登录会失效，密码不会交给班班。'),
     'user.delete': BusinessAction('删除账号', 'DELETE', '/api/teachers/{teacher_id}', '', 'user',
@@ -323,6 +323,9 @@ class Operations:
             raise PermissionError('没有此项管理权限。')
         if operation in {'quiet.update', 'reading.update'} and user['role'] not in self.s.SCHOOL_ROLES:
             raise PermissionError('此项需要校级管理权限。')
+        if operation in {'island.update', 'voice.delete'} and not self.s.can_access_class(
+                self.db, user, cid, include_disabled=True, include_teaching=False):
+            raise PermissionError('此项操作仅限该班班主任和上级。')
         if operation in {'user.create', 'user.update'}:
             existing = row if spec.target == 'user' else None
             self.s.staff_assignment(self.db, user, body.get('role', existing['role'] if existing else 'teacher'), body, existing)
@@ -343,6 +346,7 @@ class Operations:
             data = self.db.one('SELECT username,display_name,role,enabled,updated_at FROM users WHERE id=?', (match['teacher_id'],))
             if data:
                 data['classes'] = self.db.all('SELECT class_id FROM teacher_classes WHERE user_id=? ORDER BY class_id', (match['teacher_id'],))
+                data['teachingClasses'] = self.db.all('SELECT class_id FROM teaching_classes WHERE user_id=? ORDER BY class_id', (match['teacher_id'],))
         elif 'device_id' in match:
             data = self.db.one('SELECT class_id,name,enabled,binding_note,verified_at FROM devices WHERE id=?', (match['device_id'],))
         elif operation == 'quiet.update':
@@ -489,11 +493,12 @@ class Operations:
                 if key in parameters:
                     parameters[name] = display.get(key, '请重新查看目标')
                     parameters.pop(key)
-        if 'classIds' in parameters and isinstance(parameters['classIds'], list):
+        for key, names in (('classIds', 'classNames'), ('headClassIds', 'headClassNames'), ('teachingClassIds', 'teachingClassNames')):
             # The human confirmation names each assigned class; UUIDs stay out
             # of the review UI, and unavailable classes are not disclosed.
-            parameters['classNames'] = [(self.db.one('SELECT name FROM classes WHERE id=?', (cid,)) or {}).get('name', '班级不存在')
-                                        for cid in parameters.pop('classIds') if isinstance(cid, str)]
+            if isinstance(parameters.get(key), list):
+                parameters[names] = [(self.db.one('SELECT name FROM classes WHERE id=?', (cid,)) or {}).get('name', '班级不存在')
+                                     for cid in parameters.pop(key) if isinstance(cid, str)]
         if row['kind'] == 'platform' and 'classId' in parameters:
             parameters['targetClassName'] = (self.db.one('SELECT name FROM classes WHERE id=?', (parameters.pop('classId'),)) or {}).get('name', '班级不存在')
         return {'id': row['id'], 'kind': row['kind'], 'action': args.get('operation') or args.get('action'),
@@ -785,7 +790,8 @@ class Operations:
         actions = [{'id': key, 'title': spec.title, 'confirmation': spec.confirm, 'fields': spec.fields.split(), 'impact': spec.impact}
                    for key, spec in BUSINESS.items() if not (
                        key.startswith(('class.', 'user.', 'device.', 'records.')) and user['role'] not in self.s.MANAGER_ROLES or
-                       key in {'quiet.update', 'reading.update'} and user['role'] not in self.s.SCHOOL_ROLES)]
+                       key in {'quiet.update', 'reading.update'} and user['role'] not in self.s.SCHOOL_ROLES or
+                       key in {'island.update', 'voice.delete'} and user['role'] == 'subject_teacher')]
         return {'business': actions, 'computer': [{'id': k, 'title': v[0], 'confirmation': v[1]} for k, v in COMPUTER.items()], 'devices': visible}
 
     async def endpoint(self, request, work):

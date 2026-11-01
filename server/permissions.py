@@ -2,14 +2,14 @@
 from reading import class_grade
 
 GRADES = ('高一', '高二', '高三')
-STAFF_ROLES = {'teacher', 'grade_leader', 'director', 'principal'}
+STAFF_ROLES = {'teacher', 'subject_teacher', 'grade_leader', 'director', 'principal'}
 SCHOOL_ROLES = {'superadmin', 'principal'}
 MANAGER_ROLES = SCHOOL_ROLES | {'director', 'grade_leader'}
 ROLE_LABELS = {'superadmin': '超级管理员', 'principal': '校长', 'director': '主任',
-               'grade_leader': '年级部长', 'teacher': '班主任教师'}
+               'grade_leader': '年级部', 'teacher': '班主任', 'subject_teacher': '任课老师'}
 
 
-def scope_sql(user, class_id='c.id'):
+def scope_sql(user, class_id='c.id', *, include_teaching=True):
     """Return a SQL predicate and bound arguments; class_id is a code-owned expression."""
     if user.get('classroom'):
         return f'{class_id}=?', (user['classroom']['classId'],)
@@ -21,7 +21,13 @@ def scope_sql(user, class_id='c.id'):
     if role == 'grade_leader':
         return f'EXISTS (SELECT 1 FROM classes scope_class JOIN user_grades ug ON ug.grade=class_grade(scope_class.name) WHERE scope_class.id={class_id} AND ug.user_id=?)', (user['id'],)
     if role == 'teacher':
-        return f'EXISTS (SELECT 1 FROM teacher_classes scope_tc WHERE scope_tc.class_id={class_id} AND scope_tc.user_id=?)', (user['id'],)
+        head = f'EXISTS (SELECT 1 FROM teacher_classes scope_tc WHERE scope_tc.class_id={class_id} AND scope_tc.user_id=?)'
+        if not include_teaching:
+            return head, (user['id'],)
+        teaching = f'EXISTS (SELECT 1 FROM teaching_classes scope_teaching WHERE scope_teaching.class_id={class_id} AND scope_teaching.user_id=?)'
+        return f'({head} OR {teaching})', (user['id'], user['id'])
+    if role == 'subject_teacher' and include_teaching:
+        return f'EXISTS (SELECT 1 FROM teaching_classes scope_teaching WHERE scope_teaching.class_id={class_id} AND scope_teaching.user_id=?)', (user['id'],)
     return '0', ()
 
 
@@ -41,7 +47,8 @@ def can_manage_grade(db, user, grade):
 
 def managed_roles(user):
     return {'superadmin': STAFF_ROLES, 'principal': STAFF_ROLES,
-            'director': {'grade_leader', 'teacher'}, 'grade_leader': {'teacher'}}.get(user['role'], set())
+            'director': {'grade_leader', 'teacher', 'subject_teacher'},
+            'grade_leader': {'teacher', 'subject_teacher'}}.get(user['role'], set())
 
 
 def can_manage_user(db, actor, target):
@@ -61,4 +68,5 @@ def capabilities(user):
             'manageUsers': user['role'] in MANAGER_ROLES,
             'manageClasses': user['role'] in MANAGER_ROLES,
             'controlClassrooms': True,
-            'assignableRoles': [r for r in ('principal', 'director', 'grade_leader', 'teacher') if r in managed_roles(user)]}
+            'receiveClassroomVoice': user['role'] in MANAGER_ROLES | {'teacher'},
+            'assignableRoles': [r for r in ('principal', 'director', 'grade_leader', 'teacher', 'subject_teacher') if r in managed_roles(user)]}

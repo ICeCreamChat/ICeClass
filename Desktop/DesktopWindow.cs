@@ -25,6 +25,7 @@ internal sealed class DesktopWindow : Window
     private readonly TextBlock _errorNote = DesktopStyle.Text("首次打开可能需要片刻，请稍候。", 14, muted: true);
     private readonly Button _retry = Dialogs.Button("重新连接", true);
     private readonly Button _runtime = Dialogs.Button("获取运行组件");
+    private readonly Button _feedbackAction = ToolbarButton("反馈");
     private readonly ProgressBar _progress = new() { IsIndeterminate = true, Height = 2, IsVisible = true };
     private readonly Border _toolbar;
     private readonly List<DesktopWindow> _children = [];
@@ -33,6 +34,9 @@ internal sealed class DesktopWindow : Window
     private CancellationTokenSource? _navigationTimeout;
     private ClassroomVoiceInbox? _voiceInbox;
     private ClassroomVoiceNoticeWindow? _voiceNotice;
+    private TeacherFeedbackWindow? _feedbackWindow;
+    private bool _openingFeedback;
+    private readonly Stopwatch _navigationWatch = new();
 
     internal DesktopWindow(App app, string endpoint, bool main, string? address = null)
     {
@@ -48,20 +52,22 @@ internal sealed class DesktopWindow : Window
             if (WindowState == WindowState.FullScreen && args.Key == Key.Escape)
             { args.Handled = true; await ExitFullscreen(); }
         };
-        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
-            Children = { DesktopStyle.Logo(20), DesktopStyle.Text("ICeClass 班伴", 13, true) } };
         var refresh = ToolbarButton("刷新页面"); refresh.Click += async (_, _) =>
         {
+            _app.Diagnostics.Record("action", "刷新页面", _browser.Core?.Source ?? _endpoint);
             if (await Dialogs.Confirm(this, "刷新工作台？", "页面会重新加载。请先保存尚未提交的内容。", "刷新")) Navigate();
         };
-        var settings = ToolbarButton("桌面设置"); settings.Click += async (_, _) => await _app.ShowSettingsAsync();
-        var more = ToolbarButton("关于"); more.Click += async (_, _) => await ShowAbout();
-        _browser.FocusOutside += forward => (forward ? refresh : more).Focus();
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { refresh, settings, more } };
-        var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,18,*,16,Auto"), Margin = new Thickness(16, 5) };
-        toolbar.Children.Add(brand); Grid.SetColumn(_status, 2); _status.VerticalAlignment = VerticalAlignment.Center; _status.TextTrimming = TextTrimming.CharacterEllipsis; toolbar.Children.Add(_status);
+        var settings = ToolbarButton("桌面设置"); settings.Click += async (_, _) =>
+        { _app.Diagnostics.Record("action", "桌面设置", _browser.Core?.Source ?? _endpoint); await _app.ShowSettingsAsync(); };
+        var more = ToolbarButton("关于"); more.Click += async (_, _) =>
+        { _app.Diagnostics.Record("action", "关于", _browser.Core?.Source ?? _endpoint); await ShowAbout(); };
+        var feedback = _feedbackAction; feedback.Click += async (_, _) => await ShowFeedback();
+        _browser.FocusOutside += forward => (forward ? refresh : feedback).Focus();
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { refresh, settings, more, feedback } };
+        var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,16,Auto"), Margin = new Thickness(16, 5) };
+        _status.VerticalAlignment = VerticalAlignment.Center; _status.TextTrimming = TextTrimming.CharacterEllipsis; toolbar.Children.Add(_status);
         ToolTip.SetTip(_status, _endpoint);
-        Grid.SetColumn(actions, 4); toolbar.Children.Add(actions);
+        Grid.SetColumn(actions, 2); toolbar.Children.Add(actions);
         var surface = new Grid(); surface.Children.Add(_browser);
         _error.Children.Add(_errorTitle); _error.Children.Add(_errorNote); _error.Children.Add(_retry); _error.Children.Add(_runtime); surface.Children.Add(_error);
         _retry.IsVisible = false; _runtime.IsVisible = false;
@@ -102,15 +108,27 @@ internal sealed class DesktopWindow : Window
             await _browser.InitializeAsync(DesktopSettings.ProfileDirectory(App.DataDirectory, _endpoint), _lifetime.Token);
             if (_disposed) return;
             var core = _browser.Core!;
-            core.Settings.IsWebMessageEnabled = false; core.Settings.AreHostObjectsAllowed = false;
+            core.Settings.IsWebMessageEnabled = true; core.Settings.AreHostObjectsAllowed = false;
             core.Settings.AreDevToolsEnabled = Program.Options.Review;
             core.Settings.IsPasswordAutosaveEnabled = false; core.Settings.IsGeneralAutofillEnabled = false;
             core.Settings.IsBuiltInErrorPageEnabled = false;
+            core.WebMessageReceived += (_, args) =>
+            {
+                if (!_disposed && DesktopSettings.SameOrigin(_endpoint, args.Source))
+                    _app.Diagnostics.RecordBrowser(args.WebMessageAsJson, _endpoint);
+            };
+            using (var source = typeof(DesktopWindow).Assembly.GetManifestResourceStream("ICeClass.Desktop.diagnostics.js")!)
+            using (var script = new StreamReader(source))
+                await core.AddScriptToExecuteOnDocumentCreatedAsync((await script.ReadToEndAsync()).Replace("__SCHOOL_ORIGIN__",
+                    System.Text.Json.JsonSerializer.Serialize(new Uri(_endpoint).GetLeftPart(UriPartial.Authority))));
+            _app.Diagnostics.Record("runtime", "WebView2 就绪", _endpoint, core.Environment.BrowserVersionString);
             core.NavigationStarting += (_, args) =>
             {
                 if (!DesktopSettings.SameOrigin(_endpoint, args.Uri))
                 { args.Cancel = true; if (args.IsUserInitiated) OpenExternal(args.Uri); return; }
                 _navigated = false; _progress.IsVisible = true; SetStatus("正在连接…");
+                _navigationWatch.Restart();
+                _app.Diagnostics.Record("navigation", "开始加载", args.Uri);
                 _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose(); _navigationTimeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                 _ = NavigationDeadline(_navigationTimeout.Token);
             };
@@ -118,6 +136,8 @@ internal sealed class DesktopWindow : Window
             {
                 _navigationTimeout?.Cancel(); _progress.IsVisible = false;
                 if (_disposed) return;
+                _app.Diagnostics.Record("navigation", args.IsSuccess ? "加载完成" : "加载失败", core.Source,
+                    args.WebErrorStatus.ToString(), _navigationWatch.Elapsed.TotalMilliseconds, args.HttpStatusCode);
                 if (args.IsSuccess && args.HttpStatusCode < 500)
                 { _navigated = true; ShowPage(); SetStatus(ConnectedStatus); }
                 else ShowError("暂时无法打开学校平台", "请检查网络或稍后重试。您的登录资料和学校数据不会因此被清除。");
@@ -138,7 +158,11 @@ internal sealed class DesktopWindow : Window
                 args.State = DesktopSettings.SameOrigin(_endpoint, args.Uri) && args.PermissionKind == CoreWebView2PermissionKind.Microphone
                     ? CoreWebView2PermissionState.Default : CoreWebView2PermissionState.Deny;
             };
-            core.ProcessFailed += (_, _) => { _needsRestart = true; ShowError("页面暂时中断", "点击“重新连接”会重新打开工作台。尚未提交的内容可能需要重新填写。"); };
+            core.ProcessFailed += (_, args) =>
+            {
+                _app.Diagnostics.Record("runtime", "页面进程中断", detail: args.ProcessFailedKind.ToString());
+                _needsRestart = true; ShowError("页面暂时中断", "点击“重新连接”会重新打开工作台。尚未提交的内容可能需要重新填写。");
+            };
             core.ContainsFullScreenElementChanged += (_, _) =>
             {
                 if (_disposed) return;
@@ -161,7 +185,7 @@ internal sealed class DesktopWindow : Window
             _initialized = true; Navigate();
             if (_main)
             {
-                _voiceInbox = new ClassroomVoiceInbox(_endpoint, ReadVoiceSessionAsync);
+                _voiceInbox = new ClassroomVoiceInbox(_endpoint, ReadSessionAsync, diagnostics: _app.Diagnostics);
                 _voiceInbox.Changed += UpdateVoiceNotice;
                 _ = WatchClassroomVoiceAsync(_lifetime.Token);
             }
@@ -178,11 +202,66 @@ internal sealed class DesktopWindow : Window
         catch (Exception error) { DesktopLog.Write(error); ShowError("全屏页面暂时中断", "请点击“重新连接”恢复工作台。"); _needsRestart = true; }
     }
 
-    private async Task<string?> ReadVoiceSessionAsync()
+    private async Task<string?> ReadSessionAsync()
     {
         if (_disposed || _browser.Core is null) return null;
         var cookies = await _browser.Core.CookieManager.GetCookiesAsync(_endpoint + "/api/classroom-voice");
         return _disposed ? null : cookies.FirstOrDefault(cookie => cookie.Name == "iceclass_session")?.Value;
+    }
+
+    private async Task ShowFeedback()
+    {
+        if (_feedbackWindow is not null) { _feedbackWindow.Activate(); return; }
+        if (_openingFeedback || _disposed) return;
+        _openingFeedback = true;
+        var opening = Stopwatch.StartNew();
+        _app.Diagnostics.Record("feedback", "点击反馈", _browser.Core?.Source ?? _endpoint);
+        _feedbackAction.IsEnabled = false; _feedbackAction.Content = "正在打开…";
+        TeacherFeedbackClient? client = null;
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            if (_disposed) return;
+            client = new(_endpoint, ReadSessionAsync, diagnostics: _app.Diagnostics);
+            var account = await client.AccountAsync(_lifetime.Token);
+            if (_disposed) return;
+            _feedbackWindow = new TeacherFeedbackWindow(client, account, CaptureFeedbackPage,
+                () => FeedbackDiagnostics.Page(_browser.Core?.Source),
+                CollectFeedbackDiagnostics, _app.Diagnostics);
+            client = null;
+            _feedbackWindow.Closed += (_, _) => _feedbackWindow = null;
+            _feedbackWindow.Show(this);
+            _app.Diagnostics.Record("feedback", "表单已打开", _browser.Core?.Source ?? _endpoint, milliseconds: opening.Elapsed.TotalMilliseconds);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error)
+        {
+            _app.Diagnostics.Record("feedback", "打开失败", detail: error.GetType().Name, milliseconds: opening.Elapsed.TotalMilliseconds);
+            if (!_disposed) await Dialogs.Message(this, "暂时无法打开反馈", error is InvalidOperationException ? error.Message : "请确认已登录教师工作台，并检查学校平台连接。");
+        }
+        finally
+        {
+            client?.Dispose(); _openingFeedback = false;
+            if (!_disposed) { _feedbackAction.Content = "反馈"; _feedbackAction.IsEnabled = true; }
+        }
+    }
+
+    private async Task<string> CollectFeedbackDiagnostics(CancellationToken token)
+    {
+        var state = $"学校平台：{FeedbackDiagnostics.Page(_endpoint)}\n当前页面：{FeedbackDiagnostics.Page(_browser.Core?.Source)}\n" +
+            $"连接状态：{_status.Text}\n页面已就绪：{_navigated}\nWebView2：{_browser.Core?.Environment.BrowserVersionString ?? "尚未就绪"}\n" +
+            $"窗口：{ClientSize.Width:0}×{ClientSize.Height:0} DIP；缩放 {RenderScaling * 100:0}%\n";
+        await _app.Diagnostics.FlushAsync(token);
+        state += "诊断存储：" + _app.Diagnostics.StorageStatus;
+        return await Task.Run(() => FeedbackDiagnostics.Collect(App.DataDirectory, state), token);
+    }
+
+    private async Task<FeedbackImage> CaptureFeedbackPage()
+    {
+        if (_disposed || _browser.Core is null || !_navigated || !IsVisible) throw new InvalidOperationException("请先打开需要反馈的页面。");
+        using var stream = new MemoryStream();
+        await _browser.Core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+        return FeedbackImage.Create("当前页面.png", stream.ToArray());
     }
 
     private async Task WatchClassroomVoiceAsync(CancellationToken token)
@@ -300,7 +379,7 @@ internal sealed class DesktopWindow : Window
     internal void DisposePage()
     {
         if (_disposed) return; _disposed = true; _lifetime.Cancel(); _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose();
-        _voiceNotice?.Close(); _voiceInbox?.Dispose();
+        _feedbackWindow?.CloseWithOwner(); _voiceNotice?.Close(); _voiceInbox?.Dispose();
         foreach (var child in _children.ToArray()) child.Close(); _browser.DisposeBrowser();
     }
 }

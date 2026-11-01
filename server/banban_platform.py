@@ -6,6 +6,7 @@ import re
 from types import SimpleNamespace
 
 from reading import SHANGHAI, inside_period
+from permissions import ROLE_LABELS
 
 
 CURRENT_TOPICS = {'devices', 'bindings', 'rules', 'accounts', 'help'}
@@ -132,11 +133,11 @@ class BanbanPlatform:
             ('history', '核对通知回执', '历史记录查看发送与白板显示状态；显示回执不等于已经阅读。'),
             ('classroom-voice', '查看教室来音', '在教室来音页面由您手动查看；班班只分析累计数量、时长，更早数据可能不完整。'),
             ('quiet', '通知禁言时间', '禁言时间页面查看禁言时段；校长与超级管理员维护全校规则。'),
-            ('settings', '个人账号与教室客户端', '网页“账号设置”可修改自己的密码；校长、主任和年级部长在各自范围内管理绑定电脑。安装包由学校提供，检查更新在教室电脑的托盘菜单或客户端设置中完成，安装绑定也在教室电脑操作。')]
+            ('settings', '个人账号与教室客户端', '网页“账号设置”可修改自己的密码；校长、主任和年级部在各自范围内管理绑定电脑。安装包由学校提供，检查更新在教室电脑的托盘菜单或客户端设置中完成，安装绑定也在教室电脑操作。')]
         if admin:
             rows += [('controls', '检查教室设备', '教室控制核对在线、最近联系、电脑信息、版本和音量回报；调整与停用由您确认执行。'),
                      ('classes', '班级换届与绑定', '班级管理可更名、重新对应班级；先核对实际电脑，多个设备不一定是绑错；更名保留原班级历史。'),
-                     ('teachers', '管理平台账号', '用户管理可创建、停用或删除账号并分配班级；班主任教师限本人班级，年级部长限负责年级，主任覆盖高一至高三，校长和超级管理员覆盖全校。'),
+                     ('teachers', '管理平台账号', '用户管理可创建、停用或删除账号；班主任分别设置带班班级和任教班级，任课老师分配任教班级。年级部限负责年级，主任覆盖高一至高三，校长和超级管理员覆盖全校。'),
                      ('reading', '修改统计规则', '早读统计页的全校统计规则由校长与超级管理员维护星期、起止时间、提醒与声量门槛；本地活动参数在陪伴内设置。')]
         return [{'view': view, 'title': title, 'text': text} for view, title, text in rows]
 
@@ -151,6 +152,8 @@ class BanbanPlatform:
         def metrics(*items):
             card['metrics'] = [dict(label=label, value=value, unit=unit) for label, value, unit in items]
         def action(view):
+            if view == 'classroom-voice' and user['role'] == 'subject_teacher':
+                return
             if view not in ADMIN_VIEWS or admin:
                 item = {'view': view, 'label': VIEW_LABELS[view]}
                 if topic == 'rules' and view == 'reading' and admin:
@@ -158,6 +161,8 @@ class BanbanPlatform:
                 if item not in card['actions']:
                     card['actions'].append(item)
         def finding(title, text, view, count=None):
+            if view == 'classroom-voice' and user['role'] == 'subject_teacher':
+                return
             card['findings'].append({'title': title, 'text': text, 'view': view if view not in ADMIN_VIEWS or admin else 'console', 'count': count})
         r, n, v = (snapshot[k] for k in ('reading', 'notifications', 'voice'))
         if topic in {'devices', 'bindings', 'platform'}:
@@ -201,16 +206,16 @@ class BanbanPlatform:
                     'basis': '当前全校账号汇总，不含姓名、账号、密码、会话和已删除账号。'}
             metrics(('平台账号', data['total'], 'accounts'), ('已启用', data['enabled'], 'accounts'), ('已停用', data['total'] - data['enabled'], 'accounts'))
             card['scopeLabel'] = '当前全校账号'
-            labels = {'teacher': '班主任教师', 'grade_leader': '年级部长', 'director': '主任', 'principal': '校长', 'superadmin': '超级管理员'}
+            labels = ROLE_LABELS
             card['details'] = [f"{labels.get(c['role'], '其他')} · {'启用' if c['enabled'] else '停用'} {c['amount']} 个" for c in roles]
             action('teachers')
         elif topic == 'help':
-            data = {'guides': self.guides(admin), 'readOnly': True}
+            data = {'guides': [g for g in self.guides(admin) if user['role'] != 'subject_teacher' or g['view'] != 'classroom-voice'], 'readOnly': True}
             if user['role'] == 'director':
                 data['scopeNote'] = '主任可分析高一、高二、高三的班级，并管理三个年级范围内的班级、设备及下级账号。'
                 card['details'].append(data['scopeNote'])
             elif user['role'] == 'grade_leader':
-                data['scopeNote'] = '年级部长可分析负责年级的全部班级，并管理本年级的班级、设备及班主任教师账号。'
+                data['scopeNote'] = '年级部可分析负责年级的全部班级，并管理本年级的班级、设备及教师账号。'
                 card['details'].append(data['scopeNote'])
             card['scopeLabel'] = '与您当前权限对应的操作指南'
             for guide in data['guides']:

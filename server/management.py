@@ -197,6 +197,7 @@ class Management:
                         ('deleted-' + uid, self.service.hash_password(self.service.random_token()), self.service.now_ms(), self.service.now_ms(), uid))
             self.db.run('DELETE FROM sessions WHERE user_id=?', (uid,))
             self.db.run('DELETE FROM teacher_classes WHERE user_id=?', (uid,))
+            self.db.run('DELETE FROM teaching_classes WHERE user_id=?', (uid,))
             self.db.run('DELETE FROM user_grades WHERE user_id=?', (uid,))
             self.db.run('DELETE FROM classroom_voice_receipts WHERE user_id=?', (uid,))
             self.service.audit(self.db, user['id'], 'user.delete', 'user', uid, json.dumps({'username': row['username']}, ensure_ascii=False))

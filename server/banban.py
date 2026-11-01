@@ -163,9 +163,10 @@ class Banban:
         texts = self.db.all(f'''SELECT class_id,text,created_at,status FROM shouts
             WHERE class_id IN ({placeholders}) AND created_at>=? AND created_at<? AND content_type='text'
             ORDER BY created_at DESC LIMIT 20''', (*ids, first, last))
-        voices = self.db.all(f'''SELECT class_id,SUM(messages) messages,SUM(duration_ms) duration_ms
-            FROM classroom_voice_totals WHERE class_id IN ({placeholders}) AND day BETWEEN ? AND ? GROUP BY class_id''',
-            (*ids, report['start'], report['end']))
+        voice_scope, voice_args = self.s.scope_sql(user, 'v.class_id', include_teaching=False)
+        voices = self.db.all(f'''SELECT v.class_id,SUM(messages) messages,SUM(duration_ms) duration_ms
+            FROM classroom_voice_totals v WHERE v.class_id IN ({placeholders}) AND day BETWEEN ? AND ?
+            AND {voice_scope} GROUP BY v.class_id''', (*ids, report['start'], report['end'], *voice_args))
         devices = self.db.all(f'''SELECT class_id,COUNT(*) total,SUM(enabled) enabled FROM devices
             WHERE class_id IN ({placeholders}) AND deleted_at IS NULL GROUP BY class_id''', tuple(ids))
         notify = {'total': sum(r['amount'] for r in shouts),

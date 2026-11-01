@@ -9,9 +9,10 @@ internal sealed class IslandActionRunner(Func<ReceiverConfig, Task> openReading,
     private readonly SpeechService _speech = new();
     private WaveOutEvent? _sound;
     private bool _disposed;
-    public async Task<string> Execute(IslandDueEvent e, IslandProfile p, ReceiverConfig binding, IslandLocalSettings local)
+    public async Task<string> Execute(IslandDueEvent e, IslandProfile p, ReceiverConfig binding, IslandLocalSettings local, DateTimeOffset now)
     {
         if (_disposed) return "";
+        if (IslandSchedule.SuppressReminder(p, e, now)) return $"{e.Title}：课堂隐藏时段，已跳过提醒";
         try
         {
             var rule = e.Automation;

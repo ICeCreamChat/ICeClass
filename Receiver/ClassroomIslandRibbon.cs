@@ -140,7 +140,12 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         var border = Light ? new Pen(Brush("#DCE6F0"),1) : null;
         context.DrawRectangle(Brush(bg), border, new Rect(.5, .5, dateWidth-1, area.Height-1), 23.5, 23.5);
         var dateParts=frame.Date.Split(' ',2);
-        if(dateParts.Length==2)
+        if(dateParts.Length==2 && dateWidth<80)
+        {
+            Label(context,dateParts[0],new Rect(0,4,dateWidth,18),12,muted);
+            Label(context,dateParts[1],new Rect(0,22,dateWidth,22),16,ink);
+        }
+        else if(dateParts.Length==2)
         {
             var weekdaySize=compact?14:16;
             var calendarSize=compact?16:18;
@@ -309,7 +314,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         }
         if(Used()>available)
         {
-            date=88; gap=6; padding=12; itemGap=1; separator=6; subjectSize=14;
+            date=64; gap=6; padding=12; itemGap=1; separator=6; subjectSize=14;
             available=Math.Max(1,maximum-date-gap-padding);
             FitCells();
             if(Used()>available && inactive>0)

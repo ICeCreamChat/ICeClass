@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const labels = {prepared:'准备执行', awaiting_confirmation:'待您确认', running:'正在执行', stopping:'正在停止', succeeded:'已完成', failed:'未完成', cancelled:'已取消', expired:'已过期', unconfirmed:'结果待确认'};
-  const names = {name:'名称', username:'账号', displayName:'姓名', role:'角色', enabled:'启用', classIds:'授权班级', grade:'年级',
+  const names = {name:'名称', username:'账号', displayName:'姓名', role:'角色', enabled:'启用', classIds:'授权班级', headClassNames:'带班班级', teachingClassNames:'任教班级', grade:'年级',
     text:'内容', alertLevel:'通知类型', ttsVolume:'播报音量', ttsSpeed:'播报语速', displayDurationSec:'显示秒数', threshold:'声量门槛',
     reminderEnabled:'晨读提醒', periods:'时段', weekdays:'星期', start:'开始', end:'结束', startTime:'开始时间', endTime:'结束时间',
     kind:'记录类型', allDates:'全部日期', revision:'当前版本', config:'教室配置', slots:'作息时段', lessons:'常规课表', overrides:'临时调课',
@@ -13,7 +13,7 @@
     teacher:'教师', room:'地点', weekday:'星期', weekType:'单双周', cancelled:'取消', bindingNote:'绑定备注', verified:'已核实', changes:'班级更名',
     url:'网站', page:'页码', query:'课件名称', find:'查找文字', application:'应用', file:'课件', control:'控件', note:'绑定备注', classNames:'授权班级',
     targetClassName:'改绑到班级', slotId:'作息时段', week:'单双周'};
-  const values = {teacher:'班主任教师', grade_leader:'年级部长', director:'主任', principal:'校长', info:'普通', warning:'重要', urgent:'紧急',
+  const values = {teacher:'班主任', subject_teacher:'任课老师', grade_leader:'年级部', director:'主任', principal:'校长', info:'普通', warning:'重要', urgent:'紧急',
     reading:'晨读', history:'通知', voice:'来音', all:'每周', odd:'单周', even:'双周', light:'浅色', dark:'深色', system:'跟随系统'};
   let root = null, timer = 0, epoch = 0;
   const cards = new Map(), operations = new Map();

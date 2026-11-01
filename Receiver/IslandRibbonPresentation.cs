@@ -21,21 +21,43 @@ internal static class IslandRibbonPresentation
         var day = DateOnly.FromDateTime(now.DateTime);
         var date = new[] { "周日", "周一", "周二", "周三", "周四", "周五", "周六" }[(int)now.DayOfWeek] + now.ToString(" MM/dd");
         var lessons = profile is null ? [] : IslandSchedule.On(profile, day);
-        var current = lessons.FirstOrDefault(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End));
-        var next = lessons.FirstOrDefault(l => l.At(l.Slot.Start) > now);
-        var items = lessons.Select((l,index) => new IslandRibbonItem(l.Slot.Id, l.Lesson.Subject,
-            Time(l.Slot.Start) + "-" + Time(l.Slot.End), l == current, l.At(l.Slot.End) <= now,
-            l == current ? Math.Clamp((now - l.At(l.Slot.Start)).TotalSeconds / ((l.Slot.End - l.Slot.Start) * 60), 0, 1) : 0,
-            index>0 && l.Slot.Start-lessons[index-1].Slot.End>=40)).ToList();
-        if (current is null && next is not null)
+        var displayed = lessons.Select(l => (l.Slot, l.Lesson.Subject)).ToList();
+        // Labels for unassigned study periods belong only to the ribbon.
+        // IslandSchedule keeps actual courses for hiding, reminders and actions.
+        if (profile is not null && lessons.Count > 0)
         {
-            var previous = lessons.LastOrDefault(l => l.At(l.Slot.End) <= now);
-            var start = previous?.Slot.End ?? Math.Max(0, next.Slot.Start - (profile?.Reminders.PrepareMinutes ?? 2));
-            var progress = Math.Clamp((now - next.At(start)).TotalSeconds / Math.Max(1, (next.Slot.Start - start) * 60), 0, 1);
-            if(previous is not null || now>=next.At(start))
-                items.Insert(items.FindIndex(i => i.Id == next.Slot.Id), new("break", previous is null ? "课前准备" : "课间休息",
-                    Time(start) + "-" + Time(next.Slot.Start), true, false, progress));
+            var studyIds = profile.DutyRotations.Where(d => d.Key is "midday" or "evening").SelectMany(d => d.Value.SlotIds).ToHashSet();
+            var occupied = lessons.Select(l => l.Slot.Id).ToHashSet();
+            var cancelled = profile.Overrides.Where(o => o.Date == day.ToString("yyyy-MM-dd") && o.Cancelled).Select(o => o.SlotId).ToHashSet();
+            displayed.AddRange(profile.Slots.Where(s => !occupied.Contains(s.Id) && !cancelled.Contains(s.Id) &&
+                (studyIds.Contains(s.Id) || s.Id.StartsWith("evening-study-") || s.Label.Contains("午间静校") || s.Label.Contains("晚自习") || s.Label.Contains("晚自修")))
+                .Select(s => (s, s.Label)));
         }
+        displayed = displayed.OrderBy(l => l.Slot.Start).ToList();
+        var middayIds = profile?.DutyRotations.GetValueOrDefault("midday")?.SlotIds ?? [];
+        bool Midday(IslandSlot slot) => middayIds.Contains(slot.Id) || slot.Label.Contains("午间静校");
+        bool Isolated(IslandSlot slot) => Midday(slot) || slot.Id == "morning-reading" || slot.Label.Contains("晨读") || slot.Label.Contains("早读");
+        var minute = now.TimeOfDay.TotalMinutes;
+        var items = displayed.Select((l,index) => new IslandRibbonItem(l.Slot.Id, l.Subject,
+            Time(l.Slot.Start) + "-" + Time(l.Slot.End), l.Slot.Start <= minute && minute < l.Slot.End, l.Slot.End <= minute,
+            Math.Clamp((minute-l.Slot.Start) / (l.Slot.End-l.Slot.Start), 0, 1),
+            index>0 && (l.Slot.Start-displayed[index-1].Slot.End>=40 || Isolated(displayed[index-1].Slot) || Midday(l.Slot)))).ToList();
+        var nextDisplay = displayed.FindIndex(l => l.Slot.Start > minute);
+        if (!items.Any(i => i.Current) && nextDisplay >= 0)
+        {
+            var previous = displayed.FindLastIndex(l => l.Slot.End <= minute);
+            var nextSlot = displayed[nextDisplay].Slot;
+            var start = previous >= 0 ? displayed[previous].Slot.End : Math.Max(0, nextSlot.Start - (profile?.Reminders.PrepareMinutes ?? 2));
+            var progress = Math.Clamp((minute-start) / Math.Max(1, nextSlot.Start-start), 0, 1);
+            if(previous >= 0 || minute >= start)
+            {
+                var separatorBefore = previous >= 0 && Isolated(displayed[previous].Slot);
+                if (separatorBefore) items[nextDisplay] = items[nextDisplay] with { SeparatorBefore = Midday(nextSlot) };
+                items.Insert(nextDisplay, new("break", previous < 0 ? "课前准备" : "课间休息",
+                    Time(start) + "-" + Time(nextSlot.Start), true, false, progress, separatorBefore));
+            }
+        }
+        var next = lessons.FirstOrDefault(l => l.At(l.Slot.Start) > now);
         next ??= profile is not null ? IslandSchedule.Next(profile,now) : null;
         var remaining = next is null ? 0 : (next.At(next.Slot.Start) - now).TotalSeconds;
         var preparing = profile?.Reminders is { Enabled: true, Prepare: true } reminders && remaining > 0 && remaining <= reminders.PrepareMinutes * 60;

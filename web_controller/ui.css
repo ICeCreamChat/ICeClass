@@ -48,6 +48,8 @@ textarea { min-height: 150px; resize: vertical; }
 input:focus, textarea:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0071e316; outline: 0; }
 .field > input:not([type=checkbox]):not([type=radio]), .field > select, .password-field > input { height: var(--control-height); min-height: var(--control-height); line-height: 24px; padding: 7px 12px; }
 .password-field > input { padding-right: 64px; }
+/* The custom visibility button also keeps the login mascot in sync. */
+.password-field > input::-ms-reveal { display: none; }
 input[type=checkbox], input[type=radio] { flex: none; width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; accent-color: var(--blue); }
 .password-field { position: relative; }
 .password-field input { padding-right: 64px; }
@@ -298,6 +300,7 @@ tbody tr:hover:not(.grade-divider) { background: #fafcff; }
 .user-identity small, .user-scope small { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; line-height: 1.5; color: #627082; }
 .user-identity small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-role-badge { display: inline-block; white-space: nowrap; border-radius: 5px; padding: 3px 7px; font-size: 12px; background: #f1f4f8; color: #536477; }
+.user-role-badges { display: flex; flex-wrap: wrap; gap: 5px; }
 .user-role-badge.role-principal { background: #e9effa; color: #465f98; }
 .user-role-badge.role-director { background: #e6f3f2; color: #347574; }
 .user-role-badge.role-grade_leader { background: #edf1fe; color: #5b66a3; }
@@ -321,6 +324,8 @@ tbody tr:hover:not(.grade-divider) { background: #fafcff; }
 .user-actions-popover .btn:hover { background: #f0f6ff; }
 .user-menu-title { color: var(--muted); font-size: 12px; padding: 5px 10px 7px; border-bottom: 1px solid var(--line); margin-bottom: 3px; }
 .staff-class-picker { display: grid; gap: 8px; max-height: 250px; overflow: auto; padding: 0 4px 4px 0; }
+.staff-scope { min-width: 0; border: 0; padding: 0; }
+.staff-scope > legend { padding: 0; margin-bottom: 8px; }
 .staff-class-picker .staff-class-grade { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
 .staff-class-grade h3 { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .staff-class-picker .check-item { padding: 7px; min-height: 36px; font-size: 13px; }

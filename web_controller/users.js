@@ -1,8 +1,9 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const labels = {principal: '校长', director: '主任', grade_leader: '年级部长', teacher: '班主任教师'};
-  const roles = ['principal', 'director', 'grade_leader', 'teacher'];
+  const labels = {principal: '校长', director: '主任', grade_leader: '年级部', teacher: '班主任', subject_teacher: '任课老师'};
+  const roles = ['principal', 'director', 'grade_leader', 'teacher', 'subject_teacher'];
+  const hasRole = (user, role) => user.role === role || role === 'subject_teacher' && user.role === 'teacher' && !!user.teachingClasses?.length;
   const filters = {role: 'all', page: 1};
   const pageSize = 12;
   let context;
@@ -20,8 +21,10 @@
     if (user.role === 'principal') return ['全校管理', ''];
     if (user.role === 'director') return ['高一 · 高二 · 高三', ''];
     if (user.role === 'grade_leader') return [user.grade ? user.grade + '全部班级' : '待分配年级', ''];
-    const classes = user.classes || [];
-    return [classes.map(c => c.name).join('、') || '待分配班级', ''];
+    const heads = (user.headClasses || []).map(c => c.name).join('、');
+    const teaching = (user.teachingClasses || []).map(c => c.name).join('、');
+    return user.role === 'teacher' ? [heads ? '带班：' + heads : '待分配带班班级', teaching ? '任教：' + teaching : '']
+      : [teaching ? '任教：' + teaching : '待分配任教班级', ''];
   }
   function matchesGrade(user, selected) {
     if (selected === 'all') return true;
@@ -31,7 +34,9 @@
     return (user.classes || []).some(c => grade(c.name) === selected);
   }
   function isUnassigned(user) {
-    return user.role === 'teacher' && !user.classes?.length || user.role === 'grade_leader' && !user.grade;
+    return user.role === 'teacher' && !user.headClasses?.length
+      || user.role === 'subject_teacher' && !user.teachingClasses?.length
+      || user.role === 'grade_leader' && !user.grade;
   }
   function button(text, handler, cls = 'btn') {
     const item = node('button', text, cls); item.type = 'button'; item.onclick = handler; return item;
@@ -65,11 +70,12 @@
     closeMenu();
     const users = context.teachers;
     const tabs = $('userRoleTabs');
-    const visibleRoles = roles.filter(role => users.some(user => user.role === role) || context.user.permissions?.assignableRoles?.includes(role));
+    const visibleRoles = roles.filter(role => users.some(user => hasRole(user, role)) || context.user.permissions?.assignableRoles?.includes(role));
+    if (filters.role !== 'all' && !visibleRoles.includes(filters.role)) filters.role = 'all';
     const existingTabs = new Map([...tabs.children].map(tab => [tab.dataset.roleFilter, tab]));
     for (const [role, tab] of existingTabs) if (role !== 'all' && !visibleRoles.includes(role)) tab.remove();
     for (const role of ['all', ...visibleRoles]) {
-      const count = role === 'all' ? users.length : users.filter(u => u.role === role).length;
+      const count = role === 'all' ? users.length : users.filter(u => hasRole(u, role)).length;
       let tab = existingTabs.get(role);
       if (!tab) {
         tab = button(role === 'all' ? '全部用户' : labels[role], () => { filters.role = role; filters.page = 1; draw(); }, 'user-role-tab');
@@ -82,8 +88,8 @@
     }
     const keyword = $('userSearch').value.trim().toLocaleLowerCase();
     const selectedGrade = $('userGradeFilter').value, status = $('userStatusFilter').value;
-    const result = users.filter(u => (filters.role === 'all' || u.role === filters.role)
-      && (!keyword || [u.display_name, u.username, labels[u.role], scope(u)[0]].some(v => v.toLocaleLowerCase().includes(keyword)))
+    const result = users.filter(u => (filters.role === 'all' || hasRole(u, filters.role))
+      && (!keyword || [u.display_name, u.username, ...roles.filter(role => hasRole(u, role)).map(role => labels[role]), ...scope(u)].some(v => v.toLocaleLowerCase().includes(keyword)))
       && matchesGrade(u, selectedGrade)
       && (status === 'all' || status === 'unassigned' && isUnassigned(u) || status === 'enabled' && Number(u.enabled) === 1 || status === 'disabled' && Number(u.enabled) !== 1))
       .sort((a, b) => roles.indexOf(a.role) - roles.indexOf(b.role) || Number(isUnassigned(b)) - Number(isUnassigned(a)) || ['高一','高二','高三','其他'].indexOf(a.grade || grade(a.classes?.[0]?.name)) - ['高一','高二','高三','其他'].indexOf(b.grade || grade(b.classes?.[0]?.name)) || scope(a)[0].localeCompare(scope(b)[0], 'zh-CN', {numeric: true}) || a.display_name.localeCompare(b.display_name, 'zh-CN'));
@@ -107,7 +113,9 @@
       const row = body.insertRow(), identity = node('div', undefined, 'user-identity');
       identity.append(node('span', [...user.display_name][0] || '师', 'user-list-avatar'));
       const name = node('div'); name.append(node('strong', user.display_name), node('small', user.username)); identity.append(name); row.insertCell().append(identity);
-      row.insertCell().append(node('span', labels[user.role] || user.role, 'user-role-badge role-' + user.role));
+      const badges = node('div', undefined, 'user-role-badges');
+      for (const role of roles.filter(role => hasRole(user, role))) badges.append(node('span', labels[role], 'user-role-badge role-' + role));
+      row.insertCell().append(badges);
       const range = row.insertCell(), [title, hint] = scope(user); range.className = 'user-scope';
       range.append(node('span', title, isUnassigned(user) ? 'user-unassigned' : ''));
       if (hint) range.append(node('small', hint));

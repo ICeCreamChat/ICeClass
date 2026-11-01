@@ -16,6 +16,7 @@ public sealed class App : Application
     private NativeMenuItem? _statusMenuItem;
     private EnrollmentWindow? _enrollmentWindow;
     private StudentVoiceWindow? _studentVoiceWindow;
+    private CreativeIdeasWindow? _creativeIdeasWindow;
     private BanbanVoiceWindow? _banbanVoiceWindow;
     private AboutWindow? _aboutWindow;
     private ComputerControlSettingsWindow? _computerSettingsWindow;
@@ -52,6 +53,7 @@ public sealed class App : Application
         ReadingExperience.Configure(ShowStudentVoice, () => _studentVoiceWindow?.MinimizeToTray());
         _receiver.ConnectionStateChanged += ReceiverOnConnectionStateChanged;
         _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => {
+            if (_creativeIdeasWindow is not null && !_creativeIdeasWindow.Matches(binding)) { _creativeIdeasWindow.CloseWithoutPrompt(); _creativeIdeasWindow = null; }
             ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding);
             ReadingExperience.BindingChanged(binding); _island?.SetBinding(binding);
             if (_banbanVoiceWindow is null || !_banbanVoiceWindow.Matches(binding)) StartBanbanVoice(binding, _banbanVoiceWindow?.IsVisible != true);
@@ -235,6 +237,7 @@ public sealed class App : Application
         _enrollmentWindow.ComputerSettingsRequested += (_, _) => ShowComputerSettings();
         _enrollmentWindow.Saved += async (_, saved) =>
         {
+            _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
             ReadingOfflineService.For(saved);
             await ReadingExperience.StopAsync();
             await _receiver!.RestartAsync(saved);
@@ -266,12 +269,23 @@ public sealed class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban);
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban, ShowCreativeIdeas);
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
         KeepInTray(_studentVoiceWindow);
         _studentVoiceWindow.Show();
         _studentVoiceWindow.Activate();
+    }
+
+    private async void ShowCreativeIdeas(string view)
+    {
+        if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
+        if (_creativeIdeasWindow is not null && !_creativeIdeasWindow.Matches(config))
+        { _creativeIdeasWindow.CloseWithoutPrompt(); _creativeIdeasWindow = null; }
+        if (_creativeIdeasWindow is not null) { _creativeIdeasWindow.BringForward(_studentVoiceWindow); return; }
+        var window = new CreativeIdeasWindow(config); _creativeIdeasWindow = window;
+        window.Closed += (_, _) => { if (ReferenceEquals(_creativeIdeasWindow, window)) _creativeIdeasWindow = null; };
+        window.BringForward(_studentVoiceWindow); await window.LoadAsync(view);
     }
 
     private async Task TestAudioAsync()
@@ -300,6 +314,7 @@ public sealed class App : Application
 
     private async Task ShutdownAsync()
     {
+        _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
         _banbanVoiceWindow?.Shutdown();
         _shoutPreviewWindow?.Close();
         _island?.Dispose();

@@ -125,6 +125,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         };
         Closed += (_, _) =>
         {
+            _inbox.Diagnostics?.Record("voice", "关闭来音提醒");
             _closed = true; _lifetime.Cancel(); ReleaseAudio(); _audio = null; _transcript.Text = ""; _lifetime.Dispose();
             _messages.Clear(); _transcripts.Clear(); _current = null;
             _inbox.DismissAll();
@@ -190,8 +191,9 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
 
     private async Task ListenAsync()
     {
-        if (_busy) { _output?.Stop(); return; }
+        if (_busy) { _inbox.Diagnostics?.Record("voice", "停止播放"); _output?.Stop(); return; }
         if (_current is not { } message || _closed || _transcribing) return;
+        _inbox.Diagnostics?.Record("voice", "收听", detail: $"语音时长 {message.DurationMs} ms");
         _busy = true; UpdateNavigation();
         _listen.IsEnabled = _transcribe.IsEnabled = false; _listen.Content = "正在加载…";
         SetStatus("正在加载语音…");
@@ -209,7 +211,9 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
             {
                 if (_closed || _output != playback) return;
                 ReleaseAudio(); _busy = false; _transcribe.IsEnabled = true;
-                if (args.Exception is not null) { ShowPlaybackError("无法播放声音，请检查扬声器后重试。"); return; }
+                if (args.Exception is not null)
+                { DesktopLog.Write(args.Exception); _inbox.Diagnostics?.Record("voice", "播放失败", detail: args.Exception.GetType().Name); ShowPlaybackError("无法播放声音，请检查扬声器后重试。"); return; }
+                _inbox.Diagnostics?.Record("voice", "播放结束");
                 _listen.Content = "重新收听"; _listen.IsEnabled = true;
                 SetStatus("播放已结束");
                 UpdateMessages();
@@ -223,6 +227,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         catch (Exception error)
         {
             if (_closed) return;
+            DesktopLog.Write(error); _inbox.Diagnostics?.Record("voice", "收听失败", detail: error.GetType().Name);
             ReleaseAudio(); _busy = false; _transcribe.IsEnabled = true;
             ShowPlaybackError(error is InvalidOperationException or InvalidDataException ? error.Message
                 : "语音暂时无法播放，请检查网络与扬声器后重试。");
@@ -243,6 +248,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
     private async Task TranscribeAsync(bool download = false)
     {
         if (_closed || _busy || _transcribing || _current is not { } message) return;
+        _inbox.Diagnostics?.Record("voice", download ? "下载并转文字" : "转文字");
         _transcribing = true; UpdateNavigation(); _transcriptionPanel.IsVisible = true;
         _transcribe.Content = "取消转写"; _download.IsVisible = false; _listen.IsEnabled = false;
         SetStatus(""); _transcript.Text = ""; _transcript.IsVisible = false; _transcriptionStatus.Foreground = DesktopStyle.Muted;
@@ -283,6 +289,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         catch (Exception error)
         {
             if (_closed) return;
+            DesktopLog.Write(error); _inbox.Diagnostics?.Record("voice", "转文字失败", detail: error.GetType().Name);
             _transcriptionStatus.Foreground = DesktopStyle.Brush("#AC3D32");
             _transcriptionStatus.Text = error is InvalidOperationException or InvalidDataException ? error.Message
                 : "转文字未完成，请检查网络或稍后重试。仍可收听原音。";
@@ -305,6 +312,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         if (_closed || _busy || _transcribing) return;
         var index = _messageIndex + offset;
         if (index < 0 || index >= _messages.Count) return;
+        _inbox.Diagnostics?.Record("voice", offset < 0 ? "上一条" : "下一条");
         SelectMessage(index); UpdateNavigation();
     }
     private void ReleaseAudio()

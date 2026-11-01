@@ -15,6 +15,9 @@
 .ir-divider::after { content: ''; position: absolute; width: 1px; height: 18px; left: 50%; top: 9px; background: var(--ir-track, #737d8a); }
 .ir-date { display: flex; align-items: center; justify-content: center; flex: 0 0 116px; gap: 6px; border-radius: 24px; background: var(--ir-surface); font-size: 16px; font-weight: 700; white-space: nowrap; }
 .ir-calendar { font-size: 18px; font-weight: 700; }
+.ir-date.is-stacked { flex-direction: column; gap: 0; }
+.ir-date.is-stacked .ir-weekday { font-size: 12px; line-height: 18px; }
+.ir-date.is-stacked .ir-calendar { font-size: 16px; line-height: 22px; }
 .ir-courses { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; gap: 8px; padding: 6px 12px; overflow: hidden; border-radius: 24px; background: var(--ir-surface); }
 .ir-course { position: relative; display: flex; align-items: center; justify-content: center; flex: 0 0 60px; min-width: 0; height: 36px; font-size: 18px; font-weight: 700; white-space: nowrap; }
 .ir-subject { overflow: hidden; text-overflow: ellipsis; }

@@ -14,6 +14,7 @@ internal sealed class IslandProfile
     public Dictionary<string, IslandDutyRotation> DutyRotations { get; set; } = [];
     public IslandReminders Reminders { get; set; } = new();
     public IslandAppearance Appearance { get; set; } = new();
+    public IslandVisibility? Visibility { get; set; }
     public List<IslandComponent> Components { get; set; } = [];
     public int RotationSeconds { get; set; } = 8;
     public List<IslandAutomation> Automation { get; set; } = [];
@@ -44,6 +45,10 @@ internal sealed class IslandProfile
             throw new InvalidDataException("教室浮岛配置包含重复课程、调课、组件或规则。");
         p.Slots = p.Slots.OrderBy(s => s.Start).ToList();
         if (p.Slots.Zip(p.Slots.Skip(1)).Any(pair => pair.First.End > pair.Second.Start)) throw new InvalidDataException("作息时段重叠。");
+        if (p.Visibility is { } visibility && (visibility.HiddenSlotIds is null || visibility.HiddenSlotIds.Count > 32 ||
+            visibility.HiddenSlotIds.Any(id => !p.Slots.Any(s => s.Id == id)) ||
+            visibility.HiddenSlotIds.Distinct().Count() != visibility.HiddenSlotIds.Count))
+            throw new InvalidDataException("课堂隐藏规则引用了不存在或重复的时段。");
         var dutySlots = new HashSet<string>();
         foreach (var (kind, duty) in p.DutyRotations)
         {
@@ -133,6 +138,11 @@ internal sealed class IslandAppearance
         if (Theme is not ("dark" or "light" or "system")) Theme = "light";
     }
 }
+internal sealed class IslandVisibility
+{
+    public bool FollowSchool { get; set; } = true;
+    public List<string> HiddenSlotIds { get; set; } = [];
+}
 internal sealed class IslandComponent
 {
     public string Id { get; set; } = "";
@@ -164,6 +174,17 @@ internal sealed record IslandDueEvent(string Key, DateTimeOffset At, string Titl
 
 internal static class IslandSchedule
 {
+    public static bool HiddenDuringLesson(IslandProfile p, DateTimeOffset now)
+    {
+        now = now.ToOffset(TimeSpan.FromHours(8));
+        if (p.Visibility is null && !p.Appearance.HideDuringLessons) return false;
+        return On(p, DateOnly.FromDateTime(now.DateTime)).Any(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End) &&
+            (p.Visibility is null || p.Visibility.HiddenSlotIds.Contains(l.Slot.Id)));
+    }
+
+    public static bool SuppressReminder(IslandProfile p, IslandDueEvent e, DateTimeOffset now) =>
+        (e.Automation is null || e.Automation.Action == "reminder") && (HiddenDuringLesson(p, e.At) || HiddenDuringLesson(p, now));
+
     public static List<IslandResolvedLesson> On(IslandProfile p, DateOnly day)
     {
         var week = (int)Math.Floor((day.DayNumber - DateOnly.ParseExact(p.WeekAnchor, "yyyy-MM-dd").DayNumber) / 7.0);
@@ -254,7 +275,7 @@ internal static class IslandSchedule
                 if (at > previous && at <= now) events.Add(new($"{on:yyyy-MM-dd}:time:{rule.Minute}:rule:{rule.Id}", at, rule.Name, rule.Value, rule));
             }
         }
-        return events.OrderBy(e => e.At).ToList();
+        return events.Where(e => !SuppressReminder(p, e, now)).OrderBy(e => e.At).ToList();
     }
 
     public static string ComponentText(IslandComponent c, DateTimeOffset now)

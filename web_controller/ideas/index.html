@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f3f7fc">
+  <title>创意计划</title>
+  <link rel="stylesheet" href="./ideas.css" nonce="__CSP_NONCE__">
+  <link rel="stylesheet" href="./ideas-paper.css" nonce="__CSP_NONCE__">
+  <script src="./ideas-ink.js" defer nonce="__CSP_NONCE__"></script>
+  <script src="./ideas-paper.js" defer nonce="__CSP_NONCE__"></script>
+  <script src="./ideas.js" defer nonce="__CSP_NONCE__"></script>
+</head>
+<body class="ideas-app">
+  <a class="ideas-skip" href="#ideasMain">跳到主要内容</a>
+  <header class="ideas-topbar">
+    <div class="ideas-heading">
+      <h1>创意计划</h1>
+    </div>
+    <p id="classContext" class="ideas-class" aria-live="polite">正在连接教室…</p>
+  </header>
+  <div class="ideas-shell">
+    <nav class="ideas-tabs" role="tablist" aria-label="创意计划">
+      <button id="tab-submit" type="button" role="tab" aria-selected="true" aria-controls="panel-submit" data-view="submit">提交创意</button>
+      <button id="tab-class" type="button" role="tab" aria-selected="false" aria-controls="panel-class" data-view="class" tabindex="-1">本班进度</button>
+      <button id="tab-showcase" type="button" role="tab" aria-selected="false" aria-controls="panel-showcase" data-view="showcase" tabindex="-1">全校成果</button>
+    </nav>
+    <main id="ideasMain" tabindex="-1">
+      <div id="connectionNotice" class="ideas-notice" hidden>
+        <p id="connectionMessage" role="status"></p>
+        <button id="retryContext" class="ideas-button" type="button">重新连接</button>
+      </div>
+      <p id="globalNotice" class="ideas-notice ideas-success" role="status" hidden></p>
+      <section id="panel-submit" role="tabpanel" aria-labelledby="tab-submit">
+        <form id="ideaForm" class="ideas-form" novalidate>
+          <ol class="ideas-steps" aria-label="提交步骤">
+            <li id="step-express" aria-current="step"><span class="ideas-step-number" aria-hidden="true">1</span>表达创意</li>
+            <li id="step-review"><span class="ideas-step-number" aria-hidden="true">2</span>核对提交</li>
+          </ol>
+          <fieldset id="draftFields" class="ideas-workspace" disabled>
+            <legend class="ideas-sr-only">表达创意，可组合手写、语音和图片</legend>
+            <div class="ideas-composer-actions" role="group" aria-label="补充这份创意">
+              <button id="recordVoice" type="button" class="ideas-button" aria-pressed="false" aria-describedby="voiceStatus transcriptionStatus"><img class="ideas-icon" src="./icons/mic.svg" width="22" height="22" alt="" aria-hidden="true"><span id="recordVoiceLabel">说创意</span></button>
+              <button id="openCamera" type="button" class="ideas-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="cameraPanel"><img class="ideas-icon" src="./icons/camera.svg" width="22" height="22" alt="" aria-hidden="true"><span>拍创意</span></button>
+              <button id="addImages" type="button" class="ideas-button" aria-label="传创意，添加本机图片"><img class="ideas-icon" src="./icons/image-plus.svg" width="22" height="22" alt="" aria-hidden="true"><span>传创意</span></button>
+            </div>
+            <div id="voicePanel" class="ideas-voice-capture" hidden>
+              <p id="voiceStatus" role="status" aria-live="polite"></p>
+            </div>
+            <div id="transcriptionActions" class="ideas-transcription-actions" hidden>
+              <p id="transcriptionStatus" class="ideas-help" role="status" hidden></p>
+              <button id="transcribeVoice" type="button" class="ideas-button ideas-quiet">重试转文字</button>
+              <button id="cancelTranscription" type="button" class="ideas-button ideas-quiet" hidden>取消转写</button>
+            </div>
+            <div class="ideas-composer-controls">
+              <h2 id="inkTitle">手写板</h2>
+              <div id="inkTools" class="ideas-ink-toolbar" role="group" aria-label="手写工具">
+                <div class="ideas-ink-modes" role="group" aria-label="书写模式">
+                  <button id="inkPen" type="button" class="ideas-button" aria-pressed="true" title="画笔"><svg class="ideas-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5L8 21l-6 1 1-6Z"/><path d="m14 5 5 5"/></svg><span>画笔</span></button>
+                  <button id="inkEraser" type="button" class="ideas-button" aria-pressed="false" title="橡皮"><svg class="ideas-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 21-6-6a2 2 0 0 1 0-3L13 2a2 2 0 0 1 3 0l6 6a2 2 0 0 1 0 3L12 21Z"/><path d="m6 9 9 9M9 21h13"/></svg><span>橡皮</span></button>
+                </div>
+                <div class="ideas-ink-history" role="group" aria-label="画板修改">
+                  <button id="inkUndo" type="button" class="ideas-button" title="撤销上一步" disabled><svg class="ideas-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 14-5-5 5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg><span>撤销</span></button>
+                  <button id="inkClear" type="button" class="ideas-button" title="清空画板，可撤销" disabled><svg class="ideas-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg><span>清空</span></button>
+                </div>
+              </div>
+            </div>
+            <section aria-labelledby="inkTitle">
+              <div class="ideas-ink-area">
+                <canvas id="inkCanvas" width="1600" height="853" data-tool="pen" role="img" aria-label="手写画板，用手指、触控笔或鼠标书写；也可点击说创意或拍创意"></canvas>
+                <p id="inkEmpty" class="ideas-ink-empty" aria-hidden="true">在这里写下你的创意</p>
+              </div>
+              <p id="inkMessage" class="ideas-feedback" role="status" hidden></p>
+            </section>
+            <div id="textEditor" class="ideas-field ideas-text-workspace" hidden>
+              <div class="ideas-field-head">
+                <label for="ideaText">创意文字</label>
+                <p id="textCount" class="ideas-counter">0 / 3000</p>
+              </div>
+              <textarea id="ideaText" name="text" rows="3" maxlength="3000" autocomplete="off" aria-describedby="textCount" placeholder="也可以点“说创意”，说完自动填入文字…"></textarea>
+            </div>
+            <input id="imageInput" name="image" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden aria-label="选择创意图片">
+            <p id="attachmentMessage" class="ideas-feedback" role="status" hidden></p>
+            <p id="imageCount" class="ideas-help ideas-media-count" hidden>图片 0 / 3</p>
+            <div id="imageAttachments" class="ideas-image-list" aria-label="待提交图片"></div>
+            <div id="audioAttachment" class="ideas-audio-attachment" hidden></div>
+          </fieldset>
+          <fieldset id="reviewFields" class="ideas-workspace ideas-review-workspace" hidden disabled>
+            <legend class="ideas-sr-only">核对内容并选择署名</legend>
+            <div class="ideas-review-heading">
+              <h2 id="reviewTitle" tabindex="-1">核对这份创意</h2>
+              <p id="reviewSummary" class="ideas-help"></p>
+            </div>
+            <div id="reviewContent" class="ideas-review-content" aria-label="待提交的完整创意"></div>
+            <fieldset class="ideas-signing-options">
+              <legend>是否署名</legend>
+              <label><input id="signAnonymous" type="radio" name="signature" value="anonymous" checked><span>不署名</span></label>
+              <label><input id="signNamed" type="radio" name="signature" value="named"><span>署名</span></label>
+            </fieldset>
+            <div id="signatureFields" class="ideas-field ideas-name" hidden>
+              <div class="ideas-field-head">
+                <label for="ideaName">你的名字</label>
+                <div class="ideas-dictation-actions">
+                  <button id="dictateName" type="button" class="ideas-button ideas-dictate" aria-pressed="false" aria-describedby="dictationNameStatus"><img class="ideas-icon" src="./icons/mic.svg" width="22" height="22" alt="" aria-hidden="true"><span id="dictateNameLabel">说出名字</span></button>
+                  <button id="cancelDictateName" type="button" class="ideas-button ideas-dictation-cancel" hidden>取消</button>
+                </div>
+              </div>
+              <input id="ideaName" name="name" type="text" maxlength="40" autocomplete="off" aria-describedby="signatureError" placeholder="说出或填写你的名字…">
+              <p id="dictationNameStatus" class="ideas-dictation-feedback" role="status" hidden></p>
+            </div>
+            <p id="signatureError" class="ideas-feedback ideas-error" role="alert" hidden></p>
+          </fieldset>
+          <div class="ideas-submit-row">
+            <div class="ideas-submit-status">
+              <p id="submitError" class="ideas-feedback ideas-error" role="alert" hidden></p>
+              <p id="draftNotice" class="ideas-help" role="status">正在准备…</p>
+            </div>
+            <button id="submitIdea" type="button" class="ideas-button ideas-primary" disabled>下一步</button>
+            <div id="reviewActions" class="ideas-review-actions" hidden>
+              <button id="cancelSubmit" type="button" class="ideas-button">返回修改</button>
+              <button id="confirmSubmit" type="submit" class="ideas-button ideas-primary">确认提交</button>
+            </div>
+          </div>
+        </form>
+      </section>
+      <section id="panel-class" role="tabpanel" aria-labelledby="tab-class" hidden>
+        <div class="ideas-section-head ideas-list-head">
+          <h2>本班进度<span id="classTotal" class="ideas-total"></span></h2>
+          <button id="refreshClass" type="button" class="ideas-button">刷新</button>
+        </div>
+        <p class="ideas-help ideas-list-intro">查看评审回复，待评审的创意可删除。</p>
+        <div id="recentSubmission" hidden></div>
+        <div id="classList" class="ideas-list" aria-live="polite"></div>
+        <div id="classListNotice" class="ideas-list-notice" role="status"></div>
+        <button id="retryClass" type="button" class="ideas-button" hidden>重新加载</button>
+        <nav id="classPagination" class="ideas-pagination" aria-label="本班创意分页" hidden>
+          <button id="classPrevious" type="button" class="ideas-button">上一页</button>
+          <span id="classPage" class="ideas-help"></span>
+          <button id="classNext" type="button" class="ideas-button">下一页</button>
+        </nav>
+      </section>
+      <section id="panel-showcase" role="tabpanel" aria-labelledby="tab-showcase" hidden>
+        <div class="ideas-section-head ideas-list-head">
+          <h2>全校成果<span id="showcaseTotal" class="ideas-total"></span></h2>
+          <button id="refreshShowcase" type="button" class="ideas-button">刷新</button>
+        </div>
+        <p class="ideas-help ideas-list-intro">从同学们的想法，到正在发生的改变。</p>
+        <div id="showcaseList" class="ideas-list" aria-live="polite"></div>
+        <div id="showcaseListNotice" class="ideas-list-notice" role="status"></div>
+        <button id="retryShowcase" type="button" class="ideas-button" hidden>重新加载</button>
+        <nav id="showcasePagination" class="ideas-pagination" aria-label="全校成果分页" hidden>
+          <button id="showcasePrevious" type="button" class="ideas-button">上一页</button>
+          <span id="showcasePage" class="ideas-help"></span>
+          <button id="showcaseNext" type="button" class="ideas-button">下一页</button>
+        </nav>
+      </section>
+    </main>
+  </div>
+  <dialog id="deleteDialog" class="ideas-delete-dialog" aria-labelledby="deleteTitle" aria-describedby="deleteDescription">
+    <h2 id="deleteTitle">删除这条创意？</h2>
+    <p id="deleteIdeaTitle" class="ideas-delete-title"></p>
+    <p id="deleteDescription" class="ideas-help">删除后无法恢复。</p>
+    <p id="deleteError" class="ideas-feedback" role="status" hidden></p>
+    <div class="ideas-delete-actions">
+      <button id="cancelDelete" type="button" class="ideas-button" autofocus>保留</button>
+      <button id="confirmDelete" type="button" class="ideas-button ideas-primary">删除创意</button>
+    </div>
+  </dialog>
+  <dialog id="cameraPanel" class="ideas-camera-dialog" aria-labelledby="cameraTitle" aria-describedby="cameraStatus">
+    <div class="ideas-camera-shell">
+      <div class="ideas-section-head">
+        <h2 id="cameraTitle">拍创意</h2>
+        <button id="closeCamera" type="button" class="ideas-button" autofocus>关闭相机</button>
+      </div>
+      <div id="cameraSelectField" class="ideas-field" hidden>
+        <label for="cameraSelect">摄像头</label>
+        <select id="cameraSelect" name="camera" autocomplete="off"></select>
+      </div>
+      <div class="ideas-camera-preview">
+        <video id="cameraVideo" autoplay playsinline muted aria-label="创意取景画面"></video>
+        <div id="cameraGuide" class="ideas-camera-guide" aria-hidden="true" hidden></div>
+      </div>
+      <p id="cameraStatus" class="ideas-help" role="status"></p>
+      <div class="ideas-camera-actions">
+        <button id="retryCamera" type="button" class="ideas-button" hidden>重试相机</button>
+        <button id="capturePhoto" type="button" class="ideas-button ideas-primary" disabled>拍照并裁剪</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="imageDialog" class="ideas-image-dialog" aria-labelledby="imageDialogTitle">
+    <div class="ideas-section-head">
+      <h2 id="imageDialogTitle">查看图片</h2>
+      <button id="closeImageDialog" type="button" class="ideas-button">关闭预览</button>
+    </div>
+    <img id="imageDialogPhoto" width="1600" height="900" alt="创意图片完整预览">
+  </dialog>
+  <noscript><p class="ideas-notice">请启用 JavaScript，并从已绑定教室端打开创意计划。</p></noscript>
+</body>
+</html>

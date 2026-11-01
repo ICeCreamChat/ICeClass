@@ -13,12 +13,12 @@ internal static class AboutContent
     internal const string GroupAcknowledgement = "感谢马鞍山市第二十二中学 AI建模社的全体成员";
     internal static readonly (string School, string Name)[] Acknowledgements =
     [
-        ("马鞍山市第二十二中学", "高琦璐"),
-        ("马鞍山市第二十二中学", "汪冰"),
-        ("马鞍山市第二十二中学", "李善忠"),
-        ("马鞍山市第二十二中学", "陈胜"),
-        ("马鞍山市第二十二中学", "许斌"),
-        ("马鞍山市理工学校", "李妮姗"),
+        ("马鞍山市第二十二中学", "高琦璐校长"),
+        ("马鞍山市第二十二中学", "汪冰主任"),
+        ("马鞍山市第二十二中学", "李善忠干事"),
+        ("马鞍山市第二十二中学", "陈胜老师"),
+        ("马鞍山市第二十二中学", "许斌老师"),
+        ("马鞍山市理工学校", "李妮姗老师"),
     ];
 
     internal static readonly (string Title, string Resource)[] Notices =
@@ -151,7 +151,7 @@ internal static class AboutContent
         };
         var message = DesktopStyle.Text(GroupAcknowledgement, 17, true);
 
-        var people = new StackPanel { Spacing = 24 };
+        var people = new StackPanel { Spacing = 24, VerticalAlignment = VerticalAlignment.Center };
         foreach (var school in Acknowledgements.GroupBy(person => person.School))
         {
             var names = new StackPanel { Spacing = 8 };
@@ -162,10 +162,12 @@ internal static class AboutContent
             var schoolName = DesktopStyle.Text(school.Key, 14, muted: true);
             people.Children.Add(new StackPanel { Spacing = 8, Children = { schoolName, names } });
         }
-        var words = new StackPanel { Spacing = 24, VerticalAlignment = VerticalAlignment.Center, Children = { message, people } };
         var composition = new Grid { ColumnDefinitions = new ColumnDefinitions("1.6*,24,*"),
-            Margin = new Thickness(28), VerticalAlignment = VerticalAlignment.Center, Children = { words } };
-        Grid.SetColumn(mascot, 2); composition.Children.Add(mascot);
+            RowDefinitions = new RowDefinitions("Auto,24,Auto"),
+            Margin = new Thickness(28), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumnSpan(message, 3); composition.Children.Add(message);
+        Grid.SetRow(people, 2); composition.Children.Add(people);
+        Grid.SetRow(mascot, 2); Grid.SetColumn(mascot, 2); composition.Children.Add(mascot);
         var scroll = new ScrollViewer { Content = composition, Focusable = true,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         AutomationProperties.SetName(scroll, "致谢名单");

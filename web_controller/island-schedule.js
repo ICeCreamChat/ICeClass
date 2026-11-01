@@ -29,7 +29,38 @@
       return lesson && !lesson.cancelled ? [{ ...slot, ...lesson, temporary: !!override }] : [];
     });
   }
-  const schedule = { validDate, cycleWeek, forDate };
+  function schoolHiddenSlots(config, policy) {
+    const slots = [...config.slots].sort((a, b) => a.start - b.start);
+    const eveningIds = new Set(config.dutyRotations?.evening?.slotIds || []);
+    const middayIds = new Set(config.dutyRotations?.midday?.slotIds || []);
+    const evening = slots.filter(s => eveningIds.has(s.id) || s.id.startsWith('evening-study-') || /晚自[习修]/.test(s.label));
+    evening.forEach(s => eveningIds.add(s.id));
+    return slots.filter(s => policy.hideFirstEvening && s.id === evening[0]?.id ||
+      policy.hideDaytimeLessons && s.start < 1080 && !eveningIds.has(s.id) && !middayIds.has(s.id) &&
+      (/^period-\d+$/.test(s.id) || /^第\s*[一二三四五六七八九十百0-9]+\s*节/.test(s.label))).map(s => s.id);
+  }
+  // Presentation only: unassigned study periods must not become courses,
+  // quiet intervals or automation/reminder events.
+  function ribbonForDate(config, on) {
+    const lessons = forDate(config, on);
+    if (!lessons.length) return lessons;
+    const studyIds = new Set(['midday', 'evening'].flatMap(kind => config.dutyRotations?.[kind]?.slotIds || []));
+    const middayIds = new Set(config.dutyRotations?.midday?.slotIds || []);
+    const occupied = new Set(lessons.map(l => l.id));
+    const cancelled = new Set(config.overrides.filter(o => o.date === on && o.cancelled).map(o => o.slotId));
+    const placeholders = config.slots.filter(s => !occupied.has(s.id) && !cancelled.has(s.id) &&
+      (studyIds.has(s.id) || /^evening-study-/.test(s.id) || /午间静校|晚自[习修]/.test(s.label)))
+      .map(s => ({ ...s, subject: s.label }));
+    return [...lessons, ...placeholders].sort((a, b) => a.start - b.start).map(l => ({ ...l,
+      ribbonGroup: middayIds.has(l.id) || /午间静校/.test(l.label) ? 'midday'
+        : l.id === 'morning-reading' || /晨读|早读/.test(l.label) ? 'morning' : '' }));
+  }
+  function hiddenDuringLesson(config, on, minute) {
+    if (!Number.isFinite(minute)) return false;
+    return forDate(config, on).some(l => l.start <= minute && minute < l.end &&
+      (config.visibility ? config.visibility.hiddenSlotIds.includes(l.id) : config.appearance?.hideDuringLessons));
+  }
+  const schedule = { validDate, cycleWeek, forDate, ribbonForDate, schoolHiddenSlots, hiddenDuringLesson };
   if (typeof module !== 'undefined' && module.exports) module.exports = schedule;
   else root.ICeClassIslandSchedule = schedule;
 })(typeof window !== 'undefined' ? window : globalThis);

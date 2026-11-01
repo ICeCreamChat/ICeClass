@@ -1,4 +1,5 @@
 using System.Net;
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
@@ -20,12 +21,15 @@ internal sealed class ClassroomVoiceInbox : IDisposable
     private readonly bool _ownsClient;
     private readonly HashSet<string> _announced = [];
     private string? _session;
+    private DateTimeOffset _lastPoll;
+    internal DesktopDiagnostics? Diagnostics { get; }
 
-    internal ClassroomVoiceInbox(string endpoint, Func<Task<string?>> readSession, HttpClient? http = null)
+    internal ClassroomVoiceInbox(string endpoint, Func<Task<string?>> readSession, HttpClient? http = null, DesktopDiagnostics? diagnostics = null)
     {
         _endpoint = DesktopSettings.NormalizeEndpoint(endpoint);
         _readSession = readSession;
         _ownsClient = http is null;
+        Diagnostics = diagnostics;
         _http = http ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
         { Timeout = TimeSpan.FromSeconds(12) };
     }
@@ -39,7 +43,7 @@ internal sealed class ClassroomVoiceInbox : IDisposable
         SetSession(session);
         if (string.IsNullOrEmpty(session)) return;
         using var request = Request("/api/classroom-voice", session);
-        using var response = await _http.SendAsync(request, token);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token);
         if (!await SessionIsCurrent(session)) return;
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         { SetSession(null); return; }
@@ -68,7 +72,7 @@ internal sealed class ClassroomVoiceInbox : IDisposable
             throw new InvalidOperationException("登录或留言已变化，请回工作台查看教室来音。");
         // Never accept an audio URL from the payload or export the login cookie.
         using var request = Request("/api/classroom-voice/" + Uri.EscapeDataString(message.Id) + "/audio", session);
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
         if (!await SessionIsCurrent(session)) throw new InvalidOperationException("登录已变化，请回工作台重新收听。");
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         { SetSession(null); throw new InvalidOperationException("登录已过期，请回工作台重新登录。"); }
@@ -105,6 +109,27 @@ internal sealed class ClassroomVoiceInbox : IDisposable
         request.Headers.Add("Cookie", "iceclass_session=" + session);
         request.Headers.CacheControl = new() { NoCache = true, NoStore = true };
         return request;
+    }
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, HttpCompletionOption completion, CancellationToken token)
+    {
+        var watch = Stopwatch.StartNew();
+        try
+        {
+            var response = await _http.SendAsync(request, completion, token);
+            var poll = request.RequestUri!.AbsolutePath == "/api/classroom-voice";
+            if (!poll || !response.IsSuccessStatusCode || watch.ElapsedMilliseconds >= 1000 || DateTimeOffset.UtcNow - _lastPoll >= TimeSpan.FromSeconds(30))
+            {
+                Diagnostics?.Record("request", "GET", request.RequestUri.ToString(), "教室来音",
+                    watch.Elapsed.TotalMilliseconds, (int)response.StatusCode);
+                if (poll) _lastPoll = DateTimeOffset.UtcNow;
+            }
+            return response;
+        }
+        catch (Exception error)
+        {
+            Diagnostics?.Record("request", "GET", request.RequestUri!.ToString(), error.GetType().Name, watch.Elapsed.TotalMilliseconds, 0);
+            throw;
+        }
     }
     private async Task<bool> SessionIsCurrent(string session)
     {

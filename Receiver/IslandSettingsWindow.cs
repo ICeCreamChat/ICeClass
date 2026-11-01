@@ -74,13 +74,13 @@ internal sealed class IslandSettingsWindow : Window
         form.Children.Add(Pair(ClassroomStyle.Field("水平偏移", offsetX), ClassroomStyle.Field("垂直偏移", offsetY)));
         var through = new CheckBox { Content = "允许鼠标穿透", IsChecked = appearance.ClickThrough, FontSize = 14 };
         var fullscreen = new CheckBox { Content = "全屏应用时自动隐藏", IsChecked = appearance.HideFullscreen, FontSize = 14 };
-        var lessons = new CheckBox { Content = "上课时自动隐藏", IsChecked = appearance.HideDuringLessons, FontSize = 14 };
         form.Children.Add(ClassroomStyle.SettingsDivider());
         form.Children.Add(new StackPanel { Spacing = 0, Children = { through,
             ClassroomStyle.Text("启用后，从教室首页或托盘恢复悬浮岛操作。", 13, muted: true) } });
-        form.Children.Add(fullscreen); form.Children.Add(lessons);
+        form.Children.Add(fullscreen);
         body.Children.Add(ClassroomStyle.SettingsSection("外观与显示", new StackPanel { Spacing = 12, Children = {
-            new StackPanel { Spacing = 2, Children = { independent, appearanceHint } }, ClassroomStyle.SettingsDivider(), form } }));
+            new StackPanel { Spacing = 2, Children = { independent, appearanceHint } }, ClassroomStyle.SettingsDivider(), form,
+            ClassroomStyle.Caption("课堂隐藏时段在教师端“教室浮岛 → 提醒与外观”中设置，本机独立外观不改变课堂规则。") } }));
 
         var apps = new StackPanel { Spacing = 12 };
         void RenderApps()
@@ -152,7 +152,7 @@ internal sealed class IslandSettingsWindow : Window
         {
             appearance.Position = positions[position.SelectedIndex]; appearance.Theme = themes[theme.SelectedIndex]; appearance.Width = (int)(width.Value ?? 640); appearance.Opacity = (int)(opacity.Value ?? 100);
             appearance.OffsetX = (int)(offsetX.Value ?? 0); appearance.OffsetY = (int)(offsetY.Value ?? 0);
-            appearance.ClickThrough = through.IsChecked == true; appearance.HideFullscreen = fullscreen.IsChecked == true; appearance.HideDuringLessons = lessons.IsChecked == true;
+            appearance.ClickThrough = through.IsChecked == true; appearance.HideFullscreen = fullscreen.IsChecked == true;
             local.Appearance = independent.IsChecked == true ? appearance : null;
             try { apply(local); Close(); } catch (Exception e) { error.Text = e.Message; }
         };

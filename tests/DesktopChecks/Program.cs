@@ -1,6 +1,12 @@
 using ICeClass.Desktop;
 using System.Text;
 
+if (args is ["--feedback-opening-checks", var feedbackOutput])
+{
+    FeedbackOpeningChecks.Run(feedbackOutput);
+    return;
+}
+
 if (args is ["--export-updater", var output])
 {
     File.WriteAllText(output, DesktopUpdates.ApplyScript, new UTF8Encoding(true));
@@ -61,4 +67,6 @@ Assert(LaunchOptions.Parse([]).RestartArguments() == "", "Production restart use
 checks += await DownloadChecks.Run();
 checks += await ClassroomVoiceChecks.Run();
 checks += await VoiceTranscriptionChecks.Run();
-Console.WriteLine($"Desktop settings, update and classroom voice checks passed: {checks}");
+checks += await FeedbackChecks.Run();
+checks += await DiagnosticsChecks.Run();
+Console.WriteLine($"Desktop settings, update, classroom voice and feedback checks passed: {checks}");

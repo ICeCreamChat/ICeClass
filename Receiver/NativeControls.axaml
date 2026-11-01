@@ -263,18 +263,24 @@
     <Setter Property="BorderBrush" Value="#D8E1EC" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
-    <Setter Property="FocusAdorner">
-      <Template>
-        <Border BorderThickness="2" CornerRadius="7" Margin="1"
-                BorderBrush="#397CC6" IsHitTestVisible="False" />
-      </Template>
-    </Setter>
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
   </Style>
   <Style Selector="TextBox /template/ Border#PART_BorderElement">
     <Setter Property="BorderThickness" Value="1" />
   </Style>
   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="White" />
     <Setter Property="BorderBrush" Value="#0071E3" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BoxShadow" Value="0 0 0 3 #160071E3" />
+  </Style>
+  <Style Selector="TextBox /template/ DataValidationErrors">
+    <Setter Property="ClipToBounds" Value="False" />
+  </Style>
+  <Style Selector="TextBox:not(:disabled) /template/ TextBlock#PART_Watermark">
+    <Setter Property="Foreground" Value="#697586" />
+    <Setter Property="Opacity" Value="1" />
   </Style>
   <Style Selector="ComboBox">
     <Setter Property="MinHeight" Value="40" />

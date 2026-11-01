@@ -164,7 +164,16 @@ class BanbanAgent:
 
     def access(self, user):
         # A plain list, not a token. Permission changes invalidate old chat text too.
-        return {'role': user['role'], 'classes': self.roster(user)}
+        classes = self.roster(user)
+        access = {'role': user['role'], 'classes': classes}
+        if user['role'] == 'teacher':
+            heads = {row['class_id'] for row in self.db.all('SELECT class_id FROM teacher_classes WHERE user_id=?', (user['id'],))}
+            teaching = [c['id'] for c in classes if c['id'] not in heads]
+            # Existing head-only histories keep their stored scope; dual-role histories
+            # must also distinguish full access from teaching-only access to a class.
+            if teaching:
+                access['teachingClassIds'] = teaching
+        return access
 
     @staticmethod
     def needs_data(message):

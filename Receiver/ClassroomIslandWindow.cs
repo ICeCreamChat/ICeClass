@@ -14,11 +14,11 @@ internal sealed class ClassroomIslandWindow : Window
     private ClassroomIslandView? _view;
     private IslandAttentionPulseWindow? _pulse;
     private readonly TextBlock _readingTitle = Text("早读陪伴", 16);
-    private readonly TextBlock _readingDetail = Text("", 14, muted: true);
-    private readonly TextBlock _readingUnavailable = Text("", 13, muted: true);
-    private readonly TextBlock _connection = Text("", 14, muted: true);
-    private readonly TextBlock _noticeSender = Text("", 14);
-    private readonly TextBlock _noticeText = Text("", 15);
+    private readonly TextBlock _readingDetail = Text("", 16, muted: true);
+    private readonly TextBlock _readingUnavailable = Text("", 14, muted: true);
+    private readonly TextBlock _connection = Text("", 16, muted: true);
+    private readonly TextBlock _noticeSender = Text("", 16);
+    private readonly TextBlock _noticeText = Text("", 16);
     private readonly Button _expand = new();
     private readonly Button _reading = Button("打开早读", primary: true);
     private readonly Button _dim = Button("淡化", quiet: true);
@@ -38,7 +38,7 @@ internal sealed class ClassroomIslandWindow : Window
     private readonly Action _hide;
     private readonly StackPanel _lessonList = new() { Spacing = 6 };
     private readonly Border _lessonPanel;
-    private readonly TextBlock _component = Text("", 14, muted: true);
+    private readonly TextBlock _component = Text("", 16, muted: true);
     private IslandAppearance _appearance = new();
     private bool _interactiveOverride;
     private bool _isConnected;
@@ -202,8 +202,8 @@ internal sealed class ClassroomIslandWindow : Window
         _importantBody.Light = light;
         foreach (var text in new[] { _readingTitle, _noticeText })
             text.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD");
-        foreach (var text in new[] { _readingDetail, _readingUnavailable, _component }) text.Foreground = DesktopStyle.Brush(light ? "#36516E" : "#C4D1E3");
-        _dim.Foreground = DesktopStyle.Brush(light ? "#29486D" : "#D4E2F6");
+        foreach (var text in new[] { _readingDetail, _readingUnavailable, _component }) text.Foreground = DesktopStyle.Brush(light ? "#29435F" : "#C4D1E3");
+        _dim.Foreground = DesktopStyle.Brush(light ? "#203D60" : "#D4E2F6");
         _noticeSender.Foreground = DesktopStyle.Brush(light ? _noticeLevel == "urgent" ? "#9C332C" : _noticeLevel == "warning" ? "#84521C" : "#005BB5" : NoticeColor(_noticeLevel));
         _connection.Foreground = DesktopStyle.Brush(light ? _isConnected ? "#1D7555" : "#8B561C" : _isConnected ? "#8CDDC3" : "#F0C480");
         _component.Text = component; ToolTip.SetTip(_component, component); _component.IsVisible = !string.IsNullOrEmpty(component);
@@ -215,14 +215,14 @@ internal sealed class ClassroomIslandWindow : Window
             if (signature != _lessonSignature)
             {
                 _lessonSignature = signature; _lessonList.Children.Clear();
-                var heading = Text("今日课表", 15); heading.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD"); _lessonList.Children.Add(heading);
-                foreach (var lesson in today) { var row = Text(lesson.Summary, 14); row.Foreground = DesktopStyle.Brush(light ? "#29486D" : "#D4E2F6"); ToolTip.SetTip(row, lesson.Summary); _lessonList.Children.Add(row); }
-                if (today.Count == 0) { var empty = Text("今天没有课程", 14); empty.Foreground = heading.Foreground; _lessonList.Children.Add(empty); }
+                var heading = Text("今日课表", 16); heading.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD"); _lessonList.Children.Add(heading);
+                foreach (var lesson in today) { var row = Text(lesson.Summary, 16); row.Foreground = DesktopStyle.Brush(light ? "#203D60" : "#D4E2F6"); ToolTip.SetTip(row, lesson.Summary); _lessonList.Children.Add(row); }
+                if (today.Count == 0) { var empty = Text("今天没有课程", 16); empty.Foreground = heading.Foreground; _lessonList.Children.Add(empty); }
             }
         }
         else if (_lessonSignature != "empty")
         {
-            _lessonSignature = "empty"; _lessonList.Children.Clear(); _lessonList.Children.Add(Text("教师尚未设置课表", 14));
+            _lessonSignature = "empty"; _lessonList.Children.Clear(); _lessonList.Children.Add(Text("教师尚未设置课表", 16));
         }
         foreach (var line in _lessonList.Children.OfType<TextBlock>()) line.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#D4E2F6");
         IslandPlatform.SetClickThrough(this, appearance.ClickThrough && !_interactiveOverride && !_shoutShown);

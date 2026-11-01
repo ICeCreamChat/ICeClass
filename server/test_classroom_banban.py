@@ -49,6 +49,19 @@ class ClassroomBanbanTest(ServerTestCase):
         self.assertTrue(identity['csrfToken'])
         self.assertEqual(self.db.one('SELECT COUNT(*) AS n FROM sessions')['n'], before)
 
+    async def test_subject_assignments_do_not_replace_or_duplicate_homeroom_identity(self):
+        response, data = await self.json_request('POST', '/api/teachers', {
+            'username': 'subject.only', 'displayName': '任课老师', 'role': 'subject_teacher',
+            'password': 'SchoolTest2026', 'teachingClassIds': [self.cid]}, csrf=True)
+        self.assertEqual(response.status, 201, data)
+        identity = await self.identity()
+        self.assertEqual(identity['id'], self.teacher)
+        self.db.run('DELETE FROM teacher_classes WHERE user_id=?', (self.teacher,))
+        response = await self.client.get('/api/session', headers=self.classroom_headers())
+        data = await response.json()
+        self.assertEqual(response.status, 401, data)
+        self.assertIn('尚未分配', data['error'])
+
     async def test_cookie_cannot_override_or_rescue_classroom_identity(self):
         response = await self.client.get('/api/session', headers=self.classroom_headers(Cookie=self.cookie))
         self.assertEqual((await response.json())['user']['id'], self.teacher)

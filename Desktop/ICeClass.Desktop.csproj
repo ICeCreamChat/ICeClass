@@ -14,6 +14,7 @@
     <ApplicationIcon>..\branding\teacher\app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="desktop-diagnostics.js" LogicalName="ICeClass.Desktop.diagnostics.js" />
     <Compile Include="..\Receiver\ReadingBrowser.cs" Link="Shared\ReadingBrowser.cs" />
     <Compile Include="..\Receiver\DesktopStyle.cs" Link="Shared\DesktopStyle.cs" />
     <Compile Include="..\Receiver\SenseVoiceRecognizer.cs" Link="Shared\SenseVoiceRecognizer.cs" />

@@ -27,7 +27,7 @@ public sealed class StudentVoiceWindow : Window
     private DateTimeOffset _startedAt;
     private bool _recording, _sending, _closing;
 
-    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null)
+    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null, Action<string>? openIdeas = null)
     {
         ClassroomStyle.Apply(this);
         _send = send; _config = config; Title = $"ICeClass 班伴 · {config.ClassName}";
@@ -47,6 +47,11 @@ public sealed class StudentVoiceWindow : Window
         var settings = ClassroomStyle.Button("教室设置"); settings.MinHeight = 44; settings.Click += (_, _) => openSettings?.Invoke();
         settings.VerticalAlignment = VerticalAlignment.Center;
         var toolbarActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        if (openIdeas is not null)
+        {
+            var ideas = ClassroomStyle.Button("创意计划"); ideas.MinHeight = 44;
+            ideas.Click += (_, _) => openIdeas("submit"); toolbarActions.Children.Add(ideas);
+        }
         if (showBanban is not null)
         {
             var banban = ClassroomStyle.Button("呼叫班班"); banban.MinHeight = 44;
