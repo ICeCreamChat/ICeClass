@@ -26,6 +26,7 @@ public sealed class StudentVoiceWindow : Window
     private MemoryStream? _buffer;
     private DateTimeOffset _startedAt;
     private bool _recording, _sending, _closing;
+    internal bool IsBusy => _recording || _sending;
 
     public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null, Action<string>? openIdeas = null)
     {

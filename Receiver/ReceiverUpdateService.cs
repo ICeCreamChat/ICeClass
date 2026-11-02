@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using ICeClass.Updates;
 
 namespace ICeClass.Receiver;
 
@@ -10,7 +11,7 @@ public sealed class ReceiverUpdateService
 {
     // Offline ASR and neural speech are bundled in the classroom executable.
     private const long MaximumDownloadBytes = 1024L * 1024 * 1024;
-    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(10) };
+    private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static Version CurrentVersion => typeof(ReceiverUpdateService).Assembly.GetName().Version ?? new Version(1, 0, 0);
@@ -22,6 +23,15 @@ public sealed class ReceiverUpdateService
         CancellationToken token)
     {
         var baseUri = new Uri(config.Endpoint.TrimEnd('/') + "/", UriKind.Absolute);
+        var plan = await IncrementalUpdates.FetchPlanAsync(baseUri,
+            $"api/receiver/update/plan?deviceId={Uri.EscapeDataString(config.DeviceId)}&currentVersion={Uri.EscapeDataString(CurrentVersionText)}",
+            CurrentVersionText, Client, config.DeviceToken, token);
+        if (plan is not null)
+        {
+            await IncrementalUpdates.PrepareAsync(baseUri, plan, AppContext.BaseDirectory, "ICeClass.exe", Client,
+                config.DeviceToken, VoiceResourceFiles.OpenUpdateResource, progress, token);
+            return new(true, plan.Version, null);
+        }
         var checkUri = new Uri(baseUri,
             $"api/receiver/update?deviceId={Uri.EscapeDataString(config.DeviceId)}&currentVersion={Uri.EscapeDataString(CurrentVersionText)}");
         using var checkRequest = CreateRequest(HttpMethod.Get, checkUri, config.DeviceToken);
@@ -57,7 +67,7 @@ public sealed class ReceiverUpdateService
             TryDelete(temporaryPath);
             ReadingOutbox.Write(metadataPath, identity);
         }
-        if (await VerifiedAsync(readyPath, manifest, token)) return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
+        if (await VerifiedAsync(readyPath, manifest, token)) return Ready(manifest, readyPath);
 
         try
         {
@@ -68,7 +78,7 @@ public sealed class ReceiverUpdateService
                 if (await VerifiedAsync(temporaryPath, manifest, token))
                 {
                     File.Move(temporaryPath, readyPath, true);
-                    return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
+                    return Ready(manifest, readyPath);
                 }
                 TryDelete(temporaryPath); offset = 0;
             }
@@ -121,7 +131,7 @@ public sealed class ReceiverUpdateService
 
             // Windows cannot rename the download while its exclusive write handle is open.
             File.Move(temporaryPath, readyPath, true);
-            return ReceiverUpdateResult.Downloaded(manifest.Version, readyPath);
+            return Ready(manifest, readyPath);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
         {
@@ -137,10 +147,23 @@ public sealed class ReceiverUpdateService
         return Convert.ToHexString(await SHA256.HashDataAsync(file, token)).Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static ReceiverUpdateResult Ready(ReceiverUpdateManifest manifest, string path)
+    {
+        UpdateInstaller.SavePending(AppContext.BaseDirectory, new PreparedUpdate(manifest.Version, "ICeClass.exe",
+            [new("ICeClass.exe", path, manifest.Size, manifest.Sha256)]));
+        return ReceiverUpdateResult.Downloaded(manifest.Version, path);
+    }
+
+    internal static string? PendingVersion()
+    {
+        var pending = UpdateInstaller.LoadPending(AppContext.BaseDirectory, "ICeClass.exe");
+        return pending is not null && Version.TryParse(pending.Version, out var version) && version > CurrentVersion ? pending.Version : null;
+    }
+
     public bool TryLaunchInstaller(ReceiverUpdateResult update, out string error)
     {
         error = "";
-        if (!update.UpdateAvailable || string.IsNullOrWhiteSpace(update.DownloadedPath))
+        if (!update.UpdateAvailable)
         {
             error = "没有可安装的更新。";
             return false;
@@ -155,36 +178,18 @@ public sealed class ReceiverUpdateService
 
         try
         {
-            var updateDirectory = Path.Combine(AppContext.BaseDirectory, ".updates");
-            Directory.CreateDirectory(updateDirectory);
-            var scriptPath = Path.Combine(updateDirectory, "apply-update.ps1");
-            var backupPath = currentExecutable + ".previous";
-            var markerPath = Path.Combine(updateDirectory, $"started-{update.Version}.ok");
-            File.WriteAllText(scriptPath, UpdateScript, new UTF8Encoding(false));
-            TryDelete(markerPath);
-
-            var start = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-            };
-            foreach (var value in new[]
-            {
-                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath,
-                Environment.ProcessId.ToString(), currentExecutable, update.DownloadedPath, backupPath, markerPath,
-            }) start.ArgumentList.Add(value);
-            Process.Start(start);
-            return true;
+            return UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory, "ICeClass.exe", RestartArguments());
         }
         catch (Exception exception)
         {
             AppLog.Error("Could not start receiver updater", exception);
-            error = "无法启动更新程序，请稍后重试。";
+            error = "无法启动更新程序，请重新检查更新。";
             return false;
         }
     }
+
+    internal static string RestartArguments() => UpdateInstaller.QuoteArguments(Environment.GetCommandLineArgs().Skip(1)
+        .Where(value => value != "--incremental-update-started" && !value.StartsWith("--update-marker=", StringComparison.Ordinal)));
 
     public static void ConfirmUpdatedLaunch()
     {
@@ -221,51 +226,6 @@ public sealed class ReceiverUpdateService
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
-
-    private const string UpdateScript = """
-param(
-  [int]$OldProcessId,
-  [string]$CurrentExecutable,
-  [string]$DownloadedExecutable,
-  [string]$BackupExecutable,
-  [string]$MarkerPath
-)
-$ErrorActionPreference = 'Stop'
-try { Wait-Process -Id $OldProcessId -Timeout 120 -ErrorAction SilentlyContinue } catch { }
-$newProcess = $null
-$originalMoved = $false
-try {
-  if (Get-Process -Id $OldProcessId -ErrorAction SilentlyContinue) { throw 'Receiver is still running.' }
-  Remove-Item -LiteralPath $MarkerPath -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $BackupExecutable -Force -ErrorAction SilentlyContinue
-  Move-Item -LiteralPath $CurrentExecutable -Destination $BackupExecutable -Force
-  $originalMoved = $true
-  Move-Item -LiteralPath $DownloadedExecutable -Destination $CurrentExecutable -Force
-  $argument = '--update-marker="' + $MarkerPath + '"'
-  $newProcess = Start-Process -FilePath $CurrentExecutable -ArgumentList $argument -PassThru
-  $started = $false
-  for ($index = 0; $index -lt 60; $index++) {
-    if (Test-Path -LiteralPath $MarkerPath) { $started = $true; break }
-    if ($newProcess.HasExited) { break }
-    Start-Sleep -Milliseconds 500
-    $newProcess.Refresh()
-  }
-  if (-not $started) { throw 'Updated receiver did not confirm startup.' }
-  Remove-Item -LiteralPath $BackupExecutable -Force -ErrorAction SilentlyContinue
-} catch {
-  if ($newProcess -and -not $newProcess.HasExited) { Stop-Process -Id $newProcess.Id -Force -ErrorAction SilentlyContinue }
-  if ($originalMoved -and (Test-Path -LiteralPath $BackupExecutable)) {
-    Remove-Item -LiteralPath $CurrentExecutable -Force -ErrorAction SilentlyContinue
-    Move-Item -LiteralPath $BackupExecutable -Destination $CurrentExecutable -Force
-    Start-Process -FilePath $CurrentExecutable
-  }
-} finally {
-  Remove-Item -LiteralPath $DownloadedExecutable -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $MarkerPath -Force -ErrorAction SilentlyContinue
-  Start-Sleep -Seconds 1
-  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-}
-""";
 
     private sealed class ReceiverUpdateManifest
     {

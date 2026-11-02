@@ -29,10 +29,12 @@ internal sealed class BanbanVoiceService : IDisposable
     private string _workState = "listening", _lastText = "";
     private DateTime _lastActivity = DateTime.UtcNow, _lastHeard, _ignoreUntil, _retryAfter, _speechRetryAfter, _speechProgress;
     private long _inputDiagnosticAt;
+    private int _tickPending;
     internal event Action<BanbanVoiceEvent>? Changed;
     internal event Action<BanbanSpeechResult>? Recognition;
     internal event Action<BanbanAudioObservation>? AudioObservation;
     internal bool Enabled => _enabled;
+    internal bool Busy => Volatile.Read(ref _active) || Volatile.Read(ref _speaking) || Volatile.Read(ref _workState) is "thinking" or "confirming";
     internal string Microphone => _audio?.Microphone ?? "";
     internal bool EchoCancellation => _audio?.EchoCancellation == true;
     internal bool NaturalInterruption => _audio?.NaturalInterruption == true;
@@ -46,7 +48,7 @@ internal sealed class BanbanVoiceService : IDisposable
         _thread = new Thread(Run) { IsBackground = true, Name = "ICeClass.BanbanVoice" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
-        _timer = new Timer(_ => Post(Tick), null, 1000, 1000);
+        _timer = new Timer(_ => QueueTick(), null, 1000, 1000);
     }
 
     internal static string Normalize(string text) => new string(text.Where(c => !char.IsWhiteSpace(c) && !char.IsPunctuation(c) && !char.IsSymbol(c)).ToArray()).ToLowerInvariant();
@@ -185,6 +187,16 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         if (_disposed) return;
         try { _queue.Add(action); } catch (InvalidOperationException) { }
+    }
+    private void QueueTick()
+    {
+        // Model preparation or device recovery can take several timer periods.
+        // One queued check is enough; stale checks must not crowd out speech.
+        if (Interlocked.CompareExchange(ref _tickPending, 1, 0) != 0) return;
+        Post(() => {
+            try { Tick(); }
+            finally { Volatile.Write(ref _tickPending, 0); }
+        });
     }
     private void Run()
     {
@@ -399,7 +411,7 @@ internal sealed class BanbanVoiceService : IDisposable
     private void StopEngine()
     {
         var audio = _audio; _audio = null;
-        _active = false;
+        _active = false; _workState = "listening";
         audio?.Dispose();
         StopSpeech();
         _speaker?.Dispose(); _speaker = null;
@@ -421,7 +433,7 @@ internal sealed class BanbanVoiceService : IDisposable
         }
         if (!_active || _speaking || _workState == "thinking") return;
         if ((DateTime.UtcNow - _lastActivity).TotalMinutes < 3) return;
-        StopSpeech(); _active = false; UpdateListening(); State("standby", "等候“你好班班”"); Emit("idle");
+        StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); State("standby", "等候“你好班班”"); Emit("idle");
     }
     private static string StateText(string state) => state switch { "thinking" => "正在处理…", "confirming" => "等您确认", _ => "您说，我在听" };
     private void State(string state, string text)

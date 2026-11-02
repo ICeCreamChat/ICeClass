@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using ICeClass.Receiver;
+using ICeClass.Updates;
 
 namespace ICeClass.Desktop;
 
@@ -14,6 +15,7 @@ public sealed class App : Application
     private IClassicDesktopStyleApplicationLifetime _desktop = null!;
     private readonly CancellationTokenSource _lifetime = new();
     private TrayIcon? _tray;
+    private NativeMenuItem? _updateAction;
     private DesktopWindow _window = null!;
     private bool _exiting;
     private DesktopDiagnostics? _diagnostics;
@@ -37,12 +39,12 @@ public sealed class App : Application
         {
             var menu = new NativeMenu();
             Add("打开 ICeClass 班伴 · 教师端", ShowWindow); Add("桌面设置", () => { ShowWindow(); _ = ShowSettingsAsync(); });
-            Add("检查桌面更新", () => { ShowWindow(); _ = _window.CheckUpdatesAsync(); });
+            _updateAction = Add("检查桌面更新", () => { ShowWindow(); _ = _window.CheckUpdatesAsync(); });
             menu.Items.Add(new NativeMenuItemSeparator()); Add("退出 ICeClass 班伴 · 教师端", Exit);
             _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass 班伴 · 教师端", Menu = menu, IsVisible = true };
             _tray.Clicked += (_, _) => ShowWindow();
             TrayIcon.SetIcons(this, new TrayIcons { _tray });
-            void Add(string title, Action action) { var item = new NativeMenuItem { Header = title }; item.Click += (_, _) => action(); menu.Items.Add(item); }
+            NativeMenuItem Add(string title, Action action) { var item = new NativeMenuItem { Header = title }; item.Click += (_, _) => action(); menu.Items.Add(item); return item; }
         }
         catch (Exception error) { DesktopLog.Write(error); }
         _ = ListenAsync();
@@ -51,16 +53,29 @@ public sealed class App : Application
             _lifetime.Cancel(); _tray?.Dispose(); _window.DisposePage();
             _diagnostics?.Record("application", "退出"); _diagnostics?.Dispose();
         };
-        Dispatcher.UIThread.Post(DesktopUpdates.ConfirmLaunch);
+        Dispatcher.UIThread.Post(() =>
+        {
+            try { DesktopUpdates.ConfirmLaunch(); UpdateInstaller.ConfirmLaunch(AppContext.BaseDirectory); }
+            catch (Exception error) { DesktopLog.Write(error); }
+        });
         base.OnFrameworkInitializationCompleted();
     }
 
     internal void ShowWindow()
     {
+        _window.CancelBackgroundUpdate();
         _window.Show();
         if (_window.WindowState == WindowState.Minimized) _window.WindowState = WindowState.Normal;
         _window.RestorePage(); _window.Activate();
     }
+
+    internal void SetUpdateReady(bool ready)
+    {
+        if (_updateAction is not null) _updateAction.Header = ready ? "立即更新" : "检查桌面更新";
+    }
+
+    internal bool UpdateBusy(bool automatic) => (automatic && _window.IsVisible)
+        || _desktop.Windows.Any(window => window != _window && window.IsVisible);
 
     private async Task ListenAsync()
     {

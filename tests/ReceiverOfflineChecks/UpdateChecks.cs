@@ -27,6 +27,7 @@ internal static class UpdateChecks
                 try
                 {
                     if (context.Request.Headers["Authorization"] != "Bearer fixture") { response.StatusCode = 401; response.Close(); continue; }
+                    if (context.Request.Url!.AbsolutePath == "/api/receiver/update/plan") { response.StatusCode = 404; response.Close(); continue; }
                     if (context.Request.Url!.AbsolutePath == "/api/receiver/update")
                     {
                         var manifest = JsonSerializer.SerializeToUtf8Bytes(new { available = true, version, size = declaredSize ?? bytes.Length, sha256 = sha(), downloadUrl = "/file" });
@@ -71,6 +72,8 @@ internal static class UpdateChecks
         var updates = new ReceiverUpdateService();
         var directory = Path.Combine(AppContext.BaseDirectory, ".updates");
         Directory.CreateDirectory(directory);
+        var pendingPath = Path.Combine(directory, "pending.json");
+        var previousPending = File.Exists(pendingPath) ? File.ReadAllBytes(pendingPath) : null;
         string Partial() => Path.Combine(directory, $"ICeClass-{version}.download");
         async Task Interrupted()
         {
@@ -126,6 +129,7 @@ internal static class UpdateChecks
         finally
         {
             stop.Cancel(); listener.Stop(); await serving;
+            if (previousPending is null) File.Delete(pendingPath); else File.WriteAllBytes(pendingPath, previousPending);
             foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4", "99.0.5", "99.0.6" })
                 foreach (var suffix in new[] { ".download", ".download.json", ".exe" }) File.Delete(Path.Combine(directory, "ICeClass-" + name + suffix));
         }

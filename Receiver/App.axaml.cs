@@ -1,8 +1,9 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using ICeClass.Updates;
 
 namespace ICeClass.Receiver;
 
@@ -27,6 +28,9 @@ public sealed class App : Application
     private NativeMenuItem? _islandMenuItem;
     private CancellationTokenSource? _automaticUpdateCancellation;
     private int _updateInProgress;
+    private NativeMenuItem? _updateMenuItem;
+    private string? _readyUpdateVersion;
+    private DateTimeOffset _nextUpdateCheck;
     private bool _exitRequested;
     private ReceiverConnectionState _lastConnectionState = new(false, "正在连接…");
 
@@ -84,6 +88,7 @@ public sealed class App : Application
             ShowEnrollment();
         }
 
+        Dispatcher.UIThread.Post(() => UpdateInstaller.ConfirmLaunch(AppContext.BaseDirectory), DispatcherPriority.Background);
         base.OnFrameworkInitializationCompleted();
     }
 
@@ -134,6 +139,9 @@ public sealed class App : Application
         var about = new NativeMenuItem { Header = "关于班伴" };
         about.Click += (_, _) => ShowAbout();
         menu.Items.Add(about);
+        _updateMenuItem = new NativeMenuItem { Header = "检查更新" };
+        _updateMenuItem.Click += async (_, _) => await CheckForUpdateAsync(true);
+        menu.Items.Add(_updateMenuItem);
         menu.Items.Add(new NativeMenuItemSeparator());
         var exit = new NativeMenuItem { Header = "退出" };
         exit.Click += async (_, _) => await ExitAsync();
@@ -231,6 +239,7 @@ public sealed class App : Application
 
         _enrollmentWindow = new EnrollmentWindow(ReceiverConfig.TryLoad(out var config) ? config : null);
         if (config is not null) _enrollmentWindow.SetConnectionState(_lastConnectionState);
+        if (_readyUpdateVersion is not null) _enrollmentWindow.SetUpdateState($"新版 {_readyUpdateVersion} 已就绪，下次启动安装。", false, true);
         _enrollmentWindow.UpdateRequested += async (_, _) => await CheckForUpdateAsync(true);
         _enrollmentWindow.PreviewRequested += level => _ = _receiver?.ShowTestAsync(level);
         _enrollmentWindow.AudioTestRequested += async (_, _) => await TestAudioAsync();
@@ -341,6 +350,12 @@ public sealed class App : Application
         };
     }
 
+    // Wake listening remains active; only conversation, recording and classroom work block downloads.
+    private bool UpdateActivityBusy => _island?.InClass == true || ReadingExperience.IsOpen ||
+        _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
+        _creativeIdeasWindow?.IsVisible == true || _receiver?.ComputerAgent.IsBusy == true || _stopTask is { IsCompleted: false };
+    private bool CanDownloadUpdate => _island?.ScheduleKnown == true && !UpdateActivityBusy;
+
     private void StartAutomaticUpdates(ReceiverConfig config)
     {
         _automaticUpdateCancellation?.Cancel();
@@ -354,8 +369,10 @@ public sealed class App : Application
                 await Task.Delay(TimeSpan.FromMinutes(Random.Shared.Next(2, 16)), token);
                 while (!token.IsCancellationRequested)
                 {
-                    await CheckForUpdateAsync(false, config, token);
-                    await Task.Delay(TimeSpan.FromMinutes(30), token);
+                    if (_readyUpdateVersion is null && DateTimeOffset.UtcNow >= _nextUpdateCheck &&
+                        await Dispatcher.UIThread.InvokeAsync(() => CanDownloadUpdate))
+                        await CheckForUpdateAsync(false, config, token);
+                    await Task.Delay(TimeSpan.FromSeconds(15), token);
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -364,17 +381,25 @@ public sealed class App : Application
 
     private async Task CheckForUpdateAsync(bool userInitiated, ReceiverConfig? knownConfig = null, CancellationToken token = default)
     {
-        if (Interlocked.Exchange(ref _updateInProgress, 1) != 0)
-        {
-            if (userInitiated) SetUpdateState("正在检查更新，请稍候…", true);
-            return;
-        }
-
+        if (Interlocked.Exchange(ref _updateInProgress, 1) != 0) return;
         try
         {
-            if (ReadingExperience.IsOpen)
+            if (!await Dispatcher.UIThread.InvokeAsync(() => CanDownloadUpdate))
             {
-                if (userInitiated) SetUpdateState("早读结束后再更新，活动不会中断。", false);
+                if (userInitiated) SetUpdateState("上课或活动期间暂停更新，请在课间重试。", false);
+                return;
+            }
+            _readyUpdateVersion ??= ReceiverUpdateService.PendingVersion();
+            if (_readyUpdateVersion is not null)
+            {
+                if (userInitiated)
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        if (!CanDownloadUpdate) return;
+                        var ready = new ReceiverUpdateResult(true, _readyUpdateVersion, null);
+                        if (!_updates.TryLaunchInstaller(ready, out var error)) { SetUpdateState(error, false); return; }
+                        _exitRequested = true; _desktop?.TryShutdown();
+                    });
                 return;
             }
             var config = knownConfig;
@@ -383,67 +408,65 @@ public sealed class App : Application
                 if (userInitiated) SetUpdateState("请先完成教室绑定，再检查更新。", false);
                 return;
             }
-
             SetUpdateState("正在检查更新…", true);
-            var progress = new Progress<int>(value => SetUpdateState($"正在下载更新：{value}%", true));
             using var idle = CancellationTokenSource.CreateLinkedTokenSource(token);
-            void PauseDownload() => idle.Cancel();
+            var monitor = PauseWhenBusyAsync(idle);
             ReceiverUpdateResult result;
-            ReadingExperience.Opened += PauseDownload;
             try
             {
-                // A reading window may have opened between the first check and subscribing.
-                if (await Dispatcher.UIThread.InvokeAsync(() => ReadingExperience.IsOpen)) idle.Cancel();
-                result = await _updates.CheckAndDownloadAsync(config, progress, idle.Token);
+                // Hashing models and applying a binary patch must not run on the UI dispatcher.
+                result = await Task.Run(() => _updates.CheckAndDownloadAsync(config, new Progress<int>(value =>
+                    SetUpdateState($"正在准备更新：{value}%", true)), idle.Token), idle.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested && idle.IsCancellationRequested)
             {
-                SetUpdateState("早读已开始，更新已暂停，下次继续下载。", false);
+                _nextUpdateCheck = DateTimeOffset.UtcNow.AddSeconds(15);
+                SetUpdateState("更新已暂停，课间空闲时继续下载。", false);
                 return;
             }
-            finally { ReadingExperience.Opened -= PauseDownload; }
+            finally { idle.Cancel(); await monitor; }
+            _nextUpdateCheck = DateTimeOffset.UtcNow.AddMinutes(30);
             if (!result.UpdateAvailable)
-            {
                 SetUpdateState($"当前已是最新版本 {ReceiverUpdateService.CurrentVersionText}", false);
-                return;
-            }
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            else
             {
-                token.ThrowIfCancellationRequested();
-                // Reading windows are created on this same dispatcher. Keep this final check,
-                // installer launch and shutdown together so a lesson cannot start between them.
-                if (ReadingExperience.IsOpen)
-                {
-                    SetUpdateState($"新版 {result.Version} 已保存，早读结束后更新。", false);
-                    return;
-                }
-                if (!_updates.TryLaunchInstaller(result, out var error))
-                {
-                    SetUpdateState(error, false);
-                    return;
-                }
-                _exitRequested = true;
-                _desktop?.TryShutdown();
-            });
+                _readyUpdateVersion = result.Version;
+                SetUpdateState($"新版 {result.Version} 已就绪，下次启动安装。", false);
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception)
         {
+            _nextUpdateCheck = DateTimeOffset.UtcNow.AddMinutes(5);
             AppLog.Error("Receiver update check failed", exception);
-            SetUpdateState(userInitiated ? $"更新失败：{exception.Message}" : $"检查更新失败，稍后自动重试", false);
+            SetUpdateState(userInitiated ? $"更新失败：{exception.Message}" : "检查更新失败，稍后自动重试。", false);
         }
-        finally
+        finally { Interlocked.Exchange(ref _updateInProgress, 0); }
+    }
+
+    private async Task PauseWhenBusyAsync(CancellationTokenSource idle)
+    {
+        try
         {
-            Interlocked.Exchange(ref _updateInProgress, 0);
+            while (!idle.IsCancellationRequested)
+            {
+                if (!await Dispatcher.UIThread.InvokeAsync(() => CanDownloadUpdate)) { idle.Cancel(); break; }
+                await Task.Delay(250, idle.Token);
+            }
         }
+        catch (OperationCanceledException) when (idle.IsCancellationRequested) { }
     }
 
     private void SetUpdateState(string text, bool checking)
     {
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(() =>
         {
-            _enrollmentWindow?.SetUpdateState(text, checking);
+            _enrollmentWindow?.SetUpdateState(text, checking, _readyUpdateVersion is not null);
+            if (_updateMenuItem is not null)
+            {
+                _updateMenuItem.Header = _readyUpdateVersion is not null ? "立即更新" : "检查更新";
+                _updateMenuItem.IsEnabled = !checking;
+            }
         });
     }
 

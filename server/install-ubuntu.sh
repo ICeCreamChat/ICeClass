@@ -48,31 +48,22 @@ echo "[3/8] 安装 ICeClass · 班伴..."
 STAGING_DIR="$APP_ROOT/app.new"
 rm -rf "$STAGING_DIR"
 install -d -m 0755 "$STAGING_DIR/server" "$STAGING_DIR/web_controller" "$STAGING_DIR/cloud/migrations" "$STAGING_DIR/receiver_release"
-install -m 0644 "$PACKAGE_ROOT/server/app.py" "$STAGING_DIR/server/app.py"
-install -m 0644 "$PACKAGE_ROOT/server/desktop_release.py" "$STAGING_DIR/server/desktop_release.py"
-install -m 0644 "$PACKAGE_ROOT/server/reading.py" "$STAGING_DIR/server/reading.py"
-install -m 0644 "$PACKAGE_ROOT/server/reading_xlsx.py" "$STAGING_DIR/server/reading_xlsx.py"
-install -m 0644 "$PACKAGE_ROOT/server/offline_reading.py" "$STAGING_DIR/server/offline_reading.py"
-install -m 0644 "$PACKAGE_ROOT/server/management.py" "$STAGING_DIR/server/management.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban.py" "$STAGING_DIR/server/banban.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_agent.py" "$STAGING_DIR/server/banban_agent.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_operations.py" "$STAGING_DIR/server/banban_operations.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_connections.py" "$STAGING_DIR/server/banban_connections.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_history.py" "$STAGING_DIR/server/banban_history.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_platform.py" "$STAGING_DIR/server/banban_platform.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_policy.py" "$STAGING_DIR/server/banban_policy.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_speech.py" "$STAGING_DIR/server/banban_speech.py"
-install -m 0644 "$PACKAGE_ROOT/server/banban_math_speech.py" "$STAGING_DIR/server/banban_math_speech.py"
+for module in "$PACKAGE_ROOT"/server/*.py; do
+    case "${module##*/}" in
+        test_*|preview.py) continue ;;
+    esac
+    install -m 0644 "$module" "$STAGING_DIR/server/"
+done
 install -m 0644 "$PACKAGE_ROOT/server/requirements.txt" "$STAGING_DIR/server/requirements.txt"
 cp -R "$PACKAGE_ROOT/web_controller/." "$STAGING_DIR/web_controller/"
 chmod -R a+rX "$STAGING_DIR/web_controller"
-install -m 0644 "$PACKAGE_ROOT/cloud/migrations/0001_initial.sql" "$STAGING_DIR/cloud/migrations/0001_initial.sql"
-install -m 0644 "$PACKAGE_ROOT/receiver_release/manifest.json" "$STAGING_DIR/receiver_release/manifest.json"
-install -m 0644 "$PACKAGE_ROOT/receiver_release/ICeClass.exe" "$STAGING_DIR/receiver_release/ICeClass.exe"
+install -m 0644 "$PACKAGE_ROOT"/cloud/migrations/*.sql "$STAGING_DIR/cloud/migrations/"
+cp -R "$PACKAGE_ROOT/receiver_release/." "$STAGING_DIR/receiver_release/"
+chmod -R a+rX "$STAGING_DIR/receiver_release"
 if [[ -f "$PACKAGE_ROOT/desktop_release/manifest.json" && -f "$PACKAGE_ROOT/desktop_release/ICeClass.Desktop.exe" ]]; then
     install -d -m 0755 "$STAGING_DIR/desktop_release"
-    install -m 0644 "$PACKAGE_ROOT/desktop_release/manifest.json" "$STAGING_DIR/desktop_release/manifest.json"
-    install -m 0644 "$PACKAGE_ROOT/desktop_release/ICeClass.Desktop.exe" "$STAGING_DIR/desktop_release/ICeClass.Desktop.exe"
+    cp -R "$PACKAGE_ROOT/desktop_release/." "$STAGING_DIR/desktop_release/"
+    chmod -R a+rX "$STAGING_DIR/desktop_release"
 fi
 chown -R root:root "$STAGING_DIR"
 

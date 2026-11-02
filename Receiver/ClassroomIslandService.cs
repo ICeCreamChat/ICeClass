@@ -40,6 +40,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     public bool Enabled => _preferences.Enabled;
     public event Action? PreferenceChanged;
     internal bool InClass { get; private set; }
+    internal bool ScheduleKnown { get; private set; }
     internal event Action<bool>? ClassTimeChanged;
     public event Action? ShoutPreviewRequested;
 
@@ -307,6 +308,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         if (_disposed) return;
         if (_binding is null || _offline is null)
         {
+            ScheduleKnown = false;
             SetClassTime(false);
             if (_demo is not null) { RenderDemo(); return; }
             var unbound = _state.Present(null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _connection, ReadingExperience.IsOpen);
@@ -335,6 +337,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         if (!shouting && _activeShout is not null) { CompleteShout(ShoutCloseReason.TimedOut); return; }
         var island = _islandSync?.Snapshot;
         var profile = island?.Revoked == true ? null : island?.Profile;
+        ScheduleKnown = profile is not null;
         var now = DateTimeOffset.FromUnixTimeMilliseconds(_offline.Now);
         var localNow = now.ToOffset(TimeSpan.FromHours(8));
         var lessons = profile is not null ? IslandSchedule.On(profile, DateOnly.FromDateTime(localNow.DateTime)) : [];

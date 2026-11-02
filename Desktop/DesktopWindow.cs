@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ICeClass.Receiver;
+using ICeClass.Updates;
 using Microsoft.Web.WebView2.Core;
 
 namespace ICeClass.Desktop;
@@ -37,6 +38,13 @@ internal sealed class DesktopWindow : Window
     private TeacherFeedbackWindow? _feedbackWindow;
     private bool _openingFeedback;
     private readonly Stopwatch _navigationWatch = new();
+    private CancellationTokenSource? _updateDownload;
+    private Task? _backgroundUpdateTask;
+    private DesktopUpdate? _offeredUpdate;
+    private PreparedUpdate? _readyUpdate;
+    private bool _automaticDownload, _pickingFile;
+    private readonly HashSet<Guid> _recordingFrames = [];
+    private readonly HashSet<CoreWebView2DownloadOperation> _pageDownloads = [];
 
     internal DesktopWindow(App app, string endpoint, bool main, string? address = null)
     {
@@ -115,8 +123,14 @@ internal sealed class DesktopWindow : Window
             core.WebMessageReceived += (_, args) =>
             {
                 if (!_disposed && DesktopSettings.SameOrigin(_endpoint, args.Source))
+                {
+                    if (ReadUpdateWork(args.WebMessageAsJson)) return;
                     _app.Diagnostics.RecordBrowser(args.WebMessageAsJson, _endpoint);
+                }
             };
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(UpdateWorkScript);
+            core.IsDocumentPlayingAudioChanged += (_, _) => { if (core.IsDocumentPlayingAudio) _updateDownload?.Cancel(); };
+            core.ScriptDialogOpening += (_, _) => _updateDownload?.Cancel();
             using (var source = typeof(DesktopWindow).Assembly.GetManifestResourceStream("ICeClass.Desktop.diagnostics.js")!)
             using (var script = new StreamReader(source))
                 await core.AddScriptToExecuteOnDocumentCreatedAsync((await script.ReadToEndAsync()).Replace("__SCHOOL_ORIGIN__",
@@ -126,6 +140,7 @@ internal sealed class DesktopWindow : Window
             {
                 if (!DesktopSettings.SameOrigin(_endpoint, args.Uri))
                 { args.Cancel = true; if (args.IsUserInitiated) OpenExternal(args.Uri); return; }
+                _updateDownload?.Cancel(); _recordingFrames.Clear();
                 _navigated = false; _progress.IsVisible = true; SetStatus("正在连接…");
                 _navigationWatch.Restart();
                 _app.Diagnostics.Record("navigation", "开始加载", args.Uri);
@@ -188,6 +203,7 @@ internal sealed class DesktopWindow : Window
                 _voiceInbox = new ClassroomVoiceInbox(_endpoint, ReadSessionAsync, diagnostics: _app.Diagnostics);
                 _voiceInbox.Changed += UpdateVoiceNotice;
                 _ = WatchClassroomVoiceAsync(_lifetime.Token);
+                _ = WatchDesktopUpdatesAsync(_lifetime.Token);
             }
         }
         catch (OperationCanceledException) { }
@@ -214,6 +230,7 @@ internal sealed class DesktopWindow : Window
         if (_feedbackWindow is not null) { _feedbackWindow.Activate(); return; }
         if (_openingFeedback || _disposed) return;
         _openingFeedback = true;
+        _updateDownload?.Cancel();
         var opening = Stopwatch.StartNew();
         _app.Diagnostics.Record("feedback", "点击反馈", _browser.Core?.Source ?? _endpoint);
         _feedbackAction.IsEnabled = false; _feedbackAction.Content = "正在打开…";
@@ -287,6 +304,7 @@ internal sealed class DesktopWindow : Window
         if (_disposed || _voiceInbox is null) return;
         if (_voiceNotice is not null) { _voiceNotice.UpdateMessages(); return; }
         if (_voiceInbox.Pending.Count == 0) return;
+        _updateDownload?.Cancel();
         _voiceNotice = new ClassroomVoiceNoticeWindow(_voiceInbox, this);
         _voiceNotice.Closed += (_, _) => _voiceNotice = null;
         _voiceNotice.Show();
@@ -318,6 +336,7 @@ internal sealed class DesktopWindow : Window
     }
     private async void DownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs args)
     {
+        _pickingFile = true; _updateDownload?.Cancel();
         var deferral = args.GetDeferral(); args.Handled = true;
         try
         {
@@ -327,9 +346,11 @@ internal sealed class DesktopWindow : Window
             if (string.IsNullOrWhiteSpace(path) || _disposed) { args.Cancel = true; return; }
             args.ResultFilePath = path; SetStatus("正在保存文件…");
             var download = args.DownloadOperation;
+            _pageDownloads.Add(download);
             download.StateChanged += (_, _) =>
             {
                 if (_disposed) return;
+                if (download.State is CoreWebView2DownloadState.Completed or CoreWebView2DownloadState.Interrupted) _pageDownloads.Remove(download);
                 SetStatus(download.State == CoreWebView2DownloadState.Completed ? "文件已保存：" + Path.GetFileName(path)
                     : download.State == CoreWebView2DownloadState.Interrupted ? "文件未保存完成，请重试" : "正在保存文件…");
             };
@@ -337,6 +358,7 @@ internal sealed class DesktopWindow : Window
         catch (Exception error) { args.Cancel = true; DesktopLog.Write(error); SetStatus("文件未保存，请重试"); }
         finally
         {
+            _pickingFile = false;
             // Dispose completes the event. Calling Complete as well completes it twice.
             try { deferral.Dispose(); }
             catch (Exception error) { DesktopLog.Write(error); if (!_disposed) SetStatus("文件未保存完成，请重试"); }
@@ -365,17 +387,159 @@ internal sealed class DesktopWindow : Window
         if (_checkingUpdate) return; _checkingUpdate = true;
         try
         {
+            CancelBackgroundUpdate();
+            if (_backgroundUpdateTask is { } background)
+            { try { await background; } catch (OperationCanceledException) { } }
+            _readyUpdate = await DesktopUpdates.PendingAsync(_lifetime.Token);
+            _app.SetUpdateReady(_readyUpdate is not null);
+            if (_readyUpdate is not null)
+            {
+                if (!await Dialogs.Confirm(this, "桌面更新已就绪 " + _readyUpdate.Version,
+                    "下次启动会安装更新。现在更新会重新打开工作台，学校平台与登录资料会保留。请先保存尚未提交的内容。", "立即更新")) return;
+                await DesktopUpdates.RunGuardedAsync(_ => Task.FromResult(true), () => UpdateBusy(false), ReadUpdateActivityAsync, _lifetime.Token);
+                _app.Restart(); return;
+            }
             SetStatus("正在检查桌面更新…");
-            var update = await DesktopUpdates.CheckAsync(_endpoint, _lifetime.Token);
+            var update = _offeredUpdate = await DesktopUpdates.CheckPlanFirstAsync(_endpoint, _lifetime.Token);
             if (update is null) { SetStatus("暂未发现可用的桌面更新"); return; }
-            if (!await Dialogs.Confirm(this, "发现桌面更新 " + update.Version, "更新后会重新打开工作台，登录资料会保留。请先保存尚未提交的内容。", "下载并更新")) return;
-            var path = await DesktopUpdates.DownloadAsync(_endpoint, update, new Progress<int>(p => SetStatus($"正在下载桌面更新 {p}%")), _lifetime.Token);
-            DesktopUpdates.Install(path, update); _app.Exit();
+            if (!await Dialogs.Confirm(this, "发现桌面更新 " + update.Version,
+                "下载完成后，下次启动时安装。上课或正在使用语音等功能时暂停下载。", "下载")) return;
+            await PrepareUpdateAsync(update, automatic: false);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException error)
+        { if (!_disposed) SetStatus(error is DesktopUpdatePausedException ? error.Message : "桌面更新已暂停，课间空闲时可继续"); }
         catch (Exception error) { DesktopLog.Write(error); SetStatus("暂时无法更新，您仍可继续使用工作台"); await Dialogs.Message(this, "桌面更新未完成", "请检查网络后重试。当前程序与登录资料保持，网页功能会随学校平台更新。"); }
         finally { _checkingUpdate = false; }
     }
+
+    internal void CancelBackgroundUpdate() { if (_automaticDownload) _updateDownload?.Cancel(); }
+    private bool UpdateBusy(bool automatic) => _disposed || !_navigated || _recordingFrames.Count > 0 || _pickingFile
+        || _openingFeedback || _pageDownloads.Count > 0 || _browser.Core?.IsDocumentPlayingAudio == true || _app.UpdateBusy(automatic);
+
+    private async Task<DesktopUpdateActivity> ReadUpdateActivityAsync(CancellationToken token)
+    {
+        var session = await ReadSessionAsync();
+        var activity = await DesktopUpdates.ReadActivityAsync(_endpoint, session, token);
+        return session == await ReadSessionAsync() ? activity : new(false, true, TimeSpan.Zero);
+    }
+
+    private async Task PrepareUpdateAsync(DesktopUpdate update, bool automatic)
+    {
+        using var download = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _updateDownload = download; _automaticDownload = automatic;
+        try
+        {
+            _readyUpdate = await DesktopUpdates.RunGuardedAsync(token => DesktopUpdates.PrepareAsync(_endpoint, update,
+                new Progress<int>(p => { if (!_disposed) SetStatus($"正在下载桌面更新 {p}%"); }), token),
+                () => UpdateBusy(automatic), ReadUpdateActivityAsync, download.Token);
+            _app.SetUpdateReady(true);
+            SetStatus("桌面更新已下载，下次启动时安装；也可从托盘选择“立即更新”");
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // A release can retire its payload hashes. Recheck the offer next
+            // time while keeping the staged bytes for an unchanged plan.
+            _offeredUpdate = null;
+            throw;
+        }
+        finally { _updateDownload = null; _automaticDownload = false; }
+    }
+
+    private async Task WatchDesktopUpdatesAsync(CancellationToken token)
+    {
+        try
+        {
+            try { _readyUpdate = await DesktopUpdates.PendingAsync(token); _app.SetUpdateReady(_readyUpdate is not null); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            { DesktopLog.Write(error); }
+            var lastCheck = DateTimeOffset.MinValue;
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+            do
+            {
+                try
+                {
+                    if (_checkingUpdate || _readyUpdate is not null || UpdateBusy(true)) continue;
+                    if (_offeredUpdate is null && DateTimeOffset.UtcNow - lastCheck < TimeSpan.FromMinutes(30)) continue;
+                    if (DateTimeOffset.UtcNow - lastCheck >= TimeSpan.FromMinutes(30))
+                    {
+                        lastCheck = DateTimeOffset.UtcNow;
+                        _offeredUpdate = await DesktopUpdates.CheckPlanFirstAsync(_endpoint, token);
+                    }
+                    if (_offeredUpdate is null || _checkingUpdate || UpdateBusy(true)) continue;
+                    _backgroundUpdateTask = PrepareUpdateAsync(_offeredUpdate, automatic: true);
+                    await _backgroundUpdateTask;
+                }
+                catch (OperationCanceledException error)
+                { if (!_disposed) SetStatus(error is DesktopUpdatePausedException ? error.Message : "桌面更新已暂停，课间空闲时可继续"); }
+                catch (Exception error) { lastCheck = DateTimeOffset.MinValue; if (!_disposed) DesktopLog.Write(error); }
+                finally { _backgroundUpdateTask = null; }
+            }
+            while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { if (!_disposed) DesktopLog.Write(error); }
+    }
+
+    private bool ReadUpdateWork(string message)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(message);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("type", out var type) || type.GetString() != "iceclass-update-work") return false;
+            if (!Guid.TryParse(root.GetProperty("id").GetString(), out var frame)) return false;
+            if (root.GetProperty("busy").GetBoolean()) { _recordingFrames.Add(frame); _updateDownload?.Cancel(); }
+            else _recordingFrames.Remove(frame);
+            return true;
+        }
+        catch (Exception error) when (error is System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException) { return false; }
+    }
+
+    private const string UpdateWorkScript = """
+(() => {
+  const tracks = new Set(), recorders = new Set(), pending = new Set();
+  const id = crypto.randomUUID();
+  let previous;
+  const emit = busy => {
+    if (busy === previous) return;
+    previous = busy;
+    window.chrome.webview.postMessage({type: "iceclass-update-work", id, busy});
+  };
+  const report = () => emit(tracks.size + recorders.size + pending.size > 0 ||
+    [...document.querySelectorAll('dialog[open], [role="dialog"]:not([hidden])')].some(dialog => dialog.getClientRects().length > 0));
+  new MutationObserver(report).observe(document, {subtree: true, childList: true, attributes: true,
+    attributeFilter: ["open", "hidden", "class", "style", "role"]});
+  window.addEventListener("pagehide", () => emit(false), {once: true});
+  const devices = navigator.mediaDevices;
+  if (devices?.getUserMedia) {
+    const original = devices.getUserMedia;
+    devices.getUserMedia = async function(...args) {
+      const request = {}; pending.add(request); report();
+      try {
+        const stream = await original.apply(this, args);
+        for (const track of stream.getTracks()) {
+          tracks.add(track);
+          const clear = () => { tracks.delete(track); report(); };
+          track.addEventListener("ended", clear, {once: true});
+          const stop = track.stop;
+          track.stop = function() { try { return stop.call(this); } finally { clear(); } };
+        }
+        return stream;
+      } finally { pending.delete(request); report(); }
+    };
+  }
+  if (typeof MediaRecorder !== "undefined") {
+    const start = MediaRecorder.prototype.start;
+    MediaRecorder.prototype.start = function(...args) {
+      const clear = () => { recorders.delete(this); report(); };
+      this.addEventListener("stop", clear, {once: true});
+      this.addEventListener("error", clear, {once: true});
+      recorders.add(this); report();
+      try { return start.apply(this, args); } catch (error) { clear(); throw error; }
+    };
+  }
+})();
+""";
     internal void DisposePage()
     {
         if (_disposed) return; _disposed = true; _lifetime.Cancel(); _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose();

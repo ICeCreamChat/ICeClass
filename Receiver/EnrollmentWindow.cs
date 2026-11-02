@@ -180,7 +180,11 @@ public sealed class EnrollmentWindow : Window
         _connection.Text = state.Connected ? "已连接平台" : state.Text;
         _connection.Foreground = DesktopStyle.Brush(state.Connected ? "#167447" : "#97591B");
     }
-    public void SetUpdateState(string text, bool checking) { _updateStatus.Text = text; _checkUpdate.IsEnabled = !checking; }
+    public void SetUpdateState(string text, bool checking, bool ready = false)
+    {
+        _updateStatus.Text = text; _checkUpdate.IsEnabled = !checking;
+        _checkUpdate.Content = ready ? "立即更新" : "检查更新";
+    }
     public void SetAudioTestState(string text, bool playing)
     {
         _audioTestStatus.Text = text; _audioTestStatus.IsVisible = !string.IsNullOrWhiteSpace(text); _audioTest.IsEnabled = !playing;

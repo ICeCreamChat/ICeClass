@@ -22,6 +22,7 @@ internal sealed class ClassroomAgentService : IDisposable
     private string _binding = "";
     internal event Action<string>? StatusChanged;
     internal string Status { get; private set; } = "暂无电脑操作";
+    internal bool IsBusy => !_active.IsEmpty;
 
     internal ClassroomAgentService(Func<ClassroomAgentPolicy>? policyLoader = null)
         => _policyLoader = policyLoader ?? ClassroomAgentPolicy.Load;

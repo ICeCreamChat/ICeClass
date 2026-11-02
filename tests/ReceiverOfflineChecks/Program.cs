@@ -2,6 +2,9 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--update-activity-checks"]) { UpdateActivityChecks.Run(); return; }
+if (args is ["--update-resource-checks", var updateRelease, var updateOutput]) { await UpdateResourceChecks.Run(updateRelease, updateOutput); return; }
+
 if (args.Length is 1 or 2 && args[0] == "--ideas-voice-checks")
 {
     try { await IdeasVoiceTranscriptionChecks.Run(args.Length == 2 ? args[1] : null); }

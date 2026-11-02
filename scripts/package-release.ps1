@@ -1,13 +1,15 @@
-﻿param([switch]$SkipBuild, [string]$DistributionDirectory = '')
+﻿param(
+    [switch]$SkipBuild,
+    [string]$DistributionDirectory = '',
+    [string]$PreviousServerDirectory = ''
+)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 if ($DistributionDirectory -and -not $SkipBuild) { throw '使用已有构建目录时请同时传入 -SkipBuild。' }
 $distributionRoot = if ($DistributionDirectory) { [IO.Path]::GetFullPath($DistributionDirectory) } else { Join-Path $projectRoot 'dist' }
 if (-not $SkipBuild) {
-    $env:ICECLASS_NO_PAUSE = '1'
-    & (Join-Path $projectRoot 'build.bat')
-    if ($LASTEXITCODE -ne 0) { throw '教室端构建失败。' }
+    & (Join-Path $PSScriptRoot 'build-classroom.ps1')
     & (Join-Path $PSScriptRoot 'build-desktop.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Windows 教师端构建失败。' }
 }
@@ -15,6 +17,19 @@ $desktopExecutable = Join-Path $distributionRoot 'desktop\ICeClass.Desktop.exe'
 if (-not (Test-Path -LiteralPath $desktopExecutable)) { throw '缺少Windows 教师端，请先运行 build-desktop.bat。' }
 $receiver = Join-Path $distributionRoot 'receiver\ICeClass.exe'
 if (-not (Test-Path -LiteralPath $receiver)) { throw '缺少 dist\receiver\ICeClass.exe，请先构建。' }
+$receiverCore = Join-Path $distributionRoot 'receiver-core\ICeClass.exe'
+if (-not (Test-Path -LiteralPath $receiverCore -PathType Leaf)) { throw '缺少 receiver-core\ICeClass.exe，请运行 build.bat 生成精简更新核心。' }
+$payloadPython = 'python.exe'
+if ($env:ICECLASS_PYTHON) { $payloadPython = $env:ICECLASS_PYTHON }
+$previousServerRoot = if ($PreviousServerDirectory) { [IO.Path]::GetFullPath($PreviousServerDirectory) } else { '' }
+if ($previousServerRoot) {
+    foreach ($directory in @('receiver_release', 'desktop_release')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $previousServerRoot "$directory\update-plan.json") -PathType Leaf) -or
+            -not (Test-Path -LiteralPath (Join-Path $previousServerRoot "$directory\payloads") -PathType Container)) {
+            throw "上一版服务端缺少 $directory 的 update-plan.json 或 payloads：$previousServerRoot"
+        }
+    }
+}
 $project = [xml](Get-Content -LiteralPath (Join-Path $projectRoot 'Receiver\Receiver.csproj') -Raw -Encoding UTF8)
 $version = [string]$project.Project.PropertyGroup.Version
 $releaseRoot = Join-Path $distributionRoot 'release'
@@ -43,7 +58,8 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update-ubuntu.sh') -Destination (Join-Path $serverRoot 'scripts\update-ubuntu.sh')
     Copy-Item -LiteralPath (Join-Path $projectRoot 'web_controller') -Destination $serverRoot -Recurse
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'cloud\migrations\0001_initial.sql') -Destination (Join-Path $serverRoot 'cloud\migrations\0001_initial.sql')
+    Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cloud\migrations') -Filter '*.sql' -File |
+        Copy-Item -Destination (Join-Path $serverRoot 'cloud\migrations')
     Copy-Item -LiteralPath $receiver -Destination (Join-Path $serverRoot 'receiver_release\ICeClass.exe')
     foreach ($name in @('install.ps1', '安装或升级.cmd', 'program-manifest.json', '一步使用说明.txt')) {
         Copy-Item -LiteralPath (Join-Path $windowsRoot "教室端\$name") -Destination (Join-Path $serverRoot "receiver_release\$name")
@@ -54,11 +70,33 @@ try {
     $desktopProject = [xml](Get-Content -LiteralPath (Join-Path $projectRoot 'Desktop\ICeClass.Desktop.csproj') -Raw -Encoding UTF8)
     $desktopManifest = [ordered]@{ version = [string]$desktopProject.Project.PropertyGroup.Version; sha256 = (Get-FileHash -LiteralPath $desktopExecutable -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item -LiteralPath $desktopExecutable).Length } | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $serverRoot 'desktop_release\manifest.json'), $desktopManifest, (New-Object Text.UTF8Encoding($false)))
+    $receiverPayloadArguments = @(
+        (Join-Path $PSScriptRoot 'prepare-update-payloads.py'),
+        '--project', (Join-Path $projectRoot 'Receiver\Receiver.csproj'),
+        '--executable', $receiverCore,
+        '--voice-directory', (Join-Path $projectRoot 'Receiver\Assets\Voice'),
+        '--release-directory', (Join-Path $serverRoot 'receiver_release')
+    )
+    $desktopPayloadArguments = @(
+        (Join-Path $PSScriptRoot 'prepare-update-payloads.py'),
+        '--project', (Join-Path $projectRoot 'Desktop\ICeClass.Desktop.csproj'),
+        '--executable', $desktopExecutable,
+        '--release-directory', (Join-Path $serverRoot 'desktop_release')
+    )
+    if ($previousServerRoot) {
+        $receiverPayloadArguments += @('--previous-release-directory', (Join-Path $previousServerRoot 'receiver_release'))
+        $desktopPayloadArguments += @('--previous-release-directory', (Join-Path $previousServerRoot 'desktop_release'))
+    }
+    & $payloadPython @receiverPayloadArguments
+    if ($LASTEXITCODE -ne 0) { throw '教室端文件更新计划或 MSDelta 验证失败，未生成本次发布包。' }
+    & $payloadPython @desktopPayloadArguments
+    if ($LASTEXITCODE -ne 0) { throw '教师端文件更新计划或 MSDelta 验证失败，未生成本次发布包。' }
     foreach ($name in @('README.md', 'LICENSE', 'docs')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination $serverRoot -Recurse
     }
-    # Local operations handoff is intentionally never distributed.
-    Remove-Item -LiteralPath (Join-Path $serverRoot 'docs\腾讯云API运维.md') -Force -ErrorAction SilentlyContinue
+    # The repository's local operations guide is intentionally excluded from delivery as well as Git.
+    $localOperationsGuide = Join-Path $serverRoot 'docs\腾讯云API运维.md'
+    if (Test-Path -LiteralPath $localOperationsGuide) { Remove-Item -LiteralPath $localOperationsGuide -Force }
     $windowsZip = Join-Path $releaseRoot "ICeClass-$version-windows-x64.zip"
     $serverZip = Join-Path $releaseRoot "ICeClass-$version-server.zip"
     $classroomZip = Join-Path $releaseRoot "ICeClass-$version-classroom.zip"

@@ -99,6 +99,16 @@ jobs:
         working-directory: source
         run: python -m unittest discover -s server -p 'test_*.py' -v
 
+      - name: Check update payload packaging
+        if: ${{ hashFiles('source/tests/test_update_payloads.py') != '' }}
+        working-directory: source
+        run: python -m unittest discover -s tests -p test_update_payloads.py -v
+
+      - name: Check fresh server installation files
+        if: ${{ hashFiles('source/tests/test_server_installer.py') != '' }}
+        working-directory: source
+        run: python -m unittest discover -s tests -p test_server_installer.py -v
+
       - name: Check TypeScript
         working-directory: source
         run: npm run typecheck
@@ -117,9 +127,19 @@ jobs:
         working-directory: source
         run: dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile
 
+      - name: Check teacher update activity
+        if: ${{ hashFiles('source/tests/test_desktop_update_work.cjs') != '' }}
+        working-directory: source
+        run: node tests/test_desktop_update_work.cjs
+
       - name: Check teacher desktop
         working-directory: source
         run: dotnet run --project tests/DesktopChecks/DesktopChecks.csproj -c Release --no-launch-profile
+
+      - name: Check shared Windows updater and installer
+        if: ${{ hashFiles('source/tests/UpdateChecks/UpdateChecks.csproj') != '' }}
+        working-directory: source
+        run: dotnet run --project tests/UpdateChecks/UpdateChecks.csproj -c Release --no-launch-profile
 
       - name: Build release packages
         working-directory: source

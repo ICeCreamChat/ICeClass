@@ -34,6 +34,7 @@ from management import install_management, check_school_code, record_computer_in
 from banban import install_banban
 from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
 from desktop_release import install_desktop_updates
+from update_payloads import install_update_payloads, install_desktop_update_activity
 from island import install_island
 from feedback import install_feedback
 from ideas import install_ideas
@@ -1847,6 +1848,10 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app.router.add_post("/api/device/enroll", enroll_device)
     app.router.add_get("/api/receiver/update", receiver_update)
     app.router.add_get("/api/receiver/update/download", receiver_update_download)
+    install_update_payloads(app, app[RECEIVER_RELEASE_ROOT_KEY], executable=RECEIVER_EXECUTABLE_NAME,
+                            prefix="/api/receiver/update", reply=json_response,
+                            parse_version=parse_release_version, authenticate=authenticate_device)
+    install_desktop_update_activity(app, sys.modules[__name__])
     app.router.add_get("/api/classes", list_classes)
     app.router.add_post("/api/classes", create_class)
     app.router.add_post("/api/classes/batch", batch_create_classes)

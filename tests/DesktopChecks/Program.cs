@@ -1,5 +1,12 @@
 using ICeClass.Desktop;
+using ICeClass.Updates;
 using System.Text;
+
+if (args is ["--teacher-update-ui-checks", var teacherUpdateOutput])
+{
+    TeacherUpdateUiChecks.Run(teacherUpdateOutput);
+    return;
+}
 
 if (args is ["--feedback-opening-checks", var feedbackOutput])
 {
@@ -9,7 +16,7 @@ if (args is ["--feedback-opening-checks", var feedbackOutput])
 
 if (args is ["--export-updater", var output])
 {
-    File.WriteAllText(output, DesktopUpdates.ApplyScript, new UTF8Encoding(true));
+    File.WriteAllText(output, UpdateInstaller.ApplyScript, new UTF8Encoding(true));
     return;
 }
 
@@ -65,6 +72,7 @@ Assert(options.RestartArguments().Contains("http://127.0.0.1:8838"), "Update kee
 Assert(!options.RestartArguments(preserveEndpoint: false).Contains("--server"), "Settings restart uses saved server");
 Assert(LaunchOptions.Parse([]).RestartArguments() == "", "Production restart uses saved user settings");
 checks += await DownloadChecks.Run();
+checks += await TeacherUpdateChecks.Run();
 checks += await ClassroomVoiceChecks.Run();
 checks += await VoiceTranscriptionChecks.Run();
 checks += await FeedbackChecks.Run();

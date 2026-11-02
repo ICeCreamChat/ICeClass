@@ -265,6 +265,7 @@ internal sealed class BanbanVoiceWindow : Window
         BringForward();
     }
     internal bool CompanionVisible => _pet.IsVisible;
+    internal bool IsBusy => _voice.Busy;
     internal void SetInClass(bool value) => _pet.SetInClass(value);
     internal void ShowPet() => _pet.ShowPet(true);
     internal void BringForward() { _background = false; Opacity = 1; ShowInTaskbar = true; ShowActivated = true; Show(); WindowState = WindowState.Normal; Activate(); _browser.FocusPage(); }

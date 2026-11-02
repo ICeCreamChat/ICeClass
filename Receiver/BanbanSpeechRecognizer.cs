@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace ICeClass.Receiver;
 
@@ -58,20 +59,28 @@ internal sealed class BanbanSpeechDecoder : IDisposable
     {
         try
         {
-            foreach (var job in _jobs.GetConsumingEnumerable())
+            // The consuming iterator retains its last Current while waiting.
+            // TryTake clears the previous PCM reference before blocking again.
+            while (_jobs.TryTake(out var job, Timeout.Infinite))
             {
                 if (Volatile.Read(ref _stopped) != 0) break;
-                if (!_current(job.Generation)) continue;
-                var start = Environment.TickCount64;
-                var result = _recognize(job.Audio.Samples) with {
-                    Final = job.Audio.Final, DuringPlayback = job.ControlsOnly || job.Audio.DuringPlayback
-                };
-                if (Volatile.Read(ref _stopped) == 0 && _current(job.Generation))
-                    _complete(job, result, Environment.TickCount64 - start);
+                Decode(job);
             }
         }
         catch (Exception error) { if (Volatile.Read(ref _stopped) == 0) _failed(error); }
         finally { _release(); }
+    }
+    // Keep per-utterance native-call arguments off the idle worker's stack.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Decode(BanbanSpeechJob job)
+    {
+        if (!_current(job.Generation)) return;
+        var start = Environment.TickCount64;
+        var result = _recognize(job.Audio.Samples) with {
+            Final = job.Audio.Final, DuringPlayback = job.ControlsOnly || job.Audio.DuringPlayback
+        };
+        if (Volatile.Read(ref _stopped) == 0 && _current(job.Generation))
+            _complete(job, result, Environment.TickCount64 - start);
     }
     public void Dispose()
     {
