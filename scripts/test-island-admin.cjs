@@ -128,9 +128,74 @@ test('Weekly duty cells show teachers and follow the independently selected cycl
   assert.equal(await page.getByRole('tab', { name: '第 2 周', exact: true }).getAttribute('aria-selected'), 'true');
 });
 
+for (const [kind, label, slotId] of [['midday', '午间静校', 'mid'], ['evening', '晚自习', 'e1']]) {
+  test(`Saved inactive ${kind} duties remain visible and can be enabled without retyping`, async t => {
+    const data = profile();
+    if (kind === 'midday') data.config.slots.splice(1, 0, { id: slotId, label, start: 750, end: 815 });
+    Object.assign(data.config.dutyRotations[kind], { slotIds: [slotId], lessons: [
+      { slotId, weekday: 1, cycleWeek: 1, subject: '物理', teacher: '已填写教师', location: '' }
+    ] });
+    const page = await open(t, data);
+    page.setDefaultTimeout(5000);
+    assert.match(await page.locator('.island-week tbody').innerText(), /已填写教师/);
+    assert.match(await page.locator('.island-week tbody').innerText(), /未启用/);
+    assert.equal(await page.locator('#islandSave').isDisabled(), true, 'Viewing inactive duties does not change their state');
+    await page.getByRole('button', { name: `启用${label}`, exact: true }).press('Enter');
+    assert.equal(await page.locator('#islandSave').isEnabled(), true);
+    assert.match(await page.locator('.island-week tbody').innerText(), /已填写教师/);
+    await page.getByRole('tab', { name: '值班安排', exact: true }).click();
+    await page.getByRole('button', { name: new RegExp(`^${label} \\d+ 周$`) }).click();
+    assert.equal(await page.getByRole('switch', { name: '启用轮换', exact: true }).isChecked(), true);
+    let saved;
+    await page.route('**/api/island/classes/*', route => {
+      if (route.request().method() === 'PUT') {
+        saved = route.request().postDataJSON().config;
+        data.config = saved; data.revision++;
+      }
+      return route.fulfill({ json: data });
+    });
+    await page.locator('#islandSave').click();
+    await page.locator('#islandDirty').filter({ hasText: '版本 5' }).waitFor();
+    assert.equal(saved.dutyRotations[kind].enabled, true);
+    assert.equal(saved.dutyRotations[kind].lessons[0].teacher, '已填写教师');
+    await page.locator('#islandReload').click();
+    await page.getByRole('tab', { name: '周课表', exact: true }).click();
+    if (kind === 'evening') await page.getByLabel('晚自习轮换周次', { exact: true }).selectOption('1');
+    assert.match(await page.locator('.island-week tbody').innerText(), /已填写教师/);
+  });
+
+  test(`Applying a new ${kind} duty enables it and shows the edited week in the timetable`, async t => {
+    const data = profile();
+    if (kind === 'midday') data.config.slots.splice(1, 0, { id: slotId, label, start: 750, end: 815 });
+    data.config.dutyRotations[kind].slotIds = [slotId];
+    const page = await open(t, data);
+    page.setDefaultTimeout(5000);
+    await page.getByRole('tab', { name: '值班安排', exact: true }).click();
+    await page.getByRole('button', { name: new RegExp(`^${label} \\d+ 周$`) }).click();
+    await page.getByRole('button', { name: new RegExp(`^${label}第1周 周一，`) }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('学科（选填）', { exact: true }).fill('物理');
+    await dialog.getByLabel('值班教师', { exact: true }).fill('新增教师');
+    await dialog.getByRole('button', { name: '应用并启用', exact: true }).click();
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(await page.getByRole('switch', { name: '启用轮换', exact: true }).isChecked(), true);
+    await page.getByRole('tab', { name: '周课表', exact: true }).click();
+    assert.match(await page.locator('.island-week tbody').innerText(), /新增教师/);
+    if (kind === 'evening') assert.equal(await page.getByLabel('晚自习轮换周次', { exact: true }).inputValue(), '1');
+    await page.getByRole('tab', { name: '值班安排', exact: true }).click();
+    await page.getByRole('switch', { name: '启用轮换', exact: true }).press('Space');
+    assert.match(await page.locator('.island-duty-state').innerText(), /未启用/);
+    await page.getByRole('tab', { name: '周课表', exact: true }).click();
+    assert.match(await page.locator('.island-week tbody').innerText(), /新增教师/);
+    assert.match(await page.locator('.island-week tbody').innerText(), /未启用/);
+  });
+}
+
 for (const scope of ['all', 'odd', 'even']) test(`Fixed ${scope} course keeps rotation off and remains editable`, async t => {
   const data = profile();
   data.config.lessons.push({ slotId: 'e1', weekday: 1, week: scope, subject: '晚自习', teacher: '原任课教师', location: '' });
+  data.config.dutyRotations.evening.lessons.push({ slotId: 'e1', weekday: 1, cycleWeek: 1,
+    subject: '物理', teacher: '未启用草稿教师', location: '' });
   const page = await open(t, data);
   await page.getByRole('tab', { name: '值班安排', exact: true }).click();
   await page.getByRole('button', { name: '晚自习 3 周', exact: true }).click();
@@ -139,8 +204,44 @@ for (const scope of ['all', 'odd', 'even']) test(`Fixed ${scope} course keeps ro
   assert.equal(await page.locator('#islandSave').isDisabled(), true, 'Rejected enable must not change the saved-state indicator');
   await page.getByRole('button', { name: '查看固定课程', exact: true }).click();
   assert.match(await page.locator('.island-week tbody').innerText(), /原任课教师/);
+  assert.doesNotMatch(await page.locator('.island-week tbody').innerText(), /未启用草稿教师/);
+  assert.equal(await page.getByRole('button', { name: '启用晚自习', exact: true }).count(), 0);
   await page.getByRole('button', { name: /周一 晚自习第一节.*原任课教师/ }).click();
   assert.equal(await page.getByLabel('任课教师（选填）', { exact: true }).inputValue(), '原任课教师');
+});
+
+test('Copying inactive duty entries enables the copied week and keeps the source', async t => {
+  const data = profile();
+  data.config.dutyRotations.evening.lessons = [
+    { slotId: 'e1', weekday: 1, cycleWeek: 1, subject: '物理', teacher: '复制教师', location: '' }
+  ];
+  const page = await open(t, data);
+  await page.getByRole('tab', { name: '值班安排', exact: true }).click();
+  await page.getByRole('button', { name: '晚自习 3 周', exact: true }).click();
+  await page.getByRole('tab', { name: '第 2 周', exact: true }).click();
+  await page.getByRole('button', { name: '从其他周复制', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('从哪一周复制', { exact: true }).selectOption('1');
+  await page.getByRole('dialog').getByRole('button', { name: '复制并启用', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  assert.equal(await page.getByRole('switch', { name: '启用轮换', exact: true }).isChecked(), true);
+  await page.getByRole('tab', { name: '周课表', exact: true }).click();
+  assert.equal(await page.getByLabel('晚自习轮换周次', { exact: true }).inputValue(), '2');
+  assert.match(await page.locator('.island-week tbody').innerText(), /复制教师/);
+  await page.getByLabel('晚自习轮换周次', { exact: true }).selectOption('1');
+  assert.match(await page.locator('.island-week tbody').innerText(), /复制教师/);
+});
+
+test('Read-only teachers can see inactive duties without activating or editing them', async t => {
+  const data = profile(); data.canEdit = false;
+  data.config.dutyRotations.evening.lessons = [
+    { slotId: 'e1', weekday: 1, cycleWeek: 1, subject: '物理', teacher: '只读教师', location: '' }
+  ];
+  const page = await open(t, data);
+  assert.match(await page.locator('.island-week tbody').innerText(), /只读教师/);
+  assert.match(await page.locator('.island-week tbody').innerText(), /未启用/);
+  assert.equal(await page.getByRole('button', { name: '启用晚自习', exact: true }).count(), 0);
+  await page.getByRole('button', { name: /周一 晚自习第一节.*只读教师/ }).click();
+  assert.equal(await page.getByRole('switch', { name: '启用轮换', exact: true }).isDisabled(), true);
 });
 
 test('Rotation cannot turn on before its time is configured', async t => {

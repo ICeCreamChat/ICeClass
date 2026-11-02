@@ -396,6 +396,7 @@
     const state = el('div', undefined, 'island-duty-state');
     const activeWeek = schedule.cycleWeek(duty, today());
     if (duty.enabled) state.append(el('span', activeWeek === null ? '尚未开始' : `当前第 ${activeWeek} 周`, 'island-duty-status'));
+    else if (duty.lessons.length) state.append(el('span', '未启用 · 暂不生效', 'hint'));
     const rotationSwitch = switchToggle('启用轮换', duty, 'enabled', `duty.${dutyKind}.enabled`, null, () => render());
     rotationSwitch.querySelector('input').addEventListener('click', event => {
       if (duty.enabled) return;
@@ -508,7 +509,8 @@
     const note = el('p', `仅复制${dutyNames[dutyKind]}的学科、教师和地点；目标周已有内容将被替换。`, 'hint');
     form.append(note, field('从哪一周复制', source));
     const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
-    const actions = el('div', undefined, 'island-inline'), submit = el('button', `复制到第 ${dutyWeek} 周`, 'btn primary'); submit.type = 'submit';
+    const submitLabel = !duty.enabled && !dutyIssue(dutyKind) ? '复制并启用' : `复制到第 ${dutyWeek} 周`;
+    const actions = el('div', undefined, 'island-inline'), submit = el('button', submitLabel, 'btn primary'); submit.type = 'submit';
     actions.append(button('取消', () => dialog.close()), submit); form.append(actions);
     form.onsubmit = async event => {
       event.preventDefault();
@@ -516,6 +518,8 @@
       if (!rows.length) { error.textContent = '来源周还没有安排，请选择已填写的循环周。'; return; }
       if (duty.lessons.some(l => l.cycleWeek === dutyWeek) && !await confirmDutyChange('替换本周安排', `替换第 ${dutyWeek} 周现有的值班安排？来源周会保留。`, '确认替换')) return;
       duty.lessons = duty.lessons.filter(l => l.cycleWeek !== dutyWeek).concat(rows.map(l => ({ ...l, cycleWeek: dutyWeek })));
+      if (!dutyIssue(dutyKind)) duty.enabled = true;
+      timetableDutyWeeks[dutyKind] = dutyWeek;
       mark(); render(); dialog.close();
     };
     dialog.showModal(); source.focus();
@@ -568,7 +572,8 @@
     function remove() { duty.lessons = duty.lessons.filter(l => l.cycleWeek !== editingWeek || l.weekday !== weekday || !slots.some(s => s.id === l.slotId)); }
     const actions = el('div', undefined, 'island-inline');
     const clear = button('清空本日', () => { remove(); mark(); render(); dialog.close(); }, 'btn danger'); clear.disabled = !lessons.some(Boolean);
-    const submit = el('button', '应用修改', 'btn primary'); submit.type = 'submit';
+    const submitLabel = duty.enabled ? '应用修改' : dutyIssue(kind) ? '保存为草稿' : '应用并启用';
+    const submit = el('button', submitLabel, 'btn primary'); submit.type = 'submit';
     actions.append(clear, button('取消', () => dialog.close()), submit); form.append(actions);
     form.onsubmit = async event => {
       event.preventDefault();
@@ -581,6 +586,8 @@
       if (!arranged.length) { error.textContent = '请至少填写学科或教师；移除安排请点“清空本日”。'; fields.querySelector('input')?.focus(); return; }
       if (wasSplit && !split && !await confirmDutyChange('统一两节晚自习', '本日两节原有安排不同，是否都替换为当前填写的安排？', '确认统一')) return;
       remove(); duty.lessons.push(...arranged);
+      if (!dutyIssue(kind)) duty.enabled = true;
+      timetableDutyWeeks[kind] = editingWeek;
       mark(); render(); dialog.close();
     };
     dialog.showModal(); fields.querySelector('input')?.focus();
@@ -651,14 +658,17 @@
     const rotationFilters = el('div', undefined, 'island-inline island-duty-filters');
     rotationFilters.setAttribute('role', 'group'); rotationFilters.setAttribute('aria-label', '周课表值班周次');
     for (const [kind, duty] of Object.entries(config.dutyRotations)) {
-      if (!duty.enabled || dutyIssue(kind)) continue;
+      if ((!duty.enabled && !duty.lessons.length) || dutyIssue(kind)) continue;
       const current = schedule.cycleWeek(duty, today());
-      let selected = timetableDutyWeeks[kind] || current || 1;
+      let selected = timetableDutyWeeks[kind] || (duty.enabled ? current : 1) || 1;
       if (selected > duty.cycleWeeks) selected = current || 1;
       rotations.set(kind, { duty, selected, current });
       if (duty.cycleWeeks > 1) rotationFilters.append(field(`${dutyNames[kind]}轮换周次`,
         select(String(selected), Array.from({ length: duty.cycleWeeks }, (_, i) => [String(i + 1), `第 ${i + 1} 周${i + 1 === current ? '（本周）' : ''}`]),
           value => { timetableDutyWeeks[kind] = Number(value); render(); }, `timetable.duty.${kind}.week`, false)));
+      if (!duty.enabled && canEdit()) rotationFilters.append(button(`启用${dutyNames[kind]}`, () => {
+        duty.enabled = true; timetableDutyWeeks[kind] = selected; mark(); render();
+      }, 'btn', `timetable.duty.${kind}.enable`));
     }
     if (rotationFilters.childElementCount) root.append(rotationFilters);
     root.append(el('p', '窄屏可在表格中左右滚动，查看周一至周日。', 'hint island-scroll-hint'));
@@ -670,7 +680,7 @@
       const dutyOwner = [...rotations].find(([, view]) => view.duty.slotIds.includes(slot.id));
       if (dutyOwner) {
         const [, view] = dutyOwner;
-        label.append(el('small', `轮换第 ${view.selected} 周${view.current === null ? ' · 尚未开始' : ''}`, 'island-duty-caption'));
+        label.append(el('small', `轮换第 ${view.selected} 周${!view.duty.enabled ? ' · 未启用' : view.current === null ? ' · 尚未开始' : ''}`, 'island-duty-caption'));
       }
       weekdays.forEach((dayName, index) => {
         if (dutyOwner) {
@@ -680,7 +690,7 @@
             dutyKind = kind; dutyWeek = view.selected; tab = 'duties'; render(`duty.cell.${kind}.${index + 1}`);
           }, 'island-cell island-duty-owned', `lesson.${slot.id}.${index + 1}`, false);
           const description = lesson ? [lesson.subject, lesson.teacher, lesson.location].filter(Boolean).join('，') : '未安排';
-          const name = `${dayName} ${slot.label}，${dutyNames[kind]}轮换第 ${view.selected} 周，${description}`;
+          const name = `${dayName} ${slot.label}，${dutyNames[kind]}轮换第 ${view.selected} 周${view.duty.enabled ? '' : '（未启用）'}，${description}`;
           cell.setAttribute('aria-label', name); cell.title = name + (canEdit() ? '；点击编辑值班安排' : '；点击查看值班安排');
           cell.classList.toggle('is-empty', !lesson);
           cell.append(el('strong', lesson?.subject || '未安排'));
