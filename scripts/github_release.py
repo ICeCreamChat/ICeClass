@@ -155,10 +155,16 @@ def publish(directory, tag, repo):
     title = f"ICeClass 班伴 {metadata['version']}"
     notes = str(directory / "release-notes.md")
     if not existing:
-        gh("release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", title, "--notes-file", notes)
-        existing = [release for release in list_releases(repo) if release["tag_name"] == tag]
-        if len(existing) != 1 or not existing[0]["draft"]:
-            raise ValueError("Could not find the draft that was just created.")
+        # Use the creation response: the releases list can briefly omit a new draft.
+        created = gh_json(
+            "api", "--method", "POST", f"repos/{repo}/releases",
+            "-f", f"tag_name={tag}", "-f", f"name={title}",
+            "-F", "draft=true", "-F", f"body=@{notes}"
+        )
+        if (created.get("tag_name") != tag or not created.get("draft")
+                or not created.get("id") or MARKER not in (created.get("body") or "")):
+            raise ValueError("GitHub did not return the requested draft.")
+        existing = [created]
     else:
         gh("release", "edit", tag, "--repo", repo, "--draft", "--title", title, "--notes-file", notes)
     # The tag endpoint excludes drafts, including with a workflow's GITHUB_TOKEN.
