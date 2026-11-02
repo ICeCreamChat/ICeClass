@@ -59,6 +59,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Normalize Windows temporary paths
+        run: |
+          $releaseTemp = (python -c "from pathlib import Path; import tempfile; print(Path(tempfile.gettempdir()).resolve())").Trim()
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $releaseTemp -PathType Container)) {
+            throw 'Cannot resolve the Windows temporary directory.'
+          }
+          "TEMP=$releaseTemp" >> $env:GITHUB_ENV
+          "TMP=$releaseTemp" >> $env:GITHUB_ENV
+
       - name: Check release automation
         run: |
           python -m unittest discover -s tooling/tests -p test_github_release.py -v
