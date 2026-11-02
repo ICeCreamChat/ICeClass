@@ -10,7 +10,7 @@
   let conversationReady = Promise.resolve(), lastIncomplete = null, changingConversation = false;
   let conversationId = null, threads = [], threadCursor = null, threadLoading = false, threadRevision = 0;
   let olderCursor = null, olderLoading = false, historyPolicy = null, historyPolicyBusy = false, conversationLoaded = false;
-  let accountGeneration = 0;
+  let accountGeneration = 0, navigationRevision = 0;
   let voice = null;
   let deletingThread = null, deleteBusy = false;
   const drafts = new Map();
@@ -589,8 +589,12 @@
   }
   async function streamQuestion(text, signal, receive, inputMode = 'text') {
     const page = document.querySelector('#mainNav button.active')?.dataset.view || 'reading';
+    const navigation = navigationRevision;
+    const teacherClient = await window.ICeClassBanbanOperations?.clientCatalog();
+    signal.throwIfAborted();
+    if (disposed || navigation !== navigationRevision) throw new Error('页面已切换，请在当前页面重新提问。');
     const response = await fetch('/api/banban/chat/stream', {method: 'POST', credentials: 'same-origin', cache: 'no-store',
-      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.ICeClass.state.csrf}, body: JSON.stringify({message: text, scope: {...scope}, page, conversationId, ...(inputMode === 'voice' ? {voice: voice?.context() || {mode:'voice'}} : {})}), signal});
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.ICeClass.state.csrf}, body: JSON.stringify({message: text, scope: {...scope}, page, conversationId, ...(teacherClient ? {teacherClient} : {}), ...(inputMode === 'voice' ? {voice: voice?.context() || {mode:'voice'}} : {})}), signal});
     if (!response.ok) {
       if (response.status === 401) location.reload();
       const error = await response.json().catch(() => ({})); throw new Error(error.error || `请求失败 (${response.status})`);
@@ -672,7 +676,7 @@
     await conversationReady;
     text = text.trim(); if (!valid() || disposed || !conversationLoaded || changingConversation || !text || text.length > 2000 || pending) return;
     options(false); showHistory(false, false);
-    const rev = ++revision; lastQuestion = text;
+    const rev = ++revision, navigation = navigationRevision; lastQuestion = text;
     $('bbWelcome').hidden = true;
     setScopeEditor(false, false);
     const waiting = $('bbPresence'); $('bbConversation').append(waiting);
@@ -739,6 +743,7 @@
         } else if (event.type === 'operation') {
           waiting.hidden = true;
           window.ICeClassBanbanOperations?.render(ensureReply().querySelector('.bb-message-body'), event.operation);
+          void window.ICeClassBanbanOperations?.live(event.operation, () => !disposed && revision === rev && navigationRevision === navigation && !controller.signal.aborted);
         } else if (event.type === 'done') {
           conversationId = event.conversationId || conversationId; drafts.delete(conversationId || 'new');
           completed = true; waiting.hidden = true; answer = event.message.content; replyMode = event.message.mode; cards = event.message.cards || [];
@@ -1068,6 +1073,11 @@
       </section>`;
     document.body.append(root); $('bbLauncher').prepend(mascot()); $('bbSayHello').append(mascot()); $('bbHeaderMascot').append(mascot());
     window.ICeClassBanbanOperations?.mount(root);
+    const pageNavigation = event => {
+      if (!event.target.closest('button[data-view]')) return;
+      if (window.ICeClassBanbanOperations?.invalidate() !== false) navigationRevision++;
+    };
+    $('mainNav').addEventListener('click', pageNavigation);
     character = window.ICeClassBanbanMotion(root);
     voice = window.ICeClassBanbanVoice?.mount({root, open, ask: (text, valid) => ask(text, false, 'voice', valid),
       interrupt: async () => {
@@ -1221,7 +1231,7 @@
       finally { if (generation === accountGeneration) { settingsBusy = false; if (!disposed) settingsControls(); } }
     };
     root.onkeydown = e => { if (e.key === 'Escape' && !$('bbPanel').hidden) { e.stopPropagation(); if (!$('bbHistory').hidden) { if (!$('bbHistoryDeleteEditor').hidden) { if (!deleteBusy) closeHistoryDelete(true); } else if (!$('bbHistoryPolicyEditor').hidden) showHistoryPolicy(false); else showHistory(false); } else if (!$('bbOptions').hidden) { options(false); $('bbMore').focus(); } else if (!$('bbScopeEditor').hidden) setScopeEditor(false); else close(); } };
-    function dispose() { if (disposed) return; voice?.dispose(); voice = null; window.ICeClassBanbanOperations?.dispose(); disposed = true; initialized = false; accountGeneration++; revision++; contextRevision++; threadRevision++; pending?.abort(); clearTimeout(reminder); hideReminder(); motionPreference.removeEventListener('change', motion); window.removeEventListener('pagehide', dispose); window.removeEventListener('resize', syncHistoryInert); document.removeEventListener('pointerdown', activity); document.removeEventListener('keydown', activity); document.removeEventListener('pointerdown', dismissOptions); character.dispose(); history = []; drafts.clear(); analysisClasses = null; schoolAnalysis = false; }
+    function dispose() { if (disposed) return; voice?.dispose(); voice = null; window.ICeClassBanbanOperations?.dispose(); disposed = true; initialized = false; accountGeneration++; revision++; contextRevision++; threadRevision++; pending?.abort(); clearTimeout(reminder); hideReminder(); motionPreference.removeEventListener('change', motion); window.removeEventListener('pagehide', dispose); window.removeEventListener('resize', syncHistoryInert); $('mainNav').removeEventListener('click', pageNavigation); document.removeEventListener('pointerdown', activity); document.removeEventListener('keydown', activity); document.removeEventListener('pointerdown', dismissOptions); character.dispose(); history = []; drafts.clear(); analysisClasses = null; schoolAnalysis = false; }
     $('logoutButton').addEventListener('click', () => { dispose(); root.remove(); }, {once:true});
     window.addEventListener('pagehide', dispose, {once: true});
     composeState(); dragLauncher(); dragPanel(); fromPage(); conversationReady = restoreConversation();

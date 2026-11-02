@@ -8,7 +8,11 @@ internal static class ReadingLocalAssets
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static string? _ready;
 
-    public static async Task<string> EnsureAsync(CancellationToken token)
+    // File/directory creation and cache publication are synchronous disk work.
+    // Run the whole preparation away from the caller's UI synchronization context.
+    public static Task<string> EnsureAsync(CancellationToken token) => Task.Run(() => PrepareAsync(token), token);
+
+    private static async Task<string> PrepareAsync(CancellationToken token)
     {
         await Gate.WaitAsync(token);
         try

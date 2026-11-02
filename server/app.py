@@ -38,6 +38,7 @@ from update_payloads import install_update_payloads, install_desktop_update_acti
 from island import install_island
 from feedback import install_feedback
 from ideas import install_ideas
+from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -504,7 +505,7 @@ def classroom_identity(request: web.Request) -> tuple[dict[str, Any] | None, str
     if not device or device['class_id'] != request.headers.get("X-ICeClass-Class", ""):
         return None, "教室绑定已失效，请在教室设置中重新绑定班级。"
     teachers = store(request).all(
-        """SELECT u.id,u.username,u.display_name,u.role,u.updated_at,c.name AS class_name
+        """SELECT u.id,u.role,u.updated_at,c.name AS class_name
            FROM teacher_classes tc JOIN users u ON u.id=tc.user_id JOIN classes c ON c.id=tc.class_id
            WHERE tc.class_id=? AND u.role='teacher' AND u.enabled=1 AND u.deleted_at IS NULL LIMIT 2""",
         (device['class_id'],),
@@ -519,7 +520,7 @@ def classroom_identity(request: web.Request) -> tuple[dict[str, Any] | None, str
     context = f"classroom-banban:{device['id']}:{device['class_id']}:{teacher['id']}:{teacher['updated_at']}"
     proof = hmac.new(request.headers['Authorization'][7:].encode(), context.encode(), hashlib.sha256).hexdigest()
     return {
-        'id': teacher['id'], 'username': teacher['username'], 'displayName': teacher['display_name'],
+        'id': teacher['id'], 'username': '', 'displayName': teacher['class_name'],
         'role': 'teacher', 'csrfToken': proof, 'grade': None, 'permissions': capabilities(teacher),
         'classroom': {'deviceId': device['id'], 'classId': device['class_id'], 'className': teacher['class_name']},
     }, ""
@@ -626,6 +627,7 @@ def quiet_schedule_payload(db: Store) -> dict[str, Any]:
     }
 
 
+@teacher_read('quiet', '查看禁言时间')
 async def get_quiet_hours(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -633,6 +635,8 @@ async def get_quiet_hours(request: web.Request) -> web.Response:
     return json_response(quiet_schedule_payload(store(request)))
 
 
+@teacher_action('quiet.update', '修改禁言时间', fields='periods', roles=tuple(sorted(SCHOOL_ROLES)),
+                impact='将替换学校禁言时间表。')
 async def update_quiet_hours(request: web.Request) -> web.Response:
     user = require_admin(request)
     if isinstance(user, web.Response):
@@ -884,6 +888,7 @@ async def change_password(request: web.Request) -> web.Response:
     return response
 
 
+@teacher_read('classes', '查看班级')
 async def list_classes(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -902,6 +907,7 @@ async def list_classes(request: web.Request) -> web.Response:
     return json_response({"classes": rows})
 
 
+@teacher_action('class.create', '创建班级', fields='name', roles=tuple(sorted(MANAGER_ROLES)))
 async def create_class(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -924,6 +930,7 @@ async def create_class(request: web.Request) -> web.Response:
     return json_response({"id": class_id, "name": name}, 201)
 
 
+@teacher_action('class.batch-create', '批量创建班级', fields='grade start end', roles=tuple(sorted(MANAGER_ROLES)))
 async def batch_create_classes(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -954,6 +961,8 @@ async def batch_create_classes(request: web.Request) -> web.Response:
     return json_response({"created": created, "skipped": end - start + 1 - len(created)})
 
 
+@teacher_action('class.update', '修改班级', fields='name enabled', target='class',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='停用会断开该班设备；更名会同步到教室。')
 async def update_class(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -984,6 +993,7 @@ async def update_class(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_read('class.status', '查看班级在线状态', target='class')
 async def class_status(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -994,6 +1004,9 @@ async def class_status(request: web.Request) -> web.Response:
     return json_response({"online": rooms(request).online(class_id)})
 
 
+@teacher_action('enrollment.class.create', '生成班级绑定码', target='class',
+                roles=tuple(sorted(MANAGER_ROLES)), workflow='private-result',
+                impact='将生成有效期为 15 分钟的班级绑定码；绑定码仅在本人界面显示。')
 async def enrollment_code(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1077,6 +1090,7 @@ async def enroll_device(request: web.Request) -> web.Response:
     return json_response({"deviceId": device_id, "deviceToken": token, "classId": row["class_id"], "className": row["class_name"]})
 
 
+@teacher_read('users', '查看账号与授权', roles=tuple(sorted(MANAGER_ROLES)))
 async def list_teachers(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1148,6 +1162,9 @@ def save_staff_assignment(db, teacher_id, heads, teaching, grade):
         db.run('INSERT INTO user_grades(user_id,grade) VALUES(?,?)', (teacher_id, grade))
 
 
+@teacher_action('user.create', '创建账号',
+                fields='username displayName role classIds headClassIds teachingClassIds grade',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='请在确认时填写初始密码；密码不会交给班班。')
 async def create_teacher(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1185,6 +1202,9 @@ async def create_teacher(request: web.Request) -> web.Response:
     return json_response({"id": teacher_id, "username": username, "displayName": display_name, "role": role}, 201)
 
 
+@teacher_action('user.update', '修改账号与授权',
+                fields='displayName role enabled classIds headClassIds teachingClassIds grade', target='user',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='停用或调整权限后，该账号需要重新登录。')
 async def update_teacher(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1219,6 +1239,8 @@ async def update_teacher(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_action('user.password', '重置账号密码', target='user', roles=tuple(sorted(MANAGER_ROLES)),
+                impact='请在确认时填写新密码；原有登录会失效，密码不会交给班班。')
 async def reset_teacher_password(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1244,10 +1266,13 @@ async def reset_teacher_password(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_action('user.classes', '修改账号班级授权', fields='classIds headClassIds teachingClassIds grade',
+                target='user', roles=tuple(sorted(MANAGER_ROLES)), impact='调整授权后，该账号需要重新登录。')
 async def set_teacher_classes(request: web.Request) -> web.Response:
     return await update_teacher(request)
 
 
+@teacher_read('device.bindings', '查看设备绑定', roles=tuple(sorted(MANAGER_ROLES)))
 async def list_devices(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1265,6 +1290,8 @@ async def list_devices(request: web.Request) -> web.Response:
     return json_response({"devices": rows})
 
 
+@teacher_action('device.update', '修改设备绑定', fields='name classId enabled note verified', target='device',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='改绑或停用会影响这台教室电脑的连接。')
 async def update_device(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1312,6 +1339,8 @@ async def update_device(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_action('notice.send', '发送班级通知', fields='text alertLevel ttsVolume ttsSpeed displayDurationSec',
+                target='class', confirm=False)
 async def send_shout(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1401,6 +1430,7 @@ async def send_shout(request: web.Request) -> web.Response:
     return json_response({"id": message_id, "status": "sent"}, 202)
 
 
+@teacher_manual('通知原声需要教室设备凭证并返回原始音频流，由已绑定的教室播放器播放。')
 async def shout_audio(request: web.Request) -> web.StreamResponse:
     device = authenticate_device(request)
     if not device:
@@ -1419,6 +1449,7 @@ async def shout_audio(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(target, headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
 
 
+@teacher_manual('教室来音需要设备凭证和现场录制的 WAV 音频，由教室端录音界面上传。')
 async def upload_classroom_voice(request: web.Request) -> web.Response:
     device = authenticate_device(request)
     if not device:
@@ -1467,6 +1498,7 @@ async def upload_classroom_voice(request: web.Request) -> web.Response:
     return json_response({"id": message_id, "status": "sent", "durationMs": duration_ms}, 202)
 
 
+@teacher_read('voice', '查看教室来音记录', fields='classId', head_only=True)
 async def list_classroom_voice(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1497,6 +1529,7 @@ async def list_classroom_voice(request: web.Request) -> web.Response:
     return json_response({"messages": rows})
 
 
+@teacher_manual('播放来音会返回原始音频并登记已听状态，需要有本班管理权限的本人在来音界面收听。')
 async def classroom_voice_audio(request: web.Request) -> web.StreamResponse:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1519,6 +1552,8 @@ async def classroom_voice_audio(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(target, headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
 
 
+@teacher_action('voice.delete', '删除来音', target='voice', head_only=True,
+                impact='将删除指定来音和音频文件。')
 async def delete_classroom_voice(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1561,6 +1596,7 @@ def history_query(request: web.Request, export: bool = False) -> tuple[dict[str,
     return user, f"{join} {where}", tuple(params)
 
 
+@teacher_read('history', '查看通知记录', fields='classId limit offset')
 async def list_history(request: web.Request) -> web.Response:
     query = history_query(request)
     if isinstance(query, web.Response):
@@ -1579,6 +1615,7 @@ async def list_history(request: web.Request) -> web.Response:
     return json_response({"history": rows[:limit], "hasMore": len(rows) > limit, "offset": offset})
 
 
+@teacher_action('history.export', '导出通知记录', fields='classId', confirm=False, workflow='download')
 async def export_history(request: web.Request) -> web.Response:
     query = history_query(request, export=True)
     if isinstance(query, web.Response):
@@ -1610,6 +1647,7 @@ async def export_history(request: web.Request) -> web.Response:
     )
 
 
+@teacher_action('history.delete', '删除通知记录', target='history', impact='将删除指定通知记录。')
 async def delete_history(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):

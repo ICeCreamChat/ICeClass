@@ -7,6 +7,10 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 .island-toolbar { margin-bottom: 20px; align-items: flex-end; gap: 12px 16px; }
 .island-class-field { display: grid; gap: 6px; width: 260px; max-width: 100%; font-size: 14px; font-weight: 600; color: var(--muted); }
 .island-class-field select { font-weight: 400; color: var(--text); }
+.island-class-tools { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; max-width: 100%; }
+#islandBulk[hidden] { display: none; }
+#islandBulk { color: var(--blue-text); background: var(--blue-soft); border-color: transparent; min-height: 44px; }
+#islandBulk:hover { border-color: var(--blue); }
 .island-files { display: flex; gap: 8px; margin-left: auto; }
 .island-layout { display: grid; gap: 20px; min-width: 0; }
 .island-main, .island-day-panel, .island-delivery-panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
@@ -160,6 +164,57 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 .island-copy-list { max-height: 280px; overflow: auto; padding: 0 5px; margin-top: 12px; border-block: 1px solid var(--line); }
 .island-copy-list .island-toggle { padding: 6px 0; }
 .island-copy-list [hidden] { display: none; }
+.island-bulk-dialog { width: min(640px, calc(100vw - 32px)); max-height: min(88dvh, 880px); padding: 24px; overflow: hidden; }
+.island-bulk-dialog[open] { display: flex; }
+.island-bulk-dialog form { display: flex; flex-direction: column; min-width: 0; width: 100%; max-height: calc(min(88dvh, 880px) - 50px); }
+.island-bulk-dialog h2 { margin: 0 0 16px; flex: none; }
+.island-bulk-dialog [hidden] { display: none; }
+.island-bulk-dialog :is(fieldset, legend) { padding: 0; border: 0; margin: 0; min-width: 0; }
+.island-bulk-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) var(--surface); padding: 3px 4px 8px; margin: 0 -4px; overflow-wrap: anywhere; }
+.island-bulk-count { margin: 0 0 16px; color: var(--blue-text); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.island-bulk-section + .island-bulk-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.island-bulk-section legend { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.island-bulk-scopes { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.island-bulk-scopes .island-toggle { font-weight: 400; }
+.island-bulk-dialog input[type=radio] { width: 18px; height: 18px; min-height: 18px; }
+.island-bulk-dialog :is(input, select) { caret-color: var(--blue-text); }
+.island-bulk-dialog :is(input, select, button):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.island-bulk-dialog :is(input:not([type=checkbox]):not([type=radio]), select, .btn) { min-height: 44px; }
+.island-bulk-dialog .island-field { margin: 12px 0 0; }
+.island-bulk-class-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 180px; overflow-y: auto; padding: 4px; margin: 12px -4px 0; gap: 0 16px; }
+.island-bulk-setting { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); align-items: center; gap: 4px 20px; padding: 8px 0; }
+.island-bulk-setting .island-toggle { font-weight: 600; }
+.island-bulk-setting .island-field { margin: 0; }
+.island-bulk-setting .island-field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.island-bulk-setting small { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.island-bulk-preserved { margin-top: 12px; }
+.island-bulk-review { margin: 0 0 16px; font-size: 14px; line-height: 1.8; }
+.island-bulk-summary { margin: 0 0 12px; color: var(--blue-text); font-size: 14px; font-weight: 600; }
+.island-bulk-summary:empty { display: none; }
+.island-bulk-results { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+.island-bulk-results li { padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.island-bulk-results li > div { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.island-bulk-results strong { font-weight: 600; min-width: 0; }
+.island-bulk-results li > div > span { color: var(--muted); flex: none; }
+.island-bulk-results [data-state=changed] > div > span { color: var(--blue-text); }
+.island-bulk-results [data-state=error] > div > span, .island-bulk-results li > p { color: var(--red); }
+.island-bulk-results small { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+.island-bulk-results li > p { margin: 4px 0 0; }
+.island-bulk-error { flex: none; overflow-wrap: anywhere; margin: 12px 0 0; max-height: 20dvh; overflow-y: auto; }
+.island-bulk-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; flex: none; gap: 8px; padding-top: 16px; margin-top: 8px; border-top: 1px solid var(--line); }
+.island-bulk-actions > :first-child { margin-right: auto; }
+@media (max-width: 600px) {
+  .island-class-tools { width: 100%; }
+  .island-dialog.island-bulk-dialog { padding: 20px; }
+  .island-bulk-dialog form { max-height: calc(min(88dvh, 880px) - 42px); }
+  .island-bulk-scopes { gap: 4px 18px; }
+  .island-bulk-setting { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 6px 0; }
+  .island-bulk-setting > :is(small, .island-field) { margin-left: 28px; }
+  .island-bulk-class-list { grid-template-columns: minmax(0, 1fr); }
+  .island-bulk-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .island-bulk-actions > :first-child { margin-right: 0; }
+  .island-bulk-actions > .primary { grid-column: 1 / -1; }
+}
 .island-duty-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 20px; }
 .island-duty-choices { display: flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px; border-radius: 10px; background: var(--bg); }
 .island-duty-choice { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 9px 18px; border: 1px solid transparent; border-radius: 7px; color: var(--muted); background: transparent; font: inherit; cursor: pointer; }

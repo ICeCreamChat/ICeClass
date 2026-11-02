@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from datetime import date
 from urllib.parse import quote, urlsplit
 
@@ -10,6 +11,7 @@ from aiohttp import web
 
 from reading import class_grade
 from permissions import SCHOOL_ROLES
+from teacher_capabilities import teacher_action, teacher_read
 
 DUTY_KINDS = {'midday': '午间静校', 'evening': '晚自习'}
 SCHOOL_VISIBILITY = {'hideDaytimeLessons': True, 'hideFirstEvening': True}
@@ -120,14 +122,19 @@ def normalize_visibility(raw, slots):
             or len(set(selected)) != len(selected)):
         raise ValueError('隐藏时段不存在或重复，请从本班作息中选择。')
     # Inherited IDs are resolved for delivery, never persisted as class overrides.
-    return {'followSchool': follow, 'hiddenSlotIds': [] if follow else [s['id'] for s in slots if s['id'] in selected]}
+    result = {'followSchool': follow, 'hiddenSlotIds': [] if follow else [s['id'] for s in slots if s['id'] in selected]}
+    if boolean(raw.get('lessonsOnly', False), '按课程隐藏') and not follow:
+        result['lessonsOnly'] = True
+    return result
 
 
 def class_visibility(config):
+    # Preserve the old course-based rule when materializing its slot selection.
     legacy = config.get('appearance', {}).get('hideDuringLessons', False)
     return normalize_visibility(config.get('visibility', {
         'followSchool': not legacy,
-        'hiddenSlotIds': [s['id'] for s in config['slots']] if legacy else []}), config['slots'])
+        'hiddenSlotIds': [s['id'] for s in config['slots']] if legacy else [],
+        'lessonsOnly': legacy}), config['slots'])
 
 
 def school_hidden_slots(config, policy):
@@ -302,6 +309,63 @@ def lessons_on(config, on):
     return result
 
 
+def bulk_changes(value):
+    """Validate only the categories that can be shared without copying class work."""
+    if not isinstance(value, dict) or not value or value.keys() - {'enabled', 'slots', 'reminders', 'appearance'}:
+        raise ValueError('请选择浮岛开关、作息、提醒或外观。')
+    sample = defaults()
+    for key, raw in value.items():
+        if key in ('reminders', 'appearance') and (
+                not isinstance(raw, dict) or not raw or raw.keys() - sample[key].keys()):
+            raise ValueError('提醒或外观设置格式不正确。')
+        sample[key] = raw
+    normalized = normalize(sample)
+    if 'slots' in value and not normalized['slots']:
+        raise ValueError('批量作息至少需要一个时段。')
+    changes = {}
+    for key, raw in value.items():
+        if key in ('reminders', 'appearance'):
+            # The legacy appearance flag is not a replacement for class quiet rules.
+            changes[key] = {k: normalized[key][k] for k in raw if k != 'hideDuringLessons'}
+        else:
+            changes[key] = normalized[key]
+    if not any(v != {} for v in changes.values()):
+        raise ValueError('请选择需要下发的设置。')
+    return changes
+
+
+def merge_bulk_settings(current, changes):
+    """Keep local slot identities and every course/duty reference intact."""
+    merged = deepcopy(current)
+    for key in ('enabled', 'reminders', 'appearance'):
+        if key not in changes:
+            continue
+        if key == 'enabled':
+            merged[key] = changes[key]
+        else:
+            merged[key].update(changes[key])
+    if 'slots' in changes:
+        by_id = {s['id']: s for s in merged['slots']}
+        label = lambda s: re.sub(r'\s+', '', s['label']).replace('（', '(').replace('）', ')')
+        used = set()
+        for source in changes['slots']:
+            target = by_id.get(source['id'])
+            if target is None:
+                matches = [s for s in current['slots'] if label(s) == label(source)]
+                if len(matches) > 1:
+                    raise ValueError(f'“{source["label"]}”有多个同名时段，请先核对本班作息。')
+                target = by_id[matches[0]['id']] if matches else None
+            if target is not None:
+                if target['id'] in used:
+                    raise ValueError(f'多个作息对应了“{target["label"]}”，请先核对时段名称。')
+                used.add(target['id'])
+                target.update(start=source['start'], end=source['end'])
+            else:
+                merged['slots'].append(deepcopy(source))
+                used.add(source['id'])
+    return normalize(merged)
+
+
 class IslandFeature:
     def __init__(self, service, app):
         self.s = service
@@ -328,10 +392,13 @@ class IslandFeature:
                 'updatedAt': row['updated_at'] if row else None,
                 'config': config, 'schoolVisibility': policy}
 
+    @teacher_read('island.visibility', '查看全校浮岛隐藏规则')
     async def get_visibility(self, request):
         user = self.s.require_user(request)
         return user if isinstance(user, web.Response) else self.s.json_response(self.school_visibility())
 
+    @teacher_action('island.visibility.update', '修改全校浮岛隐藏规则', fields='config revision',
+                    roles=tuple(sorted(SCHOOL_ROLES)), impact='将更新全校规则，并同步到跟随全校规则的班级浮岛。')
     async def save_visibility(self, request):
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
@@ -382,6 +449,7 @@ class IslandFeature:
             WHERE d.class_id=? AND d.enabled=1 ORDER BY d.name''', (cid,))
         return [{**r, 'current': r['revision'] == revision} for r in rows]
 
+    @teacher_read('island', '查看课表与教室浮岛', target='class')
     async def get(self, request):
         user = self.authorize(request)
         if isinstance(user, web.Response):
@@ -390,6 +458,8 @@ class IslandFeature:
         return self.s.json_response({**p, 'devices': self.delivery(p['classId'], p['revision']), 'serverTime': self.s.now_ms(),
             'canEdit': self.s.can_access_class(self.db, user, p['classId'], include_teaching=False)})
 
+    @teacher_action('island.update', '修改课表与教室浮岛', fields='config revision', target='class', head_only=True,
+                    impact='将同步课表、提醒、组件及自动化配置到该班教室。')
     async def save(self, request):
         user = self.authorize(request, editing=True)
         if isinstance(user, web.Response):
@@ -419,6 +489,76 @@ class IslandFeature:
             self.s.audit(self.db, user['id'], 'island.save', 'class', cid, json.dumps({'revision': expected+1}))
         return self.s.json_response({**self.profile(cid), 'devices': self.delivery(cid, expected+1), 'canEdit': True})
 
+    @teacher_action('island.bulk.preview', '预览批量浮岛设置', fields='classIds changes',
+                    confirm=False, roles=tuple(sorted(SCHOOL_ROLES)))
+    async def bulk_preview(self, request):
+        return await self.bulk(request, apply=False)
+
+    @teacher_action('island.bulk.update', '批量下发浮岛设置', fields='classIds changes revisions',
+                    roles=tuple(sorted(SCHOOL_ROLES)),
+                    impact='只更新所选班级的浮岛开关、作息、提醒或外观，保留课表和值班；班主任仍可调整本班。')
+    async def bulk_save(self, request):
+        return await self.bulk(request, apply=True)
+
+    async def bulk(self, request, *, apply):
+        user = self.s.require_user(request)
+        if isinstance(user, web.Response):
+            return user
+        if user['role'] not in SCHOOL_ROLES or user.get('classroom'):
+            return self.s.json_response({'error': '只有全校管理员可以批量设置教室浮岛。'}, 403)
+        body = await self.s.read_json(request)
+        try:
+            if not isinstance(body, dict):
+                raise ValueError('批量设置格式不正确。')
+            ids = body.get('classIds')
+            if (not isinstance(ids, list) or not 1 <= len(ids) <= 500
+                    or any(not isinstance(cid, str) or not cid or len(cid) > 80 for cid in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError('请选择 1—500 个不重复的班级。')
+            changes = bulk_changes(body.get('changes'))
+            expected = body.get('revisions')
+            if apply:
+                if not isinstance(expected, dict) or set(expected) != set(ids):
+                    raise ValueError('请先预览全部所选班级的版本。')
+                for revision in expected.values():
+                    integer(revision, '配置版本', 0, 2**31-1)
+        except ValueError as error:
+            return self.s.json_response({'error': str(error)}, 400)
+        with self.db.transaction():
+            classes = {c['id']: c for c in self.db.all('SELECT id,name FROM classes WHERE enabled=1')}
+            if any(cid not in classes for cid in ids):
+                return self.s.json_response({'error': '所选班级已停用或不存在，请重新选择。'}, 400)
+            results, pending = [], []
+            for cid in ids:
+                current = self.profile(cid)
+                row = {'classId': cid, 'className': classes[cid]['name'], 'revision': current['revision'], 'changed': False}
+                try:
+                    if apply and expected[cid] != current['revision']:
+                        raise ValueError('配置已被其他老师更新，请重新预览。')
+                    baseline = normalize(current['config'])
+                    merged = merge_bulk_settings(baseline, changes)
+                    row['changed'] = merged != baseline
+                    row['addedSlots'] = len(merged['slots']) - len(baseline['slots'])
+                    if row['changed']:
+                        pending.append((cid, current['revision'] + 1, merged))
+                except ValueError as error:
+                    row['error'] = str(error)
+                results.append(row)
+            valid = not any('error' in row for row in results)
+            if not apply:
+                return self.s.json_response({'valid': valid, 'classes': results})
+            if not valid:
+                return self.s.json_response({'error': '本轮未下发，请核对班级提示后重新预览。', 'classes': results}, 409)
+            now = self.s.now_ms()
+            for cid, revision, merged in pending:
+                self.db.run('''INSERT INTO island_profiles VALUES(?,?,?,?,?) ON CONFLICT(class_id) DO UPDATE SET
+                    revision=excluded.revision,value=excluded.value,updated_at=excluded.updated_at,updated_by=excluded.updated_by''',
+                    (cid, revision, json.dumps(merged, ensure_ascii=False), now, user['id']))
+            if pending:
+                self.s.audit(self.db, user['id'], 'island.bulk', 'school', '1',
+                    json.dumps({'classIds': [cid for cid, _, _ in pending], 'fields': list(changes)}, ensure_ascii=False))
+        return self.s.json_response({'updated': len(pending), 'unchanged': len(ids) - len(pending), 'classes': results})
+
     async def device(self, request):
         device = self.s.authenticate_device(request)
         if not device:
@@ -440,6 +580,7 @@ class IslandFeature:
             (device['id'], device['class_id'], body['revision'], self.s.now_ms(), detail))
         return self.s.json_response({'ok': True})
 
+    @teacher_action('island.export', '导出班级课表', target='class', confirm=False, workflow='download')
     async def export(self, request):
         user = self.authorize(request)
         if isinstance(user, web.Response):
@@ -453,6 +594,8 @@ class IslandFeature:
         return web.Response(body=data, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                             headers={'Content-Disposition': 'attachment; filename="ICeClass-timetable.xlsx"; filename*=UTF-8\'\'' + filename})
 
+    @teacher_action('island.import', '预览导入班级课表', target='class', head_only=True,
+                    confirm=False, workflow='island-import')
     async def import_preview(self, request):
         user = self.authorize(request, editing=True)
         if isinstance(user, web.Response):
@@ -470,6 +613,8 @@ def install_island(app, service):
     feature = IslandFeature(service, app)
     app.router.add_get('/api/island/visibility', feature.get_visibility)
     app.router.add_put('/api/island/visibility', feature.save_visibility)
+    app.router.add_post('/api/island/bulk/preview', feature.bulk_preview)
+    app.router.add_put('/api/island/bulk', feature.bulk_save)
     app.router.add_get('/api/island/classes/{class_id}', feature.get)
     app.router.add_put('/api/island/classes/{class_id}', feature.save)
     app.router.add_get('/api/island/classes/{class_id}/export', feature.export)

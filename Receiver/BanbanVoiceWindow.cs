@@ -14,14 +14,16 @@ internal sealed class BanbanVoiceWindow : Window
 {
     private readonly ReceiverConfig _binding;
     private readonly Uri _origin;
-    private readonly ReadingBrowser _browser = new() { HandleEscapeKey = false, HandleFullscreenKey = false };
+    private ReadingBrowser _browser = CreateBrowser();
     private readonly BanbanVoiceService _voice;
     private readonly BanbanPetWindow _pet;
     private readonly Action _stopComputer;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _status = ClassroomStyle.Text("正在关联班主任账号…", 16, muted: true);
     private readonly Border _notice;
-    private bool _canClose, _started, _background, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed;
+    private readonly Button _retry = ClassroomStyle.Button("重新连接", true);
+    private readonly DispatcherTimer _connectionTimeout = new() { Interval = TimeSpan.FromSeconds(30) };
+    private bool _canClose, _started, _background, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed, _browserFailed;
     internal event Action<string>? VoiceStatusChanged;
 
     internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null)
@@ -43,17 +45,30 @@ internal sealed class BanbanVoiceWindow : Window
         Width = 540; Height = 780; MinWidth = 380; MinHeight = 500;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         DesktopStyle.KeepWindowInWorkingArea(this);
-        var retry = ClassroomStyle.Button("重新连接", true);
-        retry.Click += async (_, _) =>
+        _retry.IsEnabled = false;
+        _retry.Click += async (_, _) =>
         {
-            retry.IsEnabled = false;
-            try { if (_browser.Core is not null) _browser.Core.Navigate(_origin.AbsoluteUri); else if (!_started) await StartAsync(); }
-            finally { retry.IsEnabled = true; }
+            _retry.IsEnabled = false;
+            try
+            {
+                if (!_started) await StartAsync();
+                else if (_browser.Core is { } core) { BeginConnection(); core.Navigate(_origin.AbsoluteUri); }
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                AppLog.Error("Reconnect Banban voice window failed", error);
+                FailConnection("班班窗口无法重新连接，请重试。", recreateBrowser: true);
+            }
         };
         var message = new StackPanel { Spacing = 18, MaxWidth = 380, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _status, retry } };
+            VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _status, _retry } };
         _notice = new Border { Background = DesktopStyle.Brush("#F5F8FC"), Padding = new Avalonia.Thickness(24), Child = message };
         Content = new Grid { Children = { _browser, _notice } };
+        _connectionTimeout.Tick += (_, _) =>
+        {
+            AppLog.Info($"Banban voice startup timed out: pageReady={_pageReady}; authorized={_authorized}");
+            FailConnection(_pageReady ? "班主任账号关联超时，请检查网络后重新连接。" : "班班页面未能完成初始化，请重新连接。");
+        };
         _voice.Changed += e => Dispatcher.UIThread.Post(() =>
         {
             if (_canClose) return;
@@ -68,7 +83,42 @@ internal sealed class BanbanVoiceWindow : Window
             if (_canClose || e.CloseReason is WindowCloseReason.OSShutdown or WindowCloseReason.ApplicationShutdown) return;
             e.Cancel = true; Hide();
         };
-        Closed += (_, _) => { _pet.Shutdown(); SystemEvents.SessionSwitch -= SessionSwitch; SystemEvents.PowerModeChanged -= PowerChanged; _lifetime.Cancel(); _voice.Dispose(); _browser.DisposeBrowser(); _lifetime.Dispose(); };
+        Closed += (_, _) => { _connectionTimeout.Stop(); _pet.Shutdown(); SystemEvents.SessionSwitch -= SessionSwitch; SystemEvents.PowerModeChanged -= PowerChanged; _lifetime.Cancel(); _voice.Dispose(); _browser.DisposeBrowser(); _lifetime.Dispose(); };
+    }
+
+    // Native HWNDs draw above Avalonia siblings. Keep the host itself hidden
+    // until the page authorizes; a notice layered over a visible host is obscured.
+    private static ReadingBrowser CreateBrowser() => new() { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
+
+    private void ShowNotice(string message)
+    {
+        _browser.IsVisible = false;
+        _status.Text = message; _notice.IsVisible = true;
+    }
+
+    private void BeginConnection()
+    {
+        _connectionFailed = _pageReady = _authorized = false;
+        _voice.SetReady(false); _stopComputer(); _retry.IsEnabled = false;
+        ShowNotice("正在关联班主任账号…");
+        _connectionTimeout.Stop(); _connectionTimeout.Start();
+    }
+
+    private void FinishBackgroundStart()
+    {
+        if (!_background) return;
+        Hide(); Opacity = 1; ShowInTaskbar = true; _background = false;
+    }
+
+    private void FailConnection(string message, bool recreateBrowser = false)
+    {
+        if (_canClose) return;
+        _connectionTimeout.Stop();
+        _browserFailed |= recreateBrowser;
+        if (_browserFailed) { _started = false; _browser.DisposeBrowser(); }
+        _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer();
+        ShowNotice(message); _retry.IsEnabled = true;
+        FinishBackgroundStart(); ReportCallFailure();
     }
 
     internal bool Matches(ReceiverConfig binding) => _binding.Endpoint == binding.Endpoint && _binding.DeviceId == binding.DeviceId
@@ -78,18 +128,34 @@ internal sealed class BanbanVoiceWindow : Window
 
     internal async Task StartAsync(bool background = false)
     {
+        if (_canClose) return;
         if (_started) { if (!background) BringForward(); return; }
+        if (_browserFailed)
+        {
+            _browser.DisposeBrowser();
+            var surface = (Grid)Content!; surface.Children.Remove(_browser);
+            _browser = CreateBrowser(); surface.Children.Insert(0, _browser); _browserFailed = false;
+        }
         _started = true; _background = background;
         _pet.ShowPet(false);
         if (background) { Opacity = 0; ShowInTaskbar = false; ShowActivated = false; }
         Show();
+        ShowNotice("正在关联班主任账号…"); _retry.IsEnabled = false;
+        var browser = _browser;
+        bool Current() => !_canClose && ReferenceEquals(browser, _browser) && !_browserFailed;
+        using var initialize = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        initialize.CancelAfter(TimeSpan.FromSeconds(30));
+        var stage = "WebView2 initialization";
         try
         {
             var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_origin.AbsoluteUri + "|" + _binding.DeviceId + "|" + _binding.ClassId)))[..20];
             var profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "BanbanVoice", identity);
             Directory.CreateDirectory(profile);
-            await _browser.InitializeAsync(profile, _lifetime.Token);
-            var core = _browser.Core!;
+            await browser.InitializeAsync(profile, initialize.Token).WaitAsync(initialize.Token);
+            if (!Current()) return;
+            var core = browser.Core!;
+            AppLog.Info($"Banban voice WebView2 {core.Environment.BrowserVersionString}; scaling={RenderScaling}");
+            stage = "WebView2 configuration";
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDevToolsEnabled = false;
@@ -99,7 +165,7 @@ internal sealed class BanbanVoiceWindow : Window
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.Document);
             core.WebResourceRequested += (_, e) =>
             {
-                if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var address)
+                if (!Current() || !Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var address)
                     || address.Scheme != _origin.Scheme || address.Authority != _origin.Authority
                     || !address.AbsolutePath.StartsWith("/api/", StringComparison.Ordinal)) return;
                 e.Request.Headers.SetHeader("Authorization", "Bearer " + _binding.DeviceToken);
@@ -109,9 +175,9 @@ internal sealed class BanbanVoiceWindow : Window
             };
             core.NavigationStarting += (_, e) =>
             {
+                if (!Current()) { e.Cancel = true; return; }
                 if (!Allowed(e.Uri)) { e.Cancel = true; return; }
-                _connectionFailed = _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); _notice.IsVisible = true;
-                _status.Text = "正在关联班主任账号…";
+                BeginConnection();
             };
             core.NewWindowRequested += (_, e) => e.Handled = true;
             core.DownloadStarting += (_, e) => e.Cancel = true;
@@ -119,28 +185,37 @@ internal sealed class BanbanVoiceWindow : Window
             core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             core.WebMessageReceived += (_, e) =>
             {
-                if (!Allowed(e.Source)) return;
+                if (!Current() || !Allowed(e.Source)) return;
                 try { Receive(e.WebMessageAsJson); }
                 catch (JsonException) { }
                 catch (InvalidOperationException error) { AppLog.Error("Banban voice bridge failed", error); }
             };
             core.NavigationCompleted += (_, e) =>
             {
-                if (!e.IsSuccess) { _status.Text = "班班暂时连不上，请检查网络后重新连接。"; _notice.IsVisible = true; ReportCallFailure(); return; }
-                _notice.IsVisible = !_authorized;
-                if (_background) { Hide(); Opacity = 1; ShowInTaskbar = true; _background = false; }
+                if (!Current()) return;
+                AppLog.Info($"Banban voice navigation: success={e.IsSuccess}; status={e.WebErrorStatus}; pageReady={_pageReady}; authorized={_authorized}");
+                if (!e.IsSuccess) FailConnection("班班暂时连不上，请检查网络后重新连接。");
             };
-            core.ProcessFailed += (_, _) => { _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer(); _notice.IsVisible = true; _status.Text = "班班窗口已中断，请重新连接。"; ReportCallFailure(); };
-            await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window, 'ICeClassVoiceHost', {value:Object.freeze({version:1,classroomAccount:true}),writable:false});document.addEventListener('DOMContentLoaded',()=>document.documentElement.classList.add('bb-native-voice-page'),{once:true});");
+            core.ProcessFailed += (_, e) =>
+            {
+                if (!Current()) return;
+                AppLog.Info($"Banban voice process failed: {e.ProcessFailedKind}");
+                FailConnection("班班窗口已中断，请重新连接。", recreateBrowser: true);
+            };
+            stage = "voice bridge injection";
+            await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window, 'ICeClassVoiceHost', {value:Object.freeze({version:1,classroomAccount:true}),writable:false});document.addEventListener('DOMContentLoaded',()=>document.documentElement.classList.add('bb-native-voice-page'),{once:true});").WaitAsync(initialize.Token);
+            if (!Current()) return;
+            BeginConnection();
             core.Navigate(_origin.AbsoluteUri);
         }
-        catch (Exception error) when (error is not OperationCanceledException)
+        catch (Exception error)
         {
-            _started = false;
-            AppLog.Error("Open Banban voice window failed", error);
-            _status.Text = "班班窗口无法打开，请检查 WebView2 运行组件后重试。";
-            _notice.IsVisible = true; Opacity = 1; ShowInTaskbar = true;
-            ReportCallFailure();
+            if (!Current()) return;
+            browser.DisposeBrowser();
+            if (_lifetime.IsCancellationRequested) return;
+            AppLog.Error($"Open Banban voice window failed during {stage}; HRESULT=0x{error.HResult:X8}", error);
+            FailConnection(error is OperationCanceledException ? "班班窗口初始化超时，请重新连接。"
+                : "班班窗口无法打开，请检查 WebView2 运行组件后重试。", recreateBrowser: true);
         }
     }
 
@@ -163,9 +238,16 @@ internal sealed class BanbanVoiceWindow : Window
         if (kind == "authorized")
         {
             _authorized = _pageReady && root.TryGetProperty("value", out var ready) && ready.ValueKind == JsonValueKind.True;
-            if (_authorized) _connectionFailed = false;
-            _notice.IsVisible = !_authorized;
-            if (!_authorized) _status.Text = "班级关联已变化，请重新连接班班。";
+            if (_authorized)
+            {
+                _connectionFailed = false; _connectionTimeout.Stop(); FinishBackgroundStart();
+                _notice.IsVisible = false; _browser.IsVisible = true;
+            }
+            else
+            {
+                ShowNotice("班级关联已变化，请重新连接班班。");
+                _retry.IsEnabled = true; _connectionTimeout.Start();
+            }
             _voice.SetReady(!_suspended && _authorized);
             // Chat can mount before its class list arrives; the page rechecks
             // authorization once that request completes. Keep the call queued.
@@ -174,13 +256,12 @@ internal sealed class BanbanVoiceWindow : Window
         }
         if (kind == "identity-error")
         {
-            _authorized = false; _voice.SetReady(false); _stopComputer();
             var message = root.TryGetProperty("text", out var error) && error.ValueKind == JsonValueKind.String
                 ? error.GetString() : null;
-            _status.Text = string.IsNullOrWhiteSpace(message) ? "班主任账号暂时无法关联，请重新连接。" : message[..Math.Min(message.Length, 300)];
-            _notice.IsVisible = true; ReportCallFailure(); return;
+            FailConnection(string.IsNullOrWhiteSpace(message) ? "班主任账号暂时无法关联，请重新连接。" : message[..Math.Min(message.Length, 300)]);
+            return;
         }
-        if (kind == "logout") { _pendingConversation = _pageReady = _authorized = false; _pet.SetPreparing(false); _voice.SetReady(false); _stopComputer(); return; }
+        if (kind == "logout") { _pendingConversation = false; _pet.SetPreparing(false); BeginConnection(); return; }
         if (kind == "hide") { Hide(); return; }
         if (kind == "enabled")
         {
@@ -212,6 +293,7 @@ internal sealed class BanbanVoiceWindow : Window
     }
     private void Send(object message)
     {
+        if (_canClose || _browserFailed) return;
         if (_browser.Core is not null && Allowed(_browser.Core.Source)) _browser.Core.PostWebMessageAsJson(JsonSerializer.Serialize(message));
     }
     private void SessionSwitch(object sender, SessionSwitchEventArgs e)

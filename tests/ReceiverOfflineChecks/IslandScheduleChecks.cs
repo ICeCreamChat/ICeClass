@@ -114,8 +114,19 @@ internal static class IslandScheduleChecks
             "quiet class suppresses text and sound reminders while explicit teacher automation remains configured");
         Check(!IslandSchedule.HiddenDuringLesson(quiet, At(7, 59, 59)) && IslandSchedule.HiddenDuringLesson(quiet, At(8, 0)) &&
             !IslandSchedule.HiddenDuringLesson(quiet, At(8, 45)), "quiet lesson starts inclusively and ends at the exact break boundary");
-        Check(!IslandSchedule.HiddenDuringLesson(quiet, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
-            "a day with no scheduled classes does not hide the island");
+        Check(IslandSchedule.HiddenDuringLesson(quiet, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "selected quiet slots do not depend on a course entry for the day");
+        var emptyTimetable = IslandProfile.Parse(quietJson.ToJsonString());
+        emptyTimetable.Lessons.Clear();
+        Check(IslandSchedule.HiddenDuringLesson(emptyTimetable, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(emptyTimetable, At(8, 45)) &&
+            IslandSchedule.HiddenDuringLesson(emptyTimetable, At(18, 20)) &&
+            !IslandSchedule.HiddenDuringLesson(emptyTimetable, At(19, 50)) &&
+            !IslandSchedule.HiddenDuringLesson(emptyTimetable, At(20, 0)),
+            "a classroom with only time slots hides during selected times and returns at breaks");
+        Check(IslandSchedule.On(emptyTimetable, new(2026, 10, 19)).Count == 0 &&
+            IslandSchedule.Due(emptyTimetable, At(7, 59, 59), At(8, 0)).Count == 0,
+            "quiet slots never fabricate course entries or ordinary class reminders");
         quiet.Overrides.Add(new() { Date = "2026-10-19", SlotId = "p1", Cancelled = true });
         Check(!IslandSchedule.HiddenDuringLesson(quiet, At(8, 0)), "temporary cancellation also cancels the quiet class interval");
         quiet.Overrides.Clear();
@@ -128,6 +139,30 @@ internal static class IslandScheduleChecks
         using (var sync = new IslandSyncService(binding, Path.Combine(root, "island-quiet-cache"), start: false))
             Check(sync.Snapshot.Profile is { } cached && IslandSchedule.HiddenDuringLesson(cached, At(18, 20)) &&
                 !IslandSchedule.HiddenDuringLesson(cached, At(20, 0)), "school quiet selections survive a fully offline restart");
+        var legacyJson = quietJson.DeepClone().AsObject();
+        legacyJson["appearance"]!["hideDuringLessons"] = true;
+        legacyJson["visibility"] = new JsonObject { ["followSchool"] = false,
+            ["hiddenSlotIds"] = new JsonArray("p1", "e1"), ["lessonsOnly"] = true };
+        var legacy = IslandProfile.Parse(legacyJson.ToJsonString());
+        legacy.Lessons.RemoveAll(l => l.SlotId == "e1");
+        Check(IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))) &&
+            !IslandSchedule.HiddenDuringLesson(legacy, At(18, 20)),
+            "migrated legacy appearance hides actual courses without hiding empty days or unassigned slots");
+        legacy.Overrides.Add(new() { Date = "2026-10-19", SlotId = "p1", Cancelled = true });
+        Check(!IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)), "cancellation wins over migrated legacy course hiding");
+        legacy.Overrides.Clear(); legacy.Visibility!.HiddenSlotIds.Clear();
+        Check(!IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)), "empty selection wins over migrated legacy appearance");
+        legacy.Visibility.FollowSchool = true; legacy.Visibility.HiddenSlotIds.Add("p1");
+        Check(IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "following school rules exits migrated legacy course hiding");
+        legacy.Visibility = new() { FollowSchool = false, HiddenSlotIds = ["p1"] };
+        Check(IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "modern explicit visibility remains slot based despite legacy appearance");
+        legacy.Visibility = null;
+        Check(IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "unmigrated legacy appearance remains course based");
         quiet.Visibility!.FollowSchool = false; quiet.Visibility.HiddenSlotIds.Clear(); quiet.Appearance.HideDuringLessons = true;
         Check(!IslandSchedule.HiddenDuringLesson(quiet, At(8, 0)), "explicit teacher selection overrides the legacy hide-all appearance");
         quiet.Visibility.HiddenSlotIds.Add("missing");

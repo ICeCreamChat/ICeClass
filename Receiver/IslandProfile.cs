@@ -142,6 +142,7 @@ internal sealed class IslandVisibility
 {
     public bool FollowSchool { get; set; } = true;
     public List<string> HiddenSlotIds { get; set; } = [];
+    public bool LessonsOnly { get; set; }
 }
 internal sealed class IslandComponent
 {
@@ -178,8 +179,13 @@ internal static class IslandSchedule
     {
         now = now.ToOffset(TimeSpan.FromHours(8));
         if (p.Visibility is null && !p.Appearance.HideDuringLessons) return false;
-        return On(p, DateOnly.FromDateTime(now.DateTime)).Any(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End) &&
-            (p.Visibility is null || p.Visibility.HiddenSlotIds.Contains(l.Slot.Id)));
+        if (p.Visibility is null || p.Visibility.LessonsOnly && !p.Visibility.FollowSchool)
+            return On(p, DateOnly.FromDateTime(now.DateTime)).Any(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End) &&
+                (p.Visibility is null || p.Visibility.HiddenSlotIds.Contains(l.Slot.Id)));
+        var minute = now.TimeOfDay.TotalMinutes;
+        var date = now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return p.Slots.Any(s => s.Start <= minute && minute < s.End && p.Visibility.HiddenSlotIds.Contains(s.Id) &&
+            !p.Overrides.Any(o => o.Date == date && o.SlotId == s.Id && o.Cancelled));
     }
 
     public static bool SuppressReminder(IslandProfile p, IslandDueEvent e, DateTimeOffset now) =>

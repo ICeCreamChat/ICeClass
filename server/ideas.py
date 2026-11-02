@@ -19,6 +19,7 @@ from aiohttp import web
 from aiohttp.multipart import BodyPartReader
 
 from feedback import image_type, mail_settings, send_mail
+from teacher_capabilities import teacher_action, teacher_read
 
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
@@ -543,6 +544,7 @@ class Ideas:
         except ValueError as error:
             return self.reply({'error': str(error)}, 400)
 
+    @teacher_read('ideas', '查看创意评审列表', fields='status classId page pageSize', roles=('superadmin',))
     async def admin_list(self, request):
         user = self.staff(request, superadmin=True)
         if isinstance(user, web.Response):
@@ -564,6 +566,8 @@ class Ideas:
         except ValueError as error:
             return self.reply({'error': str(error)}, 400)
 
+    @teacher_action('idea.review', '评审创意', fields='status reply published publishedTitle publishedText version',
+                    target='idea', roles=('superadmin',), impact='将更新创意评审与回复；公开内容会显示在创意展示中。')
     async def review(self, request):
         user = self.staff(request, superadmin=True)
         if isinstance(user, web.Response):
@@ -616,6 +620,7 @@ class Ideas:
                 'lastSentAt': state['last_sent_at'], 'lastError': state['last_error'],
                 'nextAt': state['next_at'] if self.enabled else None}
 
+    @teacher_read('ideas.summary', '查看创意评审概览', roles=('superadmin',))
     async def summary(self, request):
         user = self.staff(request, superadmin=True)
         if isinstance(user, web.Response):

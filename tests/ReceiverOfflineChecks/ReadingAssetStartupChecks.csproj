@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath Condition="'$(ArtifactsPath)' == ''">obj/reading-asset-startup/</BaseIntermediateOutputPath>
+    <BaseOutputPath Condition="'$(ArtifactsPath)' == ''">bin/reading-asset-startup/</BaseOutputPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);READING_ASSET_STARTUP_CHECKS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ReadingAssetStartupChecks.cs" />
+    <Compile Include="../../Receiver/ReadingLocalAssets.cs" Link="ReadingLocalAssets.cs" />
+    <EmbeddedResource Include="../../web_controller/reading/**/*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../web_controller/assets/*" LogicalName="ICeClass.Local/assets/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../web_controller/favicon.ico" LogicalName="ICeClass.Local/favicon.ico" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

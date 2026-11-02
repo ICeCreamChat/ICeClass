@@ -16,7 +16,7 @@ from banban_platform import BanbanPlatform, PLATFORM_TOPICS, TITLES
 from banban_policy import AnswerStream, detail_requested, local_reply
 from banban_history import BanbanHistory, HISTORY_KEY, encoded
 from banban_connections import completion_url, provider_options, required_tool_choice, upstream_connector
-from banban_operations import Operations, operation_tools, COMPUTER_READS
+from banban_operations import Operations, operation_tools, COMPUTER_READS, CLIENT_KEY, teacher_client
 from banban_speech import SpokenAnswer, VOICE_RULES, social_reply, quick_computer_action, quick_computer_reply
 from banban_vision import image_message
 
@@ -46,7 +46,6 @@ TOOLS = [
      'parameters': {'type': 'object', 'properties': {**PROPERTIES, 'comparison': {'type': 'string', 'enum': ['previous_period', 'previous_week']}},
                     'required': ['topic'], 'additionalProperties': False}}},
 ]
-TOOLS += operation_tools()
 AGENT_RULES = '''你可以使用服务器提供的数据工具和操作工具，查询、比较或执行用户明确要求的任务。
 所有可见文字都使用中文，包括查询前的过渡句。调用工具时只返回工具调用，查询进度由界面呈现，不要额外解释打算做什么。
 回答涉及具体统计、排名、趋势的问题前，必须调用工具读取新数据；不能把旧对话中的统计当作当前数据。
@@ -55,6 +54,8 @@ AGENT_RULES = '''你可以使用服务器提供的数据工具和操作工具，
 询问上周、本周、今天、昨天时使用 period 预设。“比较各班”是班级对比，未经要求不要附加上期对比。
 工具返回的 errors 是查询失败，不代表零记录。工具不存在或没有权限的事情不能声称已经执行。
 用户明确要求操作时使用对应工具；先核对目标与当前配置。操作状态 awaiting_confirmation 表示等待用户点击，running 表示执行中，unconfirmed 表示结果未确认，均不能说已完成。failed 是执行失败。
+awaiting_input 表示等待用户选择文件，awaiting_client 表示等待当前教师端回执，也不能说已完成。文件导入必须由用户选择并核对预览；下载就绪只表示可以保存文件。绑定码只在确认卡中显示，不索取、复述或记录。
+available_operations 是当前功能的实时目录，业务新增能力会随实际路由声明自动出现。先查看目录，再按返回的 fields、target、workflow 选择查询或操作；创意评审、学校默认规则等权限由服务器校验。教师端本机能力只在当前客户端可用时提供，不能用教室电脑操作冒充教师端操作。
 回答像一位有分寸的同事：直接回应这次问题，不反复使用固定开场，不在每次回答末尾重复隐私声明。
 对简单问候和道谢自然简短回应，不强行添加数据。比较时明确日期和比较口径。
 时长用几分几秒，不用小数分钟。无需复述工具调用的计划。
@@ -166,6 +167,10 @@ class BanbanAgent:
         # A plain list, not a token. Permission changes invalidate old chat text too.
         classes = self.roster(user)
         access = {'role': user['role'], 'classes': classes}
+        if user.get('classroom'):
+            # A bound device reuses the teacher's service configuration, never
+            # their private chat history, even when both rosters are identical.
+            access['classroom'] = {'classId': user['classroom']['classId']}
         if user['role'] == 'teacher':
             heads = {row['class_id'] for row in self.db.all('SELECT class_id FROM teacher_classes WHERE user_id=?', (user['id'],))}
             teaching = [c['id'] for c in classes if c['id'] not in heads]
@@ -260,7 +265,7 @@ class BanbanAgent:
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
-        if user['id'] in self.f.busy:
+        if self.f.runtime_key(user) in self.f.busy:
             return self.s.json_response({'error': '请先停止当前回答，再开始新对话。'}, 409)
         return self.s.json_response(self.history.create(user), 201)
 
@@ -268,7 +273,7 @@ class BanbanAgent:
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
-        if user['id'] in self.f.busy:
+        if self.f.runtime_key(user) in self.f.busy:
             return self.s.json_response({'error': '请先停止当前回答，再切换对话。'}, 409)
         try:
             return self.s.json_response(self.history.open(user, request.match_info['conversation_id']))
@@ -283,7 +288,7 @@ class BanbanAgent:
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
-        if user['id'] in self.f.busy:
+        if self.f.runtime_key(user) in self.f.busy:
             return self.s.json_response({'error': '请先停止当前回答，再删除对话。'}, 409)
         try:
             cid = request.match_info['conversation_id']
@@ -310,14 +315,14 @@ class BanbanAgent:
         return self.s.json_response({'ok': True, **self.history.create(user)})
 
     async def cancel_job(self, user):
-        job = self.jobs.get(user['id'])
+        job = self.jobs.get(self.f.runtime_key(user))
         if job:
             job.cancel()
             with suppress(asyncio.CancelledError, ConnectionError):
                 await job
-            if self.jobs.get(user['id']) is job:
-                self.jobs.pop(user['id'], None)
-                self.f.busy.discard(user['id'])
+            if self.jobs.get(self.f.runtime_key(user)) is job:
+                self.jobs.pop(self.f.runtime_key(user), None)
+                self.f.busy.discard(self.f.runtime_key(user))
     async def cancel(self, request):
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
@@ -508,13 +513,13 @@ class BanbanAgent:
             payload['stream_options'] = {'include_usage': True}
             payload['parallel_tool_calls'] = False
         if allow_tools:
-            payload['tools'] = TOOLS
+            payload['tools'] = cfg.get('_tools', TOOLS + operation_tools(self.f.app))
             if allow_tools == 'required':
                 payload['tool_choice'] = required_tool_choice(cfg)
                 if payload['tool_choice'] == 'auto':
                     payload['messages'] = [{'role': 'system', 'content': '本轮必须先调用可用工具核对当前数据或操作目标，再回答。不要凭记忆猜测。'}, *messages]
         elif any(item.get('tool_calls') for item in messages):
-            payload['tools'] = TOOLS
+            payload['tools'] = cfg.get('_tools', TOOLS + operation_tools(self.f.app))
             payload['tool_choice'] = 'none'
         if self._upstream_client is None or self._upstream_client.closed:
             # Reuse public, TLS-validated connections across tool rounds. Each
@@ -575,6 +580,7 @@ class BanbanAgent:
                                  model_available=bool(cfg['enabled'] and cfg['apiKey']))
         detail = detail_requested(message)
         cfg = {**cfg, 'answerTokens': 1800 if detail else 450 if voice is not None else 700}
+        cfg['_tools'] = TOOLS + operation_tools(self.f.app, user, request.get(CLIENT_KEY))
         mode = 'local' if direct else 'deepseek' if cfg['enabled'] and cfg['apiKey'] else 'overview'
         await emit({'type': 'meta', 'mode': mode, 'scope': scope, 'detailRequested': detail, 'conversationId': memory['id']})
         if direct:
@@ -767,14 +773,14 @@ class BanbanAgent:
                     try:
                         args = json.loads(call['function']['arguments'])
                         name = call['function']['name']
-                        if name in {'available_operations', 'inspect_platform', 'operate_platform', 'operate_computer'}:
+                        if name in {'available_operations', 'inspect_platform', 'operate_platform', 'operate_computer', 'operate_teacher'}:
                             if not isinstance(args, dict):
                                 raise ValueError('操作参数不正确。')
                             await emit({'type': 'status', 'text': '正在核对操作权限与执行结果'})
                             if name == 'available_operations':
                                 if args:
                                     raise ValueError('查看可用操作不需要参数。')
-                                data = self.operations.catalog(user)
+                                data = self.operations.catalog(user, request.get(CLIENT_KEY))
                             elif name == 'inspect_platform':
                                 data = await self.operations.inspect(request, args)
                             else:
@@ -787,7 +793,7 @@ class BanbanAgent:
                                 if not discovery and key in operation_cache:
                                     data = self.operations.view(self.operations.row(operation_cache[key], user))
                                 else:
-                                    data = await self.operations.create(request, 'platform' if name == 'operate_platform' else 'computer', args,
+                                    data = await self.operations.create(request, {'operate_platform': 'platform', 'operate_computer': 'computer', 'operate_teacher': 'teacher'}[name], args,
                                         request_key=turn_key + ':' + str(calls_used), conversation_id=memory['id'], wait=False,
                                         voice_requested=voice is not None)
                                     if not discovery:
@@ -796,19 +802,23 @@ class BanbanAgent:
                                         operations.append({'id': data['id']})
                                 if not discovery:
                                     await emit({'type': 'operation', 'operation': data})
-                                confirmation = data['status'] == 'awaiting_confirmation'
+                                confirmation = data['status'] in {'awaiting_confirmation', 'awaiting_input'}
                                 if confirmation:
                                     await emit({'type': 'confirmation', 'waiting': True})
                                     await emit({'type': 'status', 'text': '请核对这次修改，确认后我会继续'})
-                                if data['status'] in {'awaiting_confirmation', 'running', 'stopping'}:
-                                    data = await self.operations.wait_result(request, data['id'])
+                                if data['status'] in {'awaiting_confirmation', 'awaiting_input', 'awaiting_client', 'running', 'stopping'}:
+                                    async def client_ready(operation):
+                                        self.check_access(request, access)
+                                        await emit({'type': 'operation', 'operation': operation})
+                                    data = await self.operations.wait_result(request, data['id'],
+                                        on_client_ready=client_ready if confirmation and data['kind'] == 'teacher' else None)
                                     access = self.accept_class_change(request, user, access, memory['id'], data)
                                     self.check_access(request, access)
                                     if not discovery:
                                         await emit({'type': 'operation', 'operation': data})
                                 if confirmation:
                                     await emit({'type': 'confirmation', 'waiting': False})
-                                if data['status'] in {'cancelled', 'expired'}:
+                                if data['status'] in {'cancelled', 'expired', 'failed', 'unconfirmed'}:
                                     stop_operations = True
                                 if name == 'operate_computer' and not discovery and data['status'] == 'succeeded' and \
                                         any(isinstance(data.get('result', {}).get(field), list) for field in ('controls', 'windows')):
@@ -841,7 +851,7 @@ class BanbanAgent:
                         await emit({'type': 'card', 'card': card})
                         result = json.dumps(data, ensure_ascii=False)
                     except (ValueError, PermissionError, OverflowError, TypeError) as error:
-                        if call['function']['name'] in {'available_operations', 'inspect_platform', 'operate_platform', 'operate_computer'}:
+                        if call['function']['name'] in {'available_operations', 'inspect_platform', 'operate_platform', 'operate_computer', 'operate_teacher'}:
                             result = json.dumps({'error': str(error), 'executed': False}, ensure_ascii=False)
                             messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': result})
                             continue
@@ -879,12 +889,16 @@ class BanbanAgent:
         if cid is not None and (not isinstance(cid, str) or not 1 <= len(cid) <= 36):
             return self.s.json_response({'error': '会话编号不正确。'}, 400)
         page = body.get('page', 'reading')
-        if not isinstance(page, str) or page not in {'reading', 'history', 'console', 'classroom-voice', 'controls', 'classes', 'teachers', 'quiet', 'settings'}:
+        if not isinstance(page, str) or page not in {'reading', 'history', 'console', 'classroom-voice', 'controls', 'classes', 'teachers', 'quiet', 'settings', 'island', 'ideas'}:
             return self.s.json_response({'error': '页面范围不正确。'}, 400)
         if not isinstance(message, str) or not 1 <= len(message.strip()) <= 2000:
             return self.s.json_response({'error': '请输入问题，最多 2000 字。'}, 400)
         if not isinstance(scope, dict) or set(scope) - {'start', 'end', 'classId', 'grades'} or any(not isinstance(v, str) for v in scope.values()):
             return self.s.json_response({'error': '分析范围格式不正确。'}, 400)
+        try:
+            request[CLIENT_KEY] = teacher_client(body.get('teacherClient'))
+        except ValueError as error:
+            return self.s.json_response({'error': str(error)}, 400)
         voice = body.get('voice')
         if voice is not None:
             if not isinstance(voice, dict) or set(voice) - {'mode', 'deviceId', 'classId'} or voice.get('mode') != 'voice':
@@ -902,7 +916,7 @@ class BanbanAgent:
             if re.search(r'(?:<|\[)\s*(?:unk|unknown)\s*(?:>|\])|\ufffd', message, flags=re.IGNORECASE):
                 return self.s.json_response({'error': '没听清，请完整再说一遍。'}, 400)
             request[VOICE_CONTEXT_KEY] = voice
-        if user['id'] in self.f.busy:
+        if self.f.runtime_key(user) in self.f.busy:
             return self.s.json_response({'error': '班班正在回答上一条问题，请稍等。'}, 429)
         try:
             memory = self.history.context(user, cid)
@@ -913,7 +927,7 @@ class BanbanAgent:
             return self.s.json_response({'error': str(error)}, 400)
         except PermissionError:
             return self.s.json_response({'error': '没有查看该班级的权限。'}, 403)
-        self.f.busy.add(user['id'])
+        self.f.busy.add(self.f.runtime_key(user))
         response = web.StreamResponse(headers={**self.s.SECURITY_HEADERS, 'Content-Type': 'application/x-ndjson; charset=utf-8',
                                               'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
         job = None
@@ -922,7 +936,7 @@ class BanbanAgent:
             async def emit(event):
                 await response.write((json.dumps(event, ensure_ascii=False) + '\n').encode('utf-8'))
             job = asyncio.create_task(self.run(request, user, message.strip(), snapshot, memory, self.f.config(user), emit, page))
-            self.jobs[user['id']] = job
+            self.jobs[self.f.runtime_key(user)] = job
             self.job_devices[job] = {(voice['deviceId'], voice['classId'])} if voice and voice.get('deviceId') else set()
             async with asyncio.timeout(395):
                 ticks = 0
@@ -956,9 +970,9 @@ class BanbanAgent:
             if job:
                 await asyncio.gather(job, return_exceptions=True)
                 self.job_devices.pop(job, None)
-            if job is None or self.jobs.get(user['id']) is job:
-                self.jobs.pop(user['id'], None)
-                self.f.busy.discard(user['id'])
+            if job is None or self.jobs.get(self.f.runtime_key(user)) is job:
+                self.jobs.pop(self.f.runtime_key(user), None)
+                self.f.busy.discard(self.f.runtime_key(user))
         with suppress(ConnectionError, RuntimeError):
             await response.write_eof()
         return response
@@ -970,9 +984,9 @@ class BanbanAgent:
         cfg = self.f.config() if request.query.get('target') == 'school' else self.f.config(user)
         if not cfg['apiKey']:
             return self.s.json_response({'error': '请先保存 API Key。'}, 400)
-        if user['id'] in self.f.busy:
+        if self.f.runtime_key(user) in self.f.busy:
             return self.s.json_response({'error': '请等待当前问题完成后再测试连接。'}, 429)
-        self.f.busy.add(user['id'])
+        self.f.busy.add(self.f.runtime_key(user))
         try:
             async for _ in self.provider(cfg, [{'role': 'user', 'content': '请只回复：连接成功'}], allow_tools=True):
                 pass
@@ -982,4 +996,4 @@ class BanbanAgent:
         except ValueError as error:
             return self.s.json_response({'error': str(error)}, 502)
         finally:
-            self.f.busy.discard(user['id'])
+            self.f.busy.discard(self.f.runtime_key(user))

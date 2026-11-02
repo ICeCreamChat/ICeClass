@@ -91,6 +91,13 @@ internal static class NativeIslandVisibilityChecks
             typeof(ClassroomIslandService).GetField("_manualShowUntil", Private)!.SetValue(service, 0L);
             await At(1201); Assert(!window.IsVisible, "automatic classroom hiding resumes after the manual opening expires");
             await At(1290); Assert(window.IsVisible, "the native island restores after the last custom lesson");
+            profile.Lessons.Clear();
+            profile.Visibility.HiddenSlotIds = ["day", "e1"];
+            await At(474); Assert(window.IsVisible && !service.InClass, "an unfilled timetable is idle before selected class time");
+            await At(475); Assert(!window.IsVisible && service.InClass, "a classroom with no courses hides and pauses update downloads at class start");
+            await At(520); Assert(window.IsVisible && !service.InClass, "an unfilled timetable returns and allows idle downloads at the break");
+            await At(1100); Assert(!window.IsVisible, "first evening quiet time works without a course entry");
+            await At(1190); Assert(window.IsVisible, "the empty evening timetable restores at the exact end");
             var content = (Control)window.Content!;
             using var screenshot = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(content.Bounds.Width),
                 (int)Math.Ceiling(content.Bounds.Height)), new Vector(96, 96));

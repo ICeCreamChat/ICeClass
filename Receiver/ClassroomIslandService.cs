@@ -342,9 +342,9 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var localNow = now.ToOffset(TimeSpan.FromHours(8));
         var lessons = profile is not null ? IslandSchedule.On(profile, DateOnly.FromDateTime(localNow.DateTime)) : [];
         var current = lessons.FirstOrDefault(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End));
-        SetClassTime(current is not null);
         var lessonHidden = profile is not null && IslandSchedule.HiddenDuringLesson(profile, now);
         if (profile?.Visibility is null && _local.Appearance?.HideDuringLessons == true && current is not null) lessonHidden = true;
+        SetClassTime(current is not null || lessonHidden);
         if (lessonHidden && !_lessonHidden)
         {
             _actions.StopFeedback();

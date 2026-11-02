@@ -56,9 +56,13 @@
         : l.id === 'morning-reading' || /晨读|早读/.test(l.label) ? 'morning' : '' }));
   }
   function hiddenDuringLesson(config, on, minute) {
-    if (!Number.isFinite(minute)) return false;
-    return forDate(config, on).some(l => l.start <= minute && minute < l.end &&
-      (config.visibility ? config.visibility.hiddenSlotIds.includes(l.id) : config.appearance?.hideDuringLessons));
+    if (!validDate(on) || !Number.isFinite(minute)) return false;
+    if (!config.visibility) return !!config.appearance?.hideDuringLessons &&
+      forDate(config, on).some(l => l.start <= minute && minute < l.end);
+    const cancelled = new Set(config.overrides.filter(o => o.date === on && o.cancelled).map(o => o.slotId));
+    const slots = config.visibility.lessonsOnly && !config.visibility.followSchool ? forDate(config, on) : config.slots;
+    return slots.some(s => s.start <= minute && minute < s.end &&
+      config.visibility.hiddenSlotIds.includes(s.id) && !cancelled.has(s.id));
   }
   const schedule = { validDate, cycleWeek, forDate, ribbonForDate, schoolHiddenSlots, hiddenDuringLesson };
   if (typeof module !== 'undefined' && module.exports) module.exports = schedule;

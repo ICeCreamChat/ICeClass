@@ -48,10 +48,37 @@ assert.deepEqual(schoolHiddenSlots(quiet, { hideDaytimeLessons: false, hideFirst
 for (const [m, hidden] of [[474, false], [475, true], [519.9, true], [520, false]]) {
   assert.equal(hiddenDuringLesson(quiet, '2026-10-26', m), hidden, 'Start/end use the actual timetable boundaries');
 }
-assert.equal(hiddenDuringLesson(quiet, '2026-10-25', 480), false, 'An empty weekend has no invented quiet class');
+assert.equal(hiddenDuringLesson(quiet, '2026-10-25', 480), true, 'Selected quiet times do not depend on a filled course for the day');
+const noCourses = structuredClone(quiet);
+noCourses.lessons = [];
+for (const [m, hidden] of [[474, false], [475, true], [519.9, true], [520, false], [1100, true], [1190, false], [1200, false]]) {
+  assert.equal(hiddenDuringLesson(noCourses, '2026-11-02', m), hidden, 'School classroom with no course entries still follows quiet times');
+}
+assert.equal(forDate(noCourses, '2026-11-02').length, 0, 'Quiet slots never invent courses or ordinary reminders');
 quiet.overrides = [{ date: '2026-10-26', slotId: 'custom', cancelled: true }];
 assert.equal(hiddenDuringLesson(quiet, '2026-10-26', 480), false, 'A cancelled class leaves the island visible');
 console.log('PASS school defaults, custom slot names, chronological evening selection, breaks, empty days and cancellations');
+
+const legacy = structuredClone(quiet);
+legacy.overrides = [];
+legacy.appearance = { hideDuringLessons: true };
+legacy.visibility = { followSchool: false, hiddenSlotIds: ['custom', 'e1'], lessonsOnly: true };
+assert.equal(hiddenDuringLesson(legacy, '2026-11-02', 480), true, 'Migrated legacy hiding still hides an actual course');
+assert.equal(hiddenDuringLesson(legacy, '2026-11-01', 480), false, 'Migrated legacy hiding does not hide an empty day');
+assert.equal(hiddenDuringLesson(legacy, '2026-11-02', 1100), false, 'Migrated legacy hiding does not hide an unassigned slot');
+legacy.overrides = [{ date: '2026-11-02', slotId: 'custom', cancelled: true }];
+assert.equal(hiddenDuringLesson(legacy, '2026-11-02', 480), false, 'Cancellation wins over migrated legacy hiding');
+legacy.overrides = [];
+legacy.visibility.hiddenSlotIds = [];
+assert.equal(hiddenDuringLesson(legacy, '2026-11-02', 480), false, 'An explicit empty selection wins over legacy appearance and migration');
+legacy.visibility.followSchool = true;
+legacy.visibility.hiddenSlotIds = ['custom'];
+assert.equal(hiddenDuringLesson(legacy, '2026-11-01', 480), true, 'Following school rules exits legacy course-only hiding');
+legacy.visibility = { followSchool: false, hiddenSlotIds: ['custom', 'e1'] };
+assert.equal(hiddenDuringLesson(legacy, '2026-11-01', 480), true, 'Modern explicit selections remain slot based despite legacy appearance');
+delete legacy.visibility;
+assert.equal(hiddenDuringLesson(legacy, '2026-11-01', 480), false, 'Unmigrated legacy appearance remains course based');
+console.log('PASS migrated legacy course hiding, cancellation and explicit modern visibility precedence');
 
 const study = { weekAnchor: '2026-09-07', slots: [
   { id: 'day', label: '第一节', start: 475, end: 520 },

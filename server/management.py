@@ -10,6 +10,8 @@ from datetime import date, datetime, timedelta
 
 from aiohttp import web
 from reading import SHANGHAI
+from permissions import MANAGER_ROLES, SCHOOL_ROLES
+from teacher_capabilities import teacher_action, teacher_read
 
 
 def install_management(app, service):
@@ -113,6 +115,8 @@ class Management:
             except OSError:
                 self.app[self.service.LOGGER_KEY].warning('Could not remove cleared audio file: %s', target.name)
 
+    @teacher_action('class.rename-batch', '批量更名或升班', fields='changes', roles=tuple(sorted(MANAGER_ROLES)),
+                    impact='将同时修改所列班级的名称和管理范围。')
     async def rename_classes(self, request):
         user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
@@ -152,6 +156,8 @@ class Management:
             await self.service.rooms(request).broadcast(cid, {'type': 'binding_updated', 'classId': cid, 'className': name})
         return self.service.json_response({'updated': len(proposed)})
 
+    @teacher_action('class.delete', '删除班级', target='class', roles=tuple(sorted(MANAGER_ROLES)),
+                    impact='将按平台规则删除班级及关联记录，无法撤销。')
     async def delete_class(self, request):
         user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
@@ -181,6 +187,8 @@ class Management:
         self.unlink_audio(paths)
         return self.service.json_response({'deleted': True})
 
+    @teacher_action('user.delete', '删除账号', target='user', roles=tuple(sorted(MANAGER_ROLES)),
+                    impact='将撤销账号登录及授权，历史审计仍保留。')
     async def delete_user(self, request):
         user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
@@ -203,6 +211,8 @@ class Management:
             self.service.audit(self.db, user['id'], 'user.delete', 'user', uid, json.dumps({'username': row['username']}, ensure_ascii=False))
         return self.service.json_response({'deleted': True})
 
+    @teacher_action('device.delete', '移除设备', target='device', roles=tuple(sorted(MANAGER_ROLES)),
+                    impact='将撤销该设备凭证并断开连接，需要重新绑定。')
     async def delete_device(self, request):
         user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
@@ -225,6 +235,8 @@ class Management:
         self.unlink_audio(paths)
         return self.service.json_response({'deleted': True})
 
+    @teacher_action('records.clear', '清理班级记录', fields='kind start end allDates', target='class',
+                    roles=tuple(sorted(MANAGER_ROLES)), impact='所选范围的记录会被永久清理，无法撤销。')
     async def clear_records(self, request):
         user = self.service.require_manager(request)
         if isinstance(user, web.Response): return user
@@ -271,12 +283,16 @@ class Management:
         self.unlink_audio(paths)
         return self.service.json_response({'cleared': True, 'count': count})
 
+    @teacher_read('enrollment.school', '查看全校绑定码状态', roles=tuple(sorted(SCHOOL_ROLES)), workflow='private-result')
     async def school_status(self, request):
         user = self.service.require_admin(request)
         if isinstance(user, web.Response): return user
         row = self.db.one('SELECT expires_at FROM school_enrollment WHERE id=1')
         return self.service.json_response({'enabled': bool(row and row['expires_at'] > self.service.now_ms()), 'expiresAt': row['expires_at'] if row else None})
 
+    @teacher_action('enrollment.school.create', '生成全校绑定码', fields='validDays',
+                    roles=tuple(sorted(SCHOOL_ROLES)), workflow='private-result',
+                    impact='将替换全校绑定码；绑定码仅在本人界面显示。')
     async def school_code(self, request):
         user = self.service.require_admin(request)
         if isinstance(user, web.Response): return user
@@ -298,6 +314,8 @@ class Management:
             self.service.audit(self.db, user['id'], 'enrollment.school_open', 'school', None, json.dumps({'validDays': days}))
         return self.service.json_response({'code': code, 'expiresAt': expires, 'enabled': True})
 
+    @teacher_action('enrollment.school.revoke', '关闭全校绑定码', roles=tuple(sorted(SCHOOL_ROLES)),
+                    workflow='private-result', impact='将立即使全校绑定码失效，已绑定设备不受影响。')
     async def close_school_code(self, request):
         user = self.service.require_admin(request)
         if isinstance(user, web.Response): return user

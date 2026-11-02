@@ -1,10 +1,28 @@
 """Classroom quiet periods inherit school defaults without locking teachers out."""
 import copy
+import json
+from pathlib import Path
+import subprocess
 import unittest
 
 import app as service
 from island import defaults, normalize
 from test_app import ServerTestCase
+
+
+def consumer_hidden(config, samples):
+    """Run the teacher preview's real consumer against a delivered profile."""
+    script = """
+const fs = require('node:fs');
+const { hiddenDuringLesson } = require(process.argv[1]);
+const { config, samples } = JSON.parse(fs.readFileSync(0, 'utf8'));
+console.log(JSON.stringify(samples.map(([on, minute]) => hiddenDuringLesson(config, on, minute))));
+"""
+    result = subprocess.run(['node', '-e', script,
+        str(Path(__file__).resolve().parents[1] / 'web_controller' / 'island-schedule.js')],
+        input=json.dumps({'config': config, 'samples': samples}), text=True,
+        capture_output=True, check=True, timeout=10)
+    return json.loads(result.stdout)
 
 
 class VisibilityModelTest(unittest.TestCase):
@@ -13,14 +31,16 @@ class VisibilityModelTest(unittest.TestCase):
         old.pop('visibility', None)
         old['appearance']['hideDuringLessons'] = True
         visibility = normalize(old).get('visibility')
-        self.assertEqual(visibility, {'followSchool': False, 'hiddenSlotIds': [s['id'] for s in old['slots']]})
+        self.assertEqual(visibility, {'followSchool': False, 'hiddenSlotIds': [s['id'] for s in old['slots']],
+                                      'lessonsOnly': True})
         old['visibility'] = {'followSchool': False, 'hiddenSlotIds': ['missing']}
         with self.assertRaises(ValueError):
             normalize(old)
 
     def test_visibility_selection_rejects_bad_types_and_duplicates(self):
         for invalid in (None, {'followSchool': 'yes'}, {'hiddenSlotIds': None},
-                        {'hiddenSlotIds': ['period-1', 'period-1']}, {'hiddenSlotIds': [True]}):
+                        {'hiddenSlotIds': ['period-1', 'period-1']}, {'hiddenSlotIds': [True]},
+                        {'followSchool': False, 'lessonsOnly': 'true'}):
             p = defaults('高一')
             p['visibility'] = invalid
             with self.subTest(value=invalid), self.assertRaises(ValueError):
@@ -31,6 +51,42 @@ class VisibilityApiTest(ServerTestCase):
     async def setup_class(self):
         device = await self.enroll_test_device()
         return device, '/api/island/classes/' + device['classId']
+
+    async def test_legacy_persisted_profile_keeps_course_hiding_after_normalize_and_save(self):
+        device, path = await self.setup_class()
+        legacy = defaults('高一')
+        legacy.pop('visibility')
+        legacy['appearance']['hideDuringLessons'] = True
+        legacy['lessons'] = [{'slotId': 'period-1', 'weekday': 1, 'week': 'all',
+                              'subject': '数学', 'teacher': '', 'location': ''}]
+        self.app[service.STORE_KEY].run('INSERT INTO island_profiles VALUES(?,?,?,?,?)',
+            (device['classId'], 7, json.dumps(legacy), service.now_ms(), None))
+        headers = {'Authorization': 'Bearer ' + device['deviceToken']}
+        response = await self.client.get('/api/island/device?deviceId=' + device['deviceId'], headers=headers)
+        self.assertEqual(response.status, 200)
+        delivered = await response.json()
+        samples = [('2026-11-02', 480), ('2026-11-02', 535), ('2026-11-01', 480)]
+        for config in (delivered['config'], normalize(delivered['config']), normalize(normalize(delivered['config']))):
+            self.assertEqual(consumer_hidden(config, samples), [True, False, False],
+                             'A legacy profile hides actual courses, not empty slots or empty days')
+        response, saved = await self.json_request('PUT', path, delivered, csrf=True)
+        self.assertEqual(response.status, 200, saved)
+        self.assertEqual(consumer_hidden(saved['config'], samples), [True, False, False])
+        response = await self.client.get('/api/island/device?deviceId=' + device['deviceId'], headers=headers)
+        self.assertEqual(consumer_hidden((await response.json())['config'], samples), [True, False, False])
+
+    async def test_explicit_visibility_wins_over_legacy_appearance_after_delivery(self):
+        _, path = await self.setup_class()
+        config = defaults('高一')
+        config['appearance']['hideDuringLessons'] = True
+        samples = [('2026-11-02', 480), ('2026-11-02', 535), ('2026-11-01', 480)]
+        for revision, ids, expected in [(0, ['period-1', 'period-2'], [True, True, True]),
+                                        (1, [], [False, False, False])]:
+            config['visibility'] = {'followSchool': False, 'hiddenSlotIds': ids}
+            response, saved = await self.json_request('PUT', path,
+                {'revision': revision, 'config': config}, csrf=True)
+            self.assertEqual(response.status, 200, saved)
+            self.assertEqual(consumer_hidden(saved['config'], samples), expected)
 
     async def test_new_and_saved_profiles_resolve_school_defaults_using_class_slots(self):
         device, path = await self.setup_class()

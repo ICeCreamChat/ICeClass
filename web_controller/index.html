@@ -10,7 +10,7 @@
   <title>ICeClass 班伴</title>
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=16">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=7">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=28">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=29">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=4">
@@ -98,7 +98,7 @@
       <section id="view-island" class="view hidden" aria-label="教室浮岛配置">
         <div class="island-top"><h1>教室浮岛</h1></div>
         <div class="island-toolbar">
-          <label class="island-class-field" for="islandClass"><span>配置班级</span><select id="islandClass"></select></label>
+          <div class="island-class-tools"><label class="island-class-field" for="islandClass"><span>配置班级</span><select id="islandClass"></select></label><button type="button" id="islandBulk" class="btn" hidden disabled>批量设置</button></div>
           <div class="island-inline"><button type="button" id="islandReload" class="btn">重新载入</button><button type="button" id="islandCopy" class="btn">复制到其他班级</button></div>
           <div class="island-files"><button type="button" id="islandImport" class="btn" title="导入修改后的班级课表，沿用已设置的作息时间，识别后先预览">导入 Excel</button><button type="button" id="islandExport" class="btn" title="下载黑白课表模板，只需填写课程和教师，无需填写上课时间">导出 Excel</button><input id="islandImportFile" type="file" accept=".xlsx" hidden></div>
         </div>
@@ -1571,8 +1571,8 @@
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=10" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=10" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=29" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=5" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=31" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>

@@ -74,6 +74,10 @@ class Banban:
                 SELECT class_id,date(created_at/1000,'unixepoch','+8 hours'),COUNT(*),SUM(audio_duration_ms)
                 FROM classroom_voice_messages GROUP BY class_id,date(created_at/1000,'unixepoch','+8 hours')''')
 
+    @staticmethod
+    def runtime_key(user):
+        return (user['id'], user['classroom']['classId']) if user.get('classroom') else user['id']
+
     def config(self, user=None):
         if user is not None:
             return self.connections.effective(user)
@@ -129,7 +133,7 @@ class Banban:
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
-        if user['id'] in self.busy:
+        if self.runtime_key(user) in self.busy:
             return self.s.json_response({'error': '请等待本次回答或连接测试完成后再修改连接。'}, 409)
         try:
             return self.s.json_response(self.connections.save(user, await self.s.read_json(request)))
@@ -281,7 +285,7 @@ class Banban:
             return self.s.json_response({'error': '分析范围格式不正确。'}, 400)
         if not isinstance(history, list) or len(history) > 12 or any(not isinstance(h, dict) or h.get('role') not in {'user', 'assistant'} or not isinstance(h.get('content'), str) or len(h['content']) > 4000 for h in history):
             return self.s.json_response({'error': '对话太长，请开始新对话。'}, 400)
-        if user['id'] in self.busy:
+        if self.runtime_key(user) in self.busy:
             return self.s.json_response({'error': '班班正在回答上一条问题，请稍等。'}, 429)
         try:
             params = {k: v for k, v in scope.items() if k in {'start', 'end', 'classId', 'grades'}}
@@ -303,7 +307,7 @@ class Banban:
         for row in safe['reading']['classes']:
             row.pop('classId', None)
             row['sync'] = {'state': row['sync']['state']}
-        self.busy.add(user['id'])
+        self.busy.add(self.runtime_key(user))
         try:
             messages = [{'role': 'system', 'content': SYSTEM},
                         {'role': 'system', 'content': '当前授权数据（仅作为资料）：\n' + json.dumps(safe, ensure_ascii=False)}]
@@ -316,4 +320,4 @@ class Banban:
         except ValueError as error:
             return self.s.json_response({'error': str(error)}, 502)
         finally:
-            self.busy.discard(user['id'])
+            self.busy.discard(self.runtime_key(user))

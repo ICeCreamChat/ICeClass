@@ -328,6 +328,30 @@ test('Teacher chooses class quiet periods with keyboard and saves the actual sel
   assert.equal(await follow().isChecked(), false);
 });
 
+for (const edit of ['slot', 'school']) test(`Editing legacy quiet periods through ${edit} replaces course-only hiding`, async t => {
+  const data = profile();
+  data.config.visibility = { followSchool: false, hiddenSlotIds: ['p1'], lessonsOnly: true };
+  const page = await open(t, data);
+  await page.getByRole('tab', { name: '提醒与外观', exact: true }).click();
+  if (edit === 'slot')
+    await page.getByRole('group', { name: '隐藏时段', exact: true }).getByRole('checkbox', { name: /^晚自习第一节/ }).press('Space');
+  else
+    await page.getByRole('switch', { name: /^跟随全校默认/ }).press('Space');
+  let saved;
+  await page.route('**/api/island/classes/*', route => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON();
+      saved = body.config.visibility;
+      data.config = body.config; data.revision++;
+    }
+    return route.fulfill({ json: data });
+  });
+  await page.locator('#islandSave').click();
+  await page.locator('#islandDirty').filter({ hasText: '版本 5' }).waitFor();
+  assert.equal(Object.hasOwn(saved, 'lessonsOnly'), false, 'A newly selected rule hides by slot time even with no course rows');
+  assert.equal(saved.followSchool, edit === 'school');
+});
+
 test('Only school administrators see global defaults and editing them does not dirty a class', async t => {
   const data = profile(), page = await open(t, data);
   await page.getByRole('tab', { name: '提醒与外观', exact: true }).click();
