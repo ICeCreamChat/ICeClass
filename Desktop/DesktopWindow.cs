@@ -13,7 +13,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace ICeClass.Desktop;
 
-internal sealed class DesktopWindow : Window
+internal sealed partial class DesktopWindow : Window
 {
     private readonly App _app;
     private readonly string _endpoint;
@@ -29,6 +29,9 @@ internal sealed class DesktopWindow : Window
     private readonly Button _runtime = Dialogs.Button("获取运行组件");
     private readonly Button _feedbackAction = ToolbarButton("反馈");
     private readonly ProgressBar _progress = new() { IsIndeterminate = true, Height = 2, IsVisible = true };
+    private readonly UpdateProgressView _updateProgress = new();
+    private readonly Border _updatePanel;
+    private UpdateProgress? _lastUpdateProgress;
     private readonly Border _toolbar;
     private readonly List<DesktopWindow> _children = [];
     private bool _initialized, _disposed, _checkingUpdate, _navigated, _needsRestart;
@@ -52,6 +55,7 @@ internal sealed class DesktopWindow : Window
     internal DesktopWindow(App app, string endpoint, bool main, string? address = null)
     {
         _app = app; _endpoint = endpoint; _main = main; _initialAddress = address ?? endpoint + "/";
+        InitializeClientDiagnostics();
         _teacherActions = new TeacherActions(endpoint, ReadTeacherActionContextAsync,
             new("teacher.settings.open", "打开桌面设置", false, "打开本机设置窗口，由老师自行保存。",
                 _ => OpenTeacherDialogAsync(ShowSettingsAsync, "已打开桌面设置，请在窗口中保存；此回执不代表已保存。")),
@@ -62,7 +66,11 @@ internal sealed class DesktopWindow : Window
                     : TeacherActionResult.Refused("feedback-unavailable", "反馈表单未打开，请检查教师端窗口。")),
             new("teacher.refresh", "刷新教师工作台", false, "重新加载当前页面，请先保存尚未提交的内容。", RefreshTeacherActionAsync),
             new("teacher.updates.check", "检查教师端更新", false, "仅检查可用更新，不下载、安装或重启。",
-                _ => CheckUpdatesCoreAsync(checkOnly: true)));
+                _ => CheckUpdatesCoreAsync(checkOnly: true)),
+            new("teacher.voice.download", "下载语音资源", false, "准备教师端本机转文字资源，可暂停续传。",
+                _ => Task.FromResult(_app.RequestVoiceDownload() ? new TeacherActionResult(true, false,
+                    "已请求准备语音资源，请在桌面设置中查看下载进度；此回执不代表下载完成。", "started")
+                    : TeacherActionResult.Refused("voice-unavailable", "语音资源准备未启动，请重新打开教师工作台。"))));
         Title = main ? "ICeClass 班伴 · 教师端" : "ICeClass 班伴 · 教师端 · 新窗口";
         Width = 1280; Height = 820; MinWidth = 800; MinHeight = 560;
         Background = Brushes.White; SystemDecorations = SystemDecorations.Full;
@@ -98,11 +106,17 @@ internal sealed class DesktopWindow : Window
             catch (Exception error) { DesktopLog.Write(error); ShowError("重新连接未完成", "请从托盘退出工作台，再重新打开。您的登录资料仍会保留。"); }
         };
         _runtime.Click += (_, _) => OpenExternal("https://developer.microsoft.com/microsoft-edge/webview2/#download-section");
-        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
+        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
         _toolbar = new Border { Background = DesktopStyle.Brush("#F7FAFE"), BorderBrush = DesktopStyle.Brush("#E4ECF5"), BorderThickness = new Thickness(0, 0, 0, 1), Child = toolbar };
         layout.Children.Add(_toolbar);
-        Grid.SetRow(_progress, 1); layout.Children.Add(_progress); Grid.SetRow(surface, 2); layout.Children.Add(surface); Content = layout;
-        Opened += async (_, _) => { await InitializePage(); };
+        Grid.SetRow(_progress, 1); layout.Children.Add(_progress);
+        _updatePanel = new Border { Background = DesktopStyle.Brush("#F7FAFE"), Padding = new Thickness(16, 8),
+            BorderBrush = DesktopStyle.Brush("#E4ECF5"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = _updateProgress, IsVisible = false };
+        Grid.SetRow(_updatePanel, 2); layout.Children.Add(_updatePanel);
+        Grid.SetRow(surface, 3); layout.Children.Add(surface); Content = layout;
+        if (_main) InitializeVoiceResources();
+        Opened += async (_, _) => { _voicePreparation?.Start(); await InitializePage(); };
         Closing += (_, args) =>
         {
             if (_main && !_app.ExitRequested && _app.Settings.CloseToTray && _app.HasTray)
@@ -112,6 +126,13 @@ internal sealed class DesktopWindow : Window
     }
 
     internal void SetStatus(string text) => _status.Text = text;
+    private void SetUpdateState(string text, bool busy = false, bool ready = false, UpdateProgress? progress = null)
+    {
+        if (_disposed) return;
+        _lastUpdateProgress = progress;
+        _updateProgress.SetState(text, busy, ready, progress);
+        _updatePanel.IsVisible = true;
+    }
     internal void RestorePage() { if (!_disposed) _browser.SetPageVisible(_error.IsVisible == false); }
     private string ConnectedStatus => new Uri(_endpoint).IsLoopback ? "本地验收" : "已连接学校平台";
     private static Button ToolbarButton(string text)
@@ -159,6 +180,7 @@ internal sealed class DesktopWindow : Window
                 await core.AddScriptToExecuteOnDocumentCreatedAsync((await script.ReadToEndAsync()).Replace("__SCHOOL_ORIGIN__",
                     System.Text.Json.JsonSerializer.Serialize(new Uri(_endpoint).GetLeftPart(UriPartial.Authority))));
             _app.Diagnostics.Record("runtime", "WebView2 就绪", _endpoint, core.Environment.BrowserVersionString);
+            await RefreshClientDiagnosticSessionAsync();
             core.NavigationStarting += (_, args) =>
             {
                 if (!DesktopSettings.SameOrigin(_endpoint, args.Uri))
@@ -380,7 +402,21 @@ internal sealed class DesktopWindow : Window
     {
         var state = $"学校平台：{FeedbackDiagnostics.Page(_endpoint)}\n当前页面：{FeedbackDiagnostics.Page(_browser.Core?.Source)}\n" +
             $"连接状态：{_status.Text}\n页面已就绪：{_navigated}\nWebView2：{_browser.Core?.Environment.BrowserVersionString ?? "尚未就绪"}\n" +
-            $"窗口：{ClientSize.Width:0}×{ClientSize.Height:0} DIP；缩放 {RenderScaling * 100:0}%\n";
+            $"窗口：{ClientSize.Width:0}×{ClientSize.Height:0} DIP；缩放 {RenderScaling * 100:0}%\n" +
+            $"Windows 动画：{(DesktopStyle.AnimationsEnabled() ? "开启" : "关闭")}\n" +
+            $"语音资源：{_voicePreparation?.Current.Message ?? "未初始化"}\n" +
+            $"客户端更新：检查中={_checkingUpdate}；下载中={_updateDownload is not null}；待安装={_readyUpdate?.Version ?? "无"}\n";
+        if (_browser.Core is { } core)
+        {
+            try
+            {
+                var motion = await core.ExecuteScriptAsync("JSON.stringify({reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches,visibility:document.visibilityState,animations:document.getAnimations().length})")
+                    .WaitAsync(TimeSpan.FromSeconds(2), token);
+                state += "网页动画状态：" + JsonSerializer.Deserialize<string>(motion) + "\n";
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { state += "网页动画状态：暂不可读取\n"; }
+        }
         await _app.Diagnostics.FlushAsync(token);
         state += "诊断存储：" + _app.Diagnostics.StorageStatus;
         return await Task.Run(() => FeedbackDiagnostics.Collect(App.DataDirectory, state), token);
@@ -418,7 +454,7 @@ internal sealed class DesktopWindow : Window
         if (_voiceNotice is not null) { _voiceNotice.UpdateMessages(); return; }
         if (_voiceInbox.Pending.Count == 0) return;
         _updateDownload?.Cancel();
-        _voiceNotice = new ClassroomVoiceNoticeWindow(_voiceInbox, this);
+        _voiceNotice = new ClassroomVoiceNoticeWindow(_voiceInbox, this, StartVoiceDownload);
         _voiceNotice.Closed += (_, _) => _voiceNotice = null;
         _voiceNotice.Show();
     }
@@ -485,6 +521,7 @@ internal sealed class DesktopWindow : Window
     }
     private async Task ShowAbout()
     {
+        var diagnosticSession = await ReadSessionAsync();
         _app.Diagnostics.Record("action", "关于", _browser.Core?.Source ?? _endpoint);
         var window = Dialogs.Window("关于 ICeClass 班伴 · 教师端", 740);
         window.Height = 660; window.SizeToContent = SizeToContent.Manual; window.CanResize = true;
@@ -493,7 +530,8 @@ internal sealed class DesktopWindow : Window
         window.Content = AboutContent.Build("教师端", DesktopUpdates.CurrentVersion,
             "查看晨读统计、发送班级通知、收听教室来音，也可以向班班提问。",
             "网页功能随学校平台更新。桌面程序可在这里检查更新。", () => window.Close(),
-            async () => { window.Close(); await CheckUpdatesAsync(); });
+            async () => { window.Close(); await CheckUpdatesAsync(); }, CollectFeedbackDiagnostics,
+            (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticSession));
         await window.ShowDialog(this);
     }
     internal async Task CheckUpdatesAsync() => await CheckUpdatesCoreAsync(checkOnly: false);
@@ -518,23 +556,24 @@ internal sealed class DesktopWindow : Window
                 await DesktopUpdates.RunGuardedAsync(_ => Task.FromResult(true), () => UpdateBusy(false), ReadUpdateActivityAsync, _lifetime.Token);
                 _app.Restart(); return new(true, false, "已开始重新打开工作台。", "started");
             }
-            SetStatus("正在检查桌面更新…");
+            SetUpdateState("正在检查桌面更新…", busy: true);
             var update = _offeredUpdate = await DesktopUpdates.CheckPlanFirstAsync(_endpoint, _lifetime.Token);
-            if (update is null) { SetStatus("暂未发现可用的桌面更新"); return new(true, true, "暂未发现可用的桌面更新。", "checked", UpdateAvailable: false); }
-            if (checkOnly) { SetStatus("发现桌面更新 " + update.Version); return new(true, true, "发现桌面更新，本次仅检查，尚未下载或安装。", "checked", UpdateAvailable: true, Version: update.Version); }
+            if (update is null) { SetUpdateState("暂未发现可用的桌面更新"); return new(true, true, "暂未发现可用的桌面更新。", "checked", UpdateAvailable: false); }
+            if (checkOnly) { SetUpdateState("发现桌面更新 " + update.Version); return new(true, true, "发现桌面更新，本次仅检查，尚未下载或安装。", "checked", UpdateAvailable: true, Version: update.Version); }
             if (!await Dialogs.Confirm(this, "发现桌面更新 " + update.Version,
-                "下载完成后，下次启动时安装。上课或正在使用语音等功能时暂停下载。", "下载")) return new(false, true, "已取消下载更新。", "cancelled");
+                "下载完成后，下次启动时安装。上课或正在使用语音等功能时暂停下载。", "下载"))
+            { SetUpdateState("已取消下载更新。"); return new(false, true, "已取消下载更新。", "cancelled"); }
             await PrepareUpdateAsync(update, automatic: false);
             return new(true, true, "桌面更新已下载，将在下次启动时安装。", "prepared");
         }
         catch (OperationCanceledException error)
         {
-            if (!_disposed) SetStatus(error is DesktopUpdatePausedException ? error.Message : "桌面更新已暂停，课间空闲时可继续");
+            SetUpdateState(error is DesktopUpdatePausedException ? error.Message : "桌面更新已暂停，课间空闲时可继续", progress: _lastUpdateProgress);
             return TeacherActionResult.Refused("update-paused", "更新检查已暂停，未确认可用更新。");
         }
         catch (Exception error)
         {
-            DesktopLog.Write(error); SetStatus("暂时无法更新，您仍可继续使用工作台");
+            DesktopLog.Write(error); SetUpdateState("暂时无法更新，请检查网络后重试。", progress: _lastUpdateProgress);
             if (!checkOnly) await Dialogs.Message(this, "桌面更新未完成", "请检查网络后重试。当前程序与登录资料保持，网页功能会随学校平台更新。");
             return TeacherActionResult.Refused("update-failed", "暂时无法检查桌面更新，请检查学校平台连接。");
         }
@@ -542,7 +581,7 @@ internal sealed class DesktopWindow : Window
     }
 
     internal void CancelBackgroundUpdate() { if (_automaticDownload) _updateDownload?.Cancel(); }
-    private bool UpdateBusy(bool automatic) => _disposed || !_navigated || _recordingFrames.Count > 0 || _pickingFile
+    private bool UpdateBusy(bool automatic) => _disposed || !_navigated || _voicePreparation?.IsDownloading == true || _recordingFrames.Count > 0 || _pickingFile
         || _openingFeedback || _pageDownloads.Count > 0 || _browser.Core?.IsDocumentPlayingAudio == true || _app.UpdateBusy(automatic);
 
     private async Task<DesktopUpdateActivity> ReadUpdateActivityAsync(CancellationToken token)
@@ -558,11 +597,12 @@ internal sealed class DesktopWindow : Window
         _updateDownload = download; _automaticDownload = automatic;
         try
         {
+            SetUpdateState("正在准备桌面更新…", busy: true);
             _readyUpdate = await DesktopUpdates.RunGuardedAsync(token => DesktopUpdates.PrepareAsync(_endpoint, update,
-                new Progress<int>(p => { if (!_disposed) SetStatus($"正在下载桌面更新 {p}%"); }), token),
+                new Progress<UpdateProgress>(p => SetUpdateState(p.Message, busy: true, progress: p)), token),
                 () => UpdateBusy(automatic), ReadUpdateActivityAsync, download.Token);
             _app.SetUpdateReady(true);
-            SetStatus("桌面更新已下载，下次启动时安装；也可从托盘选择“立即更新”");
+            SetUpdateState("桌面更新已下载，下次启动时安装；也可从托盘选择“立即更新”", ready: true, progress: _lastUpdateProgress);
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
@@ -578,7 +618,11 @@ internal sealed class DesktopWindow : Window
     {
         try
         {
-            try { _readyUpdate = await DesktopUpdates.PendingAsync(token); _app.SetUpdateReady(_readyUpdate is not null); }
+            try
+            {
+                _readyUpdate = await DesktopUpdates.PendingAsync(token); _app.SetUpdateReady(_readyUpdate is not null);
+                if (_readyUpdate is not null) SetUpdateState("桌面更新已下载，下次启动时安装；也可从托盘选择“立即更新”", ready: true);
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             { DesktopLog.Write(error); }
             var lastCheck = DateTimeOffset.MinValue;
@@ -599,8 +643,13 @@ internal sealed class DesktopWindow : Window
                     await _backgroundUpdateTask;
                 }
                 catch (OperationCanceledException error)
-                { if (!_disposed) SetStatus(error is DesktopUpdatePausedException ? error.Message : "桌面更新已暂停，课间空闲时可继续"); }
-                catch (Exception error) { lastCheck = DateTimeOffset.MinValue; if (!_disposed) DesktopLog.Write(error); }
+                { SetUpdateState(error is DesktopUpdatePausedException ? error.Message : "桌面更新已暂停，课间空闲时可继续", progress: _lastUpdateProgress); }
+                catch (Exception error)
+                {
+                    lastCheck = DateTimeOffset.MinValue;
+                    if (!_disposed) DesktopLog.Write(error);
+                    SetUpdateState("桌面更新未完成，请检查网络后重试。", progress: _lastUpdateProgress);
+                }
                 finally { _backgroundUpdateTask = null; }
             }
             while (await timer.WaitForNextTickAsync(token));
@@ -672,7 +721,9 @@ internal sealed class DesktopWindow : Window
     internal void DisposePage()
     {
         if (_disposed) return; _disposed = true; _teacherDocumentActive = false; _teacherActions.InvalidateDocument(closed: true);
+        DisposeClientDiagnostics();
         _lifetime.Cancel(); _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose();
+        _voicePreparation?.Dispose();
         _feedbackWindow?.CloseWithOwner(); _voiceNotice?.Close(); _voiceInbox?.Dispose();
         foreach (var child in _children.ToArray()) child.Close(); _browser.DisposeBrowser();
     }

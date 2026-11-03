@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ICeClass.Desktop;
@@ -50,6 +51,7 @@ public sealed class FeedbackOpeningCheckApp : Application
         var directory = Path.Combine(Path.GetTempPath(), "ICeClass-FeedbackOpening-" + Guid.NewGuid().ToString("N"));
         var requests = 0;
         string? sentBody = null;
+        string? diagnosticBody = null;
         try
         {
             using var probe = new TcpListener(IPAddress.Loopback, 0); probe.Start();
@@ -63,18 +65,25 @@ public sealed class FeedbackOpeningCheckApp : Application
                     if (session) { Interlocked.Increment(ref requests); await releaseAccount.Task.WaitAsync(lifetime.Token); }
                     var send = context.Request.Url!.AbsolutePath == "/api/feedback";
                     var diagnosticRequest = context.Request.Url!.AbsolutePath.StartsWith("/api/diagnostic-check");
+                    var uploadDiagnostic = context.Request.Url.AbsolutePath == "/api/client-diagnostics";
+                    if (uploadDiagnostic)
+                    {
+                        using var reader = new StreamReader(context.Request.InputStream);
+                        diagnosticBody = await reader.ReadToEndAsync(lifetime.Token);
+                    }
                     if (send)
                     {
                         using var reader = new StreamReader(context.Request.InputStream);
                         Volatile.Write(ref sentBody, await reader.ReadToEndAsync(lifetime.Token));
                     }
                     if (context.Request.Url.AbsolutePath.EndsWith("/fail")) context.Response.StatusCode = 503;
-                    var text = diagnosticRequest ? "{\"value\":\"preserved-response\"}"
+                    var text = uploadDiagnostic ? "{\"id\":\"11111111-1111-1111-1111-111111111111\",\"status\":\"stored\"}"
+                        : diagnosticRequest ? "{\"value\":\"preserved-response\"}"
                         : send ? JsonSerializer.Serialize(new { id = Guid.NewGuid().ToString(), status = "sent" })
                         : session ? """{"authenticated":true,"user":{"username":"feedback-check","displayName":"本地检查","csrfToken":"check-csrf"}}"""
                         : "<!doctype html><html><head><title>Feedback opening check</title></head><body>Local check</body></html>";
                     var bytes = Encoding.UTF8.GetBytes(text);
-                    context.Response.ContentType = diagnosticRequest || session || send ? "application/json" : "text/html";
+                    context.Response.ContentType = uploadDiagnostic || diagnosticRequest || session || send ? "application/json" : "text/html";
                     context.Response.ContentLength64 = bytes.Length;
                     await context.Response.OutputStream.WriteAsync(bytes, lifetime.Token);
                 }
@@ -157,6 +166,49 @@ public sealed class FeedbackOpeningCheckApp : Application
             static Button Action(Window form, string name) => form.GetVisualDescendants().OfType<Button>()
                 .Single(action => action.Content as string == name);
             static void Click(Button action) => action.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            var aboutTask = (Task)typeof(DesktopWindow).GetMethod("ShowAbout", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null)!;
+            await Until(() => window.OwnedWindows.Any(owned => owned.Title?.Contains("关于 ICeClass") == true));
+            var about = window.OwnedWindows.Single(owned => owned.Title?.Contains("关于 ICeClass") == true);
+            Click(Action(about, "更新记录"));
+            var historyBeforeLayout = about.GetVisualDescendants().OfType<SelectableTextBlock>().Count();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            Assert(about.GetVisualDescendants().OfType<SelectableTextBlock>().Any(text => text.IsEffectivelyVisible && text.Text?.Contains("2.5.5") == true),
+                $"The actual teacher About window includes offline release history after layout (readers before layout: {historyBeforeLayout})");
+            Click(Action(about, "诊断日志"));
+            await Until(() => Action(about, "导出诊断包").IsEnabled);
+            var supportText = about.GetVisualDescendants().OfType<TextBox>().Single(text => text.IsEffectivelyVisible).Text ?? "";
+            Assert(supportText.Contains("网页动画状态") && supportText.Contains("reducedMotion") && supportText.Contains("诊断存储") && !supportText.Contains("private-"),
+                "Teacher About reuses real WebView activity and adds animation state without exposing credentials");
+            Click(Action(about, "提交诊断"));
+            await Until(() => Action(about, "提交诊断").IsEnabled);
+            Assert(diagnosticBody?.Contains("\"kind\":\"manual\"") == true && !diagnosticBody.Contains("private-") &&
+                about.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text?.Contains("诊断编号") == true),
+                "The teacher About action submits its redacted report through authenticated HTTP and displays confirmation");
+            Directory.CreateDirectory(FeedbackOpeningChecks.Output);
+            void CaptureAbout(string name)
+            {
+                using var image = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(about.ClientSize.Width), (int)Math.Ceiling(about.ClientSize.Height)), new Vector(96, 96));
+                image.Render(about); image.Save(Path.Combine(FeedbackOpeningChecks.Output, name + ".png"));
+            }
+            CaptureAbout("about-teacher-diagnostics");
+            about.Width = 600; about.Height = 500; await Task.Delay(150);
+            Assert(about.GetVisualDescendants().OfType<Button>().Where(action => action.IsEffectivelyVisible).All(action =>
+            {
+                var point = action.TranslatePoint(default, about);
+                return point.HasValue && point.Value.X >= 0 && point.Value.X + action.Bounds.Width <= about.ClientSize.Width + 1 &&
+                    point.Value.Y + action.Bounds.Height <= about.ClientSize.Height + 1;
+            }), "Teacher About actions remain reachable in the narrow 600 by 500 window");
+            CaptureAbout("about-teacher-narrow");
+            about.Close(); await aboutTask;
+
+            var rendererWork = browser.Core.ExecuteScriptAsync("{ const end = performance.now() + 6500; while (performance.now() < end) {} }");
+            var diagnosticRead = (Task<string>)typeof(DesktopWindow).GetMethod("CollectFeedbackDiagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(window, new object[] { CancellationToken.None })!;
+            var first = await Task.WhenAny(diagnosticRead, Task.Delay(4000));
+            Assert(first == diagnosticRead && (await diagnosticRead).Contains("网页动画状态：暂不可读取"),
+                "A busy renderer cannot block the native diagnostic report");
+            await rendererWork;
 
             var logReads = 0;
             var releaseLogs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

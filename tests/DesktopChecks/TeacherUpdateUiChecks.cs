@@ -47,6 +47,8 @@ public sealed class TeacherUpdateCheckApp : Application
         void Assert(bool value, string label) { if (!value) throw new Exception(label); checks.Add(label); }
         static void Set(object instance, string field, object value) => instance.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(instance, value);
         static T Field<T>(object instance, string field) => (T)instance.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(instance)!;
+        static string UpdateStatus(DesktopWindow window) => Field<UpdateProgressView>(window, "_updateProgress")
+            .GetVisualDescendants().OfType<TextBlock>().First().Text ?? "";
         static void Click(Window dialog, string label) => dialog.GetVisualDescendants().OfType<Button>()
             .Single(button => button.Content as string == label).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         async Task Until(Func<bool> ready)
@@ -67,9 +69,10 @@ public sealed class TeacherUpdateCheckApp : Application
             using var probe = new TcpListener(IPAddress.Loopback, 0); probe.Start();
             var endpoint = "http://127.0.0.1:" + ((IPEndPoint)probe.LocalEndpoint).Port; probe.Stop();
             listener.Prefixes.Add(endpoint + "/"); listener.Start();
-            var bytes = Encoding.UTF8.GetBytes("teacher UI fixture; never installed");
+            var bytes = new byte[512 * 1024]; Random.Shared.NextBytes(bytes);
             var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             var known = 0; var payloads = 0; var activityReads = 0; var retired = 0;
+            var releasePayload = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var releaseVersion = "9.9.9";
             async Task Reply(HttpListenerContext context)
             {
@@ -94,7 +97,14 @@ public sealed class TeacherUpdateCheckApp : Application
                     else { content = "text/html"; body = "<!doctype html><html><head><title>教师更新本地检查</title></head><body>仅本机测试</body></html>"; }
                     var data = path == "/api/desktop/update/payload" ? bytes : Encoding.UTF8.GetBytes(content == "text/html" ? (string)body : JsonSerializer.Serialize(body));
                     context.Response.ContentType = content; context.Response.ContentLength64 = data.Length;
-                    await context.Response.OutputStream.WriteAsync(data, lifetime.Token);
+                    if (path == "/api/desktop/update/payload" && context.Response.StatusCode == 200)
+                    {
+                        await context.Response.OutputStream.WriteAsync(data.AsMemory(0, 128 * 1024), lifetime.Token);
+                        await context.Response.OutputStream.FlushAsync(lifetime.Token);
+                        await releasePayload.Task.WaitAsync(lifetime.Token);
+                        await context.Response.OutputStream.WriteAsync(data.AsMemory(128 * 1024), lifetime.Token);
+                    }
+                    else await context.Response.OutputStream.WriteAsync(data, lifetime.Token);
                 }
                 catch (Exception error) when (error is HttpListenerException or OperationCanceledException or ObjectDisposedException) { }
                 finally { context.Response.Close(); }
@@ -124,10 +134,20 @@ public sealed class TeacherUpdateCheckApp : Application
                 var dialog = window.OwnedWindows.Single();
                 Assert(dialog.GetVisualDescendants().OfType<Button>().Any(button => button.Content as string == "下载"), "A new update prompts Download");
                 Assert(_product.UpdateBusy(false), "An open native dialog blocks update preparation");
-                Click(dialog, "下载"); await check.WaitAsync(TimeSpan.FromSeconds(10));
+                Click(dialog, "下载");
+                if (Volatile.Read(ref known) != 0)
+                {
+                    var progress = Field<UpdateProgressView>(window, "_updateProgress");
+                    await Until(() => progress.GetVisualDescendants().OfType<ProgressBar>().Single().Value is > 0 and < 100);
+                    Assert(Field<Border>(window, "_updatePanel").IsVisible && UpdateStatus(window).Contains("正在下载更新"),
+                        "The actual teacher window shows byte progress before its payload completes");
+                    Assert(!check.IsCompleted, "Download progress is visible while the server is still holding the remaining bytes");
+                    releasePayload.TrySetResult();
+                }
+                await check.WaitAsync(TimeSpan.FromSeconds(10));
             }
             await StartDownload();
-            Assert(Field<TextBlock>(window, "_status").Text!.Contains("课表状态不可用") && payloads == 0,
+            Assert(UpdateStatus(window).Contains("课表状态不可用") && payloads == 0,
                 "An unknown schedule is explicitly shown and no payload starts");
             Volatile.Write(ref releaseVersion, "9.9.10");
             window.Hide();
@@ -142,6 +162,7 @@ public sealed class TeacherUpdateCheckApp : Application
             Volatile.Write(ref known, 1);
             Volatile.Write(ref retired, 1);
             var cached = Path.Combine(AppContext.BaseDirectory, ".updates", "resume-ui-check.download");
+            Directory.CreateDirectory(Path.GetDirectoryName(cached)!);
             File.WriteAllText(cached, "retained partial download");
             var failed = (Task)typeof(DesktopWindow).GetMethod("PrepareUpdateAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(window, [Field<DesktopUpdate>(window, "_offeredUpdate"), false])!;
@@ -153,7 +174,9 @@ public sealed class TeacherUpdateCheckApp : Application
             var installed = Path.Combine(AppContext.BaseDirectory, "ICeClass.Desktop.exe");
             var before = File.ReadAllBytes(installed);
             await StartDownload();
-            Assert(UpdateInstaller.LoadPending(AppContext.BaseDirectory, "ICeClass.Desktop.exe")?.Version == "9.9.11", "Download persists a prepared pending update from the latest offer; status=" + Field<TextBlock>(window, "_status").Text);
+            Assert(UpdateInstaller.LoadPending(AppContext.BaseDirectory, "ICeClass.Desktop.exe")?.Version == "9.9.11", "Download persists a prepared pending update from the latest offer; status=" + UpdateStatus(window));
+            Assert(Field<UpdateProgressView>(window, "_updateProgress").GetVisualDescendants().OfType<ProgressBar>().Single().Value == 100 &&
+                   UpdateStatus(window).Contains("桌面更新已下载"), "Verified downloads leave a full progress bar and a ready message");
             Assert(File.ReadAllBytes(installed).SequenceEqual(before) && !File.Exists(Path.Combine(AppContext.BaseDirectory, ".updates", "apply-incremental-update.ps1")),
                 "Completing the download leaves the running program intact and does not start installation");
             Assert(action.Header as string == "立即更新", "The ready tray action becomes Update now");

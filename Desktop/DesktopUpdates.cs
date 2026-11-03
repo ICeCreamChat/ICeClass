@@ -66,7 +66,7 @@ public static class DesktopUpdates
         return legacy is null ? null : new(legacy.Version, null, legacy);
     }
 
-    internal static Task<PreparedUpdate> PrepareAsync(string endpoint, DesktopUpdate update, IProgress<int>? progress,
+    internal static Task<PreparedUpdate> PrepareAsync(string endpoint, DesktopUpdate update, IProgress<UpdateProgress>? progress,
         CancellationToken token, string? installDirectory = null, HttpClient? client = null)
     {
         installDirectory ??= AppContext.BaseDirectory;
@@ -192,12 +192,13 @@ public static class DesktopUpdates
 
     private sealed record ActivityResponse([property: JsonRequired] bool Known,
         [property: JsonRequired] bool InClass, [property: JsonRequired] long ValidUntil);
-    public static async Task<string> DownloadAsync(string endpoint, DesktopRelease release, IProgress<int>? progress, CancellationToken token)
+    public static async Task<string> DownloadAsync(string endpoint, DesktopRelease release, IProgress<UpdateProgress>? progress, CancellationToken token)
         => await DownloadAsync(endpoint, release, progress, token, Path.Combine(AppContext.BaseDirectory, ".updates"), Client);
 
-    internal static async Task<string> DownloadAsync(string endpoint, DesktopRelease release, IProgress<int>? progress, CancellationToken token, string directory, HttpClient client)
+    internal static async Task<string> DownloadAsync(string endpoint, DesktopRelease release, IProgress<UpdateProgress>? progress, CancellationToken token, string directory, HttpClient client)
     {
         if (!IsValid(endpoint, release)) throw new InvalidOperationException("更新信息无效。");
+        progress?.Report(new(UpdateStage.Preparing));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "ICeClass.Desktop-" + Version.Parse(release.Version) + ".download");
         // Bytes are reused only for this exact release; the final digest is always checked.
@@ -208,6 +209,8 @@ public static class DesktopUpdates
         if (offset > release.Size) { File.Delete(path); offset = 0; }
         if (offset == release.Size)
         { if (await Verify(path, release, token)) return path; File.Delete(path); offset = 0; }
+        using var transfer = new UpdateTransferProgress(progress, release.Size);
+        transfer.Report(offset);
         var uri = new Uri(new Uri(DesktopSettings.NormalizeEndpoint(endpoint) + "/"), release.DownloadUrl);
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         if (offset > 0) request.Headers.Range = new RangeHeaderValue(offset, null);
@@ -217,6 +220,7 @@ public static class DesktopUpdates
         if (response.StatusCode == HttpStatusCode.OK) offset = 0;
         else if (response.StatusCode != HttpStatusCode.PartialContent || response.Content.Headers.ContentRange?.From != offset || response.Content.Headers.ContentRange.Length != release.Size)
             throw new InvalidOperationException("下载续传范围不正确。");
+        transfer.Report(offset);
         await using var input = await response.Content.ReadAsStreamAsync(token);
         await using (var output = new FileStream(path, offset > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 131072, true))
         {
@@ -226,10 +230,11 @@ public static class DesktopUpdates
                 using var stalled = CancellationTokenSource.CreateLinkedTokenSource(token); stalled.CancelAfter(TimeSpan.FromSeconds(30));
                 var count = await input.ReadAsync(buffer, stalled.Token); if (count == 0) break;
                 total += count; if (total > release.Size) throw new InvalidOperationException("更新文件大小不正确。");
-                await output.WriteAsync(buffer.AsMemory(0, count), token); progress?.Report((int)(total * 100 / release.Size));
+                await output.WriteAsync(buffer.AsMemory(0, count), token); transfer.Report(total);
             }
             await output.FlushAsync(token);
         }
+        progress?.Report(new(UpdateStage.Verifying, release.Size, release.Size));
         if (!await Verify(path, release, token)) { File.Delete(path); throw new InvalidOperationException("更新文件未通过完整性检查，请重新下载。"); }
         return path;
     }

@@ -15,7 +15,7 @@ internal static class InstallerChecks
     internal static bool TryRunPendingProbe(string[] arguments)
     {
         if (arguments.Length == 0 || arguments[0] != PendingProbeArgument) return false;
-        if (arguments.Length != 4) throw new ArgumentException("Invalid installer pending probe arguments.");
+        if (arguments.Length is < 4 or > 5) throw new ArgumentException("Invalid installer pending probe arguments.");
         var launched = UpdateInstaller.TryLaunchPending(arguments[1], arguments[2], arguments[3]);
         Console.WriteLine("INSTALLER_PENDING_LAUNCHED=" + launched);
         return true;
@@ -38,6 +38,7 @@ internal static class InstallerChecks
         var scenarios = new (string Name, Func<Task> Run)[]
         {
             ("confirmed application and voice replacement preserve config and settings", SuccessfulInstallAsync),
+            ("a session opened by the updater can immediately install its next prepared update", UpdatedSessionInstallAsync),
             ("failed new application restores every old file and launches the old application", FailedLaunchAsync),
             ("exit code zero and a stale marker do not count as new launch confirmation", UnconfirmedLaunchAsync),
             ("interrupted applying journal restores files and discards a newer pending update", InterruptedInstallAsync),
@@ -85,6 +86,15 @@ internal static class InstallerChecks
             install.AssertRestored(result, expectAttemptedLaunch: "failed");
             var oldLaunch = await install.LaunchAsync("old");
             Assert(oldLaunch.Arguments.SequenceEqual(ExpectedArguments), "Rollback must preserve the original restart arguments without the update confirmation flag.");
+        }
+
+        async Task UpdatedSessionInstallAsync()
+        {
+            var install = new Installation(root, "manual update from updated session", fixtures, fixtures.Confirmed);
+            Assert(await ProbePendingAsync(install.Root, updatedSession: true),
+                "The update-launch confirmation flag must not disable a later manual installation.");
+            await install.LaunchAsync("confirmed");
+            install.AssertSuccessful(new(0, 0, "", ""));
         }
 
         async Task UnconfirmedLaunchAsync()
@@ -376,10 +386,12 @@ internal static class InstallerChecks
         return new(Path.Combine(directory, "OLD.exe"), Path.Combine(directory, "CONFIRMED.exe"), Path.Combine(directory, "FAILED.exe"), Path.Combine(directory, "UNCONFIRMED.exe"));
     }
 
-    private static async Task<bool> ProbePendingAsync(string installDirectory)
+    private static async Task<bool> ProbePendingAsync(string installDirectory, bool updatedSession = false)
     {
         var dotnet = Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "dotnet.exe"));
-        var result = await RunProcessAsync(dotnet, [typeof(InstallerChecks).Assembly.Location, PendingProbeArgument, installDirectory, ExecutableName, ""]);
+        var arguments = new List<string> { typeof(InstallerChecks).Assembly.Location, PendingProbeArgument, installDirectory, ExecutableName, "" };
+        if (updatedSession) arguments.Add("--incremental-update-started");
+        var result = await RunProcessAsync(dotnet, arguments.ToArray());
         Assert(result.ExitCode == 0, "Pending update prevented normal startup: " + result.Output + result.Error);
         if (result.Output.Contains("INSTALLER_PENDING_LAUNCHED=True", StringComparison.Ordinal)) return true;
         Assert(result.Output.Contains("INSTALLER_PENDING_LAUNCHED=False", StringComparison.Ordinal), "Pending probe did not report startup behavior: " + result.Output + result.Error);

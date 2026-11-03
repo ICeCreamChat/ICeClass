@@ -5,8 +5,10 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +36,7 @@ class ServerInstallerTests(unittest.TestCase):
             "banban_connections", "banban_history", "banban_platform", "banban_policy",
             "banban_speech", "banban_math_speech", "banban_vision", "feedback", "ideas",
             "island", "island_timetable_xlsx", "island_xlsx", "permissions", "update_payloads",
+            "client_diagnostics", "client_downloads",
             "new_runtime_module",
         )
         for name in self.modules:
@@ -78,6 +81,17 @@ class ServerInstallerTests(unittest.TestCase):
             self.write(f"{directory}/payloads/{patch_digest}", patch)
         for name in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
             self.write(f"receiver_release/{name}", name.encode("utf-8"))
+        for name in ("install.ps1", "install-voice-resources.ps1", "安装到本机.cmd"):
+            self.write(f"desktop_release/{name}", name.encode("utf-8"))
+        plan_path = self.package / "receiver_release/update-plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        for name, content in (("model.int8.onnx", b"verified model fixture"), ("tokens.txt", b"token fixture")):
+            digest = hashlib.sha256(content).hexdigest()
+            self.write(f"receiver_release/payloads/{digest}", content)
+            plan["files"].append({"path": f"VoiceResources/Asr/{name}", "size": len(content),
+                                  "sha256": digest, "deltas": []})
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        self.write("scripts/create-client-archives.py", (ROOT / "scripts/create-client-archives.py").read_bytes())
 
     def write(self, relative, content):
         path = self.package / relative
@@ -94,13 +108,16 @@ class ServerInstallerTests(unittest.TestCase):
         harness = '''set -Eeuo pipefail
 PACKAGE_ROOT="$(cd "$1" && pwd)"
 APP_ROOT="$PWD/installed"
+INSTALLER_TEST_PYTHON="$2"
+# Git Bash has no python3 executable; use the interpreter running these tests.
+python3() { "$INSTALLER_TEST_PYTHON" "$@"; }
 mkdir -p "$APP_ROOT"
 # Ownership changes require root; all copy/install/chmod commands stay real.
 chown() { :; }
 ''' + commands
         result = subprocess.run(
             [find_bash(), "--noprofile", "--norc", "-c", harness,
-             "installer-fixture", self.package.as_posix()],
+             "installer-fixture", self.package.as_posix(), Path(sys.executable).as_posix()],
             cwd=self.root, capture_output=True, text=True, encoding="utf-8", timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -115,7 +132,6 @@ chown() { :; }
         for name in self.modules:
             self.assert_file_equal(installed, f"server/{name}.py")
         self.assert_file_equal(installed, "server/requirements.txt")
-        import sys
         result = subprocess.run(
             [sys.executable, "-B", str(installed / "server/app.py")],
             capture_output=True, text=True, timeout=30,
@@ -134,12 +150,23 @@ chown() { :; }
             for path in (self.package / directory).rglob("*"):
                 if path.is_file():
                     self.assert_file_equal(installed, path.relative_to(self.package).as_posix())
+        for kind in ("classroom", "classroom-offline", "teacher", "teacher-offline"):
+            with zipfile.ZipFile(installed / f"client-downloads/ICeClass-{kind}.zip") as archive:
+                self.assertIsNone(archive.testzip())
+                if kind == "classroom":
+                    self.assertEqual(archive.read("ICeClass/教室端/ICeClass.exe"),
+                                     b"MZ incremental core\x00receiver_release")
+                elif kind == "teacher-offline":
+                    self.assertEqual(archive.read("Windows教师端/VoiceResources/Asr/model.int8.onnx"),
+                                     b"verified model fixture")
 
     def test_optional_teacher_release_may_be_absent(self):
         shutil.rmtree(self.package / "desktop_release")
         installed = self.stage()
         self.assert_file_equal(installed, "receiver_release/ICeClass.exe")
         self.assertFalse((installed / "desktop_release").exists())
+        self.assertEqual(sorted(path.name for path in (installed / "client-downloads").glob("*.zip")),
+                         ["ICeClass-classroom-offline.zip", "ICeClass-classroom.zip"])
 
     def test_does_not_install_server_tests_preview_or_local_configuration(self):
         installed = self.stage()

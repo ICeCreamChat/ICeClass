@@ -54,8 +54,6 @@ internal static class UpdateInstaller
 
     internal static bool TryLaunchPending(string installDirectory, string executableName, string restartArguments, string? currentVersion = null)
     {
-        // The helper's launch must initialize normally and confirm readiness, rather than starting another helper.
-        if (IsUpdateLaunch) return false;
         var directory = IncrementalUpdates.SafePath(installDirectory, ".updates");
         var applyingPath = Path.Combine(directory, "applying.json");
         PreparedUpdate? pending;
@@ -74,7 +72,10 @@ internal static class UpdateInstaller
         var script = Path.Combine(directory, "apply-incremental-update.ps1");
         Directory.CreateDirectory(directory);
         File.WriteAllText(script, ApplyScript, new UTF8Encoding(true));
-        var process = new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
+        var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+        var process = new ProcessStartInfo(powershell) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
+        // Windows PowerShell must discover its own modules even if the client inherited a PowerShell 7 environment.
+        process.Environment.Remove("PSModulePath");
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(restartArguments));
         foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, Environment.ProcessId.ToString(), Path.GetFullPath(installDirectory), executableName, encoded }) process.ArgumentList.Add(arg);
         Process.Start(process); return true;

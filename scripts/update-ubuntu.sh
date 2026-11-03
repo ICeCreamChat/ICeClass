@@ -8,7 +8,7 @@ VERSION=${2:?Specify the release version}
 APP=/opt/iceclass/app
 DATABASE=/var/lib/iceclass/iceclass.db
 PYTHON=/opt/iceclass/venv/bin/python
-DOWNLOAD=/opt/iceclass/downloads/ICeClass-classroom.zip
+DOWNLOADS=/opt/iceclass/downloads
 [[ -d "$APP" && ! -L "$APP" && -f "$DATABASE" && -f /etc/iceclass.env && -x "$PYTHON" ]]
 systemctl is-active --quiet iceclass.service
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -46,23 +46,10 @@ for directory, filename in (
         for chunk in iter(lambda: stream.read(1024 * 1024), b''):
             checksum.update(chunk)
         assert checksum.hexdigest() == manifest['sha256'], directory
-executable = root / 'receiver_release/ICeClass.exe'
-endpoint = 'https://iceclass.icecreamchat.top'
-prefix = 'ICeClass/教室端/'
-program_files = ('install.ps1', '安装或升级.cmd', 'program-manifest.json', '一步使用说明.txt')
-for filename in program_files:
-    assert (root / 'receiver_release' / filename).is_file(), filename
-program = json.loads((root / 'receiver_release/program-manifest.json').read_text('utf-8-sig'))
-release = json.loads((root / 'receiver_release/manifest.json').read_text('utf-8-sig'))
-assert program['sha256'] == release['sha256'] and program['size'] == release['size']
-assert tuple(map(int, program['version'].split('.')))[:3] == tuple(map(int, version.split('.')))
-assert (root / 'receiver_release/install.ps1').read_bytes().startswith(b'\xef\xbb\xbf')
-with zipfile.ZipFile(stage / 'ICeClass-classroom.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-    archive.write(executable, prefix + 'ICeClass.exe')
-    for filename in program_files:
-        archive.write(root / 'receiver_release' / filename, prefix + filename)
-    archive.writestr('ICeClass/教师端.url', '[InternetShortcut]\r\nURL=' + endpoint + '\r\n')
-print('Package and classroom download ready.', flush=True)
+import runpy
+archives = runpy.run_path(str(root / 'scripts/create-client-archives.py'))
+archives['create_archives'](root, root / 'client-downloads')
+print('Package and four verified client downloads ready.', flush=True)
 PY
 "$PYTHON" -c 'import aiohttp; assert tuple(map(int, aiohttp.__version__.split(".")[:2])) >= (3,13)'
 chown -R root:root "$STAGE/ICeClass-server"
@@ -70,7 +57,11 @@ chmod -R a+rX "$STAGE/ICeClass-server"
 cp -a /etc/iceclass.env "$BACKUP/iceclass.env"
 cp -a /etc/systemd/system/iceclass.service "$BACKUP/iceclass.service"
 if [[ -f /etc/nginx/sites-available/iceclass ]]; then cp -a /etc/nginx/sites-available/iceclass "$BACKUP/nginx.conf"; fi
-if [[ -f "$DOWNLOAD" ]]; then cp -a "$DOWNLOAD" "$BACKUP/ICeClass-classroom.zip"; fi
+install -d -m 0755 "$DOWNLOADS"
+install -d -m 0700 "$BACKUP/downloads"
+for kind in classroom classroom-offline teacher teacher-offline; do
+    if [[ -f "$DOWNLOADS/ICeClass-$kind.zip" ]]; then cp -a "$DOWNLOADS/ICeClass-$kind.zip" "$BACKUP/downloads/"; fi
+done
 STOPPED=0
 SWAPPED=0
 rollback() {
@@ -90,7 +81,13 @@ with sqlite3.connect(sys.argv[1]) as source, sqlite3.connect(sys.argv[2]) as tar
     source.backup(target)
 PY
         fi
-        if [[ -f "$BACKUP/ICeClass-classroom.zip" ]]; then cp -a "$BACKUP/ICeClass-classroom.zip" "$DOWNLOAD"; fi
+        for kind in classroom classroom-offline teacher teacher-offline; do
+            if [[ -f "$BACKUP/downloads/ICeClass-$kind.zip" ]]; then
+                cp -a "$BACKUP/downloads/ICeClass-$kind.zip" "$DOWNLOADS/"
+            else
+                rm -f "$DOWNLOADS/ICeClass-$kind.zip"
+            fi
+        done
         systemctl start iceclass.service || true
     fi
     printf 'Deployment failed. Backup: %s\n' "$BACKUP"
@@ -121,8 +118,10 @@ mv "$APP" "$PREVIOUS"
 # If the second move fails, the error handler can still restore the previous app.
 SWAPPED=1
 mv "$STAGE/ICeClass-server" "$APP"
-install -m 0644 "$STAGE/ICeClass-classroom.zip" "$DOWNLOAD.new"
-mv "$DOWNLOAD.new" "$DOWNLOAD"
+for kind in classroom classroom-offline teacher teacher-offline; do
+    install -m 0644 "$APP/client-downloads/ICeClass-$kind.zip" "$DOWNLOADS/ICeClass-$kind.zip.new"
+    mv "$DOWNLOADS/ICeClass-$kind.zip.new" "$DOWNLOADS/ICeClass-$kind.zip"
+done
 systemctl start iceclass.service
 for attempt in {1..30}; do
     if curl -fsS http://127.0.0.1:8865/api/bootstrap > "$STAGE/bootstrap.json"; then break; fi

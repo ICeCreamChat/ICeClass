@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from aiohttp import web
+from teacher_capabilities import teacher_manual
 
 
 MAX_FILE_SIZE = 1024 ** 3
@@ -191,6 +192,23 @@ def install_update_payloads(app, root, *, executable, prefix, reply, parse_versi
 
     app.router.add_get(f'{prefix}/plan', plan)
     app.router.add_get(f'{prefix}/payload', payload)
+
+    if executable == 'ICeClass.exe':
+        @teacher_manual('本机语音模型按校验和下载的资源传输协议，不通过班班读取模型文件。')
+        async def voice_resource(request):
+            try:
+                digest = digest_value(request.match_info['sha256'])
+            except ValueError:
+                return reply({'error': '语音资源不存在。'}, 404)
+            release = await payloads.load()
+            if release is None or not any(item['path'].startswith('VoiceResources/') and item['sha256'] == digest
+                                          for item in release[0]['files']):
+                return reply({'error': '语音资源不存在。'}, 404)
+            return PayloadResponse(payloads.root / 'payloads' / digest, headers={
+                'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store',
+                'X-Content-Type-Options': 'nosniff',
+            })
+        app.router.add_get('/api/voice/resources/{sha256}', voice_resource)
 
 
 def install_desktop_update_activity(app, service):

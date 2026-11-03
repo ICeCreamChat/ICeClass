@@ -36,15 +36,9 @@ $releaseRoot = Join-Path $distributionRoot 'release'
 $stage = Join-Path $releaseRoot ('stage-' + [Guid]::NewGuid().ToString('N'))
 $windowsRoot = Join-Path $stage 'ICeClass'
 $serverRoot = Join-Path $stage 'ICeClass-server'
-$classroomRoot = Join-Path $stage 'classroom\ICeClass'
 New-Item -ItemType Directory -Force -Path $windowsRoot, $serverRoot | Out-Null
 try {
     & (Join-Path $PSScriptRoot 'prepare-delivery.ps1') -Unconfigured -OutputDirectory $windowsRoot -DistributionDirectory $distributionRoot
-    New-Item -ItemType Directory -Force -Path (Join-Path $classroomRoot '教室端') | Out-Null
-    foreach ($name in @('ICeClass.exe', '一步使用说明.txt', 'install.ps1', '安装或升级.cmd', 'program-manifest.json')) {
-        Copy-Item -LiteralPath (Join-Path $windowsRoot "教室端\$name") -Destination (Join-Path $classroomRoot "教室端\$name")
-    }
-    [IO.File]::WriteAllText((Join-Path $classroomRoot '网页端.url'), "[InternetShortcut]`r`nURL=https://iceclass.icecreamchat.top/`r`n", [Text.Encoding]::ASCII)
     foreach ($directory in @('server', 'cloud\migrations', 'receiver_release', 'desktop_release', 'scripts')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $serverRoot $directory) | Out-Null
     }
@@ -57,6 +51,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $projectRoot "server\$name") -Destination (Join-Path $serverRoot 'server')
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update-ubuntu.sh') -Destination (Join-Path $serverRoot 'scripts\update-ubuntu.sh')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'create-client-archives.py') -Destination (Join-Path $serverRoot 'scripts')
     Copy-Item -LiteralPath (Join-Path $projectRoot 'web_controller') -Destination $serverRoot -Recurse
     Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cloud\migrations') -Filter '*.sql' -File |
         Copy-Item -Destination (Join-Path $serverRoot 'cloud\migrations')
@@ -67,6 +62,9 @@ try {
     $manifest = [ordered]@{ version = $version; sha256 = (Get-FileHash -LiteralPath $receiver -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item -LiteralPath $receiver).Length } | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $serverRoot 'receiver_release\manifest.json'), $manifest, (New-Object Text.UTF8Encoding($false)))
     Copy-Item -LiteralPath $desktopExecutable -Destination (Join-Path $serverRoot 'desktop_release\ICeClass.Desktop.exe')
+    foreach ($name in @('install.ps1', 'install-voice-resources.ps1', '安装到本机.cmd')) {
+        Copy-Item -LiteralPath (Join-Path $windowsRoot "Windows教师端\$name") -Destination (Join-Path $serverRoot 'desktop_release')
+    }
     $desktopProject = [xml](Get-Content -LiteralPath (Join-Path $projectRoot 'Desktop\ICeClass.Desktop.csproj') -Raw -Encoding UTF8)
     $desktopManifest = [ordered]@{ version = [string]$desktopProject.Project.PropertyGroup.Version; sha256 = (Get-FileHash -LiteralPath $desktopExecutable -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item -LiteralPath $desktopExecutable).Length } | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $serverRoot 'desktop_release\manifest.json'), $desktopManifest, (New-Object Text.UTF8Encoding($false)))
@@ -91,6 +89,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw '教室端文件更新计划或 MSDelta 验证失败，未生成本次发布包。' }
     & $payloadPython @desktopPayloadArguments
     if ($LASTEXITCODE -ne 0) { throw '教师端文件更新计划或 MSDelta 验证失败，未生成本次发布包。' }
+    $clientDownloads = Join-Path $stage 'client-downloads'
+    & $payloadPython (Join-Path $PSScriptRoot 'create-client-archives.py') $serverRoot $clientDownloads
+    if ($LASTEXITCODE -ne 0) { throw '轻量或完整离线安装包校验失败。' }
     foreach ($name in @('README.md', 'LICENSE', 'docs')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination $serverRoot -Recurse
     }
@@ -99,17 +100,16 @@ try {
     if (Test-Path -LiteralPath $localOperationsGuide) { Remove-Item -LiteralPath $localOperationsGuide -Force }
     $windowsZip = Join-Path $releaseRoot "ICeClass-$version-windows-x64.zip"
     $serverZip = Join-Path $releaseRoot "ICeClass-$version-server.zip"
-    $classroomZip = Join-Path $releaseRoot "ICeClass-$version-classroom.zip"
-    $desktopZip = Join-Path $releaseRoot "ICeClass-$version-desktop-windows-x64.zip"
     Compress-Archive -LiteralPath $windowsRoot -DestinationPath $windowsZip -Force
     Compress-Archive -LiteralPath $serverRoot -DestinationPath $serverZip -Force
-    Compress-Archive -LiteralPath $classroomRoot -DestinationPath $classroomZip -Force
-    Compress-Archive -LiteralPath (Join-Path $windowsRoot 'Windows教师端') -DestinationPath $desktopZip -Force
+    foreach ($kind in @('classroom', 'classroom-offline', 'teacher', 'teacher-offline')) {
+        $releaseKind = if ($kind.StartsWith('teacher')) { $kind.Replace('teacher', 'desktop-windows-x64') } else { $kind }
+        Copy-Item -LiteralPath (Join-Path $clientDownloads "ICeClass-$kind.zip") -Destination (Join-Path $releaseRoot "ICeClass-$version-$releaseKind.zip") -Force
+    }
     Write-Host 'ICeClass 班伴发布包已生成：' -ForegroundColor Green
     Write-Host $windowsZip
     Write-Host $serverZip
-    Write-Host $classroomZip
-    Write-Host $desktopZip
+    Write-Host '两端轻量安装包和完整离线包已生成。'
 } finally {
     $resolvedStage = [IO.Path]::GetFullPath($stage)
     $resolvedReleaseRoot = [IO.Path]::GetFullPath($releaseRoot).TrimEnd('\') + '\'

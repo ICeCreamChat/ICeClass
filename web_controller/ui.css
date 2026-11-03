@@ -9,6 +9,23 @@
   font-family: "Microsoft YaHei UI", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif;
   font-synthesis: none;
 }
+.client-diagnostic-heading { font-size: 20px; font-weight: 600; padding: 8px 0; cursor: pointer; }
+.client-diagnostic-filters { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0 18px; margin: 12px 0 20px; }
+.client-diagnostic-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.client-diagnostic-filters > .client-diagnostic-actions { grid-column: 1 / -1; margin-top: 8px; }
+.client-diagnostic-table { margin-top: 14px; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.client-diagnostic-table table { width: 100%; border-collapse: collapse; min-width: 660px; }
+.client-diagnostic-table th, .client-diagnostic-table td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.client-diagnostic-table th { font-size: 14px; color: var(--muted); font-weight: 600; }
+.client-diagnostic-table tr:last-child td { border-bottom: 0; }
+.client-diagnostic-table td small { display: block; color: var(--muted); }
+.client-diagnostic-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.client-diagnostic-detail { margin-top: 28px; }
+.client-diagnostic-detail .view-head { align-items: center; margin-bottom: 8px; }
+.client-diagnostic-detail h3 { margin: 0; }
+.client-diagnostic-detail pre { font: inherit; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32rem; overflow: auto; margin: 12px 0 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); tab-size: 4; }
+@media(max-width:700px) { .client-diagnostic-filters { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 12px; } .client-diagnostic-pager { align-items: flex-start; flex-direction: column; } }
+@media(max-width:420px) { .client-diagnostic-filters { grid-template-columns: minmax(0,1fr); } }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 body { font-size: 15px; line-height: 1.65; }

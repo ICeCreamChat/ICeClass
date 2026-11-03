@@ -61,8 +61,7 @@ internal sealed class AboutThankYouMascot : Button
     private void Play()
     {
         Stop();
-        if (!_active || _owner is not { IsVisible: true, WindowState: not WindowState.Minimized }
-            || !DesktopStyle.AnimationsEnabled()) return;
+        if (!_active || _owner is not { IsVisible: true, WindowState: not WindowState.Minimized }) return;
         _playback.Restart(); _timer.Start();
     }
 

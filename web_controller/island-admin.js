@@ -13,7 +13,7 @@
   let profile, config, dirty = false, busy = false, loadedClass = '', tab = 'timetable', week = 'all';
   let fieldId = 0, loadId = 0, polling = false, livePreview = true, previewOpen = false;
   const canEdit = () => !!profile && profile.canEdit !== false;
-  const canBulk = () => ['superadmin', 'principal'].includes(window.ICeClass.state.user?.role);
+  const bulkClasses = () => window.ICeClass.state.classes.filter(c => Number(c.enabled) === 1 && c.canEditIsland && c.id !== loadedClass);
   const ribbon = new window.ICeClassIslandRibbon($('islandPreview'), $('islandPreviewStage'));
   ribbon.onChange = updatePreviewControls;
   const workspaceHead = document.querySelector('.island-workspace-head');
@@ -170,16 +170,18 @@
     $('islandSave').disabled = value || !needsSave();
     $('islandSave').textContent = label || '保存并下发';
     $('islandReload').disabled = value;
+    $('islandMore').inert = value;
+    if (value) $('islandMore').open = false;
     $('islandClass').disabled = value;
-    ['islandCopy', 'islandImport', 'islandSave'].forEach(id => $(id).classList.toggle('hidden', !!profile && !canEdit()));
-    ['islandCopy', 'islandImport', 'islandImportFile'].forEach(id => $(id).disabled = value || !config || !canEdit());
+    ['islandImport', 'islandSave'].forEach(id => $(id).classList.toggle('hidden', !!profile && !canEdit()));
+    ['islandImport', 'islandImportFile'].forEach(id => $(id).disabled = value || !config || !canEdit());
     $('islandExport').disabled = value || !config;
     updateBulkEntry();
     updatePreviewControls();
   }
   function updateBulkEntry() {
-    $('islandBulk').hidden = !canBulk();
-    $('islandBulk').disabled = busy || !profile || !config || !canEdit();
+    $('islandBulk').hidden = !!profile && !canEdit();
+    $('islandBulk').disabled = busy || !profile || !config || !canEdit() || !bulkClasses().length;
   }
   function regularLesson(slotId, weekday, scope) {
     return config.lessons.find(l => l.slotId === slotId && l.weekday === weekday && l.week === scope)
@@ -1298,241 +1300,268 @@
     finally { setBusy(false); $('islandImportFile').value = ''; }
   }
   function bulkDialog() {
-    if (!canBulk() || !profile || !config || busy || !canEdit()) return;
-    if (needsSave()) { showError(new Error('请先保存本班配置，再进行批量设置。')); return; }
-    const source = structuredClone(profile.config), sourceName = className();
-    const classes = window.ICeClass.state.classes.filter(c => Number(c.enabled) === 1).map(c => ({ ...c }));
-    const { dialog, form } = dialogForm('批量设置浮岛', 'islandBulk');
-    dialog.classList.add('island-bulk-dialog');
-    let phase = 'edit', scope = 'all', snapshot, revisions, valid = false;
-    const selected = new Set(), groups = { enabled: true, slots: false, reminders: false, appearance: false };
-    const body = el('div', undefined, 'island-bulk-body');
-    const count = el('p', '', 'island-bulk-count');
-    count.setAttribute('role', 'status');
-    const editor = el('fieldset', undefined, 'island-bulk-editor');
-    editor.setAttribute('aria-label', '批量设置选项');
-    const scopes = el('fieldset', undefined, 'island-bulk-section');
-    scopes.append(el('legend', '应用范围'));
-    const scopeOptions = el('div', undefined, 'island-bulk-scopes');
-    for (const [value, label] of [['all', '全校'], ['grade', '按年级'], ['classes', '选择班级']]) {
-      const row = el('label', undefined, 'island-toggle');
-      const control = input('', () => { scope = value; updateTargets(); }, 'radio', { name: `island-bulk-scope-${fieldId}`, checked: value === scope }, null, false);
-      row.append(control, el('span', label)); scopeOptions.append(row);
-    }
-    scopes.append(scopeOptions);
-    const grades = [...new Set(classes.map(c => c.grade || '').filter(Boolean))];
-    const grade = select(grades[0] || '', grades.map(value => [value, value]), updateTargets, null, false);
-    const gradeField = field('选择年级', grade);
-    const selection = el('div');
-    const rows = [], list = el('div', undefined, 'island-bulk-class-list');
-    const search = input('', () => {
-      const term = search.value.trim();
-      rows.forEach(row => { row.node.hidden = !row.name.includes(term); });
-      noMatches.hidden = rows.some(row => !row.node.hidden);
-    }, 'search', { placeholder: '输入班级名称' }, null, false);
-    const noMatches = el('p', '没有符合的班级，已勾选的班级会保留。', 'hint');
-    noMatches.hidden = classes.length > 0;
-    classes.forEach(c => {
-      const row = el('label', undefined, 'island-toggle');
-      const control = input(false, value => {
-        if (value) selected.add(c.id); else selected.delete(c.id);
-        updateTargets();
-      }, 'checkbox', {}, null, false);
-      row.append(control, el('span', c.name)); list.append(row); rows.push({ node: row, name: c.name });
-    });
-    selection.append(field('查找班级', search), list, noMatches);
-    scopes.append(gradeField, selection); editor.append(scopes);
-    const settings = el('fieldset', undefined, 'island-bulk-section');
-    settings.append(el('legend', '设置内容'), el('p', `作息、提醒与外观使用“${sourceName}”已保存的设置。`, 'hint'));
-    const enabled = select('true', [['true', '显示浮岛'], ['false', '隐藏浮岛']], () => {}, null, false);
-    const groupNames = { enabled: '浮岛开关', slots: '作息时间', reminders: '提醒设置', appearance: '浮岛外观' };
-    for (const [key, label] of Object.entries(groupNames)) {
-      const row = el('div', undefined, 'island-bulk-setting');
-      row.append(toggle(label, groups, key, null, null, () => { enabled.disabled = !groups.enabled; }, false));
-      if (key === 'enabled') row.append(field('批量浮岛状态', enabled));
-      if (key === 'slots') row.append(el('small', `同步 ${source.slots.length} 段作息；保留各班额外时段。`));
-      if (key === 'reminders') row.append(el('small', '同步课前、上课、下课提醒及音量。'));
-      if (key === 'appearance') row.append(el('small', '同步位置、宽度、透明度和主题。'));
-      settings.append(row);
-    }
-    settings.append(el('p', '保留各班课表、值班、调课及本班隐藏设置。班主任之后仍可修改本班。', 'hint island-bulk-preserved'));
-    editor.append(settings);
-    const review = el('p', '', 'island-bulk-review'); review.hidden = true;
-    const summary = el('p', '', 'island-bulk-summary');
-    summary.setAttribute('role', 'status'); summary.setAttribute('aria-live', 'polite');
-    const results = el('ul', undefined, 'island-bulk-results'); results.hidden = true;
-    results.setAttribute('aria-label', '逐班预览结果');
-    body.append(count, editor, review, summary, results);
+    if (!profile || !config || busy || !canEdit() || !bulkClasses().length) return;
+    const { dialog, form } = dialogForm('批量设置', 'islandBulk');
+    dialog.className = 'island-bulk-dialog';
+    const title = form.firstElementChild, head = el('div', undefined, 'dialog-head');
+    let phase = 'edit', sourceChanged = false;
+    const close = button('×', () => dialog.close(), 'btn icon');
+    close.setAttribute('aria-label', '关闭');
+    head.append(title, close);
+    const body = el('div', undefined, 'dialog-body island-bulk-body');
     const errorNode = el('p', '', 'form-error island-bulk-error');
     errorNode.setAttribute('role', 'alert'); errorNode.tabIndex = -1; errorNode.hidden = true;
-    const actions = el('div', undefined, 'island-bulk-actions');
-    const cancel = button('取消', () => { if (phase !== 'applying') dialog.close(); });
-    const back = button('返回修改', () => {
-      if (phase === 'applying' || phase === 'previewing') return;
-      snapshot = revisions = undefined; valid = false;
-      results.hidden = review.hidden = true; summary.textContent = '';
-      setError(''); setPhase('edit'); scopeOptions.querySelector('input:checked').focus();
-    });
-    const submit = button('预览影响', () => {
-      if (phase === 'done') dialog.close();
-      else if (phase === 'preview') void apply();
-      else if (phase === 'edit' || phase === 'stale') void preview();
-    }, 'btn primary');
-    actions.append(cancel, back, submit); form.append(body, errorNode, actions);
+    const actions = el('div', undefined, 'dialog-actions island-bulk-actions');
+    const cancel = button('取消', () => dialog.close());
+    form.replaceChildren(head, body, errorNode, actions);
     form.onsubmit = event => event.preventDefault();
-    dialog.oncancel = event => { if (phase === 'applying') event.preventDefault(); };
-    function targets() {
-      return classes.filter(c => scope === 'all' || (scope === 'grade' ? (c.grade || '') === grade.value : selected.has(c.id))).map(c => c.id);
-    }
-    function updateTargets() {
-      gradeField.hidden = scope !== 'grade'; selection.hidden = scope !== 'classes';
-      count.textContent = `已选择 ${targets().length} 个班级`;
-    }
+    dialog.oncancel = event => { if (phase === 'applying' || phase === 'saving') event.preventDefault(); };
     function setError(message) {
       errorNode.textContent = message; errorNode.hidden = !message;
       if (message) errorNode.focus({ preventScroll: true });
     }
-    function setPhase(value) {
-      phase = value;
-      editor.disabled = value !== 'edit'; editor.hidden = ['preview', 'stale', 'applying', 'done'].includes(value);
-      back.hidden = value === 'edit' || value === 'done'; cancel.hidden = value === 'done';
-      back.disabled = value === 'applying' || value === 'previewing'; cancel.disabled = value === 'applying';
-      submit.disabled = value === 'previewing' || value === 'applying' || (value === 'preview' && !valid);
-      submit.textContent = value === 'previewing' ? '预览中…' : value === 'applying' ? '保存中…' : value === 'done' ? '完成'
-        : value === 'preview' ? `应用到 ${snapshot.classIds.length} 个班级` : value === 'stale' ? '重新预览' : '预览影响';
-      form.setAttribute('aria-busy', String(value === 'previewing' || value === 'applying'));
-    }
-    function showRows(rows, applied = false) {
-      results.replaceChildren();
-      rows.forEach(row => {
-        const item = el('li'), state = el('span', row.error ? '无法应用' : row.changed ? (applied ? '已更新' : '将更改') : '无需更改');
-        item.dataset.state = row.error ? 'error' : row.changed ? 'changed' : 'unchanged';
-        const heading = el('div'); heading.append(el('strong', row.className || row.classId), state); item.append(heading);
-        if (row.addedSlots > 0) item.append(el('small', `新增 ${row.addedSlots} 段作息，保留现有时段关联。`));
-        if (row.error) item.append(el('p', row.error));
-        results.append(item);
-      });
-      results.hidden = false;
-    }
-    async function preview() {
-      const refreshing = phase === 'stale';
-      if (!refreshing) {
-        const classIds = targets(), changes = {};
-        if (!classIds.length) { setError('请至少选择一个班级。'); return; }
-        if (groups.enabled) changes.enabled = enabled.value === 'true';
-        for (const key of ['slots', 'reminders', 'appearance']) if (groups[key]) changes[key] = structuredClone(source[key]);
-        if (changes.appearance) delete changes.appearance.hideDuringLessons;
-        if (!Object.keys(changes).length) { setError('请至少选择一项设置。'); return; }
-        // Capture the exact targets and saved settings before any asynchronous request.
-        snapshot = { classIds: [...classIds], changes };
-        review.textContent = `${scope === 'all' ? '全校' : scope === 'grade' ? grade.value : '所选班级'} · ${classIds.length} 个班级；`
-          + Object.keys(changes).map(key => key === 'enabled' ? `浮岛开关：${changes.enabled ? '显示' : '隐藏'}` : groupNames[key]).join('、');
-      }
-      valid = false; revisions = undefined; setError(''); setPhase('previewing');
-      try {
-        const data = await api('/api/island/bulk/preview', { method: 'POST', body: JSON.stringify(snapshot) });
-        if (!dialog.open) return;
-        const rows = data.classes, expected = new Set(snapshot.classIds);
-        if (!Array.isArray(rows) || rows.length !== expected.size || !rows.every(row => expected.delete(row.classId)
-            && Number.isInteger(row.revision) && row.revision >= 0 && typeof row.changed === 'boolean'))
-          throw new Error('预览结果不完整，请重新预览全部所选班级。');
-        revisions = Object.fromEntries(rows.map(row => [row.classId, row.revision]));
-        valid = data.valid === true && !rows.some(row => row.error);
-        showRows(rows); review.hidden = false;
-        const changed = rows.filter(row => !row.error && row.changed).length;
-        const unchanged = rows.filter(row => !row.error && !row.changed).length, errors = rows.filter(row => row.error).length;
-        summary.textContent = `${changed} 个班级将更改，${unchanged} 个无需更改${errors ? `，${errors} 个无法应用` : ''}。`;
-        setPhase('preview');
-        if (!valid) setError('预览未通过，请核对逐班提示，返回修改后再预览。');
-        else submit.focus({ preventScroll: true });
-        body.scrollTop = 0;
-      } catch (error) {
-        if (!dialog.open) return;
-        setPhase(refreshing ? 'stale' : 'edit');
-        setError(`预览失败：${error.message} 可手动重新预览。`);
-      }
-    }
-    async function apply() {
-      if (phase !== 'preview' || !valid || !revisions) return;
-      setError(''); setPhase('applying');
-      let data;
-      try {
-        data = await api('/api/island/bulk', { method: 'PUT', body: JSON.stringify({ ...snapshot, revisions }) });
-      } catch (error) {
-        valid = false; revisions = undefined; setPhase('stale');
-        if (Array.isArray(error.data?.classes)) showRows(error.data.classes);
-        setError(error.status === 409 ? `本轮未下发。${error.message} 请重新预览后再应用。`
-          : `无法确认下发结果：${error.message}。请重新预览后核对，未自动重试。`);
-        return;
-      }
-      showRows(data.classes, true);
-      summary.textContent = `已更新 ${data.updated} 个班级，${data.unchanged} 个无需更改。`;
-      window.ICeClass.toast(summary.textContent);
-      if (snapshot.classIds.includes(loadedClass)) {
-        await load(true);
-        if ($('islandError').textContent) setError(`批量设置已完成，本班配置重新载入失败：${$('islandError').textContent}`);
-      }
-      setPhase('done'); submit.focus({ preventScroll: true });
-    }
-    updateTargets(); setPhase('edit'); dialog.showModal(); scopeOptions.querySelector('input:checked').focus();
-  }
-  function copyDialog() {
-    if (!config || busy || !canEdit()) return;
-    if (needsSave()) { showError(new Error('请先保存本班配置，再复制到其他班级。')); return; }
-    const classes = window.ICeClass.state.classes.filter(c => c.id !== loadedClass && Number(c.enabled) === 1 && c.canEditIsland);
-    const { dialog, form } = dialogForm('复制到其他班级', 'islandCopy');
-    form.append(el('p', `使用“${className()}”已保存的全部教室浮岛设置，替换所选班级的现有配置。`, 'hint'));
-    const search = input('', () => {
-      rows.forEach(({ node, name }) => node.hidden = !name.includes(search.value.trim()));
-    }, 'search', { placeholder: '输入班级名称' }, null, false);
-    form.append(field('查找班级', search));
-    const selected = new Set(), rows = [], list = el('div', undefined, 'island-copy-list');
-    const count = el('p', '已选择 0 个班级', 'island-copy-summary');
-    classes.forEach(c => {
-      const row = el('label', undefined, 'island-toggle');
-      const control = input(false, value => {
-        if (value) selected.add(c.id); else selected.delete(c.id);
-        count.textContent = `已选择 ${selected.size} 个班级`;
+    if (needsSave()) {
+      body.append(el('p', `“${className()}”有尚未保存的设置。保存后，可选择要同步的内容和目标班级。`, 'island-bulk-source'));
+      const saveContinue = button('保存并继续', async () => {
+        phase = 'saving'; close.disabled = cancel.disabled = saveContinue.disabled = true;
+        saveContinue.textContent = '保存中…'; form.setAttribute('aria-busy', 'true'); setError('');
+        await save();
+        phase = 'edit'; close.disabled = cancel.disabled = false; form.setAttribute('aria-busy', 'false');
+        if (needsSave() || $('islandError').textContent) {
+          saveContinue.disabled = false; saveContinue.textContent = '保存并继续';
+          setError($('islandError').textContent || '尚未保存成功。请返回核对当前班级设置后重试。');
+          return;
+        }
+        buildEditor();
+      }, 'btn primary');
+      actions.append(cancel, saveContinue);
+    } else buildEditor();
+    dialog.showModal();
+    (body.querySelector('input') || actions.querySelector('.primary')).focus({ preventScroll: true });
+
+    function buildEditor() {
+      const source = structuredClone(profile.config), sourceId = loadedClass, sourceRevision = profile.revision, sourceName = className();
+      const classes = bulkClasses().map(c => ({ ...c, grade: window.ICeClass.classGrade(c.name) }));
+      const sectionNames = { enabled: '浮岛开关', slots: '作息时间', timetable: '周课表', duties: '值班安排', overrides: '临时调课',
+        reminders: '提醒设置', appearance: '浮岛外观', visibility: '课堂隐藏', components: '轮播信息', automation: '自动化' };
+      const replaceHint = (length, unit, name) => length ? `${length} ${unit}，替换目标班级的${name}` : `当前为空，勾选后清空目标班级的${name}`;
+      const hints = {
+        enabled: source.enabled ? '来源班级正在显示浮岛' : '来源班级已隐藏浮岛',
+        slots: `${source.slots.length} 个时段，保留各班额外时段及课程关联`,
+        timetable: replaceHint(source.lessons.length, '节课程', '周课表'),
+        duties: '同步午间静校、晚自习的开关、循环及值班安排',
+        overrides: replaceHint(source.overrides.length, '项', '临时调课'),
+        reminders: `课前、上课与下课提醒，音量 ${source.reminders.volume}%`,
+        appearance: `宽度 ${source.appearance.width} 像素，透明度 ${source.appearance.opacity}%`,
+        visibility: source.visibility.followSchool ? '跟随全校默认规则' : `本班隐藏 ${source.visibility.hiddenSlotIds.length} 个时段`,
+        components: replaceHint(source.components.length, '项', '轮播信息') + `，${source.rotationSeconds} 秒切换`,
+        automation: replaceHint(source.automation.length, '条', '自动化规则')
+      };
+      const selected = new Set(), groups = new Set(), controls = new Map();
+      let snapshot, revisions, valid = false;
+      const sourceNote = el('p', `来源：${sourceName} · 已保存的设置`, 'island-bulk-source');
+      const editor = el('fieldset', undefined, 'island-bulk-editor');
+      editor.setAttribute('aria-label', '批量设置选项');
+      const settings = el('fieldset', undefined, 'island-bulk-section');
+      settings.append(el('legend', '同步内容'));
+      const allRow = el('label', undefined, 'island-toggle island-bulk-all');
+      const all = input(false, checked => {
+        for (const [key, control] of controls) { control.checked = checked; if (checked) groups.add(key); else groups.delete(key); }
+        updateGroups();
       }, 'checkbox', {}, null, false);
-      row.append(control, el('span', c.name)); list.append(row); rows.push({ node: row, name: c.name, control, id: c.id });
-    });
-    if (!classes.length) list.append(el('p', '暂无其他可配置的班级。', 'hint'));
-    form.append(list, count);
-    const result = el('p', undefined, 'form-error');
-    result.setAttribute('role', 'status'); form.append(result);
-    const actions = el('div', undefined, 'island-inline');
-    let copying = false;
-    const cancel = button('取消', () => dialog.close()), submit = el('button', '复制并下发', 'btn primary');
-    submit.type = 'submit'; submit.disabled = !classes.length;
-    actions.append(cancel, submit); form.append(actions);
-    dialog.oncancel = event => { if (copying) event.preventDefault(); };
-    form.onsubmit = async event => {
-      event.preventDefault();
-      if (!selected.size) { result.textContent = '请至少选择一个班级。'; return; }
-      copying = true; submit.disabled = cancel.disabled = search.disabled = true;
-      rows.forEach(row => row.control.disabled = true);
-      let completed = 0;
-      const errors = [];
-      for (const classId of [...selected]) {
-        const row = rows.find(item => item.id === classId);
-        result.textContent = `正在复制到“${row.name}”…`;
+      all.setAttribute('aria-label', '全部设置');
+      all.name = 'allSections';
+      allRow.append(all, el('span', '全部设置')); settings.append(allRow);
+      const enabled = select(String(source.enabled), [['true', '显示浮岛'], ['false', '隐藏浮岛']], () => {}, null, false);
+      enabled.setAttribute('aria-label', '批量浮岛状态'); enabled.disabled = true;
+      enabled.name = 'enabled';
+      for (const [key, name] of Object.entries(sectionNames)) {
+        const row = el('div', undefined, 'island-bulk-setting'), label = el('label', undefined, 'island-toggle');
+        const control = input(false, checked => { if (checked) groups.add(key); else groups.delete(key); updateGroups(); }, 'checkbox', {}, null, false);
+        control.setAttribute('aria-label', name);
+        control.name = key;
+        const copy = el('span'), hint = el('small', hints[key]);
+        hint.id = `island-bulk-hint-${++fieldId}`; control.setAttribute('aria-describedby', hint.id);
+        copy.append(el('span', name), hint); label.append(control, copy); row.append(label);
+        if (key === 'enabled') row.append(enabled);
+        controls.set(key, control); settings.append(row);
+      }
+      const contentNote = el('p', '未勾选的内容保留各班现有设置。', 'hint island-bulk-preserved');
+      settings.append(contentNote);
+      function updateGroups() {
+        all.checked = groups.size === controls.size; all.indeterminate = groups.size > 0 && !all.checked;
+        enabled.disabled = !groups.has('enabled');
+        controls.forEach((control, key) => control.closest('.island-bulk-setting').classList.toggle('is-selected', groups.has(key)));
+        contentNote.textContent = all.checked ? '整套复制会替换目标班级的全部浮岛配置。设备绑定和本机偏好保留。' : '未勾选的内容保留各班现有设置。';
+      }
+      const targetsSection = el('fieldset', undefined, 'island-bulk-section');
+      targetsSection.append(el('legend', '目标班级'));
+      const filters = el('div', undefined, 'island-bulk-filters');
+      const grades = [...new Set(classes.map(c => c.grade))];
+      const sourceGrade = window.ICeClass.classGrade(sourceName);
+      const grade = select(grades.includes(sourceGrade) ? sourceGrade : 'all', [['all', '全部年级'], ...grades.map(g => [g, g])], updateTargets, null, false);
+      const search = input('', updateTargets, 'search', { placeholder: '例如：高一（2）班…' }, null, false);
+      filters.append(field('年级', grade), field('查找班级', search));
+      const choices = el('div', undefined, 'island-bulk-choices');
+      const count = el('p', '已选择 0 个班级', 'island-bulk-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-live', 'polite');
+      const chooseAll = button('全选当前结果', () => { rows.filter(row => !row.node.hidden).forEach(row => selected.add(row.id)); updateTargets(); }, 'btn');
+      const clear = button('清空选择', () => { selected.clear(); updateTargets(); }, 'btn');
+      choices.append(count, chooseAll, clear);
+      const list = el('div', undefined, 'staff-class-picker island-bulk-class-list'), rows = [], gradeGroups = [];
+      list.setAttribute('aria-label', '可配置的目标班级');
+      for (const name of grades) {
+        const group = el('div', undefined, 'staff-class-grade'), heading = el('h3'), label = el('label', undefined, 'island-toggle');
+        const control = input(false, checked => {
+          rows.filter(row => row.grade === name && !row.node.hidden).forEach(row => { if (checked) selected.add(row.id); else selected.delete(row.id); });
+          updateTargets();
+        }, 'checkbox', {}, null, false);
+        control.setAttribute('aria-label', `选择${name}年级`);
+        control.name = `grade-${name}`;
+        label.append(control, el('span', name)); heading.append(label); group.append(heading);
+        classes.filter(c => c.grade === name).forEach(c => {
+          const node = el('label', undefined, 'check-item');
+          const checkbox = input(false, checked => { if (checked) selected.add(c.id); else selected.delete(c.id); updateTargets(); }, 'checkbox', {}, null, false);
+          checkbox.setAttribute('aria-label', c.name);
+          checkbox.name = 'classIds'; checkbox.value = c.id;
+          node.append(checkbox, el('span', c.name)); group.append(node);
+          rows.push({ node, control: checkbox, id: c.id, name: c.name, grade: name });
+        });
+        gradeGroups.push({ node: group, name, control }); list.append(group);
+      }
+      const noMatches = el('p', '没有符合的班级。已选班级会保留。', 'hint'); noMatches.hidden = true;
+      const selectedNote = el('p', '', 'hint island-bulk-selected');
+      targetsSection.append(filters, choices, list, noMatches, selectedNote);
+      editor.append(settings, targetsSection);
+      const review = el('p', '', 'island-bulk-review'); review.hidden = true;
+      const summary = el('p', '', 'island-bulk-summary'); summary.setAttribute('role', 'status'); summary.setAttribute('aria-live', 'polite');
+      const results = el('ul', undefined, 'island-bulk-results'); results.hidden = true; results.setAttribute('aria-label', '逐班预览结果');
+      body.replaceChildren(sourceNote, editor, review, summary, results);
+      const back = button('返回修改', () => {
+        if (phase === 'applying' || phase === 'previewing') return;
+        snapshot = revisions = undefined; valid = false; results.hidden = review.hidden = true; summary.textContent = '';
+        setError(''); setPhase('edit'); all.focus({ preventScroll: true });
+      });
+      const reloadSource = button('重新载入来源', () => {
+        dialog.addEventListener('close', async () => { await load(true); if (!$('islandError').textContent) bulkDialog(); }, { once: true });
+        dialog.close();
+      });
+      const submit = button('预览影响', () => {
+        if (phase === 'done') dialog.close();
+        else if (phase === 'preview') void apply();
+        else if (phase === 'edit' || phase === 'stale') void preview();
+      }, 'btn primary');
+      actions.replaceChildren(cancel, back, reloadSource, submit);
+      function targets() { return classes.filter(c => selected.has(c.id)).map(c => c.id); }
+      const normalizeName = name => name.replace(/[\s（）()]/g, '').toLocaleLowerCase();
+      function updateTargets() {
+        const term = normalizeName(search.value.trim());
+        rows.forEach(row => {
+          row.node.hidden = grade.value !== 'all' && row.grade !== grade.value || !normalizeName(row.name).includes(term);
+          row.control.checked = selected.has(row.id);
+          row.node.classList.toggle('is-selected', row.control.checked);
+        });
+        gradeGroups.forEach(group => {
+          const visible = rows.filter(row => row.grade === group.name && !row.node.hidden);
+          const checked = visible.filter(row => selected.has(row.id)).length;
+          group.node.hidden = !visible.length; group.control.checked = visible.length > 0 && checked === visible.length;
+          group.control.indeterminate = checked > 0 && checked < visible.length;
+        });
+        noMatches.hidden = rows.some(row => !row.node.hidden);
+        chooseAll.disabled = !rows.some(row => !row.node.hidden && !selected.has(row.id)); clear.disabled = !selected.size;
+        count.textContent = `已选择 ${selected.size} 个班级`;
+        const names = classes.filter(c => selected.has(c.id)).map(c => c.name);
+        selectedNote.textContent = names.length ? names.slice(0, 3).join('、') + (names.length > 3 ? `等 ${names.length} 个班级` : '') : '仅列出你有配置权限的其他班级。';
+      }
+      function setPhase(value) {
+        phase = value;
+        editor.disabled = value !== 'edit'; editor.hidden = ['preview', 'stale', 'applying', 'done'].includes(value);
+        back.hidden = value === 'edit' || value === 'done'; cancel.hidden = value === 'done'; reloadSource.hidden = !sourceChanged;
+        back.disabled = value === 'applying' || value === 'previewing'; cancel.disabled = close.disabled = value === 'applying';
+        submit.disabled = sourceChanged || value === 'previewing' || value === 'applying' || value === 'preview' && !valid;
+        submit.textContent = value === 'previewing' ? '预览中…' : value === 'applying' ? '下发中…' : value === 'done' ? '完成'
+          : value === 'preview' ? `确认下发到 ${snapshot.classIds.length} 个班级` : value === 'stale' ? '重新预览' : '预览影响';
+        title.textContent = value === 'done' ? '批量设置完成' : ['preview', 'stale', 'applying'].includes(value) ? '确认批量设置' : '批量设置';
+        form.setAttribute('aria-busy', String(value === 'previewing' || value === 'applying'));
+      }
+      function showRows(items, applied = false) {
+        results.replaceChildren();
+        items.forEach(row => {
+          const item = el('li'), state = el('span', row.error ? '无法下发' : row.changed ? applied ? '已更新' : '将更新' : '无需更改');
+          item.dataset.state = row.error ? 'error' : row.changed ? 'changed' : 'unchanged';
+          const heading = el('div'); heading.append(el('strong', row.className || row.classId), state); item.append(heading);
+          if (Array.isArray(row.details) && row.details.length) {
+            const detail = el('details'), entries = el('ul');
+            detail.append(el('summary', `${row.details.length} 项修改`));
+            row.details.forEach(text => entries.append(el('li', text))); detail.append(entries); item.append(detail);
+          }
+          if (row.addedSlots > 0) item.append(el('small', `新增 ${row.addedSlots} 个作息时段，保留现有时段关联。`));
+          if (row.error) item.append(el('p', row.error));
+          results.append(item);
+        });
+        results.hidden = false;
+      }
+      function completeRows(items) {
+        const expected = new Set(snapshot.classIds);
+        return Array.isArray(items) && items.length === expected.size && items.every(row => expected.delete(row.classId)
+          && Number.isInteger(row.revision) && row.revision >= 0 && typeof row.changed === 'boolean');
+      }
+      async function preview() {
+        const refreshing = phase === 'stale';
+        if (!refreshing) {
+          const classIds = targets(), sections = Object.keys(sectionNames).filter(key => groups.has(key));
+          if (!sections.length) { setError('请至少选择一项要同步的内容。'); return; }
+          if (!classIds.length) { setError('请至少选择一个目标班级。'); return; }
+          snapshot = { sourceClassId: sourceId, sourceRevision, sections, classIds };
+          if (groups.has('enabled')) snapshot.enabled = enabled.value === 'true';
+          review.textContent = `${sourceName} → ${classIds.length} 个班级；${all.checked ? '全部设置' : sections.map(key => sectionNames[key]).join('、')}。`
+            + (all.checked ? '将替换目标班级的全部浮岛配置。' : '未选内容保留。');
+        }
+        valid = false; revisions = undefined; setError(''); setPhase('previewing');
         try {
-          const target = await api('/api/island/classes/' + encodeURIComponent(classId));
-          await api('/api/island/classes/' + encodeURIComponent(classId), { method: 'PUT', body: JSON.stringify({ revision: target.revision, config: profile.config }) });
-          completed++; selected.delete(classId); row.control.checked = false; row.node.dataset.copied = 'true';
-        } catch (error) { errors.push(`${row.name}：${error.message}`); }
+          const data = await api('/api/island/bulk/preview', { method: 'POST', body: JSON.stringify(snapshot) });
+          if (!dialog.open) return;
+          if (!completeRows(data.classes)) throw new Error('预览结果不完整，请重新预览全部所选班级。');
+          revisions = Object.fromEntries(data.classes.map(row => [row.classId, row.revision]));
+          valid = data.valid === true && !data.classes.some(row => row.error);
+          showRows(data.classes); review.hidden = false;
+          const changed = data.classes.filter(row => !row.error && row.changed).length;
+          const unchanged = data.classes.filter(row => !row.error && !row.changed).length, errors = data.classes.filter(row => row.error).length;
+          summary.textContent = `${changed} 个班级将更新，${unchanged} 个无需更改${errors ? `，${errors} 个无法下发` : ''}。`;
+          setPhase('preview');
+          if (!valid) setError('预览未通过，本轮不会下发。请查看班级提示，返回修改后重新预览。');
+          else submit.focus({ preventScroll: true });
+          body.scrollTop = 0;
+        } catch (error) {
+          if (!dialog.open) return;
+          sourceChanged = error.data?.sourceChanged === true;
+          setPhase(refreshing ? 'stale' : 'edit');
+          setError(sourceChanged ? error.message : `预览失败：${error.message} 可重试。`);
+        }
       }
-      copying = false;
-      if (!errors.length) { dialog.close(); window.ICeClass.toast(`已复制到 ${completed} 个班级，教室端联网后自动同步。`); }
-      else {
-        result.textContent = `已完成 ${completed} 个班级。${errors.join('；')}。可重试剩余班级。`;
-        count.textContent = `剩余 ${selected.size} 个班级`;
-        submit.disabled = cancel.disabled = search.disabled = false;
-        rows.forEach(row => row.control.disabled = row.node.dataset.copied === 'true');
-        submit.textContent = '重试剩余班级';
+      async function apply() {
+        if (phase !== 'preview' || !valid || !revisions) return;
+        setError(''); setPhase('applying');
+        let data;
+        try {
+          data = await api('/api/island/bulk', { method: 'PUT', body: JSON.stringify({ ...snapshot, revisions }) });
+          if (!completeRows(data.classes) || !Number.isInteger(data.updated) || !Number.isInteger(data.unchanged)
+              || data.updated < 0 || data.unchanged < 0 || data.updated + data.unchanged !== snapshot.classIds.length)
+            throw new Error('下发回执不完整');
+        } catch (error) {
+          valid = false; revisions = undefined; sourceChanged = error.data?.sourceChanged === true; setPhase('stale');
+          if (Array.isArray(error.data?.classes)) showRows(error.data.classes);
+          setError(sourceChanged ? error.message : error.status === 409 ? `本轮未下发。${error.message} 请重新预览后再下发。`
+            : `无法确认下发结果：${error.message}。请重新预览核对，未自动重试。`);
+          return;
+        }
+        showRows(data.classes, true);
+        summary.textContent = `已更新 ${data.updated} 个班级，${data.unchanged} 个无需更改。教室端联网后自动同步。`;
+        window.ICeClass.toast(`已更新 ${data.updated} 个班级，${data.unchanged} 个无需更改。`);
+        setPhase('done'); submit.focus({ preventScroll: true }); body.scrollTop = 0;
       }
-    };
-    dialog.showModal(); search.focus();
+      updateTargets(); updateGroups(); setPhase('edit');
+      if (dialog.open) all.focus({ preventScroll: true });
+    }
   }
   function fillClasses() {
     const previous = loadedClass || $('islandClass').value;
@@ -1565,14 +1594,14 @@
     $('islandClass').value = nextClass;
     void load(true);
   };
-  $('islandReload').onclick = () => void load();
+  $('islandReload').onclick = () => { $('islandMore').open = false; void load(); };
   $('islandSave').onclick = () => void save();
-  $('islandCopy').onclick = copyDialog;
   $('islandBulk').onclick = bulkDialog;
   $('islandImportFile').onchange = event => void importFile(event.target.files[0]);
-  $('islandImport').onclick = () => $('islandImportFile').click();
+  $('islandImport').onclick = () => { $('islandMore').open = false; $('islandImportFile').click(); };
   $('islandExport').onclick = async () => {
     if (!loadedClass || busy) return;
+    $('islandMore').open = false;
     if (dirty && !await confirmDutyChange('导出 Excel', '导出的是最近保存的课表，不包含当前未保存的修改。', '继续导出', 'islandExport')) return;
     location.href = '/api/island/classes/' + encodeURIComponent(loadedClass) + '/export';
   };
@@ -1589,12 +1618,17 @@
   });
   $('islandMotionSeek').oninput = event => ribbon.seek(Number(event.target.value));
   document.addEventListener('pointerdown', event => {
+    if ($('islandMore').open && !$('islandMore').contains(event.target)) $('islandMore').open = false;
     if ($('islandPreviewClock').open && !$('islandPreviewClock').contains(event.target)) $('islandPreviewClock').open = false;
   });
   document.addEventListener('focusin', event => {
+    if ($('islandMore').open && !$('islandMore').contains(event.target)) $('islandMore').open = false;
     if ($('islandPreviewClock').open && !$('islandPreviewClock').contains(event.target)) $('islandPreviewClock').open = false;
   });
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && $('islandMore').open) {
+      $('islandMore').open = false; $('islandMore').querySelector('summary').focus({ preventScroll: true }); event.preventDefault(); return;
+    }
     if (event.key === 'Escape' && !event.defaultPrevented && previewOpen && !document.querySelector('dialog[open]') && !event.target.closest('input, select, textarea')) {
       if ($('islandPreviewClock').open) {
         $('islandPreviewClock').open = false; $('islandPreviewClock').querySelector('summary').focus({ preventScroll: true }); event.preventDefault(); return;

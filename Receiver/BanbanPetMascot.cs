@@ -22,7 +22,7 @@ internal sealed class BanbanPetMascot : Control, IDisposable
     private int _idleVariant;
     private string _state = "off";
     private bool _visible, _enabled, _disposed, _docked, _right = true;
-    private bool _animate = ClassroomIslandReveal.AnimationsEnabled();
+    private bool _animate = true;
     internal bool Animate
     {
         get => _animate;

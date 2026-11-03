@@ -65,6 +65,10 @@ if [[ -f "$PACKAGE_ROOT/desktop_release/manifest.json" && -f "$PACKAGE_ROOT/desk
     cp -R "$PACKAGE_ROOT/desktop_release/." "$STAGING_DIR/desktop_release/"
     chmod -R a+rX "$STAGING_DIR/desktop_release"
 fi
+install -d -m 0755 "$STAGING_DIR/scripts"
+install -m 0644 "$PACKAGE_ROOT/scripts/create-client-archives.py" "$STAGING_DIR/scripts/"
+python3 "$STAGING_DIR/scripts/create-client-archives.py" "$STAGING_DIR" "$STAGING_DIR/client-downloads"
+chmod -R a+rX "$STAGING_DIR/client-downloads"
 chown -R root:root "$STAGING_DIR"
 
 python3 -m venv "$VENV_DIR"

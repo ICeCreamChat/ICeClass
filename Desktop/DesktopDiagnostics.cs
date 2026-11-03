@@ -24,6 +24,8 @@ internal sealed class DesktopDiagnostics : IDisposable
     private readonly Task _writer;
     private string _storageError = "";
     private int _dropped;
+    internal event Action<string>? ErrorRecorded;
+    internal event Action? AuthenticationChanged;
     internal string StorageStatus => (Volatile.Read(ref _storageError) is { Length: > 0 } failure ? failure : "正常") +
         (Volatile.Read(ref _dropped) > 0 ? $"；繁忙时跳过 {_dropped} 条记录" : "");
 
@@ -39,6 +41,12 @@ internal sealed class DesktopDiagnostics : IDisposable
             FeedbackDiagnostics.Page(page), Clean(detail, 1200), milliseconds is >= 0 and <= 3600000 ? Math.Round(milliseconds.Value, 1) : null,
             status is >= 0 and <= 599 ? status : null);
         if (!_pending.Writer.TryWrite(new(entry, null))) Interlocked.Increment(ref _dropped);
+        if (area == "request" && status is >= 200 and < 400 && Uri.TryCreate(page, UriKind.Absolute, out var address) &&
+            address.AbsolutePath is "/api/auth/login" or "/api/auth/logout" or "/api/auth/password")
+            AuthenticationChanged?.Invoke();
+        if (area == "javascript" || area == "request" && (status == 0 || status >= 400) ||
+            area == "navigation" && action == "加载失败" || area == "runtime" && action == "页面进程中断")
+            ErrorRecorded?.Invoke(JsonSerializer.Serialize(entry, Json));
     }
 
     internal void RecordBrowser(string json, string endpoint)

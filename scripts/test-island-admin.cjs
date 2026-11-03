@@ -158,7 +158,8 @@ for (const [kind, label, slotId] of [['midday', '午间静校', 'mid'], ['evenin
     await page.locator('#islandDirty').filter({ hasText: '版本 5' }).waitFor();
     assert.equal(saved.dutyRotations[kind].enabled, true);
     assert.equal(saved.dutyRotations[kind].lessons[0].teacher, '已填写教师');
-    await page.locator('#islandReload').click();
+    await page.locator('#islandMore summary').click();
+    await page.getByRole('button', { name: '重新载入', exact: true }).click();
     await page.getByRole('tab', { name: '周课表', exact: true }).click();
     if (kind === 'evening') await page.getByLabel('晚自习轮换周次', { exact: true }).selectOption('1');
     assert.match(await page.locator('.island-week tbody').innerText(), /已填写教师/);

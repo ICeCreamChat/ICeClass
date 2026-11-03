@@ -8,9 +8,9 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=16">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=17">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=7">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=29">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=30">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=4">
@@ -98,9 +98,8 @@
       <section id="view-island" class="view hidden" aria-label="教室浮岛配置">
         <div class="island-top"><h1>教室浮岛</h1></div>
         <div class="island-toolbar">
-          <div class="island-class-tools"><label class="island-class-field" for="islandClass"><span>配置班级</span><select id="islandClass"></select></label><button type="button" id="islandBulk" class="btn" hidden disabled>批量设置</button></div>
-          <div class="island-inline"><button type="button" id="islandReload" class="btn">重新载入</button><button type="button" id="islandCopy" class="btn">复制到其他班级</button></div>
-          <div class="island-files"><button type="button" id="islandImport" class="btn" title="导入修改后的班级课表，沿用已设置的作息时间，识别后先预览">导入 Excel</button><button type="button" id="islandExport" class="btn" title="下载黑白课表模板，只需填写课程和教师，无需填写上课时间">导出 Excel</button><input id="islandImportFile" type="file" accept=".xlsx" hidden></div>
+          <label class="island-class-field" for="islandClass"><span>配置班级</span><select id="islandClass"></select></label>
+          <div class="island-class-tools"><button type="button" id="islandBulk" class="btn" hidden disabled>批量设置</button><details id="islandMore" class="action-menu"><summary class="btn">更多操作</summary><div class="action-menu-content"><button type="button" id="islandReload" class="btn">重新载入</button><button type="button" id="islandImport" class="btn" title="导入修改后的班级课表，沿用已设置的作息时间，识别后先预览">导入 Excel</button><button type="button" id="islandExport" class="btn" title="下载黑白课表模板，只需填写课程和教师，无需填写上课时间">导出 Excel</button></div></details><input id="islandImportFile" type="file" accept=".xlsx" hidden></div>
         </div>
         <div class="island-layout"><div class="island-main">
           <div class="island-workspace-head">
@@ -346,6 +345,25 @@
         <section id="deviceSection" class="settings-device-section" data-manager>
           <div class="view-head"><div><h2>教室电脑</h2><p>停用后，设备将无法接收通知。</p></div><button id="refreshDevices" class="btn" type="button">刷新设备</button></div>
           <div id="devicesContainer"></div>
+        </section>
+        <section id="clientDiagnosticsSection" class="settings-device-section hidden" aria-label="客户端日志">
+          <details id="clientDiagnosticsPanel">
+            <summary class="client-diagnostic-heading">客户端日志</summary>
+            <p class="hint">两端自动上报错误，也可在“关于”中提交近期诊断。每周一凌晨清理超过 7 天的记录。</p>
+            <form id="clientDiagnosticFilters" class="client-diagnostic-filters">
+              <div class="field"><label for="diagnosticEdition">客户端</label><select id="diagnosticEdition" name="edition"><option value="">全部</option><option value="classroom">教室端</option><option value="teacher">教师端</option></select></div>
+              <div class="field"><label for="diagnosticKind">记录类型</label><select id="diagnosticKind" name="kind"><option value="">全部</option><option value="error">自动错误</option><option value="manual">手动诊断</option></select></div>
+              <div class="field"><label for="diagnosticVersion">程序版本</label><input id="diagnosticVersion" name="version" maxlength="40" placeholder="例如 2.5.6"></div>
+              <div class="field"><label for="diagnosticSince">起始日期</label><input id="diagnosticSince" name="since" type="date"></div>
+              <div class="field"><label for="diagnosticUntil">结束日期</label><input id="diagnosticUntil" name="until" type="date"></div>
+              <div class="field"><label for="diagnosticQuery">班级、账号或电脑</label><input id="diagnosticQuery" name="q" maxlength="100" type="search" placeholder="搜索班级、账号或电脑"></div>
+              <div class="client-diagnostic-actions"><button type="submit" class="btn primary">筛选日志</button><button id="diagnosticReset" type="button" class="btn">重置</button><button id="diagnosticRefresh" type="button" class="btn">刷新日志</button></div>
+            </form>
+            <p id="clientDiagnosticStatus" class="hint" role="status" aria-live="polite"></p>
+            <div class="client-diagnostic-table" tabindex="0" role="region" aria-label="客户端日志列表"><table><thead><tr><th scope="col">收到时间</th><th scope="col">客户端与设备</th><th scope="col">记录</th><th scope="col">版本</th><th scope="col">操作</th></tr></thead><tbody id="clientDiagnosticRows"></tbody></table></div>
+            <div class="client-diagnostic-pager"><span id="diagnosticPage" class="hint"></span><div class="client-diagnostic-actions"><button id="diagnosticPrevious" type="button" class="btn">上一页</button><button id="diagnosticNext" type="button" class="btn">下一页</button></div></div>
+            <section id="clientDiagnosticDetail" class="client-diagnostic-detail" hidden aria-labelledby="diagnosticDetailTitle"><div class="view-head"><h3 id="diagnosticDetailTitle" tabindex="-1">诊断详情</h3><button id="diagnosticCopy" type="button" class="btn">复制日志</button></div><p id="diagnosticDetailMeta" class="hint"></p><pre id="diagnosticReport" tabindex="0" aria-label="诊断日志正文"></pre></section>
+          </details>
         </section>
       </section>
     </main>
@@ -1554,7 +1572,7 @@
         toastTimers.set(node, setTimeout(() => { toastTimers.delete(node); node.remove(); }, 3500));
       }
 
-      window.ICeClass = { state, api, toast, refreshManagement: async () => {
+      window.ICeClass = { state, api, toast, classGrade, refreshManagement: async () => {
         await Promise.all([loadClasses(), loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
         window.dispatchEvent(new Event('iceclass-classes-changed'));
       }};
@@ -1566,13 +1584,14 @@
   </script>
   <script nonce="__CSP_NONCE__" src="/ui.js?v=9" defer></script>
   <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=10" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=10" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=5" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=31" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=32" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>

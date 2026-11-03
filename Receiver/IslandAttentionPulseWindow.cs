@@ -19,9 +19,9 @@ internal sealed class IslandAttentionPulseWindow : Window, IDisposable
         IsHitTestVisible = false; Focusable = false; Content = _pulse;
         Opened += (_, _) => IslandPlatform.SetClickThrough(this, true);
     }
-    public void Play(Window owner, string color)
+    public void Play(Window owner, string color, bool animate = true)
     {
-        if (!owner.IsVisible || !ClassroomIslandReveal.AnimationsEnabled()) return;
+        if (!owner.IsVisible || !animate) return;
         var screen = owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary;
         if (screen is null) return;
         var work = screen.WorkingArea; var scale = screen.Scaling;

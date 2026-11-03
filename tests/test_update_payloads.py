@@ -1,4 +1,4 @@
-"""Exercise release plans and real Windows MSDelta with small, offline fixtures."""
+"""Exercise release plans and real Windows MSDelta with offline fixtures."""
 import hashlib
 import importlib.util
 import json
@@ -102,6 +102,22 @@ class UpdatePayloadTests(unittest.TestCase):
         engine.create(source, target, delta)
         engine.apply(source, delta, rebuilt)
         self.assertEqual(rebuilt.read_bytes(), target.read_bytes())
+        self.assertLess(delta.stat().st_size, target.stat().st_size)
+
+    @unittest.skipUnless(os.name == "nt", "MSDelta is built into Windows")
+    def test_real_msdelta_roundtrip_supports_files_larger_than_32_mib(self):
+        source = self.root / "large-old.bin"
+        target = self.root / "large-new.bin"
+        delta = self.root / "large.patch"
+        rebuilt = self.root / "large-rebuilt.bin"
+        source.write_bytes(random.Random(37).randbytes(33 * 1024 * 1024))
+        data = bytearray(source.read_bytes())
+        data[1024:1040] = b"new release data"
+        target.write_bytes(data)
+        engine = payloads.MsDelta()
+        engine.create(source, target, delta)
+        engine.apply(source, delta, rebuilt)
+        self.assertEqual(checksum(rebuilt.read_bytes()), checksum(target.read_bytes()))
         self.assertLess(delta.stat().st_size, target.stat().st_size)
 
     @unittest.skipUnless(os.name == "nt", "MSDelta is built into Windows")
@@ -268,11 +284,19 @@ class UpdatePayloadTests(unittest.TestCase):
         for folder in ("scripts", "Receiver", "Desktop", "server", "web_controller", "cloud/migrations", "docs"):
             (workspace / folder).mkdir(parents=True, exist_ok=True)
         for name in ("package-release.ps1", "prepare-update-payloads.py", "prepare-delivery.ps1",
-                     "install-classroom.ps1", "install-desktop.ps1", "update-ubuntu.sh"):
+                     "install-classroom.ps1", "install-desktop.ps1", "install-voice-resources.ps1",
+                     "create-client-archives.py", "update-ubuntu.sh"):
             shutil.copyfile(ROOT / "scripts" / name, workspace / "scripts" / name)
         shutil.copyfile(self.project, workspace / "Receiver/Receiver.csproj")
         shutil.copyfile(self.project, workspace / "Desktop/ICeClass.Desktop.csproj")
         shutil.copytree(self.voice, workspace / "Receiver/Assets/Voice")
+        asr = workspace / 'Receiver/Assets/Voice/Asr'
+        asr_files = []
+        for name in ('model.int8.onnx', 'tokens.txt'):
+            data = ('fixture ' + name).encode()
+            (asr / name).write_bytes(data)
+            asr_files.append({'name': name, 'size': len(data), 'sha256': checksum(data)})
+        (asr / 'manifest.json').write_text(json.dumps({'files': asr_files}))
         for name in ("README.md", "LICENSE", "server/app.py", "server/requirements.txt", "server/install-ubuntu.sh",
                      "web_controller/index.html", "cloud/migrations/0001_initial.sql",
                      "cloud/migrations/0002_reading.sql", "cloud/migrations/0003_classroom.sql", "docs/public.md"):
@@ -317,6 +341,12 @@ class UpdatePayloadTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 for name in archive.namelist():
                     self.assertNotIn(Path(name).name.lower(), {"config.json", ".env", "agents.md", "credentials.dpapi", "iceclass.db", "腾讯云api运维.md"})
+        with zipfile.ZipFile(distribution / 'release/ICeClass-9.8.7-classroom.zip') as archive:
+            self.assertEqual(archive.read('ICeClass/教室端/ICeClass.exe'), self.executable.read_bytes())
+        with zipfile.ZipFile(distribution / 'release/ICeClass-9.8.7-classroom-offline.zip') as archive:
+            self.assertEqual(archive.read('ICeClass/教室端/ICeClass.exe'), b'MZ full offline application')
+        with zipfile.ZipFile(distribution / 'release/ICeClass-9.8.7-desktop-windows-x64-offline.zip') as archive:
+            self.assertEqual(archive.read('Windows教师端/VoiceResources/Asr/model.int8.onnx'), b'fixture model.int8.onnx')
 
         previous = self.root / "previous-server"
         with zipfile.ZipFile(distribution / "release/ICeClass-9.8.7-server.zip") as archive:

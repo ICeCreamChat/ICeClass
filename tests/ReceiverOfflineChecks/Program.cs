@@ -2,7 +2,18 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--manual-update-probe", var updateMode, var updateEndpoint, "--incremental-update-started"])
+{
+    ManualUpdateChecks.Probe(updateMode, updateEndpoint); return;
+}
+if (args is ["--manual-update-checks"]) { try { await ManualUpdateChecks.Run(); } catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; } return; }
 if (args is ["--update-activity-checks"]) { UpdateActivityChecks.Run(); return; }
+if (args is ["--voice-resource-state-checks"])
+{
+    try { await VoiceResourceStateChecks.Run(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--update-resource-checks", var updateRelease, var updateOutput]) { await UpdateResourceChecks.Run(updateRelease, updateOutput); return; }
 
 if (args.Length is 1 or 2 && args[0] == "--ideas-voice-checks")
@@ -214,6 +225,7 @@ try
     using var child = Process.Start(start)!; await child.WaitForExitAsync();
     Check(child.ExitCode == 0 && new ReadingOutbox(Path.Combine(root, "crash")).Pending == 1, "an abruptly exiting process leaves its confirmed write recoverable");
     checks += await UpdateChecks.Run();
+    checks += await ManualUpdateChecks.Run();
     checks += IslandChecks.Run(root);
     checks += IslandSpringChecks.Run();
     checks += IslandHoldingArmChecks.Run();

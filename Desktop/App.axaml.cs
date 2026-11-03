@@ -17,6 +17,7 @@ public sealed class App : Application
     private TrayIcon? _tray;
     private NativeMenuItem? _updateAction;
     private DesktopWindow _window = null!;
+    private SettingsWindow? _settingsWindow;
     private bool _exiting;
     private DesktopDiagnostics? _diagnostics;
     internal DesktopDiagnostics Diagnostics => _diagnostics ??= new(DataDirectory);
@@ -77,6 +78,15 @@ public sealed class App : Application
     internal bool UpdateBusy(bool automatic) => (automatic && _window.IsVisible)
         || _desktop.Windows.Any(window => window != _window && window.IsVisible);
 
+    internal bool RequestVoiceDownload()
+    {
+        if (_exiting) return false;
+        ShowWindow();
+        if (!_window.DownloadVoiceResources()) return false;
+        _ = ShowSettingsAsync(revealVoiceResources: true);
+        return true;
+    }
+
     private async Task ListenAsync()
     {
         while (!_lifetime.IsCancellationRequested)
@@ -94,10 +104,23 @@ public sealed class App : Application
         }
     }
 
-    internal async Task ShowSettingsAsync()
+    internal async Task ShowSettingsAsync(bool revealVoiceResources = false)
     {
-        var editor = new SettingsWindow(Settings);
-        var updated = await editor.ShowDialog<DesktopSettings?>(_window);
+        if (_settingsWindow is { } existing)
+        {
+            existing.Activate();
+            if (revealVoiceResources) existing.RevealVoiceResources();
+            return;
+        }
+        var editor = _settingsWindow = _window.CreateSettingsWindow(Settings);
+        DesktopSettings? updated;
+        try
+        {
+            var editing = editor.ShowDialog<DesktopSettings?>(_window);
+            if (revealVoiceResources) editor.RevealVoiceResources();
+            updated = await editing;
+        }
+        finally { _settingsWindow = null; }
         if (updated is null) return;
         var changedServer = updated.Endpoint != Settings.Endpoint;
         if (changedServer && !await Dialogs.Confirm(_window, "切换学校平台？", "工作台将重新打开。请先保存尚未提交的内容；原平台的登录资料会保留。", "保存并重新打开")) return;
@@ -129,9 +152,12 @@ public sealed class App : Application
 
 internal static class DesktopLog
 {
+    internal static event Action<string>? ErrorRecorded;
     internal static void Write(Exception error)
     {
-        try { Directory.CreateDirectory(App.DataDirectory); File.AppendAllText(Path.Combine(App.DataDirectory, "desktop.log"), $"{DateTimeOffset.Now:O} {error}\n"); }
+        var safe = ICeClass.Diagnostics.SupportDiagnostics.Redact(error.ToString());
+        try { Directory.CreateDirectory(App.DataDirectory); File.AppendAllText(Path.Combine(App.DataDirectory, "desktop.log"), $"{DateTimeOffset.Now:O} {safe}\n"); }
         catch (IOException) { } catch (UnauthorizedAccessException) { }
+        ErrorRecorded?.Invoke(safe);
     }
 }

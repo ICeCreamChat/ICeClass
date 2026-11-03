@@ -19,9 +19,10 @@ public sealed class ReceiverUpdateService
 
     public async Task<ReceiverUpdateResult> CheckAndDownloadAsync(
         ReceiverConfig config,
-        IProgress<int>? progress,
+        IProgress<UpdateProgress>? progress,
         CancellationToken token)
     {
+        progress?.Report(new(UpdateStage.Checking));
         var baseUri = new Uri(config.Endpoint.TrimEnd('/') + "/", UriKind.Absolute);
         var plan = await IncrementalUpdates.FetchPlanAsync(baseUri,
             $"api/receiver/update/plan?deviceId={Uri.EscapeDataString(config.DeviceId)}&currentVersion={Uri.EscapeDataString(CurrentVersionText)}",
@@ -56,6 +57,7 @@ public sealed class ReceiverUpdateService
             (downloadUri.Scheme != Uri.UriSchemeHttps && !(downloadUri.Scheme == Uri.UriSchemeHttp && downloadUri.IsLoopback)))
             throw new InvalidOperationException("服务器提供的更新地址不安全。");
 
+        progress?.Report(new(UpdateStage.Preparing));
         var updateDirectory = Path.Combine(AppContext.BaseDirectory, ".updates");
         Directory.CreateDirectory(updateDirectory);
         var temporaryPath = Path.Combine(updateDirectory, $"ICeClass-{manifest.Version}.download");
@@ -82,6 +84,8 @@ public sealed class ReceiverUpdateService
                 }
                 TryDelete(temporaryPath); offset = 0;
             }
+            using var transfer = new UpdateTransferProgress(progress, manifest.Size);
+            transfer.Report(offset);
             using var downloadRequest = CreateRequest(HttpMethod.Get, downloadUri, config.DeviceToken);
             if (offset > 0) downloadRequest.Headers.Range = new RangeHeaderValue(offset, null);
             using var response = await Client.SendAsync(downloadRequest, HttpCompletionOption.ResponseHeadersRead, token);
@@ -96,6 +100,7 @@ public sealed class ReceiverUpdateService
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.OK) offset = 0; // Server ignored Range: restart cleanly.
             else throw new InvalidOperationException("服务器返回了无效的更新内容。");
+            transfer.Report(offset);
             if (response.Content.Headers.ContentLength is long contentLength && contentLength > manifest.Size - offset)
                 throw new InvalidOperationException("更新文件长度与服务器记录不一致。");
 
@@ -116,13 +121,14 @@ public sealed class ReceiverUpdateService
                     if (total > manifest.Size || total > MaximumDownloadBytes)
                         throw new InvalidOperationException("更新文件超过服务器声明的大小。");
                     await destination.WriteAsync(buffer.AsMemory(0, read), token);
-                    progress?.Report((int)Math.Clamp(total * 100 / manifest.Size, 0, 100));
+                    transfer.Report(total);
                 }
                 await destination.FlushAsync(token);
                 if (total != manifest.Size)
                     throw new InvalidOperationException("更新下载不完整，请稍后重试。");
             }
 
+            progress?.Report(new(UpdateStage.Verifying, manifest.Size, manifest.Size));
             if (!await VerifiedAsync(temporaryPath, manifest, token))
             {
                 TryDelete(temporaryPath);
@@ -178,7 +184,14 @@ public sealed class ReceiverUpdateService
 
         try
         {
-            return UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory, "ICeClass.exe", RestartArguments());
+            if (!UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory, "ICeClass.exe", RestartArguments()))
+            {
+                error = "待安装更新已失效，请重新检查更新。";
+                AppLog.Error("Receiver update installer did not find a usable pending update");
+                return false;
+            }
+            AppLog.Info($"Receiver update installer launched: {CurrentVersionText} -> {update.Version}");
+            return true;
         }
         catch (Exception exception)
         {

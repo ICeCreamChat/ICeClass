@@ -90,17 +90,7 @@ internal static class FeedbackDiagnostics
         $"显示缩放：{report.Scaling}\n当前页面：{Page(report.Page)}\n联系方式：{report.Contact}\n" +
         $"问题描述：{report.Description}\n\n{logs}");
 
-    internal static string Redact(string text)
-    {
-        text = Regex.Replace(text, @"(?im)([""']?(?:Set-)?Cookie[""']?\s*[:=])[^\r\n]*", "$1 [已隐藏]");
-        text = Regex.Replace(text, @"(?i)([""']?Authorization[""']?\s*[:=]\s*[""']?)(?:Bearer|Basic)\s+[^\s""']+", "$1[已隐藏]");
-        text = Regex.Replace(text, @"(?i)([""']?(?:password|passwd|pwd|api[_-]?key|access[_-]?token|refresh[_-]?token|device[_-]?token|csrf(?:[_-]?token)?|iceclass_session|token|secret)[""']?\s*[:=]\s*)(""[^""\r\n]*""|'[^'\r\n]*'|[^\s,;&\r\n]+)", "$1[已隐藏]");
-        text = Regex.Replace(text, @"(?i)(https?://)[^/\s@]+@", "$1[已隐藏]@");
-        text = Regex.Replace(text, @"\bsk-[A-Za-z0-9_-]{12,}\b", "[已隐藏]");
-        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (!string.IsNullOrEmpty(profile)) text = text.Replace(profile, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
-        return text;
-    }
+    internal static string Redact(string text) => ICeClass.Diagnostics.SupportDiagnostics.Redact(text);
 
     internal static string Page(string? address)
     {

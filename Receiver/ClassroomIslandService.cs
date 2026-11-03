@@ -48,11 +48,13 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     {
         _actions = new(openReading, Notify);
         _window = new ClassroomIslandWindow(() => _binding is { } binding ? openReading(binding) : Task.CompletedTask,
-            openHome, ToggleDim, () => SetEnabled(false), AcknowledgeNotice, ShowSettings, DismissNotice);
+            openHome, ToggleDim, () => SetEnabled(false), AcknowledgeNotice, ShowSettings, DismissNotice, AppLog.Info);
         _timer.Tick += (_, _) => { ExpireWaitingShouts(); Refresh(); };
         _demoTimer.Tick += (_, _) => RenderDemo();
         ReadingExperience.StateChanged += ReadingStateChanged;
     }
+
+    internal string DiagnosticState => _window.DiagnosticState;
 
     public void SetBinding(ReceiverConfig binding)
     {
@@ -264,7 +266,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var appearance = new IslandAppearance { Position = source.Position, Width = source.Width,
             Theme = source.Theme, Opacity = source.Opacity, OffsetX = source.OffsetX, OffsetY = source.OffsetY,
             ClickThrough = false, HideFullscreen = false, HideDuringLessons = false };
-        _window.Update(scene.View, false);
+        _window.Update(scene.View, false, _local.AnimationsEnabled);
         _window.ApplyProfile(appearance, scene.Profile, scene.Now, "", scene.View.ConnectionText, _demo.Playing);
         if (!_window.IsVisible) _window.Show();
         _demoWindow?.Update(_demo, scene);
@@ -382,7 +384,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         }
         if (island?.Revoked == true) view = view with { Status = "绑定已失效", CanOpenReading = false, ReadingTitle = "请重新绑定教室", ReadingDetail = "从教室首页打开绑定设置。" };
         if (_demo is not null) { RenderDemo(); return; }
-        _window.Update(view, _preferences.Dimmed);
+        _window.Update(view, _preferences.Dimmed, _local.AnimationsEnabled);
         var appearance = _local.Appearance ?? profile?.Appearance ?? new();
         _window.ApplyProfile(appearance, profile, now, component, (island?.Status ?? view.ConnectionText) + " · " + view.ConnectionText);
         var clock = Stopwatch.GetTimestamp();

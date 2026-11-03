@@ -374,7 +374,6 @@ internal static class BanbanPetMotionReview
             }
             pause.Click += (_, _) => { paused = !paused; pause.Content = paused ? "继续" : "暂停"; };
             step.Click += (_, _) => { paused = true; pause.Content = "继续"; Advance(1d / 60); };
-            var reduced = !ClassroomIslandReveal.AnimationsEnabled();
             var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000d / 30) };
             var last = Stopwatch.GetTimestamp();
             timer.Tick += (_, _) =>
@@ -390,8 +389,7 @@ internal static class BanbanPetMotionReview
                     else select.SelectedIndex = (select.SelectedIndex + 1) % actions.Length;
                 }
             };
-            if (!reduced) timer.Start();
-            else { mascot.ReviewPose = motion.Advance(0, true); status.Text = "已遵循系统减少动画设置"; }
+            timer.Start();
             var stage = new Border { Background = Brushes.White, CornerRadius = new CornerRadius(16), Padding = new Thickness(20),
                 Child = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center, Children = { mascot, status } } };
             var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { pause, step, slow } };

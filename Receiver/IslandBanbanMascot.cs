@@ -17,7 +17,9 @@ internal sealed class IslandBanbanMascot : Control, IDisposable
     private readonly Dictionary<string, Bitmap> _images = new();
     private long _sequence = -1, _started;
     private bool _active, _queued, _disposed, _speaking, _urgent, _important;
-    internal bool Animate { get; set; } = ClassroomIslandReveal.AnimationsEnabled();
+    internal long AnimationFrames { get; private set; }
+    internal long RenderedFrames { get; private set; }
+    internal bool Animate { get; set; } = true;
     internal double? ReviewSeconds { get; set; }
     internal bool AssetsLoaded => _images.Count == 15;
 
@@ -38,7 +40,8 @@ internal sealed class IslandBanbanMascot : Control, IDisposable
 
     public void Begin(ClassroomIslandNotice notice)
     {
-        if (!_active || _sequence != notice.Sequence) { _sequence = notice.Sequence; _started = Stopwatch.GetTimestamp(); }
+        if (!_active || _sequence != notice.Sequence)
+        { _sequence = notice.Sequence; _started = Stopwatch.GetTimestamp(); AnimationFrames = RenderedFrames = 0; }
         _speaking = notice.ContentType == "audio" || notice.Level != "info";
         _urgent = notice.Level == "urgent"; _important = notice.Level == "warning"; _active = true;
         InvalidateVisual(); QueueFrame();
@@ -51,13 +54,14 @@ internal sealed class IslandBanbanMascot : Control, IDisposable
     {
         if (_queued || _disposed || !_active || !Animate || ReviewSeconds.HasValue || TopLevel.GetTopLevel(this) is not { IsVisible: true } top) return;
         _queued = true;
-        top.RequestAnimationFrame(_ => { _queued = false; if (_disposed || !_active) return; InvalidateVisual(); QueueFrame(); });
+        top.RequestAnimationFrame(_ => { _queued = false; if (_disposed || !_active) return; AnimationFrames++; InvalidateVisual(); QueueFrame(); });
     }
 
     public override void Render(DrawingContext context)
     {
         base.Render(context);
         if (_disposed) return;
+        if (_active) RenderedFrames++;
         var time = !Animate ? 2.4 : ReviewSeconds ?? Stopwatch.GetElapsedTime(_started).TotalSeconds;
         var pulling = _active && (_important || _urgent);
         var pull = Animate && pulling ? PullAt(time) : 0;

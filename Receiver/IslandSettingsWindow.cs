@@ -78,7 +78,11 @@ internal sealed class IslandSettingsWindow : Window
         form.Children.Add(new StackPanel { Spacing = 0, Children = { through,
             ClassroomStyle.Text("启用后，从教室首页或托盘恢复悬浮岛操作。", 13, muted: true) } });
         form.Children.Add(fullscreen);
+        var motion = new CheckBox { Content = "播放浮岛动画", IsChecked = local.AnimationsEnabled, FontSize = 14 };
+        AutomationProperties.SetName(motion, "播放浮岛动画");
         body.Children.Add(ClassroomStyle.SettingsSection("外观与显示", new StackPanel { Spacing = 12, Children = {
+            new StackPanel { Spacing = 2, Children = { motion,
+                ClassroomStyle.Caption("班班动作、通知条与展开过渡；关闭后直接显示内容。") } }, ClassroomStyle.SettingsDivider(),
             new StackPanel { Spacing = 2, Children = { independent, appearanceHint } }, ClassroomStyle.SettingsDivider(), form,
             ClassroomStyle.Caption("课堂隐藏时段在教师端“教室浮岛 → 提醒与外观”中设置，本机独立外观不改变课堂规则。") } }));
 
@@ -154,6 +158,7 @@ internal sealed class IslandSettingsWindow : Window
             appearance.OffsetX = (int)(offsetX.Value ?? 0); appearance.OffsetY = (int)(offsetY.Value ?? 0);
             appearance.ClickThrough = through.IsChecked == true; appearance.HideFullscreen = fullscreen.IsChecked == true;
             local.Appearance = independent.IsChecked == true ? appearance : null;
+            local.AnimationsEnabled = motion.IsChecked == true;
             try { apply(local); Close(); } catch (Exception e) { error.Text = e.Message; }
         };
         Grid.SetColumn(save, 1); actions.Children.Add(save);

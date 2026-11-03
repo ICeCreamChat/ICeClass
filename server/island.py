@@ -15,6 +15,18 @@ from teacher_capabilities import teacher_action, teacher_read
 
 DUTY_KINDS = {'midday': '午间静校', 'evening': '晚自习'}
 SCHOOL_VISIBILITY = {'hideDaytimeLessons': True, 'hideFirstEvening': True}
+BULK_SECTIONS = {
+    'enabled': ('浮岛开关', ('enabled',)),
+    'slots': ('作息时间', ('slots',)),
+    'timetable': ('周课表', ('weekAnchor', 'lessons')),
+    'duties': ('值班安排', ('dutyRotations',)),
+    'overrides': ('临时调课', ('overrides',)),
+    'reminders': ('提醒设置', ('reminders',)),
+    'appearance': ('浮岛外观', ('appearance',)),
+    'visibility': ('课堂隐藏', ('visibility',)),
+    'components': ('轮播信息', ('components', 'rotationSeconds')),
+    'automation': ('自动化', ('automation',)),
+}
 
 
 def duty_defaults(slots=()):
@@ -334,8 +346,35 @@ def bulk_changes(value):
     return changes
 
 
+def map_bulk_slots(current, merged, source_slots, *, update_times):
+    """Match references without replacing the target class's existing slot IDs."""
+    by_id = {s['id']: s for s in merged['slots']}
+    label = lambda s: re.sub(r'\s+', '', s['label']).replace('（', '(').replace('）', ')')
+    mapping, used = {}, set()
+    for source in source_slots:
+        target = by_id.get(source['id'])
+        if target is None:
+            matches = [s for s in current['slots'] if label(s) == label(source)]
+            if len(matches) > 1:
+                raise ValueError(f'“{source["label"]}”有多个同名时段，请先核对本班作息。')
+            target = by_id[matches[0]['id']] if matches else None
+        if target is not None:
+            if target['id'] in used:
+                raise ValueError(f'多个作息对应了“{target["label"]}”，请先核对时段名称。')
+            if update_times:
+                target.update(start=source['start'], end=source['end'])
+        else:
+            if not update_times:
+                raise ValueError(f'缺少“{source["label"]}”时段，请一并选择“作息时间”后重新预览。')
+            target = deepcopy(source)
+            merged['slots'].append(target)
+        mapping[source['id']] = target['id']
+        used.add(target['id'])
+    return mapping
+
+
 def merge_bulk_settings(current, changes):
-    """Keep local slot identities and every course/duty reference intact."""
+    """Keep the existing settings-only payload usable by already open editors."""
     merged = deepcopy(current)
     for key in ('enabled', 'reminders', 'appearance'):
         if key not in changes:
@@ -345,25 +384,78 @@ def merge_bulk_settings(current, changes):
         else:
             merged[key].update(changes[key])
     if 'slots' in changes:
-        by_id = {s['id']: s for s in merged['slots']}
-        label = lambda s: re.sub(r'\s+', '', s['label']).replace('（', '(').replace('）', ')')
-        used = set()
-        for source in changes['slots']:
-            target = by_id.get(source['id'])
-            if target is None:
-                matches = [s for s in current['slots'] if label(s) == label(source)]
-                if len(matches) > 1:
-                    raise ValueError(f'“{source["label"]}”有多个同名时段，请先核对本班作息。')
-                target = by_id[matches[0]['id']] if matches else None
-            if target is not None:
-                if target['id'] in used:
-                    raise ValueError(f'多个作息对应了“{target["label"]}”，请先核对时段名称。')
-                used.add(target['id'])
-                target.update(start=source['start'], end=source['end'])
-            else:
-                merged['slots'].append(deepcopy(source))
-                used.add(source['id'])
+        map_bulk_slots(current, merged, changes['slots'], update_times=True)
     return normalize(merged)
+
+
+def merge_bulk_template(current, source, sections, enabled=None):
+    if set(sections) == set(BULK_SECTIONS):
+        merged = deepcopy(source)
+    else:
+        merged = deepcopy(current)
+        required = set()
+        if 'timetable' in sections:
+            required.update(row['slotId'] for row in source['lessons'])
+        if 'duties' in sections:
+            for duty in source['dutyRotations'].values():
+                required.update(duty['slotIds'])
+        if 'overrides' in sections:
+            required.update(row['slotId'] for row in source['overrides'])
+        if 'visibility' in sections:
+            required.update(source['visibility']['hiddenSlotIds'])
+        mapping = map_bulk_slots(current, merged,
+            [slot for slot in source['slots'] if 'slots' in sections or slot['id'] in required],
+            update_times='slots' in sections)
+        for section in sections:
+            if section == 'slots':
+                continue
+            for key in BULK_SECTIONS[section][1]:
+                merged[key] = deepcopy(source[key])
+        for key, section in (('lessons', 'timetable'), ('overrides', 'overrides')):
+            if section in sections:
+                for row in merged[key]:
+                    row['slotId'] = mapping[row['slotId']]
+        if 'duties' in sections:
+            for duty in merged['dutyRotations'].values():
+                duty['slotIds'] = [mapping[sid] for sid in duty['slotIds']]
+                for row in duty['lessons']:
+                    row['slotId'] = mapping[row['slotId']]
+        if 'visibility' in sections:
+            merged['visibility']['hiddenSlotIds'] = [mapping[sid] for sid in source['visibility']['hiddenSlotIds']]
+        elif 'appearance' in sections:
+            # Classroom hiding is a separate selection, including legacy profiles.
+            merged['appearance']['hideDuringLessons'] = current['appearance']['hideDuringLessons']
+    if 'enabled' in sections and enabled is not None:
+        merged['enabled'] = enabled
+    return normalize(merged)
+
+
+def bulk_template_details(before, after, sections):
+    details = []
+    for section in sections:
+        label, keys = BULK_SECTIONS[section]
+        if all(before[key] == after[key] for key in keys):
+            continue
+        if section == 'enabled':
+            detail = '显示浮岛' if after['enabled'] else '隐藏浮岛'
+        elif section == 'slots':
+            detail = f'同步作息时间，共 {len(after["slots"])} 个时段'
+        elif section == 'timetable':
+            detail = f'替换周课表（原 {len(before["lessons"])} 节，新 {len(after["lessons"])} 节）及首周日期'
+        elif section == 'duties':
+            detail = '替换午间静校、晚自习的循环及值班安排'
+        elif section == 'overrides':
+            detail = f'替换临时调课（原 {len(before["overrides"])} 项，新 {len(after["overrides"])} 项）'
+        elif section == 'visibility':
+            detail = '跟随全校默认规则' if after['visibility']['followSchool'] else f'本班隐藏 {len(after["visibility"]["hiddenSlotIds"])} 个时段'
+        elif section == 'components':
+            detail = f'替换轮播信息（原 {len(before["components"])} 项，新 {len(after["components"])} 项）及轮播间隔'
+        elif section == 'automation':
+            detail = f'替换自动化（原 {len(before["automation"])} 条，新 {len(after["automation"])} 条）'
+        else:
+            detail = '使用来源班级的' + label
+        details.append(detail)
+    return details
 
 
 class IslandFeature:
@@ -489,14 +581,14 @@ class IslandFeature:
             self.s.audit(self.db, user['id'], 'island.save', 'class', cid, json.dumps({'revision': expected+1}))
         return self.s.json_response({**self.profile(cid), 'devices': self.delivery(cid, expected+1), 'canEdit': True})
 
-    @teacher_action('island.bulk.preview', '预览批量浮岛设置', fields='classIds changes',
-                    confirm=False, roles=tuple(sorted(SCHOOL_ROLES)))
+    @teacher_action('island.bulk.preview', '预览批量浮岛设置',
+                    fields='classIds changes sourceClassId sourceRevision sections enabled', confirm=False)
     async def bulk_preview(self, request):
         return await self.bulk(request, apply=False)
 
-    @teacher_action('island.bulk.update', '批量下发浮岛设置', fields='classIds changes revisions',
-                    roles=tuple(sorted(SCHOOL_ROLES)),
-                    impact='只更新所选班级的浮岛开关、作息、提醒或外观，保留课表和值班；班主任仍可调整本班。')
+    @teacher_action('island.bulk.update', '批量下发浮岛设置',
+                    fields='classIds changes sourceClassId sourceRevision sections enabled revisions',
+                    impact='将来源班级中勾选的设置同步到获授权的目标班级；选中的课表、值班等内容会替换对应安排，未选内容保留。')
     async def bulk_save(self, request):
         return await self.bulk(request, apply=True)
 
@@ -504,9 +596,13 @@ class IslandFeature:
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
-        if user['role'] not in SCHOOL_ROLES or user.get('classroom'):
-            return self.s.json_response({'error': '只有全校管理员可以批量设置教室浮岛。'}, 403)
+        if user.get('classroom'):
+            return self.s.json_response({'error': '请使用教师工作台账号进行批量设置。'}, 403)
         body = await self.s.read_json(request)
+        template = isinstance(body, dict) and any(key in body for key in ('sourceClassId', 'sourceRevision', 'sections'))
+        # Existing open pages and confirmed assistant operations still use changes.
+        if not template and user['role'] not in SCHOOL_ROLES:
+            return self.s.json_response({'error': '只有全校管理员可以批量设置教室浮岛。'}, 403)
         try:
             if not isinstance(body, dict):
                 raise ValueError('批量设置格式不正确。')
@@ -515,7 +611,21 @@ class IslandFeature:
                     or any(not isinstance(cid, str) or not cid or len(cid) > 80 for cid in ids)
                     or len(set(ids)) != len(ids)):
                 raise ValueError('请选择 1—500 个不重复的班级。')
-            changes = bulk_changes(body.get('changes'))
+            if template:
+                if 'changes' in body:
+                    raise ValueError('不能同时提交模板设置和旧版设置内容。')
+                source_id = text(body.get('sourceClassId'), '来源班级', 80)
+                source_revision = integer(body.get('sourceRevision'), '来源配置版本', 0, 2**31-1)
+                sections = body.get('sections')
+                if (not isinstance(sections, list) or not 1 <= len(sections) <= len(BULK_SECTIONS)
+                        or any(not isinstance(section, str) or section not in BULK_SECTIONS for section in sections)
+                        or len(set(sections)) != len(sections)):
+                    raise ValueError('请选择不重复的有效设置内容。')
+                enabled = boolean(body['enabled'], '浮岛开关') if 'enabled' in body else None
+                if enabled is not None and 'enabled' not in sections:
+                    raise ValueError('请先选择浮岛开关。')
+            else:
+                changes = bulk_changes(body.get('changes'))
             expected = body.get('revisions')
             if apply:
                 if not isinstance(expected, dict) or set(expected) != set(ids):
@@ -528,6 +638,20 @@ class IslandFeature:
             classes = {c['id']: c for c in self.db.all('SELECT id,name FROM classes WHERE enabled=1')}
             if any(cid not in classes for cid in ids):
                 return self.s.json_response({'error': '所选班级已停用或不存在，请重新选择。'}, 400)
+            if template:
+                if source_id not in classes:
+                    return self.s.json_response({'error': '来源班级已停用或不存在，请重新选择。'}, 400)
+                if any(not self.s.can_access_class(self.db, user, cid, include_teaching=False)
+                       for cid in set(ids) | {source_id}):
+                    return self.s.json_response({'error': '只能使用和修改本人获授权配置的班级，请重新核对班级权限。'}, 403)
+                source = self.profile(source_id)
+                if source['revision'] != source_revision:
+                    return self.s.json_response({'error': '来源班级的设置已更新，请关闭批量设置，重新载入后再操作。',
+                                                 'sourceChanged': True}, 409)
+                try:
+                    source_config = normalize(source['config'])
+                except ValueError as error:
+                    return self.s.json_response({'error': f'来源班级的设置无效：{error}'}, 400)
             results, pending = [], []
             for cid in ids:
                 current = self.profile(cid)
@@ -536,9 +660,12 @@ class IslandFeature:
                     if apply and expected[cid] != current['revision']:
                         raise ValueError('配置已被其他老师更新，请重新预览。')
                     baseline = normalize(current['config'])
-                    merged = merge_bulk_settings(baseline, changes)
+                    merged = (merge_bulk_template(baseline, source_config, sections, enabled)
+                              if template else merge_bulk_settings(baseline, changes))
                     row['changed'] = merged != baseline
-                    row['addedSlots'] = len(merged['slots']) - len(baseline['slots'])
+                    row['addedSlots'] = max(0, len(merged['slots']) - len(baseline['slots']))
+                    if template:
+                        row['details'] = bulk_template_details(baseline, merged, sections)
                     if row['changed']:
                         pending.append((cid, current['revision'] + 1, merged))
                 except ValueError as error:
@@ -556,7 +683,10 @@ class IslandFeature:
                     (cid, revision, json.dumps(merged, ensure_ascii=False), now, user['id']))
             if pending:
                 self.s.audit(self.db, user['id'], 'island.bulk', 'school', '1',
-                    json.dumps({'classIds': [cid for cid, _, _ in pending], 'fields': list(changes)}, ensure_ascii=False))
+                    json.dumps({'classIds': [cid for cid, _, _ in pending],
+                                'fields': sections if template else list(changes),
+                                **({'sourceClassId': source_id, 'sourceRevision': source_revision} if template else {})},
+                               ensure_ascii=False))
         return self.s.json_response({'updated': len(pending), 'unchanged': len(ids) - len(pending), 'classes': results})
 
     async def device(self, request):

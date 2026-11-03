@@ -138,6 +138,7 @@ internal sealed class IslandEventLedger
 internal sealed class IslandLocalSettings
 {
     public IslandAppearance? Appearance { get; set; }
+    public bool AnimationsEnabled { get; set; } = true;
     public List<string> AllowedApplications { get; set; } = [];
     public List<string> RecentActions { get; set; } = [];
     public void Normalize()

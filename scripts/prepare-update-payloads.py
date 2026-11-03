@@ -20,6 +20,8 @@ class _DeltaInput(ctypes.Structure):
 class MsDelta:
     """The ABI follows Microsoft's WinSDK msdelta.h, including signed __int64 flags."""
 
+    _IGNORE_FILE_SIZE_LIMIT = 0x00020000
+
     def __init__(self):
         if os.name != "nt":
             raise OSError("Creating update deltas requires Windows msdelta.dll")
@@ -35,8 +37,9 @@ class MsDelta:
         self.library.ApplyDeltaW.restype = ctypes.c_int32
 
     def create(self, source: Path, target: Path, delta: Path):
+        # WinSDK DELTA_FLAG_IGNORE_FILE_SIZE_LIMIT permits our >32 MiB client bundles.
         # DELTA_FILE_TYPE_RAW=1; no PE transforms, options, timestamp or hash algorithm.
-        if not self.library.CreateDeltaW(1, 0, 0, str(source), str(target), None, None,
+        if not self.library.CreateDeltaW(1, self._IGNORE_FILE_SIZE_LIMIT, 0, str(source), str(target), None, None,
                                         _DeltaInput(), None, 0, str(delta)):
             raise ctypes.WinError(ctypes.get_last_error())
 

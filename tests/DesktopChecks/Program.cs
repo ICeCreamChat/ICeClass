@@ -2,6 +2,23 @@ using ICeClass.Desktop;
 using ICeClass.Updates;
 using System.Text;
 
+if (args is ["--about-animation-checks", var aboutOutput])
+{
+    AboutAnimationUiChecks.Run(aboutOutput);
+    return;
+}
+if (args is ["--about-animation-preview", var aboutPreviewOutput])
+{
+    AboutAnimationUiChecks.Run(aboutPreviewOutput, preview: true);
+    return;
+}
+
+if (args is ["--voice-ui-checks", var voiceUiOutput])
+{
+    VoiceResourceUiChecks.Run(voiceUiOutput);
+    return;
+}
+
 if (args is ["--teacher-update-ui-checks", var teacherUpdateOutput])
 {
     TeacherUpdateUiChecks.Run(teacherUpdateOutput);
@@ -77,4 +94,6 @@ checks += await ClassroomVoiceChecks.Run();
 checks += await VoiceTranscriptionChecks.Run();
 checks += await FeedbackChecks.Run();
 checks += await DiagnosticsChecks.Run();
+checks += await SupportDiagnosticChecks.Run();
+checks += await ClientDiagnosticChecks.Run();
 Console.WriteLine($"Desktop settings, update, classroom voice and feedback checks passed: {checks}");

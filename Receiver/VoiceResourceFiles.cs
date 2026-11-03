@@ -3,6 +3,7 @@ namespace ICeClass.Receiver;
 /// <summary>Complete offline builds embed these files; incremental cores reuse a verified adjacent resource folder.</summary>
 internal static class VoiceResourceFiles
 {
+    internal static readonly ICeClass.Updates.VoiceResources Resources = ICeClass.Updates.VoiceResources.ForClient(typeof(VoiceResourceFiles).Assembly, teacher: false);
     internal static Stream? Open(string logicalName)
     {
         var embedded = typeof(VoiceResourceFiles).Assembly.GetManifestResourceStream(logicalName);

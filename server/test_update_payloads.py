@@ -123,6 +123,21 @@ class UpdatePayloadTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status, 200)
             self.assertEqual(hashlib.sha256(await response.read()).hexdigest(), item['sha256'])
 
+    async def test_public_voice_resource_supports_same_version_range_without_device_identity(self):
+        data = self.publish('receiver')
+        model = b'voice model content'
+        digest = self.payload_file('receiver', model)
+        data['files'].append({'path': 'VoiceResources/Asr/model.int8.onnx', 'size': len(model), 'sha256': digest})
+        self.write_plan('receiver', data)
+        response = await self.client.get('/api/voice/resources/' + digest, headers={'Range': 'bytes=5-'})
+        self.assertEqual(response.status, 206)
+        self.assertEqual(await response.read(), b' model content')
+        self.assertEqual(response.headers['Content-Range'], 'bytes 5-18/19')
+        for private in (data['files'][0]['sha256'], data['files'][0]['deltas'][0]['sha256'], 'a' * 64):
+            response = await self.client.get('/api/voice/resources/' + private)
+            self.assertEqual(response.status, 404)
+            await response.read()
+
     async def test_missing_plan_does_not_replace_legacy_bootstrap(self):
         for kind in self.roots:
             with self.subTest(kind=kind):

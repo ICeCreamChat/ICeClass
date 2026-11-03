@@ -35,8 +35,10 @@ from banban import install_banban
 from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
 from desktop_release import install_desktop_updates
 from update_payloads import install_update_payloads, install_desktop_update_activity
+from client_downloads import install_client_downloads
 from island import install_island
 from feedback import install_feedback
+from client_diagnostics import install_client_diagnostics, cleanup_client_diagnostics
 from ideas import install_ideas
 from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 
@@ -1793,6 +1795,7 @@ async def error_and_security_middleware(request: web.Request, handler):
 async def cleanup(app: web.Application) -> None:
     db = app[STORE_KEY]
     timestamp = now_ms()
+    cleanup_client_diagnostics(db, timestamp)
     if history := app.get(BANBAN_HISTORY_KEY):
         history.cleanup_due()
     stale_audio_ids = [
@@ -1890,6 +1893,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
                             prefix="/api/receiver/update", reply=json_response,
                             parse_version=parse_release_version, authenticate=authenticate_device)
     install_desktop_update_activity(app, sys.modules[__name__])
+    install_client_downloads(app, app[RECEIVER_RELEASE_ROOT_KEY].parent / 'client-downloads', json_response)
     app.router.add_get("/api/classes", list_classes)
     app.router.add_post("/api/classes", create_class)
     app.router.add_post("/api/classes/batch", batch_create_classes)
@@ -1920,6 +1924,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_island(app, sys.modules[__name__])
     install_banban(app, sys.modules[__name__])
     install_feedback(app, sys.modules[__name__])
+    install_client_diagnostics(app, sys.modules[__name__])
     install_ideas(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)

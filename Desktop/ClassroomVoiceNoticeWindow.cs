@@ -14,6 +14,8 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
 {
     private readonly ClassroomVoiceInbox _inbox;
     private readonly Window _anchor;
+    private readonly Action? _prepareVoice;
+    internal bool IsBusy => _busy || _transcribing || _output?.PlaybackState == PlaybackState.Playing;
     private readonly int _accountVersion;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly List<ClassroomVoiceMessage> _messages = [];
@@ -27,7 +29,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
     private readonly Button _previous = Dialogs.Button("上一条");
     private readonly Button _next = Dialogs.Button("下一条");
     private readonly Button _transcribe = Dialogs.Button("转文字");
-    private readonly Button _download = Dialogs.Button("下载并转文字");
+    private readonly Button _download = Dialogs.Button("下载语音资源");
     private readonly TextBlock _transcriptionStatus = DesktopStyle.Text("", 13, muted: true);
     private readonly SelectableTextBlock _transcript = new() { FontSize = 14, TextWrapping = TextWrapping.Wrap,
         Foreground = DesktopStyle.Ink, LineHeight = 23, Focusable = true };
@@ -42,9 +44,10 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
     private WaveFileReader? _reader;
     private bool _busy, _closed, _transcribing;
 
-    internal ClassroomVoiceNoticeWindow(ClassroomVoiceInbox inbox, Window anchor)
+    internal ClassroomVoiceNoticeWindow(ClassroomVoiceInbox inbox, Window anchor, Action? prepareVoice = null)
     {
         _inbox = inbox; _anchor = anchor; _accountVersion = inbox.AccountVersion;
+        _prepareVoice = prepareVoice;
         Title = "ICeClass 班伴 · 教室来音";
         Width = 416; SizeToContent = SizeToContent.Height; CanResize = false;
         SystemDecorations = SystemDecorations.None; ShowInTaskbar = false; ShowActivated = false; Topmost = true;
@@ -259,14 +262,16 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         {
             await _inbox.EnsureCurrentAccountAsync(_accountVersion);
             if (download)
-                await ClassroomVoiceTranscriber.EnsureModelsAsync(new Progress<int>(value =>
-                {
-                    if (!_closed && !cancellation.IsCancellationRequested)
-                        _transcriptionStatus.Text = $"正在下载识别模型 {value}% · 仅首次需要";
-                }), cancellation.Token);
-            else if (!await ClassroomVoiceTranscriber.ModelsReadyAsync(cancellation.Token))
             {
-                _transcriptionStatus.Text = "首次需下载约 230 MB 模型，以后可离线识别。语音只在本机处理，不会自动播放。";
+                _transcribing = false;
+                _prepareVoice?.Invoke();
+                _transcriptionStatus.Text = "可在桌面设置的“语音资源”中查看下载进度，准备完成后再点击转文字。";
+                _download.IsVisible = true;
+                return;
+            }
+            if (!await ClassroomVoiceTranscriber.ModelsReadyAsync(cancellation.Token))
+            {
+                _transcriptionStatus.Text = "转文字模型尚未就绪，课间空闲时自动准备，也可手动下载。仍可收听原音。";
                 _download.IsVisible = true;
                 return;
             }

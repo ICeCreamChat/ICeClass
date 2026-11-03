@@ -137,6 +137,7 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         if (!_enabled || !_ready) return;
         EnsureEngine();
+        if (!VoiceResourceFiles.Resources.Ready) return;
         if (_audio is null) { State("error", "麦克风正在恢复，请稍后再呼叫班班。"); return; }
         _lastText = "";
         BeginConversation("", manual: true);
@@ -171,7 +172,7 @@ internal sealed class BanbanVoiceService : IDisposable
         _speaker!.Enqueue(SpeechText(text), end);
     });
     internal void StopSpeaking() => Post(() => { StopSpeech(); _audio?.DiscardUtterance(); if (_active) State(_workState, StateText(_workState)); });
-    internal void Standby() => Post(() => { StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭"); });
+    internal void Standby() => Post(() => { StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); SetStandbyState(); });
     internal void Leave(long conversation) => Post(() =>
     {
         if (_active && conversation == _conversationGeneration) LeaveConversation();
@@ -180,7 +181,13 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         StopSpeech(); _audio?.DiscardUtterance(); _active = false; _workState = "listening";
         UpdateListening(); Emit("leave");
-        State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭");
+        SetStandbyState();
+    }
+    private void SetStandbyState()
+    {
+        if (_enabled && _ready && !VoiceResourceFiles.Resources.Ready)
+            State("resources", "语音资源尚未就绪，可在教室设置中下载");
+        else State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭");
     }
 
     private void Post(Action action)
@@ -217,6 +224,7 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         if (!_enabled) { State("off", "语音已关闭"); return; }
         if (!_ready) { State("login", "正在关联班主任账号"); return; }
+        if (!VoiceResourceFiles.Resources.Ready) { State("resources", "语音资源尚未就绪，可在教室设置中下载"); return; }
         if (_audio is not null || DateTime.UtcNow < _retryAfter) return;
         State("connecting", "正在准备本机语音…");
         BanbanLocalAudio? audio = null;

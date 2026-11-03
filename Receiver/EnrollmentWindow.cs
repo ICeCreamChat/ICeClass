@@ -7,6 +7,8 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
+using ICeClass.Updates;
 
 namespace ICeClass.Receiver;
 
@@ -21,7 +23,12 @@ public sealed class EnrollmentWindow : Window
     private readonly CheckBox _singleUse = new() { Content = "使用单班一次性绑定码" };
     private readonly CheckBox _startup = new();
     private readonly TextBlock _connection = ClassroomStyle.Text("等待绑定", 14, muted: true);
-    private readonly TextBlock _updateStatus = ClassroomStyle.Text("", 14, muted: true);
+    private readonly UpdateProgressView _updateProgress = new();
+    private readonly VoiceResourcesView _voiceResources = new();
+    internal event Action? VoiceDownloadRequested;
+    internal string ResourceEndpoint => ReceiverConfig.NormalizeEndpoint(_endpoint.Text ?? ReceiverConfig.DefaultEndpoint);
+    internal void SetVoiceResourceState(VoicePreparationState state) => _voiceResources.SetState(state);
+    internal void RevealVoiceResources() => Dispatcher.UIThread.Post(() => _voiceResources.BringIntoView(), DispatcherPriority.Loaded);
     private readonly TextBlock _error = ClassroomStyle.Text("", 14);
     private readonly TextBlock _lookupStatus = ClassroomStyle.Text("先输入全校绑定码，再读取班级。", 14, muted: true);
     private readonly Button _save = ClassroomStyle.Button("绑定此教室", true);
@@ -34,6 +41,7 @@ public sealed class EnrollmentWindow : Window
     private string _loadedCode = "", _loadedEndpoint = "";
     private int _classRequest;
     private bool _loadingClasses;
+    private bool _revealUpdateProgress;
     private readonly StackPanel _classFields = new() { Spacing = 10 };
 
     public EnrollmentWindow(ReceiverConfig? existing)
@@ -55,7 +63,7 @@ public sealed class EnrollmentWindow : Window
         _code.Watermark = existing is null ? "输入全校绑定码" : "输入绑定码以更换班级";
         _startup.Content = "开机后自动接收班级通知";
         _startup.IsChecked = existing?.StartWithWindows ?? true;
-        _updateStatus.Text = $"当前版本 {ReceiverUpdateService.CurrentVersionText}";
+        _updateProgress.SetState($"当前版本 {ReceiverUpdateService.CurrentVersionText}", false);
         _error.Foreground = DesktopStyle.Brush("#B42318");
         _error.IsVisible = false;
         _error.PropertyChanged += (_, change) =>
@@ -69,9 +77,14 @@ public sealed class EnrollmentWindow : Window
         CompactAction(_audioTest); _audioTest.MinWidth = 132;
         _audioTestStatus.IsVisible = false;
         _singleUse.FontSize = 14; _startup.FontSize = 14;
-        ToolTip.SetTip(_checkUpdate, "启动后自动检查更新；更新会保留本教室绑定和本机设置。");
+        ToolTip.SetTip(_checkUpdate, "下载并安装更新，完成后自动重新打开；保留本教室绑定和本机设置。");
         _lookup.Click += async (_, _) => await LoadClassesAsync();
-        _checkUpdate.Click += (_, _) => UpdateRequested?.Invoke(this, EventArgs.Empty);
+        _checkUpdate.Click += (_, _) =>
+        {
+            _revealUpdateProgress = true;
+            UpdateRequested?.Invoke(this, EventArgs.Empty);
+        };
+        _voiceResources.DownloadRequested += () => VoiceDownloadRequested?.Invoke();
         _audioTest.Click += (_, _) => AudioTestRequested?.Invoke(this, EventArgs.Empty);
         _singleUse.IsCheckedChanged += (_, _) => _classFields.IsVisible = _singleUse.IsChecked != true;
         _code.TextChanged += (_, _) => InvalidateClasses();
@@ -147,9 +160,8 @@ public sealed class EnrollmentWindow : Window
         computerSettings.Click += (_, _) => ComputerSettingsRequested?.Invoke(this, EventArgs.Empty);
         body.Children.Add(Section("班班", SettingRow("电脑操作", ClassroomStyle.Caption("管理应用、文件访问和当前任务。"), computerSettings)));
 
-        _updateStatus.FontSize = 13;
         var maintenance = new StackPanel { Spacing = 12, Children = {
-            SettingRow("客户端更新", _updateStatus, _checkUpdate), Divider(), BuildPreviewPanel() } };
+            _voiceResources, Divider(), SettingRow("客户端更新", _updateProgress, _checkUpdate), Divider(), BuildPreviewPanel() } };
         body.Children.Add(Section("更新与测试", maintenance));
         var root = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         root.Children.Add(new ScrollViewer {
@@ -180,10 +192,16 @@ public sealed class EnrollmentWindow : Window
         _connection.Text = state.Connected ? "已连接平台" : state.Text;
         _connection.Foreground = DesktopStyle.Brush(state.Connected ? "#167447" : "#97591B");
     }
-    public void SetUpdateState(string text, bool checking, bool ready = false)
+    public void SetUpdateState(string text, bool checking, bool ready = false, UpdateProgress? progress = null)
     {
-        _updateStatus.Text = text; _checkUpdate.IsEnabled = !checking;
-        _checkUpdate.Content = ready ? "立即更新" : "检查更新";
+        _updateProgress.SetState(text, checking, ready, progress); _checkUpdate.IsEnabled = !checking;
+        _checkUpdate.Content = ready ? checking ? "正在更新…" : "立即更新" : "检查更新";
+        if (_revealUpdateProgress)
+        {
+            // Wait for the added bar and byte totals to be measured before scrolling.
+            Dispatcher.UIThread.Post(() => _updateProgress.BringIntoView(), DispatcherPriority.Loaded);
+            if (!checking || progress?.Stage == UpdateStage.Downloading) _revealUpdateProgress = false;
+        }
     }
     public void SetAudioTestState(string text, bool playing)
     {

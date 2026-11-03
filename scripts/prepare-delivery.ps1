@@ -56,6 +56,21 @@ if (Test-Path -LiteralPath $desktopExecutable) {
     New-Item -ItemType Directory -Force -Path $desktopFolder | Out-Null
     Copy-Item -LiteralPath $desktopExecutable -Destination $desktopFolder -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-desktop.ps1') -Destination (Join-Path $desktopFolder 'install.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-voice-resources.ps1') -Destination $desktopFolder -Force
+    $asrDirectory = Join-Path (Get-Location) 'Receiver\Assets\Voice\Asr'
+    $asrManifest = Get-Content -LiteralPath (Join-Path $asrDirectory 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $offlineFiles = @($asrManifest.files | ForEach-Object {
+        [ordered]@{ path = ('VoiceResources/Asr/' + $_.name); size = $_.size; sha256 = $_.sha256 }
+    })
+    $asrTarget = Join-Path $desktopFolder 'VoiceResources\Asr'
+    New-Item -ItemType Directory -Path $asrTarget -Force | Out-Null
+    foreach ($asrFile in $asrManifest.files) {
+        if ($asrFile.name -cnotin @('model.int8.onnx', 'tokens.txt')) { throw '教师端离线识别资源名称无效。' }
+        Copy-Item -LiteralPath (Join-Path $asrDirectory $asrFile.name) -Destination $asrTarget -Force
+    }
+    [IO.File]::WriteAllText((Join-Path $desktopFolder 'voice-resources.json'), (@{ files = $offlineFiles } | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
+    . (Join-Path $PSScriptRoot 'install-voice-resources.ps1')
+    Install-VoiceResources -PackageDirectory $desktopFolder -InstallDirectory $desktopFolder -ValidateOnly
     [IO.File]::WriteAllText((Join-Path $desktopFolder '安装到本机.cmd'), "@echo off`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
 }
 if ($Endpoint -and $Endpoint -ne 'https://iceclass.icecreamchat.top') {

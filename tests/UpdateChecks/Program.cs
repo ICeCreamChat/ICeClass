@@ -24,6 +24,8 @@ var root = Path.Combine(Path.GetTempPath(), "ICeClass-UpdateChecks-" + Guid.NewG
 Directory.CreateDirectory(root);
 var passed = 0;
 void Check(bool ok, string message) { if (!ok) throw new Exception(message); passed++; Console.WriteLine("PASS " + message); }
+await VoiceResourceChecks.RunAsync(root, Check);
+await VoicePreparationChecks.RunAsync(root, Check);
 async Task Reject(Func<Task> action, string message)
 {
     try { await action(); } catch (Exception error) when (error is InvalidDataException or HttpRequestException or IOException) { Check(true, message); return; }
@@ -46,6 +48,7 @@ var plan = new UpdatePlan { Available = true, Version = "9.0.0", Files = [appFil
 transport.Payloads["/payload/app"] = newApp; transport.Payloads["/payload/voice"] = voice;
 try
 {
+    await ProgressChecks.RunAsync(root, Check);
     var prepared = await IncrementalUpdates.PrepareAsync(origin, plan, install, "ICeClass.exe", client, null, null, null, default);
     Check(transport.Requests.Count == 1 && transport.Requests[0] == "/payload/app", "unchanged voice files never download");
     Check(File.ReadAllBytes(Path.Combine(install, "ICeClass.exe")).SequenceEqual(oldApp), "preparing an update leaves the running application unchanged");
@@ -98,8 +101,12 @@ try
     var delta = new UpdateDelta { SourceSha256 = Hash(oldApp), Size = patch.Length, Sha256 = Hash(patch), DownloadUrl = "/payload/patch" };
     transport.Payloads["/payload/patch"] = patch; transport.Requests.Clear();
     var deltaInstall = Path.Combine(root, "delta"); Directory.CreateDirectory(deltaInstall); File.WriteAllBytes(Path.Combine(deltaInstall, "ICeClass.exe"), oldApp);
-    var patched = await IncrementalUpdates.PrepareAsync(origin, plan with { Files = [appFile with { Deltas = [delta] }] }, deltaInstall, "ICeClass.exe", client, null, null, null, default);
+    var deltaProgress = new List<UpdateProgress>();
+    var patched = await IncrementalUpdates.PrepareAsync(origin, plan with { Files = [appFile with { Deltas = [delta] }] }, deltaInstall, "ICeClass.exe", client, null, null, new ProgressChecks.Capture(deltaProgress.Add), default);
     Check(transport.Requests.SequenceEqual(["/payload/patch"]) && File.ReadAllBytes(patched.Files[0].StagedPath).SequenceEqual(newApp), "matching source downloads only a patch and reconstructs the exact new executable");
+    Check(deltaProgress.Any(p => p.Stage == UpdateStage.Downloading) &&
+          deltaProgress.Where(p => p.Stage == UpdateStage.Downloading).All(p => p.TotalBytes == patch.Length),
+          "a binary delta shows the patch download size instead of the full executable size");
     File.WriteAllText(Path.Combine(deltaInstall, "ICeClass.exe"), "a different installed version"); transport.Requests.Clear();
     // A different target version forces a new staging identity; it must not reuse the old prepared file.
     await IncrementalUpdates.PrepareAsync(origin, plan with { Version = "9.0.1", Files = [appFile with { Deltas = [delta] }] }, deltaInstall, "ICeClass.exe", client, null, null, null, default);

@@ -56,20 +56,22 @@ internal static class IncrementalUpdates
     }
 
     internal static async Task<PreparedUpdate> PrepareAsync(Uri origin, UpdatePlan plan, string installDirectory, string executableName,
-        HttpClient client, string? bearer, Func<string, Stream?>? bundledFile, IProgress<int>? progress, CancellationToken token)
+        HttpClient client, string? bearer, Func<string, Stream?>? bundledFile, IProgress<UpdateProgress>? progress, CancellationToken token)
     {
         Validate(plan, origin, executableName);
         installDirectory = Path.GetFullPath(installDirectory);
         var identity = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(plan, Json))).ToLowerInvariant()[..16];
         var stage = Path.Combine(installDirectory, ".updates", plan.Version + "-" + identity);
         SafeDirectory(stage); Directory.CreateDirectory(stage);
-        var files = new List<PreparedFile>(); var index = 0;
+        var files = new List<PreparedFile>();
+        var downloads = new List<(UpdateFile File, string CurrentPath, string StagedPath, UpdateDelta? Delta)>();
+        progress?.Report(new(UpdateStage.Preparing));
         foreach (var file in plan.Files)
         {
             token.ThrowIfCancellationRequested();
             var currentPath = SafePath(installDirectory, file.Path);
             var stagedPath = SafePath(stage, "files/" + file.Path);
-            if (await MatchesAsync(currentPath, file.Size, file.Sha256, token)) { progress?.Report(++index * 100 / plan.Files.Count); continue; }
+            if (await MatchesAsync(currentPath, file.Size, file.Sha256, token)) continue;
             Directory.CreateDirectory(Path.GetDirectoryName(stagedPath)!);
             if (!await MatchesAsync(stagedPath, file.Size, file.Sha256, token))
             {
@@ -101,26 +103,41 @@ internal static class IncrementalUpdates
                         var sourceHash = await HashAsync(currentPath, token);
                         delta = file.Deltas.FirstOrDefault(d => d.SourceSha256.Equals(sourceHash, StringComparison.OrdinalIgnoreCase));
                     }
-                    if (delta is not null)
-                    {
-                        var patch = await DownloadAsync(origin, delta.DownloadUrl, delta.Size, delta.Sha256, stage, client, bearer, token);
-                        token.ThrowIfCancellationRequested();
-                        // The source is checked again to avoid applying a patch while another updater changed it.
-                        if (!(await HashAsync(currentPath, token)).Equals(delta.SourceSha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("原程序已变化，请重新检查更新。");
-                        WindowsDelta.Apply(currentPath, patch, stagedPath);
-                    }
-                    else
-                    {
-                        var downloaded = await DownloadAsync(origin, file.DownloadUrl, file.Size, file.Sha256, stage, client, bearer, token);
-                        File.Copy(downloaded, stagedPath, true);
-                    }
-                    if (!await MatchesAsync(stagedPath, file.Size, file.Sha256, token)) { TryDelete(stagedPath); throw new InvalidDataException("更新回建结果未通过完整性检查。"); }
+                    downloads.Add((file, currentPath, stagedPath, delta));
                 }
             }
             files.Add(new(file.Path, stagedPath, file.Size, file.Sha256));
-            progress?.Report(++index * 100 / plan.Files.Count);
+        }
+        // Resolve reused resources first so the displayed total is the actual update payload,
+        // rather than counting unchanged voice models as bytes that need downloading.
+        var totalBytes = downloads.Sum(item => item.Delta?.Size ?? item.File.Size);
+        using var transfer = new UpdateTransferProgress(progress, totalBytes);
+        long completedBytes = 0;
+        foreach (var (file, currentPath, stagedPath, delta) in downloads)
+        {
+            token.ThrowIfCancellationRequested();
+            var size = delta?.Size ?? file.Size;
+            var transferStage = file.Path.StartsWith("VoiceResources/", StringComparison.Ordinal) && delta is null
+                ? SafePath(installDirectory, ".updates/voice-resources") : stage;
+            Directory.CreateDirectory(transferStage);
+            var downloaded = await DownloadAsync(origin, delta?.DownloadUrl ?? file.DownloadUrl,
+                size, delta?.Sha256 ?? file.Sha256, transferStage, client, bearer,
+                received => transfer.Report(completedBytes + received),
+                () => progress?.Report(new(UpdateStage.Verifying, completedBytes + size, totalBytes)), token);
+            completedBytes += size;
+            progress?.Report(new(UpdateStage.Verifying, completedBytes, totalBytes));
+            token.ThrowIfCancellationRequested();
+            if (delta is not null)
+            {
+                // The source is checked again to avoid applying a patch while another updater changed it.
+                if (!(await HashAsync(currentPath, token)).Equals(delta.SourceSha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("原程序已变化，请重新检查更新。");
+                WindowsDelta.Apply(currentPath, downloaded, stagedPath);
+            }
+            else File.Copy(downloaded, stagedPath, true);
+            if (!await MatchesAsync(stagedPath, file.Size, file.Sha256, token)) { TryDelete(stagedPath); throw new InvalidDataException("更新回建结果未通过完整性检查。"); }
         }
         var prepared = new PreparedUpdate(plan.Version, executableName, files);
+        progress?.Report(new(UpdateStage.Verifying, completedBytes, totalBytes));
         await UpdateInstaller.ValidateAsync(prepared, installDirectory, executableName, token);
         UpdateInstaller.SavePending(installDirectory, prepared);
         return prepared;
@@ -186,12 +203,14 @@ internal static class IncrementalUpdates
     internal static async Task<string> HashAsync(string path, CancellationToken token)
     { await using var source = File.OpenRead(path); return Convert.ToHexString(await SHA256.HashDataAsync(source, token)).ToLowerInvariant(); }
 
-    private static async Task<string> DownloadAsync(Uri origin, string url, long size, string hash, string stage, HttpClient client, string? bearer, CancellationToken token)
+    internal static async Task<string> DownloadAsync(Uri origin, string url, long size, string hash, string stage, HttpClient client, string? bearer,
+        Action<long> progress, Action verifying, CancellationToken token)
     {
         var path = SafePath(stage, hash.ToLowerInvariant() + ".download");
-        if (await MatchesAsync(path, size, hash, token)) return path;
+        if (await MatchesAsync(path, size, hash, token)) { progress(size); return path; }
         var offset = File.Exists(path) ? new FileInfo(path).Length : 0;
         if (offset >= size) { TryDelete(path); offset = 0; }
+        progress(offset);
         using var request = Request(origin, url, bearer);
         if (offset > 0) request.Headers.Range = new RangeHeaderValue(offset, null);
         using var connection = CancellationTokenSource.CreateLinkedTokenSource(token); connection.CancelAfter(TimeSpan.FromSeconds(30));
@@ -202,13 +221,15 @@ internal static class IncrementalUpdates
         else if (response.StatusCode != HttpStatusCode.PartialContent || response.Content.Headers.ContentRange is not { } range ||
             range.From != offset || range.Length != size || range.To != size - 1) throw new InvalidDataException("更新续传范围不正确。");
         if (response.Content.Headers.ContentLength is long length && length != size - offset) throw new InvalidDataException("更新文件长度不正确。");
+        progress(offset);
         await using var input = await response.Content.ReadAsStreamAsync(token);
         await using (var output = new FileStream(path, offset > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 131072, true))
-            await CopyBoundedAsync(input, output, size - offset, token);
+            await CopyBoundedAsync(input, output, size - offset, token, received => progress(offset + received));
+        verifying();
         if (!await MatchesAsync(path, size, hash, token)) { TryDelete(path); throw new InvalidDataException("更新文件未通过完整性检查。"); }
         return path;
     }
-    private static async Task CopyBoundedAsync(Stream input, Stream output, long expected, CancellationToken token)
+    private static async Task CopyBoundedAsync(Stream input, Stream output, long expected, CancellationToken token, Action<long>? progress = null)
     {
         var buffer = new byte[131072]; long received = 0;
         while (true)
@@ -217,6 +238,7 @@ internal static class IncrementalUpdates
             var count = await input.ReadAsync(buffer, stalled.Token); if (count == 0) break;
             received += count; if (received > expected) throw new InvalidDataException("更新文件超过声明长度。");
             await output.WriteAsync(buffer.AsMemory(0, count), token);
+            progress?.Invoke(received);
         }
         await output.FlushAsync(token);
         if (received != expected) throw new IOException("更新下载中断，下次继续。");

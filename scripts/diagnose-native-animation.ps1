@@ -37,10 +37,10 @@ $graphics = @(Get-CimInstance Win32_VideoController -Property Name, DriverVersio
     ClientAreaAnimationQuerySucceeded = $animationSucceeded
     ClientAreaAnimationQueryError = $animationError
     ClientAreaAnimationEnabled = $(if ($animationSucceeded) { $animationValue -ne 0 } else { $null })
-    ReceiverAnimationsEnabled = -not $animationSucceeded -or $animationValue -ne 0
+    ReceiverAnimationDefaultEnabled = $true
     UIEffectsEnabled = $(if ($effectsSucceeded) { $effectsValue -ne 0 } else { $null })
     RemoteSession = [ICeClassNativeAnimationProbe]::GetSystemMetrics(0x1000) -ne 0
     DesktopCompositionEnabled = $(if ($compositionResult -eq 0) { $compositionEnabled } else { $null })
     Graphics = $graphics
-    Note = 'Receiver 2.5.2 gates native motion on ClientAreaAnimationEnabled; UIEffects/RemoteSession/composition are diagnostic context only. No settings changed.'
+    Note = 'Native mascot motion defaults to enabled; the floating island has a separate saved app setting. Windows motion, UIEffects, RemoteSession and composition are diagnostic context only. No settings changed.'
 } | ConvertTo-Json -Depth 4

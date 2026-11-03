@@ -46,7 +46,10 @@ async def boot_packaged_server(root):
 def verify(args):
     root, version = args.directory.resolve(), args.version
     checks, artifacts = [], []
-    for kind in ["windows-x64", "server", "classroom", "desktop-windows-x64"]:
+    lightweight = tuple(map(int, version.split('.'))) >= (2, 5, 5)
+    kinds = ['windows-x64', 'server', 'classroom', 'desktop-windows-x64']
+    if lightweight: kinds += ['classroom-offline', 'desktop-windows-x64-offline']
+    for kind in kinds:
         path = root / f"ICeClass-{version}-{kind}.zip"
         with zipfile.ZipFile(path) as archive:
             assert archive.testzip() is None, path.name
@@ -67,9 +70,17 @@ def verify(args):
             assert manifest["version"] == version, directory
             assert manifest["size"] == executable.stat().st_size, directory
             assert manifest["sha256"] == sha256(executable), directory
-            assert executable.read_bytes()[:2] == b"MZ", filename
+            with executable.open('rb') as stream: assert stream.read(2) == b'MZ', filename
             hashes[filename] = manifest["sha256"]
             checks.append(directory + ": version, size and executable checksum")
+        voice_files = []
+        if lightweight:
+            plan = json.loads((server / 'receiver_release/update-plan.json').read_text('utf-8-sig'))
+            core = next(item for item in plan['files'] if item['path'] == 'ICeClass.exe')
+            assert sha256(server / 'receiver_release/payloads' / core['sha256']) == core['sha256']
+            voice_files = [item for item in plan['files'] if item['path'] in (
+                'VoiceResources/Asr/model.int8.onnx', 'VoiceResources/Asr/tokens.txt')]
+            assert len(voice_files) == 2
         if tuple(map(int, version.split("."))) >= (2, 5, 1):
             for filename in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
                 assert (server / "receiver_release" / filename).is_file(), "server classroom download missing " + filename
@@ -104,19 +115,33 @@ def verify(args):
                 str(root / f"ICeClass-{version}-server.zip"), str(prepared), version],
                 capture_output=True, text=True, encoding="utf-8", timeout=300)
             assert result.returncode == 0, result.stdout + result.stderr
-            with zipfile.ZipFile(prepared / "ICeClass-classroom.zip") as download, \
+            download_root = prepared / 'ICeClass-server/client-downloads' if lightweight else prepared
+            with zipfile.ZipFile(download_root / "ICeClass-classroom.zip") as download, \
                     zipfile.ZipFile(root / f"ICeClass-{version}-classroom.zip") as classroom:
                 assert download.testzip() is None
                 for filename in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
                     name = "ICeClass/教室端/" + filename
                     assert download.read(name) == classroom.read(name), filename
             checks.append("Ubuntu preparation generates the same classroom installer and instructions without deploying")
-        for kind, filename in [("classroom", "ICeClass.exe"), ("desktop-windows-x64", "ICeClass.Desktop.exe"),
-                               ("windows-x64", "ICeClass.exe"), ("windows-x64", "ICeClass.Desktop.exe")]:
+            if lightweight:
+                for public, release in [('classroom', 'classroom'), ('classroom-offline', 'classroom-offline'),
+                                        ('teacher', 'desktop-windows-x64'), ('teacher-offline', 'desktop-windows-x64-offline')]:
+                    with zipfile.ZipFile(download_root / f'ICeClass-{public}.zip') as generated, \
+                            zipfile.ZipFile(root / f'ICeClass-{version}-{release}.zip') as packaged:
+                        assert [(f.filename, f.file_size, f.CRC) for f in generated.infolist()] == [
+                            (f.filename, f.file_size, f.CRC) for f in packaged.infolist()], release
+                checks.append('Ubuntu preparation regenerates all four identical client package contents')
+        clients = [("classroom", "ICeClass.exe"), ("desktop-windows-x64", "ICeClass.Desktop.exe"),
+                   ("windows-x64", "ICeClass.exe"), ("windows-x64", "ICeClass.Desktop.exe")]
+        if lightweight: clients += [('classroom-offline', 'ICeClass.exe'), ('desktop-windows-x64-offline', 'ICeClass.Desktop.exe')]
+        for kind, filename in clients:
             with zipfile.ZipFile(root / f"ICeClass-{version}-{kind}.zip") as archive:
                 names = [name for name in archive.namelist() if name.endswith("/" + filename)]
                 assert len(names) == 1, names
-                assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashes[filename], filename
+                expected = core['sha256'] if lightweight and kind == 'classroom' else hashes[filename]
+                with archive.open(names[0]) as stream:
+                    assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected, filename
+                directory = names[0].rsplit('/', 1)[0] + '/'
                 if filename == "ICeClass.exe" and tuple(map(int, version.split("."))) >= (2, 5, 1):
                     directory = names[0].rsplit("/", 1)[0] + "/"
                     install = archive.read(directory + "install.ps1")
@@ -125,8 +150,24 @@ def verify(args):
                     manifest = json.loads(archive.read(directory + "program-manifest.json").decode("utf-8-sig"))
                     assert tuple(map(int, manifest["version"].split(".")))[:3] == tuple(map(int, version.split(".")))
                     assert manifest["size"] == archive.getinfo(names[0]).file_size
-                    assert manifest["sha256"] == hashes[filename]
+                    assert manifest["sha256"] == expected
                     checks.append(kind + ": classroom installer encoding, entry point and verified program manifest")
+                if lightweight and filename == 'ICeClass.Desktop.exe':
+                    assert 'install-voice-resources.ps1' in archive.read(directory + 'install.ps1').decode('utf-8-sig')
+                    assert directory + 'install-voice-resources.ps1' in archive.namelist()
+                    if kind in ('windows-x64', 'desktop-windows-x64-offline'):
+                        manifest = json.loads(archive.read(directory + 'voice-resources.json').decode('utf-8-sig'))
+                        assert sorted(manifest['files'], key=lambda f: f['path']) == sorted([
+                            {key: item[key] for key in ('path', 'size', 'sha256')} for item in voice_files], key=lambda f: f['path'])
+                        for item in voice_files:
+                            name = directory + item['path']
+                            assert archive.getinfo(name).file_size == item['size']
+                            with archive.open(name) as stream:
+                                assert hashlib.file_digest(stream, 'sha256').hexdigest() == item['sha256']
+                        checks.append(kind + ': complete, verified teacher ASR resources and installer')
+                    else:
+                        assert not any('/VoiceResources/' in name for name in archive.namelist())
+                        checks.append(kind + ': lightweight teacher package contains no models')
             checks.append(kind + ": client executable matches server update manifest")
     report = {"version": version, "checks": checks, "artifacts": artifacts, "executables": hashes}
     args.output.parent.mkdir(parents=True, exist_ok=True)

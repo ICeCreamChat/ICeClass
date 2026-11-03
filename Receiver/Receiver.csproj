@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.5.3</Version>
+    <Version>2.5.9</Version>
     <EmbedVoiceResources Condition="'$(EmbedVoiceResources)' == ''">true</EmbedVoiceResources>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
@@ -25,7 +25,12 @@
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
     <EmbeddedResource Include="Assets\Banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="Assets\Voice\*" LogicalName="ICeClass.Voice.%(Filename)%(Extension)" Condition="'$(EmbedVoiceResources)' != 'false'" />
+    <EmbeddedResource Include="Assets\Voice\*" Exclude="Assets\Voice\manifest.json" LogicalName="ICeClass.Voice.%(Filename)%(Extension)" Condition="'$(EmbedVoiceResources)' != 'false'" />
+    <EmbeddedResource Include="Assets\Voice\manifest.json" LogicalName="ICeClass.Voice.manifest.json" />
+    <EmbeddedResource Include="Assets\Voice\Asr\manifest.json" LogicalName="ICeClass.Voice.Asr.manifest.json" Condition="'$(EmbedVoiceResources)' == 'false'" />
+    <EmbeddedResource Include="Assets\Voice\Tts\manifest.json" LogicalName="ICeClass.Voice.Tts.manifest.json" Condition="'$(EmbedVoiceResources)' == 'false'" />
+    <EmbeddedResource Include="Assets\Voice\Vad\manifest.json" LogicalName="ICeClass.Voice.Vad.manifest.json" Condition="'$(EmbedVoiceResources)' == 'false'" />
+    <EmbeddedResource Include="Assets\Voice\Speaker\manifest.json" LogicalName="ICeClass.Voice.Speaker.manifest.json" Condition="'$(EmbedVoiceResources)' == 'false'" />
     <EmbeddedResource Include="Assets\Voice\Asr\*" LogicalName="ICeClass.Voice.Asr.%(Filename)%(Extension)" Condition="'$(EmbedVoiceResources)' != 'false'" />
     <EmbeddedResource Include="Assets\Voice\Tts\*" LogicalName="ICeClass.Voice.Tts.%(Filename)%(Extension)" Condition="'$(EmbedVoiceResources)' != 'false'" />
     <EmbeddedResource Include="Assets\Voice\Vad\*" LogicalName="ICeClass.Voice.Vad.%(Filename)%(Extension)" Condition="'$(EmbedVoiceResources)' != 'false'" />

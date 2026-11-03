@@ -24,7 +24,7 @@ internal static class Program
         {
             try
             {
-                if (UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory,
+                if (!UpdateInstaller.IsUpdateLaunch && UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory,
                     "ICeClass.Desktop.exe", Options.RestartArguments(), DesktopUpdates.CurrentVersion)) return;
             }
             catch (Exception error) { DesktopLog.Write(error); }

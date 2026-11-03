@@ -7,7 +7,7 @@ using ICeClass.Updates;
 
 namespace ICeClass.Receiver;
 
-public sealed class App : Application
+public sealed partial class App : Application
 {
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private CloudReceiverService? _receiver;
@@ -30,6 +30,9 @@ public sealed class App : Application
     private int _updateInProgress;
     private NativeMenuItem? _updateMenuItem;
     private string? _readyUpdateVersion;
+    private string? _updateStateText;
+    private bool _updateStateBusy;
+    private UpdateProgress? _updateProgress;
     private DateTimeOffset _nextUpdateCheck;
     private bool _exitRequested;
     private ReceiverConnectionState _lastConnectionState = new(false, "正在连接…");
@@ -45,6 +48,7 @@ public sealed class App : Application
         }
 
         _desktop = desktop;
+        InitializeClientDiagnostics();
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _speech = new SpeechService();
         _receiver = new CloudReceiverService(_speech);
@@ -57,12 +61,14 @@ public sealed class App : Application
         ReadingExperience.Configure(ShowStudentVoice, () => _studentVoiceWindow?.MinimizeToTray());
         _receiver.ConnectionStateChanged += ReceiverOnConnectionStateChanged;
         _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => {
+            ResetClientDiagnosticBinding();
             if (_creativeIdeasWindow is not null && !_creativeIdeasWindow.Matches(binding)) { _creativeIdeasWindow.CloseWithoutPrompt(); _creativeIdeasWindow = null; }
             ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding);
             ReadingExperience.BindingChanged(binding); _island?.SetBinding(binding);
             if (_banbanVoiceWindow is null || !_banbanVoiceWindow.Matches(binding)) StartBanbanVoice(binding, _banbanVoiceWindow?.IsVisible != true);
         });
         CreateTray();
+        InitializeVoiceResources();
         DesktopShortcut.EnsureCreated();
         InstanceActivation.Listen(() => Dispatcher.UIThread.Post(ShowStudentVoice),
             () => Dispatcher.UIThread.Post(() => _island?.PlayDemo()), () => Dispatcher.UIThread.Post(PreviewShout));
@@ -141,6 +147,9 @@ public sealed class App : Application
         menu.Items.Add(about);
         _updateMenuItem = new NativeMenuItem { Header = "检查更新" };
         _updateMenuItem.Click += async (_, _) => await CheckForUpdateAsync(true);
+        var voiceResources = new NativeMenuItem { Header = "语音资源与下载" };
+        voiceResources.Click += (_, _) => { ShowEnrollment(); _enrollmentWindow?.RevealVoiceResources(); };
+        menu.Items.Add(voiceResources);
         menu.Items.Add(_updateMenuItem);
         menu.Items.Add(new NativeMenuItemSeparator());
         var exit = new NativeMenuItem { Header = "退出" };
@@ -175,7 +184,13 @@ public sealed class App : Application
     {
         if (_aboutWindow is null)
         {
-            _aboutWindow = new AboutWindow();
+            ReceiverConfig.TryLoad(out var diagnosticBinding);
+            _aboutWindow = new AboutWindow(token => ReceiverDiagnostics.CollectAsync(
+                $"连接状态：{_lastConnectionState.Text}\n语音资源：{_voicePreparation?.Current.Message ?? "未初始化"}\n" +
+                $"客户端更新：检查或下载中={_updateInProgress != 0}；待安装={_readyUpdateVersion ?? "无"}\n" +
+                $"早读：已打开={ReadingExperience.IsOpen}；全屏={ReadingExperience.IsFullscreen}\n" +
+                (_island?.DiagnosticState ?? "通知窗口尚未初始化。"), token),
+                (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticBinding));
             _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         }
         _aboutWindow.Show(); _aboutWindow.WindowState = WindowState.Normal; _aboutWindow.Activate();
@@ -238,8 +253,11 @@ public sealed class App : Application
         }
 
         _enrollmentWindow = new EnrollmentWindow(ReceiverConfig.TryLoad(out var config) ? config : null);
+        ConnectVoiceResourcesView();
         if (config is not null) _enrollmentWindow.SetConnectionState(_lastConnectionState);
-        if (_readyUpdateVersion is not null) _enrollmentWindow.SetUpdateState($"新版 {_readyUpdateVersion} 已就绪，下次启动安装。", false, true);
+        if (_updateStateText is not null)
+            _enrollmentWindow.SetUpdateState(_updateStateText, _updateStateBusy, _readyUpdateVersion is not null, _updateProgress);
+        else if (_readyUpdateVersion is not null) _enrollmentWindow.SetUpdateState($"新版 {_readyUpdateVersion} 已就绪，可立即更新。", false, true);
         _enrollmentWindow.UpdateRequested += async (_, _) => await CheckForUpdateAsync(true);
         _enrollmentWindow.PreviewRequested += level => _ = _receiver?.ShowTestAsync(level);
         _enrollmentWindow.AudioTestRequested += async (_, _) => await TestAudioAsync();
@@ -254,6 +272,7 @@ public sealed class App : Application
             _island?.SetBinding(saved);
             StartBanbanVoice(saved, _banbanVoiceWindow?.IsVisible != true);
             StartAutomaticUpdates(saved);
+            InitializeVoiceResources();
             _enrollmentWindow?.Close();
             _studentVoiceWindow?.Close();
             Dispatcher.UIThread.Post(ShowStudentVoice);
@@ -323,6 +342,7 @@ public sealed class App : Application
 
     private async Task ShutdownAsync()
     {
+        AppLog.ErrorRecorded -= QueueClientError; _clientErrors?.Dispose();
         _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
         _banbanVoiceWindow?.Shutdown();
         _shoutPreviewWindow?.Close();
@@ -334,6 +354,7 @@ public sealed class App : Application
         _automaticUpdateCancellation?.Cancel();
         _automaticUpdateCancellation?.Dispose();
         _tray?.Dispose();
+        _voicePreparation?.Dispose();
         if (_receiver is not null) await _receiver.StopAsync();
         _studentVoiceWindow?.Close();
         _speech?.Dispose();
@@ -351,10 +372,15 @@ public sealed class App : Application
     }
 
     // Wake listening remains active; only conversation, recording and classroom work block downloads.
-    private bool UpdateActivityBusy => _island?.InClass == true || ReadingExperience.IsOpen ||
+    private bool VoiceActivityBusy => ReadingExperience.IsOpen ||
         _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
         _creativeIdeasWindow?.IsVisible == true || _receiver?.ComputerAgent.IsBusy == true || _stopTask is { IsCompleted: false };
-    private bool CanDownloadUpdate => _island?.ScheduleKnown == true && !UpdateActivityBusy;
+    private bool CanUpdate(bool userInitiated) => !VoiceActivityBusy && _voicePreparation?.IsDownloading != true &&
+        (userInitiated || _island?.ScheduleKnown == true && _island.InClass == false);
+    private bool CanDownloadUpdate => CanUpdate(false);
+    private string ManualUpdateBlockedText => VoiceActivityBusy
+        ? "请先结束早读、录音、对话或当前任务，再立即更新。"
+        : "语音资源正在下载，请先暂停资源下载，再立即更新。";
 
     private void StartAutomaticUpdates(ReceiverConfig config)
     {
@@ -384,22 +410,17 @@ public sealed class App : Application
         if (Interlocked.Exchange(ref _updateInProgress, 1) != 0) return;
         try
         {
-            if (!await Dispatcher.UIThread.InvokeAsync(() => CanDownloadUpdate))
+            AppLog.Info(userInitiated ? "Receiver manual update requested" : "Receiver background update check started");
+            if (!await Dispatcher.UIThread.InvokeAsync(() => CanUpdate(userInitiated)))
             {
-                if (userInitiated) SetUpdateState("上课或活动期间暂停更新，请在课间重试。", false);
+                if (userInitiated) SetUpdateState(await Dispatcher.UIThread.InvokeAsync(() => ManualUpdateBlockedText), false);
                 return;
             }
             _readyUpdateVersion ??= ReceiverUpdateService.PendingVersion();
             if (_readyUpdateVersion is not null)
             {
                 if (userInitiated)
-                    await Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        if (!CanDownloadUpdate) return;
-                        var ready = new ReceiverUpdateResult(true, _readyUpdateVersion, null);
-                        if (!_updates.TryLaunchInstaller(ready, out var error)) { SetUpdateState(error, false); return; }
-                        _exitRequested = true; _desktop?.TryShutdown();
-                    });
+                    await Dispatcher.UIThread.InvokeAsync(InstallReadyUpdate);
                 return;
             }
             var config = knownConfig;
@@ -410,18 +431,21 @@ public sealed class App : Application
             }
             SetUpdateState("正在检查更新…", true);
             using var idle = CancellationTokenSource.CreateLinkedTokenSource(token);
-            var monitor = PauseWhenBusyAsync(idle);
+            var monitor = PauseWhenBusyAsync(idle, userInitiated);
             ReceiverUpdateResult result;
             try
             {
+                // Capture the UI context once. Progress and completion then share the same queue,
+                // so a delayed download callback cannot replace the final ready/paused state.
+                var progress = await Dispatcher.UIThread.InvokeAsync(() => new Progress<UpdateProgress>(value =>
+                    ApplyUpdateState(value.Message, true, value)));
                 // Hashing models and applying a binary patch must not run on the UI dispatcher.
-                result = await Task.Run(() => _updates.CheckAndDownloadAsync(config, new Progress<int>(value =>
-                    SetUpdateState($"正在准备更新：{value}%", true)), idle.Token), idle.Token);
+                result = await Task.Run(() => _updates.CheckAndDownloadAsync(config, progress, idle.Token), idle.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested && idle.IsCancellationRequested)
             {
                 _nextUpdateCheck = DateTimeOffset.UtcNow.AddSeconds(15);
-                SetUpdateState("更新已暂停，课间空闲时继续下载。", false);
+                SetUpdateState(userInitiated ? "更新已暂停，请结束当前活动后重试。" : "更新已暂停，课间空闲时继续下载。", false);
                 return;
             }
             finally { idle.Cancel(); await monitor; }
@@ -431,7 +455,9 @@ public sealed class App : Application
             else
             {
                 _readyUpdateVersion = result.Version;
-                SetUpdateState($"新版 {result.Version} 已就绪，下次启动安装。", false);
+                AppLog.Info($"Receiver update ready: {result.Version}; manual={userInitiated}");
+                if (userInitiated) await Dispatcher.UIThread.InvokeAsync(InstallReadyUpdate);
+                else SetUpdateState($"新版 {result.Version} 已就绪，可立即更新。", false);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -444,13 +470,28 @@ public sealed class App : Application
         finally { Interlocked.Exchange(ref _updateInProgress, 0); }
     }
 
-    private async Task PauseWhenBusyAsync(CancellationTokenSource idle)
+    private void InstallReadyUpdate()
+    {
+        if (!CanUpdate(true)) { ApplyUpdateState(ManualUpdateBlockedText, false, _updateProgress); return; }
+        ApplyUpdateState($"正在更新至 {_readyUpdateVersion}，完成后自动重新打开…", true, _updateProgress);
+        var ready = new ReceiverUpdateResult(true, _readyUpdateVersion!, null);
+        if (!_updates.TryLaunchInstaller(ready, out var error))
+        {
+            _readyUpdateVersion = null;
+            ApplyUpdateState(error, false, _updateProgress);
+            return;
+        }
+        _exitRequested = true;
+        _desktop?.TryShutdown();
+    }
+
+    private async Task PauseWhenBusyAsync(CancellationTokenSource idle, bool userInitiated = false)
     {
         try
         {
             while (!idle.IsCancellationRequested)
             {
-                if (!await Dispatcher.UIThread.InvokeAsync(() => CanDownloadUpdate)) { idle.Cancel(); break; }
+                if (!await Dispatcher.UIThread.InvokeAsync(() => CanUpdate(userInitiated))) { idle.Cancel(); break; }
                 await Task.Delay(250, idle.Token);
             }
         }
@@ -459,15 +500,18 @@ public sealed class App : Application
 
     private void SetUpdateState(string text, bool checking)
     {
-        Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(() => ApplyUpdateState(text, checking, checking ? null : _updateProgress));
+    }
+
+    private void ApplyUpdateState(string text, bool checking, UpdateProgress? progress)
+    {
+        _updateStateText = text; _updateStateBusy = checking; _updateProgress = progress;
+        _enrollmentWindow?.SetUpdateState(text, checking, _readyUpdateVersion is not null, progress);
+        if (_updateMenuItem is not null)
         {
-            _enrollmentWindow?.SetUpdateState(text, checking, _readyUpdateVersion is not null);
-            if (_updateMenuItem is not null)
-            {
-                _updateMenuItem.Header = _readyUpdateVersion is not null ? "立即更新" : "检查更新";
-                _updateMenuItem.IsEnabled = !checking;
-            }
-        });
+            _updateMenuItem.Header = _readyUpdateVersion is not null ? "立即更新" : "检查更新";
+            _updateMenuItem.IsEnabled = !checking;
+        }
     }
 
     private void ReceiverOnConnectionStateChanged(object? sender, ReceiverConnectionState state)

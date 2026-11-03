@@ -3,7 +3,7 @@ import copy
 import json
 
 import app as service
-from island import defaults
+from island import BULK_SECTIONS, defaults, merge_bulk_template, normalize
 from test_app import ServerTestCase
 from test_island_visibility import consumer_hidden
 
@@ -241,3 +241,174 @@ class IslandBulkTest(ServerTestCase):
         for cid, original in zip(self.classes, self.originals):
             _, current = await self.json_request('GET', '/api/island/classes/' + cid)
             self.assertEqual(current, original)
+
+    def template_body(self, sections, **extra):
+        return {'classIds': [self.classes[1]], 'sourceClassId': self.classes[0],
+                'sourceRevision': self.originals[0]['revision'], 'sections': sections, **extra}
+
+    async def preview_template(self, body):
+        response, data = await self.json_request('POST', '/api/island/bulk/preview', body, csrf=True)
+        self.assertEqual(response.status, 200, data)
+        return {**body, 'revisions': {row['classId']: row['revision'] for row in data['classes']}}, data
+
+    async def test_template_copies_selected_course_content_and_remaps_local_references(self):
+        await self.setup_classes()
+        source = self.originals[0]['config']
+        body, preview = await self.preview_template(self.template_body(['timetable', 'overrides']))
+        self.assertTrue(preview['valid'], preview)
+        self.assertTrue(any('替换周课表' in detail for detail in preview['classes'][0]['details']))
+        _, before = await self.json_request('GET', '/api/island/classes/' + self.classes[1])
+        self.assertEqual(before, self.originals[1], 'Preview never writes')
+        response, result = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 200, result)
+        _, saved = await self.json_request('GET', '/api/island/classes/' + self.classes[1])
+        self.assertEqual(saved['config']['lessons'][0]['slotId'], 'local-first-1')
+        self.assertEqual(saved['config']['lessons'][0]['teacher'], source['lessons'][0]['teacher'])
+        self.assertEqual(saved['config']['overrides'][0]['slotId'], 'local-first-1')
+        for key in ('slots', 'dutyRotations', 'visibility', 'components', 'automation', 'appearance', 'reminders'):
+            self.assertEqual(saved['config'][key], before['config'][key], key + ' was not selected')
+        _, source_after = await self.json_request('GET', '/api/island/classes/' + self.classes[0])
+        self.assertEqual(source_after, self.originals[0])
+        body, preview = await self.preview_template(self.template_body(['timetable', 'overrides']))
+        self.assertFalse(preview['classes'][0]['changed'])
+        response, result = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual((response.status, result['updated']), (200, 0))
+
+    async def test_template_all_sections_replace_whole_configuration_with_preview(self):
+        await self.setup_classes()
+        source = self.originals[0]['config']
+        target = copy.deepcopy(self.originals[1])
+        target['config']['components'].append({'id': 'local-note', 'type': 'text', 'text': '旧班级寄语'})
+        response, target = await self.json_request('PUT', '/api/island/classes/' + self.classes[1], target, csrf=True)
+        self.assertEqual(response.status, 200)
+        body, preview = await self.preview_template(self.template_body(list(BULK_SECTIONS), enabled=False))
+        self.assertTrue(preview['valid'], preview)
+        response, result = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 200, result)
+        _, saved = await self.json_request('GET', '/api/island/classes/' + self.classes[1])
+        self.assertEqual(saved['config'], {**source, 'enabled': False})
+        self.assertEqual(saved['revision'], target['revision'] + 1)
+
+    async def test_template_missing_or_ambiguous_slots_block_entire_batch(self):
+        await self.setup_classes()
+        source = copy.deepcopy(self.originals[0])
+        source['config']['slots'].append({'id': 'midday', 'label': '午间静校', 'start': 750, 'end': 815})
+        source['config']['dutyRotations']['midday'].update(enabled=True, slotIds=['midday'])
+        response, self.originals[0] = await self.json_request('PUT', '/api/island/classes/' + self.classes[0], source, csrf=True)
+        self.assertEqual(response.status, 200)
+        body, preview = await self.preview_template(self.template_body(['duties']))
+        self.assertFalse(preview['valid'])
+        self.assertIn('一并选择“作息时间”', preview['classes'][0]['error'])
+        response, _ = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 409)
+        _, saved = await self.json_request('GET', '/api/island/classes/' + self.classes[1])
+        self.assertEqual(saved, self.originals[1])
+        body, preview = await self.preview_template(self.template_body(['slots', 'duties']))
+        self.assertTrue(preview['valid'], preview)
+        response, _ = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 200)
+        _, saved = await self.json_request('GET', '/api/island/classes/' + self.classes[1])
+        self.assertEqual(saved['config']['dutyRotations'], self.originals[0]['config']['dutyRotations'])
+        self.assertEqual(saved['config']['lessons'], self.originals[1]['config']['lessons'])
+
+    async def test_template_source_and_target_changes_require_fresh_preview(self):
+        await self.setup_classes()
+        body, _ = await self.preview_template(self.template_body(['enabled'], enabled=False))
+        changed = copy.deepcopy(self.originals[0])
+        changed['config']['appearance']['width'] = 640
+        response, self.originals[0] = await self.json_request('PUT', '/api/island/classes/' + self.classes[0], changed, csrf=True)
+        self.assertEqual(response.status, 200)
+        for method, path in [('POST', '/api/island/bulk/preview'), ('PUT', '/api/island/bulk')]:
+            response, data = await self.json_request(method, path, body, csrf=True)
+            self.assertEqual(response.status, 409, data)
+            self.assertTrue(data['sourceChanged'])
+        body, _ = await self.preview_template(self.template_body(['enabled'], enabled=False))
+        changed = copy.deepcopy(self.originals[1])
+        changed['config']['appearance']['width'] = 680
+        response, changed = await self.json_request('PUT', '/api/island/classes/' + self.classes[1], changed, csrf=True)
+        self.assertEqual(response.status, 200)
+        response, result = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 409, result)
+        _, saved = await self.json_request('GET', '/api/island/classes/' + self.classes[1])
+        self.assertEqual(saved, changed)
+
+    async def test_template_invalid_target_prevents_other_targets_from_being_saved(self):
+        await self.setup_classes()
+        source = copy.deepcopy(self.originals[0])
+        source['config']['slots'].append({'id': 'midday', 'label': '午间静校', 'start': 750, 'end': 815})
+        source['config']['dutyRotations']['midday'].update(enabled=True, slotIds=['midday'])
+        response, self.originals[0] = await self.json_request('PUT', '/api/island/classes/' + self.classes[0], source, csrf=True)
+        self.assertEqual(response.status, 200)
+        _, third = await self.json_request('POST', '/api/classes', {'name': '高三（3）班'}, csrf=True)
+        config = copy.deepcopy(self.originals[0]['config'])
+        config['dutyRotations']['midday']['enabled'] = False
+        response, valid_target = await self.json_request('PUT', '/api/island/classes/' + third['id'],
+            {'revision': 0, 'config': config}, csrf=True)
+        self.assertEqual(response.status, 200)
+        body, preview = await self.preview_template(self.template_body(['duties'], classIds=[third['id'], self.classes[1]]))
+        self.assertFalse(preview['valid'])
+        self.assertTrue(preview['classes'][0]['changed'])
+        self.assertIn('一并选择', preview['classes'][1]['error'])
+        response, result = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 409, result)
+        for cid, original in ((third['id'], valid_target), (self.classes[1], self.originals[1])):
+            _, current = await self.json_request('GET', '/api/island/classes/' + cid)
+            self.assertEqual(current, original, 'A later invalid target prevents all earlier writes')
+
+    async def test_template_teachers_keep_copy_permissions_and_cannot_cross_class_scope(self):
+        await self.setup_classes()
+        body = self.template_body(['enabled'], enabled=False)
+        _, third = await self.json_request('POST', '/api/classes', {'name': '高三（1）班'}, csrf=True)
+        await self.json_request('POST', '/api/teachers', {'username': 'template.head', 'displayName': '双班班主任',
+            'password': 'TeacherPassword123', 'classIds': self.classes}, csrf=True)
+        response, login = await self.json_request('POST', '/api/auth/login',
+            {'username': 'template.head', 'password': 'TeacherPassword123'})
+        self.cookie = response.headers['Set-Cookie'].split(';', 1)[0]
+        self.csrf = login['user']['csrfToken']
+        for patch in ({'classIds': [third['id']]}, {'sourceClassId': third['id'], 'sourceRevision': 0}):
+            response, data = await self.json_request('POST', '/api/island/bulk/preview', {**body, **patch}, csrf=True)
+            self.assertEqual(response.status, 403, data)
+        body, preview = await self.preview_template(body)
+        self.assertTrue(preview['valid'], preview)
+        # The same per-class authority is rechecked at apply time.
+        self.app[service.STORE_KEY].run('DELETE FROM teacher_classes WHERE class_id=?', (self.classes[1],))
+        response, data = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 403, data)
+        self.app[service.STORE_KEY].run('INSERT INTO teacher_classes(user_id,class_id) VALUES(?,?)',
+                                      (login['user']['id'], self.classes[1]))
+        self.app[service.STORE_KEY].run('DELETE FROM teacher_classes WHERE class_id=?', (self.classes[0],))
+        response, data = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 403, data)
+        self.app[service.STORE_KEY].run('INSERT INTO teacher_classes(user_id,class_id) VALUES(?,?)',
+                                      (login['user']['id'], self.classes[0]))
+        response, data = await self.json_request('PUT', '/api/island/bulk', body, csrf=True)
+        self.assertEqual(response.status, 200, data)
+
+    async def test_template_rejects_invalid_sections_and_mixed_payloads(self):
+        await self.setup_classes()
+        body = self.template_body(['enabled'])
+        for patch in ({'sections': []}, {'sections': ['timetable', 'timetable']}, {'sections': ['unknown']},
+                      {'sections': [True]}, {'sourceRevision': True}, {'sourceClassId': None},
+                      {'enabled': 'false'}, {'sections': ['appearance'], 'enabled': False},
+                      {'changes': {'enabled': False}}):
+            response, data = await self.json_request('POST', '/api/island/bulk/preview', {**body, **patch}, csrf=True)
+            self.assertEqual(response.status, 400, data)
+        for cid, original in zip(self.classes, self.originals):
+            _, current = await self.json_request('GET', '/api/island/classes/' + cid)
+            self.assertEqual(current, original)
+
+    def test_partial_template_preserves_unselected_hiding_and_maps_selected_hiding(self):
+        source, target = defaults('高一'), defaults('高一')
+        source['slots'][1]['id'] = 'source-first'
+        target['slots'][1]['id'] = 'target-first'
+        source['appearance']['hideDuringLessons'] = True
+        source['appearance']['width'] = 640
+        source['visibility'] = {'followSchool': False, 'hiddenSlotIds': ['source-first']}
+        target['visibility'] = {'followSchool': False, 'hiddenSlotIds': ['target-first'], 'lessonsOnly': True}
+        source, target = normalize(source), normalize(target)
+        merged = merge_bulk_template(target, source, ['appearance'])
+        self.assertEqual(merged['visibility'], target['visibility'])
+        self.assertEqual(merged['appearance']['hideDuringLessons'], target['appearance']['hideDuringLessons'])
+        merged = merge_bulk_template(target, source, ['visibility'])
+        self.assertEqual(merged['visibility'], {'followSchool': False, 'hiddenSlotIds': ['target-first']})
+        self.assertEqual(merged['appearance'], target['appearance'])

@@ -24,7 +24,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
     public bool Light { get; set; }
     internal bool ImportantExpanded { get; set; }
     internal bool FullTextExpanded { get; set; }
-    internal bool Animate { get; set; } = ClassroomIslandReveal.AnimationsEnabled();
+    internal bool Animate { get; set; } = true;
     internal double? ReviewPhase { get; set; }
     internal IslandRibbonFrame? Frame => _frame;
     public event Action<string>? Attention;

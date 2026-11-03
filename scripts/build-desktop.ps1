@@ -16,6 +16,7 @@ $desktopPackage = Join-Path $desktopRoot 'dist\desktop-delivery\ICeClass 班伴 
 New-Item -ItemType Directory -Force -Path $desktopPackage | Out-Null
 Copy-Item -LiteralPath $desktopExecutable -Destination $desktopPackage -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-desktop.ps1') -Destination (Join-Path $desktopPackage 'install.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-voice-resources.ps1') -Destination $desktopPackage -Force
 [IO.File]::WriteAllText((Join-Path $desktopPackage '安装到本机.cmd'), "@echo off`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
 $desktopInstructions = @'
 ICeClass 班伴 · 教师端 · Windows 10/11 64 位
@@ -29,6 +30,7 @@ ICeClass 班伴 · 教师端 · Windows 10/11 64 位
 
 学校平台地址通常无需修改。不同部署可在顶部“桌面设置”中修改网址；班班的 Base URL、API Key 和模型仍在班班自己的连接设置中填写。
 导出 XLSX 时选择保存位置。语音功能首次使用时由页面询问麦克风权限。
+这是轻量安装包。来音转文字资源会在课间空闲时准备，也可在“桌面设置 → 语音资源”中点击“下载语音资源”，一次补齐全部所需资源，支持暂停和继续；资源未就绪时仍可收听原音。
 网页登录和桌面端的登录资料独立，电脑端不直接沿用浏览器的登录状态。
 
 网页功能随学校平台更新。桌面程序在课间空闲时后台下载更新，完成后等待下次真正启动安装，关闭到托盘不会安装。可从托盘或“关于 → 检查桌面更新”查看，已就绪时选择“立即更新”并确认重启。请先保存尚未提交的内容，更新不清理登录资料。

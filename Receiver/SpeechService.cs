@@ -15,7 +15,7 @@ public sealed class SpeechService : IDisposable
     {
         lock (_sync)
         {
-            if (_disposed) return;
+            if (_disposed || !VoiceResourceFiles.Resources.SpeechReady) return;
             _player?.Stop();
             if (string.IsNullOrWhiteSpace(text) || !double.IsFinite(volume) || volume <= 0) return;
             if (Volatile.Read(ref _failed) != 0) { _player?.Dispose(); _player = null; }

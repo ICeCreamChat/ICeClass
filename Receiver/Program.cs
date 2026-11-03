@@ -17,7 +17,9 @@ internal static class Program
         {
             try
             {
-                if (UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory, "ICeClass.exe", ReceiverUpdateService.RestartArguments(), ReceiverUpdateService.CurrentVersionText)) return;
+                // Only startup skips the helper's own confirmation launch. Later manual updates remain available.
+                if (!UpdateInstaller.IsUpdateLaunch && UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory,
+                    "ICeClass.exe", ReceiverUpdateService.RestartArguments(), ReceiverUpdateService.CurrentVersionText)) return;
             }
             catch (Exception error) { AppLog.Error("Could not apply prepared update at startup", error); }
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
