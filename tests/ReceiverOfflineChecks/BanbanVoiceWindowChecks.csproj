@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath Condition="'$(ArtifactsPath)' == ''">obj/banban-voice-window/</BaseIntermediateOutputPath>
+    <BaseOutputPath Condition="'$(ArtifactsPath)' == ''">bin/banban-voice-window/</BaseOutputPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);BANBAN_VOICE_WINDOW_CHECKS</DefineConstants>
+    <AssemblyName>ICeClass.ReceiverOfflineChecks</AssemblyName>
+    <ApplicationManifest>../../Receiver/app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="BanbanVoiceWindowChecks.cs" />
+    <ProjectReference Include="../../Receiver/Receiver.csproj" />
+  </ItemGroup>
+  <Target Name="UseWebViewCoreOnly" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup><Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" /></ItemGroup>
+  </Target>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

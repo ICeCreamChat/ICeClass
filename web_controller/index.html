@@ -8,17 +8,18 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=14">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=17">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=7">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=22">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=7">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=30">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=4">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ideas-admin.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=12">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=35">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-voice.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-operations.css?v=5">
-  <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261025.1"></script>
+  <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261101.1"></script>
 </head>
 <body>
   <div id="loading" class="app-loading"><div class="spinner" aria-label="正在加载"></div></div>
@@ -84,18 +85,21 @@
         <button data-view="history"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span data-label>通知记录</span></button>
         <button data-view="quiet"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><span data-label>禁言时间</span></button>
         <span class="nav-group-label" data-manager>校园管理</span>
+        <button data-view="ideas" data-ideas-admin class="hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M8.1 14.5a6 6 0 1 1 7.8 0c-.6.5-.9 1.3-.9 2.1V18H9v-1.4c0-.8-.3-1.6-.9-2.1Z"/></svg></span><span data-label>创意计划</span></button>
         <button data-view="classes" data-manager><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span data-label>班级管理</span></button>
         <button data-view="teachers" data-manager><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span><span data-label>用户管理</span></button>
         <button data-view="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.5"/></svg></span><span data-label>账号设置</span></button>
       </nav>
     </aside>
     <main id="mainContent" tabindex="-1">
+      <section id="view-ideas" class="view hidden" aria-label="创意计划评审">
+        <div id="ideasAdminRoot"></div>
+      </section>
       <section id="view-island" class="view hidden" aria-label="教室浮岛配置">
         <div class="island-top"><h1>教室浮岛</h1></div>
         <div class="island-toolbar">
           <label class="island-class-field" for="islandClass"><span>配置班级</span><select id="islandClass"></select></label>
-          <div class="island-inline"><button type="button" id="islandReload" class="btn">重新载入</button><button type="button" id="islandCopy" class="btn">复制到其他班级</button></div>
-          <div class="island-files"><button type="button" id="islandImport" class="btn" title="导入修改后的班级课表，沿用已设置的作息时间，识别后先预览">导入 Excel</button><button type="button" id="islandExport" class="btn" title="下载黑白课表模板，只需填写课程和教师，无需填写上课时间">导出 Excel</button><input id="islandImportFile" type="file" accept=".xlsx" hidden></div>
+          <div class="island-class-tools"><button type="button" id="islandBulk" class="btn" hidden disabled>批量设置</button><details id="islandMore" class="action-menu"><summary class="btn">更多操作</summary><div class="action-menu-content"><button type="button" id="islandReload" class="btn">重新载入</button><button type="button" id="islandImport" class="btn" title="导入修改后的班级课表，沿用已设置的作息时间，识别后先预览">导入 Excel</button><button type="button" id="islandExport" class="btn" title="下载黑白课表模板，只需填写课程和教师，无需填写上课时间">导出 Excel</button></div></details><input id="islandImportFile" type="file" accept=".xlsx" hidden></div>
         </div>
         <div class="island-layout"><div class="island-main">
           <div class="island-workspace-head">
@@ -321,7 +325,7 @@
           <div id="teachersContainer"></div>
           <div id="userPagination" class="users-pagination"><span>每页 12 位</span><div><button id="userPrevPage" class="btn" type="button">上一页</button><span id="userPageLabel" aria-live="polite"></span><button id="userNextPage" class="btn" type="button">下一页</button></div></div>
         </section>
-        <details class="user-permission-guide"><summary>身份与权限说明</summary><dl><div><dt>校长</dt><dd>全校功能、用户、班级、设备与学校设置。</dd></div><div><dt>主任</dt><dd>高一、高二、高三的班级、设备、数据与下级账号管理。</dd></div><div><dt>年级部长</dt><dd>所在年级的班级、设备、数据与班主任教师账号管理。</dd></div><div><dt>班主任教师</dt><dd>本人班级的早读、通知、来音、记录与教室控制。</dd></div></dl><p class="hint">全校统一规则由校长或超级管理员维护。年级授权自动包含新增班级，并随班级当前所属年级调整。</p></details>
+        <details class="user-permission-guide"><summary>身份与权限说明</summary><dl><div><dt>校长</dt><dd>全校功能、用户、班级、设备与学校设置。</dd></div><div><dt>主任</dt><dd>高一、高二、高三的班级、设备、数据与下级账号管理。</dd></div><div><dt>年级部</dt><dd>所负责年级的班级、设备、数据与教师账号管理。</dd></div><div><dt>班主任</dt><dd>管理带班班级的课表、浮岛、通知、来音与教室控制。</dd></div><div><dt>任课老师</dt><dd>查看任教班级，发送通知、控制教室；课表与浮岛只读，不接收来音。</dd></div></dl><p class="hint">同一账号可分别分配带班班级和任教班级。全校规则由校长或超级管理员维护。</p></details>
         <div id="userActionsPopover" class="user-actions-popover" popover="auto" aria-label="用户操作"></div>
       </section>
 
@@ -341,6 +345,25 @@
         <section id="deviceSection" class="settings-device-section" data-manager>
           <div class="view-head"><div><h2>教室电脑</h2><p>停用后，设备将无法接收通知。</p></div><button id="refreshDevices" class="btn" type="button">刷新设备</button></div>
           <div id="devicesContainer"></div>
+        </section>
+        <section id="clientDiagnosticsSection" class="settings-device-section hidden" aria-label="客户端日志">
+          <details id="clientDiagnosticsPanel">
+            <summary class="client-diagnostic-heading">客户端日志</summary>
+            <p class="hint">两端自动上报错误，也可在“关于”中提交近期诊断。每周一凌晨清理超过 7 天的记录。</p>
+            <form id="clientDiagnosticFilters" class="client-diagnostic-filters">
+              <div class="field"><label for="diagnosticEdition">客户端</label><select id="diagnosticEdition" name="edition"><option value="">全部</option><option value="classroom">教室端</option><option value="teacher">教师端</option></select></div>
+              <div class="field"><label for="diagnosticKind">记录类型</label><select id="diagnosticKind" name="kind"><option value="">全部</option><option value="error">自动错误</option><option value="manual">手动诊断</option></select></div>
+              <div class="field"><label for="diagnosticVersion">程序版本</label><input id="diagnosticVersion" name="version" maxlength="40" placeholder="例如 2.5.6"></div>
+              <div class="field"><label for="diagnosticSince">起始日期</label><input id="diagnosticSince" name="since" type="date"></div>
+              <div class="field"><label for="diagnosticUntil">结束日期</label><input id="diagnosticUntil" name="until" type="date"></div>
+              <div class="field"><label for="diagnosticQuery">班级、账号或电脑</label><input id="diagnosticQuery" name="q" maxlength="100" type="search" placeholder="搜索班级、账号或电脑"></div>
+              <div class="client-diagnostic-actions"><button type="submit" class="btn primary">筛选日志</button><button id="diagnosticReset" type="button" class="btn">重置</button><button id="diagnosticRefresh" type="button" class="btn">刷新日志</button></div>
+            </form>
+            <p id="clientDiagnosticStatus" class="hint" role="status" aria-live="polite"></p>
+            <div class="client-diagnostic-table" tabindex="0" role="region" aria-label="客户端日志列表"><table><thead><tr><th scope="col">收到时间</th><th scope="col">客户端与设备</th><th scope="col">记录</th><th scope="col">版本</th><th scope="col">操作</th></tr></thead><tbody id="clientDiagnosticRows"></tbody></table></div>
+            <div class="client-diagnostic-pager"><span id="diagnosticPage" class="hint"></span><div class="client-diagnostic-actions"><button id="diagnosticPrevious" type="button" class="btn">上一页</button><button id="diagnosticNext" type="button" class="btn">下一页</button></div></div>
+            <section id="clientDiagnosticDetail" class="client-diagnostic-detail" hidden aria-labelledby="diagnosticDetailTitle"><div class="view-head"><h3 id="diagnosticDetailTitle" tabindex="-1">诊断详情</h3><button id="diagnosticCopy" type="button" class="btn">复制日志</button></div><p id="diagnosticDetailMeta" class="hint"></p><pre id="diagnosticReport" tabindex="0" aria-label="诊断日志正文"></pre></section>
+          </details>
         </section>
       </section>
     </main>
@@ -386,10 +409,11 @@
       <div class="dialog-body">
         <div class="field"><label for="teacherUsername">登录用户名</label><input id="teacherUsername" required maxlength="64" pattern="[A-Za-z0-9_.@-]{3,64}"></div>
         <div class="field"><label for="teacherDisplayName">姓名</label><input id="teacherDisplayName" required maxlength="40"></div>
-        <div class="field"><label for="teacherRole">身份</label><select id="teacherRole"><option value="teacher">班主任教师</option><option value="grade_leader">年级部长</option><option value="director">主任</option><option value="principal">校长</option></select><p id="newStaffRoleHint" class="hint"></p></div>
+        <div class="field"><label for="teacherRole">身份</label><select id="teacherRole"><option value="teacher">班主任</option><option value="subject_teacher">任课老师</option><option value="grade_leader">年级部</option><option value="director">主任</option><option value="principal">校长</option></select><p id="newStaffRoleHint" class="hint"></p></div>
         <div id="newStaffGradeScope" class="field hidden"><label for="teacherGrade">负责年级</label><select id="teacherGrade"><option value="">请选择年级</option><option>高一</option><option>高二</option><option>高三</option></select></div>
         <div class="field"><label for="teacherPassword">初始密码</label><input id="teacherPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
-        <div id="newStaffScope" class="field"><span class="label">授权班级</span><div id="newTeacherClasses" class="check-grid"></div></div>
+        <fieldset id="newStaffScope" class="field staff-scope"><legend class="label">带班班级</legend><div id="newTeacherClasses" class="check-grid"></div></fieldset>
+        <fieldset id="newTeachingScope" class="field staff-scope"><legend class="label">任教班级</legend><div id="newTeachingClasses" class="check-grid"></div></fieldset>
         <p id="teacherError" class="form-error" role="alert"></p>
       </div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">创建账号</button></div>
@@ -399,7 +423,15 @@
   <dialog id="permissionDialog" aria-labelledby="permissionDialogTitle">
     <form id="permissionForm">
       <div class="dialog-head"><h2 id="permissionDialogTitle">身份与班级权限</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-      <div class="dialog-body"><p id="permissionTeacher"></p><div class="field"><label for="permissionDisplayName">姓名</label><input id="permissionDisplayName" required maxlength="40"></div><div class="field"><label for="permissionRole">身份</label><select id="permissionRole"><option value="teacher">班主任教师</option><option value="grade_leader">年级部长</option><option value="director">主任</option><option value="principal">校长</option></select><p id="permissionRoleHint" class="hint"></p></div><div id="permissionGradeScope" class="field hidden"><label for="permissionGrade">负责年级</label><select id="permissionGrade"><option value="">请选择年级</option><option>高一</option><option>高二</option><option>高三</option></select></div><div id="permissionScope" class="field"><span class="label">负责班级</span><div id="permissionClasses" class="check-grid"></div></div><input id="permissionTeacherId" type="hidden"><p id="permissionError" class="form-error" role="alert"></p></div>
+      <div class="dialog-body">
+        <p id="permissionTeacher"></p>
+        <div class="field"><label for="permissionDisplayName">姓名</label><input id="permissionDisplayName" required maxlength="40"></div>
+        <div class="field"><label for="permissionRole">身份</label><select id="permissionRole"><option value="teacher">班主任</option><option value="subject_teacher">任课老师</option><option value="grade_leader">年级部</option><option value="director">主任</option><option value="principal">校长</option></select><p id="permissionRoleHint" class="hint"></p></div>
+        <div id="permissionGradeScope" class="field hidden"><label for="permissionGrade">负责年级</label><select id="permissionGrade"><option value="">请选择年级</option><option>高一</option><option>高二</option><option>高三</option></select></div>
+        <fieldset id="permissionScope" class="field staff-scope"><legend class="label">带班班级</legend><div id="permissionClasses" class="check-grid"></div></fieldset>
+        <fieldset id="permissionTeachingScope" class="field staff-scope"><legend class="label">任教班级</legend><div id="permissionTeachingClasses" class="check-grid"></div></fieldset>
+        <input id="permissionTeacherId" type="hidden"><p id="permissionError" class="form-error" role="alert"></p>
+      </div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存权限</button></div>
     </form>
   </dialog>
@@ -431,9 +463,18 @@
       let voiceRequest = 0, recentRequest = 0, presenceRequest = 0;
       let recordingRequest = 0, recordingRequested = false, recordingTimer = null;
       let scheduleFieldId = 0;
-      const roleLabels = { superadmin: "超级管理员", teacher: "班主任教师", grade_leader: "年级部长", director: "主任", principal: "校长" };
+      const roleLabels = { superadmin: "超级管理员", teacher: "班主任", subject_teacher: "任课老师", grade_leader: "年级部", director: "主任", principal: "校长" };
       const isSchoolAdmin = () => ["superadmin", "principal"].includes(state.user?.role);
       const isManager = () => ["superadmin", "principal", "director", "grade_leader"].includes(state.user?.role);
+      const canReviewIdeas = () => state.user?.role === "superadmin" && !nativeClassroom;
+      let ideasAdminOwner = "";
+      function prepareIdeasAdmin() {
+        if (!window.ICeClassIdeasAdmin || !canReviewIdeas()) return;
+        if (ideasAdminOwner === state.user.id) return;
+        window.ICeClassIdeasAdmin.init({root: $("ideasAdminRoot"), api});
+        ideasAdminOwner = state.user.id;
+      }
+      document.addEventListener("DOMContentLoaded", prepareIdeasAdmin);
       const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "已展示，待知晓", acknowledged: "教室已知晓", failed: "处理失败" };
       const deliveryStatus = item => item.acknowledged_at ? "acknowledged" : item.status;
       const levelMeta = {
@@ -713,8 +754,11 @@
         $("userRole").textContent = roleLabels[user.role] || "教师";
         document.querySelectorAll("[data-admin]").forEach(node => node.classList.toggle("hidden", !isSchoolAdmin()));
         document.querySelectorAll("[data-manager]").forEach(node => node.classList.toggle("hidden", !isManager()));
+        document.querySelectorAll("[data-ideas-admin]").forEach(node => node.classList.toggle("hidden", !canReviewIdeas()));
+        document.querySelector('[data-view="classroom-voice"]').classList.toggle('hidden', !user.permissions.receiveClassroomVoice);
         configureStaffOptions();
         await loadClasses();
+        prepareIdeasAdmin();
         window.dispatchEvent(new Event("iceclass-ready"));
         await Promise.all([loadHistory(), loadRecent(), loadClassroomVoice(), loadQuietHours(), isManager() ? Promise.all([loadTeachers(), loadDevices()]) : Promise.resolve()]);
         $("settingsAccount").textContent = `${user.displayName}（${user.username}）`;
@@ -754,11 +798,12 @@
         if (voiceClass) {
           const previousVoiceClass = voiceClass.value;
           voiceClass.replaceChildren(new Option("全部班级", ""));
-          for (const item of active) voiceClass.append(new Option(item.name, item.id));
+          for (const item of active.filter(item => item.canReceiveVoice)) voiceClass.append(new Option(item.name, item.id));
           if ([...voiceClass.options].some(option => option.value === previousVoiceClass)) voiceClass.value = previousVoiceClass;
         }
         if (!$("targetClass").value && active[0]) $("targetClass").value = active[0].id;
         renderClassChecks("newTeacherClasses", []);
+        renderClassChecks("newTeachingClasses", []);
       }
 
       async function loadHistory(append = false) {
@@ -787,6 +832,7 @@
       }
 
       async function loadClassroomVoice({background = false} = {}) {
+        if (!state.user.permissions.receiveClassroomVoice) { state.classroomVoice = []; renderClassroomVoice(); return; }
         const request = ++voiceRequest;
         const classId = $("classroomVoiceClass")?.value || "";
         const data = await api(`/api/classroom-voice${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`);
@@ -1198,7 +1244,7 @@
       }
 
       function configureStaffOptions() {
-        const roles = state.user.permissions?.assignableRoles || (isSchoolAdmin() ? ["principal", "director", "grade_leader", "teacher"] : state.user.role === "director" ? ["grade_leader", "teacher"] : ["teacher"]);
+        const roles = state.user.permissions.assignableRoles;
         for (const id of ["teacherRole", "permissionRole"]) for (const option of $(id).options) {
           option.disabled = !roles.includes(option.value); option.hidden = option.disabled;
         }
@@ -1214,26 +1260,36 @@
       function updateStaffScope(editing = false) {
         const role = $(editing ? "permissionRole" : "teacherRole").value;
         $(editing ? "permissionScope" : "newStaffScope").classList.toggle("hidden", role !== "teacher");
+        $(editing ? "permissionTeachingScope" : "newTeachingScope").classList.toggle("hidden", !["teacher", "subject_teacher"].includes(role));
         $(editing ? "permissionGradeScope" : "newStaffGradeScope").classList.toggle("hidden", role !== "grade_leader");
         $(editing ? "permissionGrade" : "teacherGrade").required = role === "grade_leader";
         $(editing ? "permissionRoleHint" : "newStaffRoleHint").textContent = {
-          principal: "全校功能、用户、班级、设备与学校设置，自动包含新增班级。",
-          director: "管理高一、高二、高三，自动包含新增班级；可管理年级部长与班主任教师。",
-          grade_leader: "管理所选年级的全部班级与班主任教师，自动包含本年级新增班级。",
-          teacher: "仅可使用本人班级的早读、通知、来音、记录与教室控制。"
+          principal: "管理全校及学校统一设置。",
+          director: "管理高一、高二、高三及下级账号。",
+          grade_leader: "管理所选年级及教师账号。",
+          teacher: "带班班级可管理；其他任教班级的课表与浮岛只读。",
+          subject_teacher: "任教班级可发通知、控制教室；课表与浮岛只读，不接收来音。"
         }[role] || "请选择身份。";
       }
 
       function openPermissions(teacher) {
         $("permissionTeacherId").value = teacher.id;
         $("permissionTeacher").textContent = `${teacher.display_name}（${teacher.username}）`;
-        renderClassChecks("permissionClasses", teacher.classes.map(item => item.id));
+        renderClassChecks("permissionClasses", teacher.headClasses.map(item => item.id));
+        renderClassChecks("permissionTeachingClasses", teacher.teachingClasses.map(item => item.id));
         $("permissionRole").value = teacher.role || "teacher";
         $("permissionGrade").value = teacher.grade || "";
         $("permissionDisplayName").value = teacher.display_name;
         $("permissionError").textContent = "";
         updateStaffScope(true);
         $("permissionDialog").showModal();
+      }
+
+      function staffFormAssignment(editing = false) {
+        const role = $(editing ? 'permissionRole' : 'teacherRole').value;
+        return { role, grade: $(editing ? 'permissionGrade' : 'teacherGrade').value,
+          headClassIds: role === 'teacher' ? checkedValues(editing ? 'permissionClasses' : 'newTeacherClasses') : [],
+          teachingClassIds: ['teacher', 'subject_teacher'].includes(role) ? checkedValues(editing ? 'permissionTeachingClasses' : 'newTeachingClasses') : [] };
       }
 
       function openPassword(teacher) {
@@ -1326,9 +1382,18 @@
             $("bootstrapForm").classList.add("hidden"); $("loginForm").classList.remove("hidden"); $("loginUsername").value = "ICe"; toast("初始化完成，请登录");
           } catch (error) { $("bootstrapError").textContent = error.message; }
         });
-        $("logoutButton").addEventListener("click", async () => { try { await api("/api/auth/logout", { method: "POST" }); } finally { location.reload(); } });
+        $("logoutButton").addEventListener("click", async () => {
+          if (window.ICeClassIdeasAdmin?.canLogout() === false) return;
+          try { await api("/api/auth/logout", { method: "POST" }); }
+          finally { window.ICeClassIdeasAdmin?.destroy(); location.reload(); }
+        });
         $("mainNav").addEventListener("click", event => {
           const button = event.target.closest("button[data-view]"); if (!button) return;
+          if (button.classList.contains("hidden") || button.dataset.view === "ideas" && !canReviewIdeas()) return;
+          if (button.dataset.view !== "ideas" && viewVisible("ideas") && window.ICeClassIdeasAdmin?.canLeave() === false) {
+            event.stopImmediatePropagation(); return;
+          }
+          if (button.dataset.view !== "ideas") window.ICeClassIdeasAdmin?.suspend();
           document.querySelectorAll(".nav button").forEach(node => node.classList.toggle("active", node === button));
           document.querySelectorAll("main > .view").forEach(node => node.classList.add("hidden"));
           $(`view-${button.dataset.view}`).classList.remove("hidden");
@@ -1337,6 +1402,7 @@
           if (button.dataset.view === "history") loadHistory().catch(error => toast(error.message));
           if (button.dataset.view === "classroom-voice") loadClassroomVoice().catch(error => toast(error.message));
           if (button.dataset.view === "quiet") loadQuietHours().catch(error => toast(error.message));
+          if (button.dataset.view === "ideas") { prepareIdeasAdmin(); window.ICeClassIdeasAdmin?.load().catch(error => toast(error.message)); }
         });
         $("targetClass").addEventListener("change", () => { updatePresence(); loadRecent().catch(error => toast(error.message)); });
         $("classGradeFilter").addEventListener("click", event => {
@@ -1435,7 +1501,7 @@
              button.textContent = originalText;
            }
          });
-         $("addTeacherButton").addEventListener("click", () => { $("teacherForm").reset(); $("teacherError").textContent = ""; renderClassChecks("newTeacherClasses", []); updateStaffScope(); $("teacherDialog").showModal(); });
+         $("addTeacherButton").addEventListener("click", () => { $("teacherForm").reset(); $("teacherError").textContent = ""; renderClassChecks("newTeacherClasses", []); renderClassChecks("newTeachingClasses", []); updateStaffScope(); $("teacherDialog").showModal(); });
         $("classForm").addEventListener("submit", async event => {
           event.preventDefault(); $("classError").textContent = "";
           try { await api("/api/classes", { method: "POST", body: JSON.stringify({ name: $("className").value }) }); $("classDialog").close(); await loadClasses(); toast("班级已创建"); }
@@ -1456,13 +1522,14 @@
         $("teacherForm").addEventListener("submit", async event => {
           event.preventDefault(); $("teacherError").textContent = "";
           try {
-            await api("/api/teachers", { method: "POST", body: JSON.stringify({ username: $("teacherUsername").value, displayName: $("teacherDisplayName").value, password: $("teacherPassword").value, role: $("teacherRole").value, grade: $("teacherGrade").value, classIds: checkedValues("newTeacherClasses") }) });
+            await api("/api/teachers", { method: "POST", body: JSON.stringify({ username: $("teacherUsername").value, displayName: $("teacherDisplayName").value, password: $("teacherPassword").value, ...staffFormAssignment() }) });
             $("teacherDialog").close(); await loadTeachers(); toast("用户账号已创建");
           } catch (error) { $("teacherError").textContent = error.message; }
         });
         $("permissionForm").addEventListener("submit", async event => {
           event.preventDefault();
-          try { await api(`/api/teachers/${encodeURIComponent($("permissionTeacherId").value)}`, { method: "PATCH", body: JSON.stringify({ role: $("permissionRole").value, displayName: $("permissionDisplayName").value, grade: $("permissionGrade").value, classIds: checkedValues("permissionClasses") }) }); $("permissionDialog").close(); await loadTeachers(); toast("身份与管理范围已保存，该账号需重新登录"); }
+          $("permissionError").textContent = "";
+          try { await api(`/api/teachers/${encodeURIComponent($("permissionTeacherId").value)}`, { method: "PATCH", body: JSON.stringify({ displayName: $("permissionDisplayName").value, ...staffFormAssignment(true) }) }); $("permissionDialog").close(); await loadTeachers(); toast("身份与管理范围已保存，该账号需重新登录"); }
           catch (error) { $("permissionError").textContent = error.message; }
         });
         $("passwordForm").addEventListener("submit", async event => {
@@ -1505,7 +1572,7 @@
         toastTimers.set(node, setTimeout(() => { toastTimers.delete(node); node.remove(); }, 3500));
       }
 
-      window.ICeClass = { state, api, toast, refreshManagement: async () => {
+      window.ICeClass = { state, api, toast, classGrade, refreshManagement: async () => {
         await Promise.all([loadClasses(), loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
         window.dispatchEvent(new Event('iceclass-classes-changed'));
       }};
@@ -1516,17 +1583,19 @@
     })();
   </script>
   <script nonce="__CSP_NONCE__" src="/ui.js?v=9" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=10" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=7" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=1" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=23" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=10" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=5" defer></script>
+  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=32" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=3" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=8" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=9" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-voice.js?v=7" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban.js?v=48" defer></script>
 </body>

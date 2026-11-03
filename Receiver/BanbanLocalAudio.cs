@@ -59,8 +59,7 @@ internal static class BanbanVoiceModels
 {
     internal static string Extract(string resourcePrefix, string version)
     {
-        var assembly = typeof(BanbanWakeDetector).Assembly;
-        using var manifest = assembly.GetManifestResourceStream(resourcePrefix + "manifest.json")
+        using var manifest = VoiceResourceFiles.Open(resourcePrefix + "manifest.json")
             ?? throw new FileNotFoundException("缺少班班语音模型清单。");
         using var document = JsonDocument.Parse(manifest);
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "Voice", version);
@@ -76,7 +75,7 @@ internal static class BanbanVoiceModels
                 using var existing = File.OpenRead(path);
                 if (Convert.ToHexString(SHA256.HashData(existing)).Equals(expected, StringComparison.OrdinalIgnoreCase)) continue;
             }
-            using var source = assembly.GetManifestResourceStream(resourcePrefix + name)
+            using var source = VoiceResourceFiles.Open(resourcePrefix + name)
                 ?? throw new FileNotFoundException("缺少班班语音模型：" + name);
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try

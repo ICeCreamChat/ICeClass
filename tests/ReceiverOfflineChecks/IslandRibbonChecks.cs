@@ -61,6 +61,47 @@ internal static class IslandRibbonChecks
         var beforeMidnight=IslandRibbonPresentation.Build(midnight,At(23,59),View());
         Check(beforeMidnight.Text.Contains("60 秒") && beforeMidnight.Detail.Contains("自习"),"preparation countdown crosses midnight using the upcoming day's actual lesson");
         Check(IslandRibbonPresentation.ShortSubject("𠮷语文")=="𠮷", "subject abbreviation preserves a complete Unicode character");
+        var study = new IslandProfile {
+            WeekAnchor = "2026-09-07", Reminders = new() { Enabled = false },
+            Slots = [new() { Id="day", Label="第一节", Start=475, End=520 },
+                new() { Id="mid", Label="午间静校", Start=750, End=815 },
+                new() { Id="eve", Label="晚自习第一节", Start=1100, End=1190 }],
+            Lessons = [new() { SlotId="day", Weekday=1, Subject="数学" }]
+        };
+        DateTimeOffset StudyAt(int h, int m, int day=26) => new(2026,10,day,h,m,0,TimeSpan.FromHours(8));
+        IslandRibbonFrame StudyFrame(int h=7, int m=0, int day=26) => IslandRibbonPresentation.Build(study, StudyAt(h,m,day), View());
+        Check(StudyFrame().Items.Select(i => i.Subject).SequenceEqual(new[] { "数学", "午间静校", "晚自习第一节" }),
+            "unassigned configured study periods show their labels in chronological order");
+        Check(IslandSchedule.On(study,new(2026,10,26)).Count==1 && IslandSchedule.Next(study,StudyAt(12,30))?.Slot.Id=="day",
+            "ribbon placeholders do not become real courses or reminder events");
+        Check(StudyFrame(12,30).Items.Single(i => i.Current).Subject=="午间静校" &&
+            StudyFrame(13,35).Items.Single(i => i.Current).Subject=="课间休息",
+            "a study placeholder has a single current state and returns to break at its exact end");
+        Check(StudyFrame(day:25).Items.Count==0, "empty days do not fabricate study placeholders");
+        study.Lessons.Add(new() { SlotId="mid", Weekday=1, Subject="物理" });
+        Check(StudyFrame().Items.Single(i => i.Id=="mid").Subject=="物理", "a configured midday subject replaces the label without duplication");
+        study.DutyRotations["midday"] = new() { Enabled=true, CycleWeeks=2, WeekAnchor="2026-10-19", SlotIds=["mid"],
+            Lessons=[new() { SlotId="mid", Weekday=1, CycleWeek=1, Subject="化学" }, new() { SlotId="mid", Weekday=1, CycleWeek=2, Subject="生物" }] };
+        Check(StudyFrame().Items.Single(i => i.Id=="mid").Subject=="生物", "the ribbon uses the actual midday rotation week and subject");
+        study.Overrides.Add(new() { Date="2026-10-26", SlotId="mid", Subject="语文" });
+        Check(StudyFrame().Items.Single(i => i.Id=="mid").Subject=="语文", "a temporary midday substitution replaces the rotation subject");
+        study.Overrides[0].Cancelled=true;
+        Check(!StudyFrame().Items.Any(i => i.Id=="mid"), "an explicitly cancelled study period does not reappear as a placeholder");
+        study.Overrides.Clear();
+        study.Slots.AddRange([new() { Id="morning-reading", Label="晨读", Start=450, End=473 },
+            new() { Id="pm", Label="第五节", Start=840, End=885 }]);
+        study.Lessons.AddRange([new() { SlotId="morning-reading", Weekday=1, Subject="晨读" },
+            new() { SlotId="pm", Weekday=1, Subject="数学" }]);
+        var grouped = StudyFrame();
+        Check(grouped.Items.Single(i => i.Id=="day").SeparatorBefore && grouped.Items.Single(i => i.Id=="mid").SeparatorBefore &&
+            grouped.Items.Single(i => i.Id=="pm").SeparatorBefore,
+            "a divider follows morning reading and surrounds midday even when midday has a subject");
+        var middayBreak = StudyFrame(13,40);
+        Check(middayBreak.Items.Single(i => i.Id=="break").SeparatorBefore && !middayBreak.Items.Single(i => i.Id=="pm").SeparatorBefore,
+            "a break after midday keeps the divider immediately after midday without doubling it");
+        var morningBreak = StudyFrame(7,54);
+        Check(morningBreak.Items.Single(i => i.Id=="break").SeparatorBefore && !morningBreak.Items.Single(i => i.Id=="day").SeparatorBefore,
+            "the divider remains immediately after morning reading when the active break appears");
         return checks;
     }
 }

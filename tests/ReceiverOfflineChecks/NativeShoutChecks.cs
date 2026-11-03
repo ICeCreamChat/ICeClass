@@ -63,7 +63,7 @@ internal static class NativeShoutChecks
             await Display(new() { SenderName = "王老师", Text = "请带好练习册。", AlertLevel = "warning", DisplayDurationSec = 30, TtsVolume = 0 });
             var startingWidth = window.Width; await Task.Delay(850); var middleWidth = window.Width;
             await Task.Delay(1550);
-            Assert(!ClassroomIslandReveal.AnimationsEnabled() || window.Width > startingWidth + 96 && middleWidth > startingWidth + 8 && middleWidth < window.Width - 24,
+            Assert(window.Width > startingWidth + 96 && middleWidth > startingWidth + 8 && middleWidth < window.Width - 24,
                 "the important island spreads visibly over Banban's pull, with a readable intermediate width before settling");
             Assert(!ribbon.ImportantExpanded && window.ClientSize.Height <= 72,
                 "a short important message stays in the widened thin island; only long content opens two lines");
@@ -71,7 +71,7 @@ internal static class NativeShoutChecks
             await Display(new() { SenderName = "王老师", Text = "第三节是实验课，请带好课本和练习册，提前到实验室集合，按学号就座。", AlertLevel = "warning", DisplayDurationSec = 30, TtsVolume = 0 });
             var repeatedStartingWidth = window.Width;
             await Task.Delay(2500); Capture(window, "important");
-            Assert(!ClassroomIslandReveal.AnimationsEnabled() || repeatedStartingWidth < previousExpandedWidth - 96 && window.Width > repeatedStartingWidth + 96,
+            Assert(repeatedStartingWidth < previousExpandedWidth - 96 && window.Width > repeatedStartingWidth + 96,
                 "replaying an important shout starts from the short island again and visibly pulls to its expanded width");
             Assert(((Control)Field(window, "_importantBody")).IsEffectivelyVisible && window.ClientSize.Height is > 120 and < 170,
                 "important shouts reveal two lines inside the widened island without a separate card");
@@ -146,7 +146,7 @@ internal static class NativeShoutChecks
                 "urgent pulling has alternating running poses as well as the important shout");
             mascot.ReviewSeconds = null;
             await Task.Delay(1750);
-            Assert(!ClassroomIslandReveal.AnimationsEnabled() || window.Width > urgentStartingWidth + 96,
+            Assert(window.Width > urgentStartingWidth + 96,
                 "urgent shouts pull the same short red island to its expanded width without delaying the message");
             Capture(window, "urgent");
             Assert(!MascotFrame(.65, "urgent-horn-carried").SequenceEqual(MascotFrame(2.5, "urgent-horn-raised")),

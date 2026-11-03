@@ -73,7 +73,8 @@ internal sealed class ReadingBrowser : NativeControlHost
         _controller.NotifyParentWindowPositionChanged();
     }
 
-    public void FocusPage() => _controller?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+    public void FocusPage() => FocusPage(CoreWebView2MoveFocusReason.Programmatic);
+    public void FocusPage(CoreWebView2MoveFocusReason reason) => _controller?.MoveFocus(reason);
     public void SetPageVisible(bool visible) { if (_controller is not null) _controller.IsVisible = visible; }
     public void DisposeBrowser()
     {

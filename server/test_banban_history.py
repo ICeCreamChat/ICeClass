@@ -208,6 +208,7 @@ class HistoryTest(ServerTestCase):
     async def test_late_restart_does_not_delete_new_period_threads(self):
         await self.seed()
         user = self.admin()
+        self.db.run('UPDATE banban_history_policy SET next_cleanup_at=?', (stamp(2026, 11, 1),))
         with patch.object(service, 'now_ms', return_value=stamp(2026, 10, 25)):
             old = self.history.create(user)['id']
             self.add(user, old, '旧周期')

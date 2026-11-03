@@ -56,12 +56,19 @@
       const selected = d.lessons.find(l => l.start > d.minute) || d.lessons.find(l => l.start <= d.minute && d.minute < l.end) || d.lessons[0] || d.demoLesson;
       let m = d.minute + (d.live ? ((d.second || 0) + this.rotationElapsed) / 60 : 0);
       if (this.elapsed !== null && selected) m = this.elapsed < 17 ? selected.start - 1 : this.elapsed < 22 ? selected.start : selected.end;
-      const items = d.lessons.map((l,index) => ({ id: l.id, subject: l.subject, time: `${time(l.start)}-${time(l.end)}`, current: l.start <= m && m < l.end, past: l.end <= m, separatorBefore:index>0 && l.start-d.lessons[index-1].end>=40, progress: Math.max(0, Math.min(1, (m-l.start)/(l.end-l.start))) }));
+      const displayed = this.elapsed === null ? d.ribbonLessons || d.lessons : d.lessons;
+      const isolated = l => l?.ribbonGroup === 'morning' || l?.ribbonGroup === 'midday';
+      const items = displayed.map((l,index) => ({ id: l.id, subject: l.subject, time: `${time(l.start)}-${time(l.end)}`, current: l.start <= m && m < l.end, past: l.end <= m, separatorBefore:index>0 && (l.start-displayed[index-1].end>=40 || isolated(displayed[index-1]) || l.ribbonGroup === 'midday'), progress: Math.max(0, Math.min(1, (m-l.start)/(l.end-l.start))) }));
       const next = d.lessons.find(l => l.start > m);
-      if (!items.some(i => i.current) && next) {
-        const previous = [...d.lessons].reverse().find(l => l.end <= m);
-        const start = previous?.end ?? Math.max(0, next.start - (d.reminders.prepareMinutes || 2));
-        if(previous || m>=start) items.splice(items.findIndex(i => i.id === next.id), 0, { id: 'break', subject: previous ? '课间休息' : '课前准备', time: `${time(start)}-${time(next.start)}`, current: true, progress: Math.max(0, Math.min(1, (m-start)/(next.start-start))) });
+      const nextDisplay = displayed.find(l => l.start > m);
+      if (!items.some(i => i.current) && nextDisplay) {
+        const previous = [...displayed].reverse().find(l => l.end <= m);
+        const start = previous?.end ?? Math.max(0, nextDisplay.start - (d.reminders.prepareMinutes || 2));
+        if(previous || m>=start) {
+          const index = items.findIndex(i => i.id === nextDisplay.id), separatorBefore = isolated(previous);
+          if (separatorBefore) items[index].separatorBefore = nextDisplay.ribbonGroup === 'midday';
+          items.splice(index, 0, { id: 'break', subject: previous ? '课间休息' : '课前准备', time: `${time(start)}-${time(nextDisplay.start)}`, current: true, separatorBefore, progress: Math.max(0, Math.min(1, (m-start)/(nextDisplay.start-start))) });
+        }
       }
       const base = { date: dateText, items, progress: 0, accent: false, detail: '' };
       const seconds = next ? (next.start-m)*60 : 0;
@@ -78,7 +85,7 @@
         if (t >= 22 && t < 25) return { ...base, key: 'demo:end', accent: true, text: '下课' };
       } else {
         if (d.enabled === false) return { ...base, key: 'hidden:disabled', hidden: true, text: '教室浮岛已关闭' };
-        if (d.appearance.hideDuringLessons && items.some(i => i.current && i.id !== 'break')) return { ...base, key: 'hidden:lesson', hidden: true, text: '上课期间自动隐藏' };
+        if (d.lessons.some(l => l.start <= m && m < l.end && (d.visibility ? d.visibility.hiddenSlotIds.includes(l.id) : d.appearance.hideDuringLessons))) return { ...base, key: 'hidden:lesson', hidden: true, text: '上课期间自动隐藏' };
         if (next && d.reminders.enabled && d.reminders.prepare && seconds > 0 && seconds <= d.reminders.prepareMinutes * 60) {
           const progress = seconds / (d.reminders.prepareMinutes * 60);
           return Math.floor((d.reminders.prepareMinutes * 60 - seconds) / 10) % 2 === 1
@@ -134,7 +141,7 @@
         fitCells();
       }
       if(used()>available) {
-        dateWidth=88; gap=6; padding=12; itemGap=1; separator=6; subjectSize=14;
+        dateWidth=64; gap=6; padding=12; itemGap=1; separator=6; subjectSize=14;
         available=Math.max(1,outerWidth-dateWidth-gap-padding); fitCells();
         if(used()>available && inactive) {
           cell=Math.max(1,freeCells()/inactive); subjectSize=Math.min(subjectSize,Math.max(1,cell-2));
@@ -153,7 +160,7 @@
         layer.append(message);
         this.fillMessage(layer,state);
       } else {
-        const date=make('span','ir-date'); date.style.flexBasis=`${dateWidth}px`;
+        const date=make('span','ir-date' + (dateWidth<80 ? ' is-stacked' : '')); date.style.flexBasis=`${dateWidth}px`;
         const split=state.date?.lastIndexOf(' ');
         if(split>0) date.append(make('span','ir-weekday',state.date.slice(0,split)),make('strong','ir-calendar',state.date.slice(split+1)));
         else date.textContent=state.date;

@@ -30,8 +30,8 @@ internal static class ShellSettingsReview
                 var mascot = about.GetVisualDescendants().OfType<AboutThankYouMascot>().Single();
                 mascot.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Task.Delay(1100);
-                Assert(DesktopStyle.AnimationsEnabled() ? mascot.IsPlaying && mascot.CurrentFrame == 7 : !mascot.IsPlaying && mascot.CurrentFrame == 0,
-                    $"{width}: the thank-you mascot bows on replay and respects reduced motion");
+                Assert(mascot.IsPlaying && mascot.CurrentFrame == 7,
+                    $"{width}: the thank-you mascot bows on replay regardless of the Windows motion preference");
                 var licenses = about.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "许可与说明");
                 licenses.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Task.Delay(50); about.UpdateLayout();

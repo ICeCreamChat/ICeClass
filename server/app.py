@@ -34,7 +34,13 @@ from management import install_management, check_school_code, record_computer_in
 from banban import install_banban
 from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
 from desktop_release import install_desktop_updates
+from update_payloads import install_update_payloads, install_desktop_update_activity
+from client_downloads import install_client_downloads
 from island import install_island
+from feedback import install_feedback
+from client_diagnostics import install_client_diagnostics, cleanup_client_diagnostics
+from ideas import install_ideas
+from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -189,11 +195,12 @@ class Store:
 
     def _ensure_staff_roles(self) -> None:
         definition = self.db.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]
-        if "'grade_leader'" in definition:
+        if "'grade_leader'" in definition and "'subject_teacher'" in definition:
             return
         # Rebuild the parent table with foreign keys suspended, preserving child rows.
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         replacement = re.search(r"CREATE TABLE users \([\s\S]*?\n\);", schema).group(0)
+        replacement = replacement.replace("'grade_leader'", "'grade_leader', 'subject_teacher'")
         extras = self.db.execute("SELECT sql FROM sqlite_master WHERE tbl_name='users' AND type IN ('index','trigger') AND sql IS NOT NULL").fetchall()
         columns = [row[1] for row in self.db.execute('PRAGMA table_info(users)')]
         self.db.execute("PRAGMA foreign_keys=OFF")
@@ -214,6 +221,11 @@ class Store:
             self.db.execute("PRAGMA foreign_keys=ON")
 
     def _ensure_feature_schema(self) -> None:
+        self.db.execute("""CREATE TABLE IF NOT EXISTS teaching_classes (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+            PRIMARY KEY (user_id, class_id)
+        )""")
         self.db.execute("""CREATE TABLE IF NOT EXISTS user_grades (
             user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
             grade TEXT NOT NULL CHECK(grade IN ('高一','高二','高三'))
@@ -495,7 +507,7 @@ def classroom_identity(request: web.Request) -> tuple[dict[str, Any] | None, str
     if not device or device['class_id'] != request.headers.get("X-ICeClass-Class", ""):
         return None, "教室绑定已失效，请在教室设置中重新绑定班级。"
     teachers = store(request).all(
-        """SELECT u.id,u.username,u.display_name,u.role,u.updated_at,c.name AS class_name
+        """SELECT u.id,u.role,u.updated_at,c.name AS class_name
            FROM teacher_classes tc JOIN users u ON u.id=tc.user_id JOIN classes c ON c.id=tc.class_id
            WHERE tc.class_id=? AND u.role='teacher' AND u.enabled=1 AND u.deleted_at IS NULL LIMIT 2""",
         (device['class_id'],),
@@ -510,7 +522,7 @@ def classroom_identity(request: web.Request) -> tuple[dict[str, Any] | None, str
     context = f"classroom-banban:{device['id']}:{device['class_id']}:{teacher['id']}:{teacher['updated_at']}"
     proof = hmac.new(request.headers['Authorization'][7:].encode(), context.encode(), hashlib.sha256).hexdigest()
     return {
-        'id': teacher['id'], 'username': teacher['username'], 'displayName': teacher['display_name'],
+        'id': teacher['id'], 'username': '', 'displayName': teacher['class_name'],
         'role': 'teacher', 'csrfToken': proof, 'grade': None, 'permissions': capabilities(teacher),
         'classroom': {'deviceId': device['id'], 'classId': device['class_id'], 'className': teacher['class_name']},
     }, ""
@@ -617,6 +629,7 @@ def quiet_schedule_payload(db: Store) -> dict[str, Any]:
     }
 
 
+@teacher_read('quiet', '查看禁言时间')
 async def get_quiet_hours(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -624,6 +637,8 @@ async def get_quiet_hours(request: web.Request) -> web.Response:
     return json_response(quiet_schedule_payload(store(request)))
 
 
+@teacher_action('quiet.update', '修改禁言时间', fields='periods', roles=tuple(sorted(SCHOOL_ROLES)),
+                impact='将替换学校禁言时间表。')
 async def update_quiet_hours(request: web.Request) -> web.Response:
     user = require_admin(request)
     if isinstance(user, web.Response):
@@ -664,9 +679,10 @@ async def update_quiet_hours(request: web.Request) -> web.Response:
     return json_response(quiet_schedule_payload(db))
 
 
-def can_access_class(db: Store, user: dict[str, Any], class_id: str, include_disabled: bool = False) -> bool:
+def can_access_class(db: Store, user: dict[str, Any], class_id: str, include_disabled: bool = False,
+                     *, include_teaching: bool = True) -> bool:
     enabled = "" if include_disabled else " AND c.enabled=1"
-    clause, args = scope_sql(user)
+    clause, args = scope_sql(user, include_teaching=include_teaching)
     row = db.one(f'SELECT 1 ok FROM classes c WHERE c.id=?{enabled} AND {clause}', (class_id, *args))
     return bool(row)
 
@@ -874,6 +890,7 @@ async def change_password(request: web.Request) -> web.Response:
     return response
 
 
+@teacher_read('classes', '查看班级')
 async def list_classes(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -885,9 +902,14 @@ async def list_classes(request: web.Request) -> web.Response:
                (SELECT MAX(last_seen_at) FROM devices d WHERE d.class_id=c.id AND d.enabled=1) last_seen_at
                FROM classes c WHERE {clause} ORDER BY c.name""", args)
     rows.sort(key=lambda row: class_sort_key(row.get("name")))
+    for row in rows:
+        managed = can_access_class(db, user, row['id'], include_disabled=True, include_teaching=False)
+        row['canEditIsland'] = managed
+        row['canReceiveVoice'] = managed
     return json_response({"classes": rows})
 
 
+@teacher_action('class.create', '创建班级', fields='name', roles=tuple(sorted(MANAGER_ROLES)))
 async def create_class(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -910,6 +932,7 @@ async def create_class(request: web.Request) -> web.Response:
     return json_response({"id": class_id, "name": name}, 201)
 
 
+@teacher_action('class.batch-create', '批量创建班级', fields='grade start end', roles=tuple(sorted(MANAGER_ROLES)))
 async def batch_create_classes(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -940,6 +963,8 @@ async def batch_create_classes(request: web.Request) -> web.Response:
     return json_response({"created": created, "skipped": end - start + 1 - len(created)})
 
 
+@teacher_action('class.update', '修改班级', fields='name enabled', target='class',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='停用会断开该班设备；更名会同步到教室。')
 async def update_class(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -970,6 +995,7 @@ async def update_class(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_read('class.status', '查看班级在线状态', target='class')
 async def class_status(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -980,6 +1006,9 @@ async def class_status(request: web.Request) -> web.Response:
     return json_response({"online": rooms(request).online(class_id)})
 
 
+@teacher_action('enrollment.class.create', '生成班级绑定码', target='class',
+                roles=tuple(sorted(MANAGER_ROLES)), workflow='private-result',
+                impact='将生成有效期为 15 分钟的班级绑定码；绑定码仅在本人界面显示。')
 async def enrollment_code(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1063,6 +1092,7 @@ async def enroll_device(request: web.Request) -> web.Response:
     return json_response({"deviceId": device_id, "deviceToken": token, "classId": row["class_id"], "className": row["class_name"]})
 
 
+@teacher_read('users', '查看账号与授权', roles=tuple(sorted(MANAGER_ROLES)))
 async def list_teachers(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1077,6 +1107,10 @@ async def list_teachers(request: web.Request) -> web.Response:
         clause, args = scope_sql(teacher)
         teacher['classes'] = db.all(f'SELECT c.id,c.name,c.enabled FROM classes c WHERE {clause} ORDER BY c.name', args)
         teacher['classes'].sort(key=lambda c: class_sort_key(c['name']))
+        for key, table in (('headClasses', 'teacher_classes'), ('teachingClasses', 'teaching_classes')):
+            teacher[key] = db.all(f'''SELECT c.id,c.name,c.enabled FROM classes c
+                JOIN {table} assignment ON assignment.class_id=c.id WHERE assignment.user_id=?''', (teacher['id'],))
+            teacher[key].sort(key=lambda c: class_sort_key(c['name']))
         teacher['grade'] = (db.one('SELECT grade FROM user_grades WHERE user_id=?', (teacher['id'],)) or {}).get('grade')
         teacher['canManage'] = editable
         visible.append(teacher)
@@ -1091,42 +1125,48 @@ def staff_assignment(db, actor, role, body, existing=None):
         if grade is None and existing and existing['role'] == role:
             grade = (db.one('SELECT grade FROM user_grades WHERE user_id=?', (existing['id'],)) or {}).get('grade')
         if grade not in GRADES:
-            raise ValueError('请为年级部长选择负责年级。')
+            raise ValueError('请为年级部选择负责年级。')
         if not can_manage_grade(db, actor, grade):
             raise PermissionError('不能授权其他年级。')
-        return [], grade
-    if role != 'teacher':
-        return [], None
-    requested = body.get('classIds')
-    if requested is None:
-        requested = [r['class_id'] for r in db.all('SELECT class_id FROM teacher_classes WHERE user_id=?', (existing['id'],))] if existing else []
-    if not isinstance(requested, list) or len(requested) > 200 or any(not isinstance(cid, str) for cid in requested):
-        raise ValueError('班级授权格式不正确。')
-    assigned = list(dict.fromkeys(requested))
+        return [], [], grade
+    if role not in {'teacher', 'subject_teacher'}:
+        return [], [], None
+
+    def assignments(key, table, legacy=False, preserve=True):
+        requested = body.get(key, body.get('classIds') if legacy else None)
+        if requested is None:
+            requested = [r['class_id'] for r in db.all(f'SELECT class_id FROM {table} WHERE user_id=?', (existing['id'],))] if existing and preserve else []
+        if not isinstance(requested, list) or len(requested) > 200 or any(not isinstance(cid, str) for cid in requested):
+            raise ValueError('班级授权格式不正确。')
+        if key in body and legacy and 'classIds' in body and body['classIds'] != requested:
+            raise ValueError('班级授权字段不一致，请刷新后重试。')
+        return list(dict.fromkeys(requested))
+
+    heads = assignments('headClassIds', 'teacher_classes', legacy=role == 'teacher', preserve=role == 'teacher')
+    teaching = assignments('teachingClassIds', 'teaching_classes', legacy=role == 'subject_teacher')
+    if role == 'subject_teacher' and heads:
+        raise ValueError('任课老师不能分配带班班级。')
+    assigned = set(heads) | set(teaching)
     if any(not db.one('SELECT id FROM classes WHERE id=?', (cid,)) for cid in assigned):
         raise ValueError('有班级已不存在，请刷新后重试。')
-    if actor['role'] not in SCHOOL_ROLES and (not assigned or not set(assigned).issubset(class_ids(db, actor))):
+    if actor['role'] not in SCHOOL_ROLES and (not assigned or not assigned.issubset(class_ids(db, actor))):
         raise PermissionError('只能授权本人管理范围内的班级。')
-    return assigned, None
+    return heads, teaching, None
 
 
-def save_staff_assignment(db, teacher_id, assigned, grade):
-    replace_teacher_classes(db, teacher_id, assigned)
+def save_staff_assignment(db, teacher_id, heads, teaching, grade):
+    for table, assigned in (('teacher_classes', heads), ('teaching_classes', teaching)):
+        db.run(f'DELETE FROM {table} WHERE user_id=?', (teacher_id,))
+        for cid in assigned:
+            db.run(f'INSERT INTO {table}(user_id,class_id) VALUES(?,?)', (teacher_id, cid))
     db.run('DELETE FROM user_grades WHERE user_id=?', (teacher_id,))
     if grade:
         db.run('INSERT INTO user_grades(user_id,grade) VALUES(?,?)', (teacher_id, grade))
 
 
-def replace_teacher_classes(db: Store, teacher_id: str, requested: Any) -> None:
-    class_ids = list(dict.fromkeys(value for value in (requested or []) if isinstance(value, str)))[:200]
-    db.run("DELETE FROM teacher_classes WHERE user_id=?", (teacher_id,))
-    for class_id in class_ids:
-        db.run(
-            "INSERT INTO teacher_classes(user_id, class_id) SELECT ?, id FROM classes WHERE id=?",
-            (teacher_id, class_id),
-        )
-
-
+@teacher_action('user.create', '创建账号',
+                fields='username displayName role classIds headClassIds teachingClassIds grade',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='请在确认时填写初始密码；密码不会交给班班。')
 async def create_teacher(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1136,7 +1176,7 @@ async def create_teacher(request: web.Request) -> web.Response:
     display_name = str(body.get("displayName", "")).strip()
     role = body.get("role", "teacher")
     if not isinstance(role, str) or role not in STAFF_ROLES:
-        return json_response({"error": "请选择校长、主任、年级部长或班主任教师。"}, 400)
+        return json_response({"error": "请选择校长、主任、年级部、班主任或任课老师。"}, 400)
     if not USERNAME_RE.match(username):
         return json_response({"error": "用户名需为 3 至 64 位字母、数字或 ._@-。"}, 400)
     if not 1 <= len(display_name) <= 40:
@@ -1148,7 +1188,7 @@ async def create_teacher(request: web.Request) -> web.Response:
     timestamp = now_ms()
     db = store(request)
     try:
-        assigned, grade = staff_assignment(db, user, role, body)
+        heads, teaching, grade = staff_assignment(db, user, role, body)
     except (ValueError, PermissionError) as error:
         return json_response({'error': str(error)}, 403 if isinstance(error, PermissionError) else 400)
     try:
@@ -1157,13 +1197,16 @@ async def create_teacher(request: web.Request) -> web.Response:
                 "INSERT INTO users(id, username, display_name, role, password_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
                 (teacher_id, username, display_name, role, hash_password(body["password"]), timestamp, timestamp),
             )
-            save_staff_assignment(db, teacher_id, assigned, grade)
+            save_staff_assignment(db, teacher_id, heads, teaching, grade)
             audit(db, user["id"], "teacher.create", "user", teacher_id, username)
     except sqlite3.IntegrityError:
         return json_response({"error": "用户名已经存在。"}, 409)
     return json_response({"id": teacher_id, "username": username, "displayName": display_name, "role": role}, 201)
 
 
+@teacher_action('user.update', '修改账号与授权',
+                fields='displayName role enabled classIds headClassIds teachingClassIds grade', target='user',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='停用或调整权限后，该账号需要重新登录。')
 async def update_teacher(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1179,24 +1222,27 @@ async def update_teacher(request: web.Request) -> web.Response:
     display_name = str(body.get("displayName", existing["display_name"])).strip()
     role = body.get("role", existing["role"])
     if not isinstance(role, str) or role not in STAFF_ROLES:
-        return json_response({"error": "请选择校长、主任、年级部长或班主任教师。"}, 400)
+        return json_response({"error": "请选择校长、主任、年级部、班主任或任课老师。"}, 400)
     if not 1 <= len(display_name) <= 40:
         return json_response({"error": "姓名应为 1 至 40 个字符。"}, 400)
     enabled = existing["enabled"] if "enabled" not in body else int(bool(body["enabled"]))
     try:
-        assigned, grade = staff_assignment(db, user, role, body, existing)
+        heads, teaching, grade = staff_assignment(db, user, role, body, existing)
     except (ValueError, PermissionError) as error:
         return json_response({'error': str(error)}, 403 if isinstance(error, PermissionError) else 400)
     with db.transaction():
         db.run("UPDATE users SET display_name=?, role=?, enabled=?, updated_at=? WHERE id=?", (display_name, role, enabled, now_ms(), teacher_id))
-        if any(key in body for key in ('classIds', 'grade', 'role')):
-            save_staff_assignment(db, teacher_id, assigned, grade)
-        if not enabled or role != existing["role"] or 'classIds' in body or 'grade' in body:
+        assignment_changed = any(key in body for key in ('classIds', 'headClassIds', 'teachingClassIds', 'grade', 'role'))
+        if assignment_changed:
+            save_staff_assignment(db, teacher_id, heads, teaching, grade)
+        if not enabled or assignment_changed:
             db.run("DELETE FROM sessions WHERE user_id=?", (teacher_id,))
         audit(db, user["id"], "teacher.update", "user", teacher_id, json.dumps({"displayName": display_name, "role": role, "enabled": bool(enabled)}, ensure_ascii=False))
     return json_response({"ok": True})
 
 
+@teacher_action('user.password', '重置账号密码', target='user', roles=tuple(sorted(MANAGER_ROLES)),
+                impact='请在确认时填写新密码；原有登录会失效，密码不会交给班班。')
 async def reset_teacher_password(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1222,10 +1268,13 @@ async def reset_teacher_password(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_action('user.classes', '修改账号班级授权', fields='classIds headClassIds teachingClassIds grade',
+                target='user', roles=tuple(sorted(MANAGER_ROLES)), impact='调整授权后，该账号需要重新登录。')
 async def set_teacher_classes(request: web.Request) -> web.Response:
     return await update_teacher(request)
 
 
+@teacher_read('device.bindings', '查看设备绑定', roles=tuple(sorted(MANAGER_ROLES)))
 async def list_devices(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1243,6 +1292,8 @@ async def list_devices(request: web.Request) -> web.Response:
     return json_response({"devices": rows})
 
 
+@teacher_action('device.update', '修改设备绑定', fields='name classId enabled note verified', target='device',
+                roles=tuple(sorted(MANAGER_ROLES)), impact='改绑或停用会影响这台教室电脑的连接。')
 async def update_device(request: web.Request) -> web.Response:
     user = require_manager(request)
     if isinstance(user, web.Response):
@@ -1290,6 +1341,8 @@ async def update_device(request: web.Request) -> web.Response:
     return json_response({"ok": True})
 
 
+@teacher_action('notice.send', '发送班级通知', fields='text alertLevel ttsVolume ttsSpeed displayDurationSec',
+                target='class', confirm=False)
 async def send_shout(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1379,6 +1432,7 @@ async def send_shout(request: web.Request) -> web.Response:
     return json_response({"id": message_id, "status": "sent"}, 202)
 
 
+@teacher_manual('通知原声需要教室设备凭证并返回原始音频流，由已绑定的教室播放器播放。')
 async def shout_audio(request: web.Request) -> web.StreamResponse:
     device = authenticate_device(request)
     if not device:
@@ -1397,6 +1451,7 @@ async def shout_audio(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(target, headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
 
 
+@teacher_manual('教室来音需要设备凭证和现场录制的 WAV 音频，由教室端录音界面上传。')
 async def upload_classroom_voice(request: web.Request) -> web.Response:
     device = authenticate_device(request)
     if not device:
@@ -1445,20 +1500,21 @@ async def upload_classroom_voice(request: web.Request) -> web.Response:
     return json_response({"id": message_id, "status": "sent", "durationMs": duration_ms}, 202)
 
 
+@teacher_read('voice', '查看教室来音记录', fields='classId', head_only=True)
 async def list_classroom_voice(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
         return user
     class_id = request.query.get("classId", "")
     db = store(request)
-    if class_id and not can_access_class(db, user, class_id, include_disabled=True):
+    if class_id and not can_access_class(db, user, class_id, include_disabled=True, include_teaching=False):
         return json_response({"error": "没有执行此操作的权限。"}, 403)
     conditions = ["m.expires_at>?", "m.audio_path IS NOT NULL"]
     params: list[Any] = [now_ms()]
     if class_id:
         conditions.append("m.class_id=?")
         params.append(class_id)
-    clause, args = scope_sql(user, 'm.class_id')
+    clause, args = scope_sql(user, 'm.class_id', include_teaching=False)
     conditions.append(clause)
     params.extend(args)
     where = " AND ".join(conditions)
@@ -1475,6 +1531,7 @@ async def list_classroom_voice(request: web.Request) -> web.Response:
     return json_response({"messages": rows})
 
 
+@teacher_manual('播放来音会返回原始音频并登记已听状态，需要有本班管理权限的本人在来音界面收听。')
 async def classroom_voice_audio(request: web.Request) -> web.StreamResponse:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1485,7 +1542,7 @@ async def classroom_voice_audio(request: web.Request) -> web.StreamResponse:
         "SELECT id, class_id, audio_path FROM classroom_voice_messages WHERE id=? AND expires_at>?",
         (message_id, now_ms()),
     )
-    if not row or not row["audio_path"] or not can_access_class(db, user, row["class_id"], include_disabled=True):
+    if not row or not row["audio_path"] or not can_access_class(db, user, row["class_id"], include_disabled=True, include_teaching=False):
         return json_response({"error": "语音不存在、已清理或无权播放。"}, 404)
     target = (request.app[AUDIO_ROOT_KEY] / str(row["audio_path"])).resolve()
     if request.app[AUDIO_ROOT_KEY].resolve() not in target.parents or not target.is_file():
@@ -1497,6 +1554,8 @@ async def classroom_voice_audio(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(target, headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
 
 
+@teacher_action('voice.delete', '删除来音', target='voice', head_only=True,
+                impact='将删除指定来音和音频文件。')
 async def delete_classroom_voice(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1509,7 +1568,7 @@ async def delete_classroom_voice(request: web.Request) -> web.Response:
     )
     if not row:
         return json_response({"error": "语音留言不存在或已经删除。"}, 404)
-    if not can_access_class(db, user, row["class_id"], include_disabled=True):
+    if not can_access_class(db, user, row["class_id"], include_disabled=True, include_teaching=False):
         return json_response({"error": "没有执行此操作的权限。"}, 403)
     with db.transaction():
         delete_classroom_voice_file(db, request.app[AUDIO_ROOT_KEY], message_id)
@@ -1539,6 +1598,7 @@ def history_query(request: web.Request, export: bool = False) -> tuple[dict[str,
     return user, f"{join} {where}", tuple(params)
 
 
+@teacher_read('history', '查看通知记录', fields='classId limit offset')
 async def list_history(request: web.Request) -> web.Response:
     query = history_query(request)
     if isinstance(query, web.Response):
@@ -1557,6 +1617,7 @@ async def list_history(request: web.Request) -> web.Response:
     return json_response({"history": rows[:limit], "hasMore": len(rows) > limit, "offset": offset})
 
 
+@teacher_action('history.export', '导出通知记录', fields='classId', confirm=False, workflow='download')
 async def export_history(request: web.Request) -> web.Response:
     query = history_query(request, export=True)
     if isinstance(query, web.Response):
@@ -1588,6 +1649,7 @@ async def export_history(request: web.Request) -> web.Response:
     )
 
 
+@teacher_action('history.delete', '删除通知记录', target='history', impact='将删除指定通知记录。')
 async def delete_history(request: web.Request) -> web.Response:
     user = require_user(request)
     if isinstance(user, web.Response):
@@ -1670,6 +1732,8 @@ async def static_file(request: web.Request) -> web.Response:
     relative = request.match_info.get("path", "") or "index.html"
     if relative in {"reading", "reading/"}:
         relative = "reading/index.html"
+    if relative in {"ideas", "ideas/"}:
+        relative = "ideas/index.html"
     if relative == "favicon.svg":
         target = WEB_ROOT / "favicon.svg"
     elif relative == "index.html":
@@ -1697,6 +1761,12 @@ async def static_file(request: web.Request) -> web.Response:
         f"default-src 'self'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; img-src 'self' data:; "
         "media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
+    if relative == "ideas/index.html":
+        response.headers["Content-Security-Policy"] = (
+            f"default-src 'self'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+            "img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; connect-src 'self'; "
+            "frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        )
     if relative == "reading/index.html":
         # The bundled companion uses trusted inline scripts/styles and srcdoc game frames.
         response.headers["Content-Security-Policy"] = (
@@ -1725,6 +1795,7 @@ async def error_and_security_middleware(request: web.Request, handler):
 async def cleanup(app: web.Application) -> None:
     db = app[STORE_KEY]
     timestamp = now_ms()
+    cleanup_client_diagnostics(db, timestamp)
     if history := app.get(BANBAN_HISTORY_KEY):
         history.cleanup_due()
     stale_audio_ids = [
@@ -1799,7 +1870,7 @@ async def on_cleanup(app: web.Application) -> None:
 def create_app(database_path: Path | None = None, receiver_release_root: Path | None = None, desktop_release_root: Path | None = None) -> web.Application:
     resolved_database = database_path or DATABASE_PATH
     audio_root = resolved_database.parent / "audio"
-    app = web.Application(middlewares=[error_and_security_middleware], client_max_size=MAX_AUDIO_BYTES + 512 * 1024)
+    app = web.Application(middlewares=[error_and_security_middleware], client_max_size=9 * 1024 * 1024)
     app[STORE_KEY] = Store(resolved_database)
     app[AUDIO_ROOT_KEY] = audio_root
     app[ROOMS_KEY] = Rooms(app[STORE_KEY], audio_root)
@@ -1818,6 +1889,11 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     app.router.add_post("/api/device/enroll", enroll_device)
     app.router.add_get("/api/receiver/update", receiver_update)
     app.router.add_get("/api/receiver/update/download", receiver_update_download)
+    install_update_payloads(app, app[RECEIVER_RELEASE_ROOT_KEY], executable=RECEIVER_EXECUTABLE_NAME,
+                            prefix="/api/receiver/update", reply=json_response,
+                            parse_version=parse_release_version, authenticate=authenticate_device)
+    install_desktop_update_activity(app, sys.modules[__name__])
+    install_client_downloads(app, app[RECEIVER_RELEASE_ROOT_KEY].parent / 'client-downloads', json_response)
     app.router.add_get("/api/classes", list_classes)
     app.router.add_post("/api/classes", create_class)
     app.router.add_post("/api/classes/batch", batch_create_classes)
@@ -1847,6 +1923,9 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_management(app, sys.modules[__name__])
     install_island(app, sys.modules[__name__])
     install_banban(app, sys.modules[__name__])
+    install_feedback(app, sys.modules[__name__])
+    install_client_diagnostics(app, sys.modules[__name__])
+    install_ideas(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)

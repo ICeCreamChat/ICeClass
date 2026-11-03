@@ -15,7 +15,7 @@
 .ranking-heading { align-items: center; padding: 25px 26px 20px; }
 .ranking-eyebrow { display: block; color: #527697; font-size: 11px; font-weight: 600; letter-spacing: 2px; margin-bottom: 7px; }
 .ranking-heading h2 { font-size: 23px; letter-spacing: -.5px; }
-.ranking-heading-end { display: grid; justify-items: end; gap: 10px; min-width: 0; }
+.ranking-heading-end { display: grid; justify-items: end; gap: 10px; min-width: 0; max-width: 100%; margin-inline-start: auto; text-align: right; }
 .ranking-heading-end > span { color: #677585; font-size: 12px; }
 .ranking-switch { display: inline-flex; border: 1px solid #e1e8f0; padding: 3px; border-radius: 12px; background: #f2f6fb; }
 .ranking-switch button { min-height: 40px; padding: 6px 17px; border: 0; border-radius: 9px; color: #52667c; font-size: 14px; font-weight: 600; background: transparent; }
@@ -98,7 +98,6 @@
 #readingCalendarTitle:focus-visible { outline-offset: 5px; border-radius: 3px; }
 @media(max-width:1150px) {
   .ranking-heading { flex-wrap: wrap; align-items: flex-start; }
-  .ranking-heading-end { justify-items: start; }
   .ranking-leaders { gap: 9px; }
   .ranking-leader { padding: 15px; }
   .leader-class { font-size: 16px; }
@@ -112,7 +111,7 @@
   .reading-grade-options button { min-height: 44px; padding: 7px 13px; }
   .reading-grade-hint { width: 100%; margin-left: 0; font-size: 11px; }
   .ranking-heading { padding: 19px 17px 17px; gap: 15px; }
-  .ranking-heading-end { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 9px 12px; }
+  .ranking-heading-end { width: 100%; gap: 9px; }
   .ranking-heading-end > span { font-size: 11px; }
   .ranking-heading h2 { font-size: 22px; }
   .ranking-switch button { padding: 7px 18px; }

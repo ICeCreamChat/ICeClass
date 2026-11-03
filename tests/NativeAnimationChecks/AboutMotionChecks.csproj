@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj/about-motion/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin/about-motion/</BaseOutputPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);ABOUT_MOTION_CHECKS</DefineConstants>
+    <ApplicationManifest>../../Receiver/app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="AboutMotionChecks.cs" />
+    <Compile Include="../../Receiver/AboutThankYouMascot.cs" Link="AboutThankYouMascot.cs" />
+    <Compile Include="../../Receiver/BanbanPetMascot.cs" Link="BanbanPetMascot.cs" />
+    <Compile Include="../../Receiver/BanbanPetMotion.cs" Link="BanbanPetMotion.cs" />
+    <EmbeddedResource Include="../../Receiver/Assets/About/banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
+    <EmbeddedResource Include="../../Receiver/Assets/Banban/*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../web_controller/assets/banban/*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../web_controller/assets/banban/rig/*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

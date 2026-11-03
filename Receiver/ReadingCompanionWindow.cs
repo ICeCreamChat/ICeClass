@@ -15,7 +15,7 @@ internal sealed class ReadingCompanionWindow : Window
     private readonly ReceiverConfig _config;
     private readonly ReadingOfflineService _offline;
     private readonly Uri _origin;
-    private ReadingBrowser _browser = new();
+    private ReadingBrowser _browser = new() { IsVisible = false };
     private readonly Grid _surface = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _classLabel = ClassroomStyle.Text("", 14, true);
@@ -136,7 +136,7 @@ internal sealed class ReadingCompanionWindow : Window
             if (_browserFailed)
             {
                 _browser.DisposeBrowser(); _surface.Children.Remove(_browser);
-                _browser = new ReadingBrowser(); WireBrowser();
+                _browser = new ReadingBrowser { IsVisible = false }; WireBrowser();
                 _surface.Children.Insert(0, _browser); _initialized = false; _browserFailed = false;
             }
             _browser.SetPageVisible(false); SendFullscreenState();

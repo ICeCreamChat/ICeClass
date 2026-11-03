@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ICeClass.Desktop</AssemblyName>
     <RootNamespace>ICeClass.Desktop</RootNamespace>
-    <Version>2.5.1</Version>
+    <Version>2.5.9</Version>
     <Product>ICeClass 班伴 · 教师端</Product>
     <Title>ICeClass 班伴 · 教师端</Title><Company>ICeCreamChat</Company>
     <Description>供教师与管理员使用的 Windows 工作台</Description>
@@ -14,11 +14,18 @@
     <ApplicationIcon>..\branding\teacher\app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="desktop-diagnostics.js" LogicalName="ICeClass.Desktop.diagnostics.js" />
+    <EmbeddedResource Include="teacher-actions.js" LogicalName="ICeClass.Desktop.teacher-actions.js" />
     <Compile Include="..\Receiver\ReadingBrowser.cs" Link="Shared\ReadingBrowser.cs" />
     <Compile Include="..\Receiver\DesktopStyle.cs" Link="Shared\DesktopStyle.cs" />
+    <Compile Include="..\Receiver\UpdateProgressView.cs" Link="Shared\UpdateProgressView.cs" />
+    <Compile Include="..\Receiver\VoiceResourcesView.cs" Link="Shared\VoiceResourcesView.cs" />
     <Compile Include="..\Receiver\SenseVoiceRecognizer.cs" Link="Shared\SenseVoiceRecognizer.cs" />
     <EmbeddedResource Include="..\Receiver\Assets\Voice\Asr\manifest.json" LogicalName="ICeClass.Voice.Asr.manifest.json" />
     <Compile Include="..\Receiver\AboutContent.cs" Link="Shared\AboutContent.cs" />
+    <Compile Include="..\Receiver\AboutDiagnosticsView.cs" Link="Shared\AboutDiagnosticsView.cs" />
+    <Compile Include="..\Receiver\AboutReleaseNotes.cs" Link="Shared\AboutReleaseNotes.cs" />
     <Compile Include="..\Receiver\AboutThankYouMascot.cs" Link="Shared\AboutThankYouMascot.cs" />
     <EmbeddedResource Include="..\Receiver\Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
     <AvaloniaResource Include="..\Receiver\NativeControls.axaml" Link="Shared\NativeControls.axaml" />

@@ -29,10 +29,12 @@ internal sealed class BanbanVoiceService : IDisposable
     private string _workState = "listening", _lastText = "";
     private DateTime _lastActivity = DateTime.UtcNow, _lastHeard, _ignoreUntil, _retryAfter, _speechRetryAfter, _speechProgress;
     private long _inputDiagnosticAt;
+    private int _tickPending;
     internal event Action<BanbanVoiceEvent>? Changed;
     internal event Action<BanbanSpeechResult>? Recognition;
     internal event Action<BanbanAudioObservation>? AudioObservation;
     internal bool Enabled => _enabled;
+    internal bool Busy => Volatile.Read(ref _active) || Volatile.Read(ref _speaking) || Volatile.Read(ref _workState) is "thinking" or "confirming";
     internal string Microphone => _audio?.Microphone ?? "";
     internal bool EchoCancellation => _audio?.EchoCancellation == true;
     internal bool NaturalInterruption => _audio?.NaturalInterruption == true;
@@ -46,7 +48,7 @@ internal sealed class BanbanVoiceService : IDisposable
         _thread = new Thread(Run) { IsBackground = true, Name = "ICeClass.BanbanVoice" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
-        _timer = new Timer(_ => Post(Tick), null, 1000, 1000);
+        _timer = new Timer(_ => QueueTick(), null, 1000, 1000);
     }
 
     internal static string Normalize(string text) => new string(text.Where(c => !char.IsWhiteSpace(c) && !char.IsPunctuation(c) && !char.IsSymbol(c)).ToArray()).ToLowerInvariant();
@@ -135,6 +137,7 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         if (!_enabled || !_ready) return;
         EnsureEngine();
+        if (!VoiceResourceFiles.Resources.Ready) return;
         if (_audio is null) { State("error", "麦克风正在恢复，请稍后再呼叫班班。"); return; }
         _lastText = "";
         BeginConversation("", manual: true);
@@ -169,7 +172,7 @@ internal sealed class BanbanVoiceService : IDisposable
         _speaker!.Enqueue(SpeechText(text), end);
     });
     internal void StopSpeaking() => Post(() => { StopSpeech(); _audio?.DiscardUtterance(); if (_active) State(_workState, StateText(_workState)); });
-    internal void Standby() => Post(() => { StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭"); });
+    internal void Standby() => Post(() => { StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); SetStandbyState(); });
     internal void Leave(long conversation) => Post(() =>
     {
         if (_active && conversation == _conversationGeneration) LeaveConversation();
@@ -178,13 +181,29 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         StopSpeech(); _audio?.DiscardUtterance(); _active = false; _workState = "listening";
         UpdateListening(); Emit("leave");
-        State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭");
+        SetStandbyState();
+    }
+    private void SetStandbyState()
+    {
+        if (_enabled && _ready && !VoiceResourceFiles.Resources.Ready)
+            State("resources", "语音资源尚未就绪，可在教室设置中下载");
+        else State(_enabled && _ready ? "standby" : "off", _enabled && _ready ? "等候“你好班班”" : "语音已关闭");
     }
 
     private void Post(Action action)
     {
         if (_disposed) return;
         try { _queue.Add(action); } catch (InvalidOperationException) { }
+    }
+    private void QueueTick()
+    {
+        // Model preparation or device recovery can take several timer periods.
+        // One queued check is enough; stale checks must not crowd out speech.
+        if (Interlocked.CompareExchange(ref _tickPending, 1, 0) != 0) return;
+        Post(() => {
+            try { Tick(); }
+            finally { Volatile.Write(ref _tickPending, 0); }
+        });
     }
     private void Run()
     {
@@ -205,6 +224,7 @@ internal sealed class BanbanVoiceService : IDisposable
     {
         if (!_enabled) { State("off", "语音已关闭"); return; }
         if (!_ready) { State("login", "正在关联班主任账号"); return; }
+        if (!VoiceResourceFiles.Resources.Ready) { State("resources", "语音资源尚未就绪，可在教室设置中下载"); return; }
         if (_audio is not null || DateTime.UtcNow < _retryAfter) return;
         State("connecting", "正在准备本机语音…");
         BanbanLocalAudio? audio = null;
@@ -399,7 +419,7 @@ internal sealed class BanbanVoiceService : IDisposable
     private void StopEngine()
     {
         var audio = _audio; _audio = null;
-        _active = false;
+        _active = false; _workState = "listening";
         audio?.Dispose();
         StopSpeech();
         _speaker?.Dispose(); _speaker = null;
@@ -421,7 +441,7 @@ internal sealed class BanbanVoiceService : IDisposable
         }
         if (!_active || _speaking || _workState == "thinking") return;
         if ((DateTime.UtcNow - _lastActivity).TotalMinutes < 3) return;
-        StopSpeech(); _active = false; UpdateListening(); State("standby", "等候“你好班班”"); Emit("idle");
+        StopSpeech(); _active = false; _workState = "listening"; UpdateListening(); State("standby", "等候“你好班班”"); Emit("idle");
     }
     private static string StateText(string state) => state switch { "thinking" => "正在处理…", "confirming" => "等您确认", _ => "您说，我在听" };
     private void State(string state, string text)

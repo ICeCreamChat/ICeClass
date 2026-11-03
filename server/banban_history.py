@@ -21,9 +21,13 @@ class BanbanHistory:
         self.db, self.now, self.access = db, now, access
         legacy = bool(db.one("SELECT name FROM sqlite_master WHERE type='table' AND name='banban_conversations'"))
         legacy = legacy and 'id' not in {row['name'] for row in db.all('PRAGMA table_info(banban_conversations)')}
+        active_columns = {row['name'] for row in db.all('PRAGMA table_info(banban_active_conversations)')}
+        legacy_active = bool(active_columns) and 'access' not in active_columns
         with db.transaction():
             if legacy:
                 db.run('ALTER TABLE banban_conversations RENAME TO banban_conversations_legacy')
+            if legacy_active:
+                db.run('ALTER TABLE banban_active_conversations RENAME TO banban_active_conversations_legacy')
             for sql in [
                 '''CREATE TABLE IF NOT EXISTS banban_conversations(
                     id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -38,8 +42,9 @@ class BanbanHistory:
                 '''CREATE INDEX IF NOT EXISTS banban_messages_thread
                     ON banban_conversation_messages(conversation_id,id)''',
                 '''CREATE TABLE IF NOT EXISTS banban_active_conversations(
-                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    conversation_id TEXT NOT NULL REFERENCES banban_conversations(id) ON DELETE CASCADE)''',
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, access TEXT NOT NULL,
+                    conversation_id TEXT NOT NULL REFERENCES banban_conversations(id) ON DELETE CASCADE,
+                    PRIMARY KEY(user_id,access))''',
                 '''CREATE TABLE IF NOT EXISTS banban_history_policy(
                     id INTEGER PRIMARY KEY CHECK(id=1), cycle TEXT NOT NULL,
                     next_cleanup_at INTEGER NOT NULL, last_cleanup_at INTEGER)''',
@@ -56,8 +61,14 @@ class BanbanHistory:
                     for message in messages:
                         db.run('INSERT INTO banban_conversation_messages(conversation_id,body,created_at) VALUES(?,?,?)',
                                (cid, encoded(message), row['updated_at']))
-                    db.run('INSERT INTO banban_active_conversations VALUES(?,?)', (row['user_id'], cid))
+                    db.run('INSERT INTO banban_active_conversations VALUES(?,?,?)',
+                           (row['user_id'], encoded(json.loads(row['access'])), cid))
                 db.run('DROP TABLE banban_conversations_legacy')
+            if legacy_active:
+                db.run('''INSERT OR IGNORE INTO banban_active_conversations
+                    SELECT a.user_id,c.access,a.conversation_id FROM banban_active_conversations_legacy a
+                    JOIN banban_conversations c ON c.id=a.conversation_id AND c.user_id=a.user_id''')
+                db.run('DROP TABLE banban_active_conversations_legacy')
             db.run('INSERT OR IGNORE INTO banban_history_policy VALUES(1,?,?,NULL)',
                    ('monthly', self.next_boundary('monthly', self.now())))
 
@@ -106,7 +117,7 @@ class BanbanHistory:
 
     def current(self, user):
         return self.db.one('''SELECT c.* FROM banban_conversations c
-            LEFT JOIN banban_active_conversations a ON a.user_id=c.user_id AND a.conversation_id=c.id
+            LEFT JOIN banban_active_conversations a ON a.user_id=c.user_id AND a.access=c.access AND a.conversation_id=c.id
             WHERE c.user_id=? AND c.access=? ORDER BY (a.conversation_id IS NOT NULL) DESC,c.updated_at DESC,c.id DESC LIMIT 1''',
                            self.owner_clause(user))
 
@@ -135,8 +146,8 @@ class BanbanHistory:
         return self.load(user, cid)
 
     def activate(self, user, cid):
-        self.db.run('''INSERT INTO banban_active_conversations VALUES(?,?) ON CONFLICT(user_id)
-            DO UPDATE SET conversation_id=excluded.conversation_id''', (user['id'], cid))
+        self.db.run('''INSERT INTO banban_active_conversations VALUES(?,?,?) ON CONFLICT(user_id,access)
+            DO UPDATE SET conversation_id=excluded.conversation_id''', (*self.owner_clause(user), cid))
 
     def open(self, user, cid):
         data = self.load(user, cid)
@@ -147,6 +158,9 @@ class BanbanHistory:
         # Ownership is required even for school administrators. A permission
         # change need not prevent someone from removing their own old text.
         with self.db.transaction():
+            row = self.db.one('SELECT access FROM banban_conversations WHERE id=? AND user_id=?', (cid, user['id']))
+            if not row or json.loads(row['access']).get('classroom') != self.access(user).get('classroom'):
+                raise ValueError('这段对话不存在或当前账号无法删除。')
             deleted = self.db.run('DELETE FROM banban_conversations WHERE id=? AND user_id=?', (cid, user['id']))
             if deleted.rowcount != 1:
                 raise ValueError('这段对话不存在或当前账号无法删除。')

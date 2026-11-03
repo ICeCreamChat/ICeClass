@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import Path
 from aiohttp import web
+from update_payloads import install_update_payloads
 
 
 def install_desktop_updates(app, root: Path, *, reply, parse_version):
@@ -47,3 +48,5 @@ def install_desktop_updates(app, root: Path, *, reply, parse_version):
 
     app.router.add_get('/api/desktop/update', check)
     app.router.add_get('/api/desktop/update/download', download)
+    install_update_payloads(app, root, executable='ICeClass.Desktop.exe', prefix='/api/desktop/update',
+                            reply=reply, parse_version=parse_version)

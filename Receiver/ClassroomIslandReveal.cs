@@ -123,6 +123,4 @@ internal sealed class ClassroomIslandReveal : Decorator, IDisposable
     {
         _running = false; _disposed = true;
     }
-
-    internal static bool AnimationsEnabled() => DesktopStyle.AnimationsEnabled();
 }

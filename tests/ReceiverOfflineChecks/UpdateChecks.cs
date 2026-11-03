@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ICeClass.Receiver;
+using ICeClass.Updates;
 
 internal static class UpdateChecks
 {
@@ -27,6 +28,7 @@ internal static class UpdateChecks
                 try
                 {
                     if (context.Request.Headers["Authorization"] != "Bearer fixture") { response.StatusCode = 401; response.Close(); continue; }
+                    if (context.Request.Url!.AbsolutePath == "/api/receiver/update/plan") { response.StatusCode = 404; response.Close(); continue; }
                     if (context.Request.Url!.AbsolutePath == "/api/receiver/update")
                     {
                         var manifest = JsonSerializer.SerializeToUtf8Bytes(new { available = true, version, size = declaredSize ?? bytes.Length, sha256 = sha(), downloadUrl = "/file" });
@@ -71,23 +73,36 @@ internal static class UpdateChecks
         var updates = new ReceiverUpdateService();
         var directory = Path.Combine(AppContext.BaseDirectory, ".updates");
         Directory.CreateDirectory(directory);
+        var pendingPath = Path.Combine(directory, "pending.json");
+        var previousPending = File.Exists(pendingPath) ? File.ReadAllBytes(pendingPath) : null;
         string Partial() => Path.Combine(directory, $"ICeClass-{version}.download");
-        async Task Interrupted()
+        async Task Interrupted(IProgress<UpdateProgress>? progress = null)
         {
-            try { await updates.CheckAndDownloadAsync(config, null, default); throw new Exception("Interrupted transfer completed"); }
+            try { await updates.CheckAndDownloadAsync(config, progress, default); throw new Exception("Interrupted transfer completed"); }
             catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException) { }
         }
         try
         {
+            File.WriteAllText(pendingPath, "{invalid pending metadata");
+            Check(!updates.TryLaunchInstaller(new(true, "99.0.1", null), out var installError) && !string.IsNullOrWhiteSpace(installError),
+                "a rejected prepared update provides an actionable installation error");
             // Unique fixture versions only; never install or touch a running application.
             foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4", "99.0.5", "99.0.6" })
                 foreach (var suffix in new[] { ".download", ".download.json", ".exe" }) File.Delete(Path.Combine(directory, "ICeClass-" + name + suffix));
-            await Interrupted();
+            var progress = new List<UpdateProgress>();
+            await Interrupted(new ImmediateProgress(progress.Add));
             Check(File.Exists(Partial()) && new FileInfo(Partial()).Length is > 0 and < 524288, "interrupted update retains downloaded bytes");
+            Check(progress.Any(p => p.Stage == UpdateStage.Downloading && p.Percentage is > 0 and < 100) &&
+                  progress.Last(p => p.Stage == UpdateStage.Downloading).DownloadedBytes == new FileInfo(Partial()).Length,
+                "legacy whole-file updates report real progress before an interruption");
             var saved = new FileInfo(Partial()).Length;
             mode = "complete";
-            var ready = await updates.CheckAndDownloadAsync(config, null, default);
+            progress.Clear();
+            var ready = await updates.CheckAndDownloadAsync(config, new ImmediateProgress(progress.Add), default);
             Check(observedRange == $"bytes={saved}-" && File.ReadAllBytes(ready.DownloadedPath!).SequenceEqual(bytes), "retry resumes at the saved offset and verifies the complete executable");
+            Check(progress.First(p => p.Stage == UpdateStage.Downloading).DownloadedBytes == saved &&
+                  progress.Last().Stage == UpdateStage.Verifying,
+                "legacy resumption displays saved bytes and then a distinct verification stage");
             var before = downloadCount;
             await updates.CheckAndDownloadAsync(config, null, default);
             Check(downloadCount == before, "a verified ready update is reused without downloading again");
@@ -102,7 +117,8 @@ internal static class UpdateChecks
             Check(!File.Exists(Partial()) && !File.Exists(Path.Combine(directory, "ICeClass-99.0.4.exe")), "corrupt completed downloads are not promoted to installable updates");
             mode = "complete";
             using var cancel = new CancellationTokenSource();
-            try { await updates.CheckAndDownloadAsync(config, new ImmediateProgress(_ => cancel.Cancel()), cancel.Token); } catch (OperationCanceledException) { }
+            try { await updates.CheckAndDownloadAsync(config, new ImmediateProgress(value =>
+                { if (value.Stage == ICeClass.Updates.UpdateStage.Downloading && value.DownloadedBytes > 0) cancel.Cancel(); }), cancel.Token); } catch (OperationCanceledException) { }
             Check(File.Exists(Partial()) && new FileInfo(Partial()).Length > 0, "pausing an update for a lesson retains its partial download");
             ready = await updates.CheckAndDownloadAsync(config, null, default);
             Check(File.ReadAllBytes(ready.DownloadedPath!).SequenceEqual(bytes), "a paused update can finish on the next idle check");
@@ -126,9 +142,11 @@ internal static class UpdateChecks
         finally
         {
             stop.Cancel(); listener.Stop(); await serving;
+            if (previousPending is null) File.Delete(pendingPath); else File.WriteAllBytes(pendingPath, previousPending);
             foreach (var name in new[] { "99.0.1", "99.0.2", "99.0.3", "99.0.4", "99.0.5", "99.0.6" })
                 foreach (var suffix in new[] { ".download", ".download.json", ".exe" }) File.Delete(Path.Combine(directory, "ICeClass-" + name + suffix));
         }
     }
-    private sealed class ImmediateProgress(Action<int> action) : IProgress<int> { public void Report(int value) => action(value); }
+    private sealed class ImmediateProgress(Action<ICeClass.Updates.UpdateProgress> action) : IProgress<ICeClass.Updates.UpdateProgress>
+    { public void Report(ICeClass.Updates.UpdateProgress value) => action(value); }
 }

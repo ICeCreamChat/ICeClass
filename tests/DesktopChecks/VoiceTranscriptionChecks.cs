@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using ICeClass.Desktop;
+using ICeClass.Updates;
 using NAudio.Wave;
 
 internal static class VoiceTranscriptionChecks
@@ -11,40 +12,41 @@ internal static class VoiceTranscriptionChecks
         void Assert(bool value, string message) { if (!value) throw new Exception(message); checks++; }
         var directory = Path.Combine(Path.GetTempPath(), "ICeClass-VoiceModelChecks-" + Guid.NewGuid().ToString("N"));
         byte[] bytes = [11, 22, 33, 44];
-        var file = new VoiceModelFile("model.int8.onnx", bytes.Length, Convert.ToHexString(SHA256.HashData(bytes)));
+        var file = new VoiceResourceFile("VoiceResources/Asr/model.int8.onnx", bytes.Length, Convert.ToHexString(SHA256.HashData(bytes)));
+        var store = new VoiceResources([file], directory);
         var calls = 0;
         var responseBytes = bytes;
         using var http = new HttpClient(new Handler(request =>
         {
             calls++;
-            Assert(request.RequestUri!.Scheme == "https" && request.RequestUri.Host == "huggingface.co", "Model download uses the pinned public source");
+            Assert(request.RequestUri!.Scheme == "https" && request.RequestUri.Host == "school.test", "Model download uses the school platform");
             Assert(!request.Headers.Contains("Cookie") && request.Headers.Authorization is null, "Model requests never send a school session or recording");
-            Assert(request.RequestUri.AbsolutePath.Contains("2365baeacb507f821a0c8120fcee3d484dba7a07"), "Model source is pinned to the classroom ASR revision");
+            Assert(request.RequestUri.AbsolutePath.StartsWith("/api/voice/resources/"), "Model source is content-addressed voice data");
             return new(HttpStatusCode.OK) { Content = new ByteArrayContent(responseBytes) };
         }));
         try
         {
-            await ClassroomVoiceTranscriber.EnsureModelsAsync(directory, [file], http, null, default);
-            var path = Path.Combine(directory, file.Name);
+            await store.PrepareAsync(new Uri("https://school.test/"), http, null, default);
+            var path = Path.Combine(directory, file.Path);
             Assert(File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes), "The first explicit download installs a verified model");
             var before = calls;
-            await ClassroomVoiceTranscriber.EnsureModelsAsync(directory, [file], http, null, default);
+            await store.PrepareAsync(new Uri("https://school.test/"), http, null, default);
             Assert(calls == before, "An existing classroom model is reused without a download");
             File.WriteAllBytes(path, [1, 2, 3, 4]);
-            await ClassroomVoiceTranscriber.EnsureModelsAsync(directory, [file], http, null, default);
+            await store.PrepareAsync(new Uri("https://school.test/"), http, null, default);
             Assert(calls == before + 1 && File.ReadAllBytes(path).SequenceEqual(bytes), "An explicit download repairs a corrupt model");
             File.Delete(path);
             responseBytes = [1, 2, 3, 4];
-            try { await ClassroomVoiceTranscriber.EnsureModelsAsync(directory, [file], http, null, default); throw new Exception("Installed an invalid model"); }
+            try { await store.PrepareAsync(new Uri("https://school.test/"), http, null, default); throw new Exception("Installed an invalid model"); }
             catch (InvalidDataException) { checks++; }
-            Assert(!File.Exists(path) && !Directory.EnumerateFiles(directory).Any(), "A failed hash leaves no usable or partial model");
+            Assert(!File.Exists(path) && !Directory.EnumerateFiles(directory, "*.download", SearchOption.AllDirectories).Any(), "A failed hash leaves no usable or partial model");
             responseBytes = new byte[bytes.Length + 1];
-            try { await ClassroomVoiceTranscriber.EnsureModelsAsync(directory, [file], http, null, default); throw new Exception("Installed an oversized model"); }
+            try { await store.PrepareAsync(new Uri("https://school.test/"), http, null, default); throw new Exception("Installed an oversized model"); }
             catch (InvalidDataException) { checks++; }
             using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
-            try { await ClassroomVoiceTranscriber.EnsureModelsAsync(directory, [file], http, null, cancellation.Token); throw new Exception("Ignored cancellation"); }
+            try { await store.PrepareAsync(new Uri("https://school.test/"), http, null, cancellation.Token); throw new Exception("Ignored cancellation"); }
             catch (OperationCanceledException) { checks++; }
-            Assert(!Directory.EnumerateFiles(directory).Any(), "Canceling a download leaves no partial files");
+            Assert(!Directory.EnumerateFiles(directory, "*.download", SearchOption.AllDirectories).Any(), "Cancellation does not publish an unverified model");
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         byte[] Wave(int rate, int channels, double seconds)

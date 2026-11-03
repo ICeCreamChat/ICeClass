@@ -4,10 +4,13 @@ $desktopSource = Join-Path $PSScriptRoot 'ICeClass.Desktop.exe'
 if (-not (Test-Path -LiteralPath $desktopSource)) { throw '请将安装脚本和 ICeClass.Desktop.exe 放在同一个文件夹。' }
 $desktopInstall = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\ICeClassDesktop'
 $desktopTarget = Join-Path $desktopInstall 'ICeClass.Desktop.exe'
+. (Join-Path $PSScriptRoot 'install-voice-resources.ps1')
+Install-VoiceResources -PackageDirectory $PSScriptRoot -InstallDirectory $desktopInstall -ValidateOnly
 $desktopRunning = Get-CimInstance Win32_Process -Filter "Name='ICeClass.Desktop.exe'" | Where-Object { $_.ExecutablePath -eq $desktopTarget }
 if ($desktopRunning) { throw '请先从系统托盘退出 ICeClass 班伴 · 教师端，再运行安装。' }
 New-Item -ItemType Directory -Force -Path $desktopInstall | Out-Null
 if ([IO.Path]::GetFullPath($desktopSource) -ne [IO.Path]::GetFullPath($desktopTarget)) { Copy-Item -LiteralPath $desktopSource -Destination $desktopTarget -Force }
+Install-VoiceResources -PackageDirectory $PSScriptRoot -InstallDirectory $desktopInstall
 $desktopShell = New-Object -ComObject WScript.Shell
 foreach ($desktopShortcutFolder in @([Environment]::GetFolderPath('DesktopDirectory'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'ICeClass'))) {
     New-Item -ItemType Directory -Force -Path $desktopShortcutFolder | Out-Null

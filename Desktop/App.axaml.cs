@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using ICeClass.Receiver;
+using ICeClass.Updates;
 
 namespace ICeClass.Desktop;
 
@@ -14,8 +15,12 @@ public sealed class App : Application
     private IClassicDesktopStyleApplicationLifetime _desktop = null!;
     private readonly CancellationTokenSource _lifetime = new();
     private TrayIcon? _tray;
+    private NativeMenuItem? _updateAction;
     private DesktopWindow _window = null!;
+    private SettingsWindow? _settingsWindow;
     private bool _exiting;
+    private DesktopDiagnostics? _diagnostics;
+    internal DesktopDiagnostics Diagnostics => _diagnostics ??= new(DataDirectory);
     internal DesktopSettings Settings { get; private set; } = null!;
     internal bool HasTray => _tray is not null;
     internal static string DataDirectory => Program.Options.DataDirectory;
@@ -28,31 +33,58 @@ public sealed class App : Application
         Settings = DesktopSettings.Load(DataDirectory);
         if (Program.Options.Endpoint is not null) Settings.Endpoint = Program.Options.Endpoint;
         Directory.CreateDirectory(DataDirectory);
+        Diagnostics.Record("application", "启动", detail: "version=" + DesktopUpdates.CurrentVersion);
         _window = new DesktopWindow(this, Settings.Endpoint, main: true);
         desktop.MainWindow = _window;
         try
         {
             var menu = new NativeMenu();
             Add("打开 ICeClass 班伴 · 教师端", ShowWindow); Add("桌面设置", () => { ShowWindow(); _ = ShowSettingsAsync(); });
-            Add("检查桌面更新", () => { ShowWindow(); _ = _window.CheckUpdatesAsync(); });
+            _updateAction = Add("检查桌面更新", () => { ShowWindow(); _ = _window.CheckUpdatesAsync(); });
             menu.Items.Add(new NativeMenuItemSeparator()); Add("退出 ICeClass 班伴 · 教师端", Exit);
             _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass 班伴 · 教师端", Menu = menu, IsVisible = true };
             _tray.Clicked += (_, _) => ShowWindow();
             TrayIcon.SetIcons(this, new TrayIcons { _tray });
-            void Add(string title, Action action) { var item = new NativeMenuItem { Header = title }; item.Click += (_, _) => action(); menu.Items.Add(item); }
+            NativeMenuItem Add(string title, Action action) { var item = new NativeMenuItem { Header = title }; item.Click += (_, _) => action(); menu.Items.Add(item); return item; }
         }
         catch (Exception error) { DesktopLog.Write(error); }
         _ = ListenAsync();
-        desktop.Exit += (_, _) => { _lifetime.Cancel(); _tray?.Dispose(); _window.DisposePage(); };
-        Dispatcher.UIThread.Post(DesktopUpdates.ConfirmLaunch);
+        desktop.Exit += (_, _) =>
+        {
+            _lifetime.Cancel(); _tray?.Dispose(); _window.DisposePage();
+            _diagnostics?.Record("application", "退出"); _diagnostics?.Dispose();
+        };
+        Dispatcher.UIThread.Post(() =>
+        {
+            try { DesktopUpdates.ConfirmLaunch(); UpdateInstaller.ConfirmLaunch(AppContext.BaseDirectory); }
+            catch (Exception error) { DesktopLog.Write(error); }
+        });
         base.OnFrameworkInitializationCompleted();
     }
 
     internal void ShowWindow()
     {
+        _window.CancelBackgroundUpdate();
         _window.Show();
         if (_window.WindowState == WindowState.Minimized) _window.WindowState = WindowState.Normal;
         _window.RestorePage(); _window.Activate();
+    }
+
+    internal void SetUpdateReady(bool ready)
+    {
+        if (_updateAction is not null) _updateAction.Header = ready ? "立即更新" : "检查桌面更新";
+    }
+
+    internal bool UpdateBusy(bool automatic) => (automatic && _window.IsVisible)
+        || _desktop.Windows.Any(window => window != _window && window.IsVisible);
+
+    internal bool RequestVoiceDownload()
+    {
+        if (_exiting) return false;
+        ShowWindow();
+        if (!_window.DownloadVoiceResources()) return false;
+        _ = ShowSettingsAsync(revealVoiceResources: true);
+        return true;
     }
 
     private async Task ListenAsync()
@@ -72,10 +104,23 @@ public sealed class App : Application
         }
     }
 
-    internal async Task ShowSettingsAsync()
+    internal async Task ShowSettingsAsync(bool revealVoiceResources = false)
     {
-        var editor = new SettingsWindow(Settings);
-        var updated = await editor.ShowDialog<DesktopSettings?>(_window);
+        if (_settingsWindow is { } existing)
+        {
+            existing.Activate();
+            if (revealVoiceResources) existing.RevealVoiceResources();
+            return;
+        }
+        var editor = _settingsWindow = _window.CreateSettingsWindow(Settings);
+        DesktopSettings? updated;
+        try
+        {
+            var editing = editor.ShowDialog<DesktopSettings?>(_window);
+            if (revealVoiceResources) editor.RevealVoiceResources();
+            updated = await editing;
+        }
+        finally { _settingsWindow = null; }
         if (updated is null) return;
         var changedServer = updated.Endpoint != Settings.Endpoint;
         if (changedServer && !await Dialogs.Confirm(_window, "切换学校平台？", "工作台将重新打开。请先保存尚未提交的内容；原平台的登录资料会保留。", "保存并重新打开")) return;
@@ -107,9 +152,12 @@ public sealed class App : Application
 
 internal static class DesktopLog
 {
+    internal static event Action<string>? ErrorRecorded;
     internal static void Write(Exception error)
     {
-        try { Directory.CreateDirectory(App.DataDirectory); File.AppendAllText(Path.Combine(App.DataDirectory, "desktop.log"), $"{DateTimeOffset.Now:O} {error}\n"); }
+        var safe = ICeClass.Diagnostics.SupportDiagnostics.Redact(error.ToString());
+        try { Directory.CreateDirectory(App.DataDirectory); File.AppendAllText(Path.Combine(App.DataDirectory, "desktop.log"), $"{DateTimeOffset.Now:O} {safe}\n"); }
         catch (IOException) { } catch (UnauthorizedAccessException) { }
+        ErrorRecorded?.Invoke(safe);
     }
 }

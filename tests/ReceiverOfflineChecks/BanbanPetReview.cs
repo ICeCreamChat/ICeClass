@@ -214,7 +214,7 @@ internal static class BanbanPetReview
             Check(bubble.Bounds.Right <= button.Bounds.X && button.Bounds.Right <= pet.ClientSize.Width,
                 $"caption and character remain separate and visible in a narrow layout: {bubble.Bounds}, {button.Bounds}, {pet.ClientSize}");
             pet.Width = BanbanPetWindow.ExpandedWidth; Call("ArrangeCompanion", true);
-            Check(mascot.AssetsLoaded && mascot.AnimationRunning == mascot.Animate, "the existing artwork follows the system motion preference");
+            Check(mascot.AssetsLoaded && mascot.Animate && mascot.AnimationRunning, "the existing artwork animates by default");
             var speechOpening = .75;
             ((BanbanPetWindow)pet).SpeechOpening = () => speechOpening;
             mascot.Animate = true;

@@ -12,6 +12,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from aiohttp import web
+from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 
 
 SHANGHAI = timezone(timedelta(hours=8))
@@ -118,10 +119,13 @@ class ReadingFeature:
         config = self.config()
         return {"config": config, "serverTime": now, "inPeriod": inside_period(now, config)}
 
+    @teacher_read('reading', '查看晨读参数', roles=('principal', 'superadmin'))
     async def get_settings(self, request):
         user = self.admin(request)
         return user if isinstance(user, web.Response) else self.reply(self.payload())
 
+    @teacher_action('reading.update', '修改晨读参数', fields='enabled reminderEnabled threshold periods',
+                    roles=('principal', 'superadmin'), impact='将修改全校晨读参数；以平台校验结果为准。')
     async def save_settings(self, request):
         user = self.admin(request)
         if isinstance(user, web.Response):
@@ -139,6 +143,7 @@ class ReadingFeature:
             self.offline.save_rule(config)
         return self.reply(self.payload())
 
+    @teacher_manual('晨读日程供已绑定设备凭证读取；教师查看晨读参数，打开晨读使用单设备确认回执的电脑操作。')
     async def schedule(self, request):
         device = self.authenticate(request)
         if not device:
@@ -149,6 +154,7 @@ class ReadingFeature:
                            "periods": config["periods"], "serverTime": self.clock(),
                            "classId": device["class_id"], "className": classroom["name"]})
 
+    @teacher_manual('晨读启动票据需要设备凭证且返回私密 launchToken；教师打开晨读使用单设备确认回执的电脑操作。')
     async def launch(self, request):
         device = self.authenticate(request)
         if not device:
@@ -328,6 +334,7 @@ class ReadingFeature:
         return {"start": start, "end": end, "grades": [grade for grade in GRADES if grade in grades], "rows": result,
                 "daily": sorted(daily.values(), key=lambda row: (row["day"], self.class_sort(row["className"])))}
 
+    @teacher_read('reading.report', '查看晨读报表', fields='classId start end grades')
     async def report(self, request):
         user = self.user(request)
         if isinstance(user, web.Response):
@@ -339,6 +346,8 @@ class ReadingFeature:
         except PermissionError:
             return self.reply({"error": "没有查看该班级的权限。"}, 403)
 
+    @teacher_action('reading.export', '导出晨读报表', fields='classId start end grades format',
+                    confirm=False, workflow='download')
     async def export(self, request):
         user = self.user(request)
         if isinstance(user, web.Response):
@@ -366,6 +375,7 @@ class ReadingFeature:
                              {"current": "已同步", "pending": "待补传", "review": "待核实", "unconfirmed": "待同步确认"}[row["sync"]["state"]]])
         return web.Response(body=("\ufeff" + output.getvalue()).encode("utf-8"), content_type="text/csv", charset="utf-8", headers={"Content-Disposition": 'attachment; filename="morning-reading.csv"'})
 
+    @teacher_read('devices', '查看教室电脑状态')
     async def controls(self, request):
         user = self.user(request)
         if isinstance(user, web.Response):
@@ -383,6 +393,7 @@ class ReadingFeature:
             row["capabilities"] = json.loads(row["capabilities"] or "[]")
         return self.reply({"devices": rows})
 
+    @teacher_manual('旧教室控制接口按班级广播并保存音量，不提供设备执行回执；调整音量和打开晨读使用单设备确认回执的电脑操作。')
     async def command(self, request):
         user = self.user(request)
         if isinstance(user, web.Response):

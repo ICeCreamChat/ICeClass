@@ -31,8 +31,19 @@
 .bb-operation-feedback[data-error=true] { color: #a12f30; }
 .bb-operation-feedback:empty { display: none; }
 .bb-document-text { max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.65; }
-.bb-operation :is(button, input, summary):focus-visible { outline: 2px solid #0069d3; outline-offset: 3px; }
+.bb-operation :is(button, input, summary, a):focus-visible { outline: 2px solid #0069d3; outline-offset: 3px; }
 .bb-operation-field { display: flex; flex-direction: column; gap: 5px; margin-block: 10px; min-width: 0; font-size: 13px; color: #325773; }
 .bb-operation-field input { width: 100%; min-width: 0; max-width: 100%; font: inherit; color: #193b5d; border: 1px solid #bed2e3; border-radius: 8px; background: #fff; padding: 8px 10px; caret-color: #0069d3; }
-.bb-operation button { touch-action: manipulation; }
+.bb-operation :is(button, a, input[type=file]) { touch-action: manipulation; -webkit-tap-highlight-color: #cce4fa; }
+.bb-operation-actions :is(button, a) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.bb-operation button:disabled { cursor: default; }
+.bb-operation .bb-tool:disabled { color: #5c7590; background: #e4ecf5; }
+.bb-operation-field input[type=file] { padding: 5px; font-size: 13px; }
+.bb-operation-field input[type=file]::file-selector-button { min-height: 36px; margin-right: 8px; padding: 6px 10px; border: 0; border-radius: 6px; color: #285c89; background: #e7f0fa; font: inherit; cursor: pointer; }
+.bb-operation-field input[type=file]::file-selector-button:hover { background: #d9eafa; color: #004d97; }
+.bb-operation-field input[aria-invalid=true] { border-color: #a12f30; }
+.bb-operation-download { display: inline-flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
+.bb-operation-private { margin-top: 8px; font-size: 14px; overflow-wrap: anywhere; }
+.bb-operation-private output { user-select: all; }
+.bb-operation ::selection { color: #193b5d; background: #cce4fa; }
 @media (max-width: 560px) { .bb-operation-fields > div { grid-template-columns: 76px minmax(0, 1fr); } .bb-operation-actions button { min-height: 44px; } }

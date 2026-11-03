@@ -25,9 +25,10 @@ using System;
 using System.IO;
 public class $desktopType {
   [STAThread] public static void Main(string[] args) {
-    File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "launched.txt"), "$desktopVariant\n" + string.Join("\n", args) + "\n");
-    int marker = Array.IndexOf(args, "--update-marker");
-    if ("$desktopVariant" == "ready" && marker >= 0 && marker + 1 < args.Length) File.WriteAllText(args[marker+1], "ready");
+    var identity = "$desktopVariant";
+    File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "launched.txt"), identity + "\n" + string.Join("\n", args) + "\n");
+    if (identity == "ready" && Array.IndexOf(args, "--incremental-update-started") >= 0)
+      File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".updates", "incremental-started.ok"), "ready");
   }
 }
 "@
@@ -47,11 +48,15 @@ public class $desktopType {
         Copy-Item -LiteralPath $desktopApplyScript -Destination $desktopHelper
         $desktopDigest = (Get-FileHash -LiteralPath $desktopDownloaded -Algorithm SHA256).Hash
         if ($desktopCase -eq 'integrity') { $desktopDigest = '0' * 64 }
+        @{ version = '9.9.9'; executableName = 'ICeClass.Desktop.exe'; files = @(@{
+            path = 'ICeClass.Desktop.exe'; stagedPath = $desktopDownloaded
+            size = (Get-Item -LiteralPath $desktopDownloaded).Length; sha256 = $desktopDigest
+        }) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $desktopUpdates 'pending.json') -Encoding UTF8
         $desktopProfile = Join-Path $desktopCaseRoot 'profile with spaces'
         $desktopResume = '"--data-dir" "' + $desktopProfile + '" "--server" "http://127.0.0.1:8838"'
         $desktopEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($desktopResume))
         $desktopOldProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -Command "Start-Sleep -Milliseconds 700"' -WindowStyle Hidden -PassThru
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $desktopHelper $desktopOldProcess.Id $desktopCurrent $desktopDownloaded $desktopDigest $desktopEncoded
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $desktopHelper $desktopOldProcess.Id $desktopCaseRoot 'ICeClass.Desktop.exe' $desktopEncoded
         if ($LASTEXITCODE -ne 0) { throw "Update helper failed: $desktopCase" }
         $desktopExpected = if ($desktopCase -eq 'ready') { $desktopFixtures.ready } else { $desktopFixtures.old }
         if ((Get-FileHash -LiteralPath $desktopCurrent).Hash -ne (Get-FileHash -LiteralPath $desktopExpected).Hash) { throw "Wrong executable after $desktopCase" }

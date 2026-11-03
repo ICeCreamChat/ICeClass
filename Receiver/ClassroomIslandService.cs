@@ -27,8 +27,8 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     private IslandDemoWindow? _demoWindow;
     private readonly DispatcherTimer _demoTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private DateTimeOffset? _lastTick;
-    private long _autoUntil, _manualShowUntil;
-    private bool _actionsRunning;
+    private long _manualShowUntil;
+    private bool _actionsRunning, _lessonHidden;
     private readonly Queue<(IslandDueEvent Event, IslandProfile Profile, ReceiverConfig Binding, int Generation)> _pendingActions = new();
     private int _generation;
     private string _bindingScope = "";
@@ -40,6 +40,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     public bool Enabled => _preferences.Enabled;
     public event Action? PreferenceChanged;
     internal bool InClass { get; private set; }
+    internal bool ScheduleKnown { get; private set; }
     internal event Action<bool>? ClassTimeChanged;
     public event Action? ShoutPreviewRequested;
 
@@ -47,11 +48,13 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     {
         _actions = new(openReading, Notify);
         _window = new ClassroomIslandWindow(() => _binding is { } binding ? openReading(binding) : Task.CompletedTask,
-            openHome, ToggleDim, () => SetEnabled(false), AcknowledgeNotice, ShowSettings, DismissNotice);
+            openHome, ToggleDim, () => SetEnabled(false), AcknowledgeNotice, ShowSettings, DismissNotice, AppLog.Info);
         _timer.Tick += (_, _) => { ExpireWaitingShouts(); Refresh(); };
         _demoTimer.Tick += (_, _) => RenderDemo();
         ReadingExperience.StateChanged += ReadingStateChanged;
     }
+
+    internal string DiagnosticState => _window.DiagnosticState;
 
     public void SetBinding(ReceiverConfig binding)
     {
@@ -61,7 +64,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         _bindingScope = scope;
         _binding = binding; _state.SetBinding(binding);
         _generation++; _islandSync?.Dispose(); _islandSync = new(binding); _lastTick = null; _pendingActions.Clear();
-        _autoUntil = _manualShowUntil = 0;
+        _manualShowUntil = 0; _lessonHidden = false;
         _settingsWindow?.Close(); _settingsWindow = null;
         try { _local = _islandSync.Store.Read<IslandLocalSettings>("local-settings.json") ?? new(); _local.Normalize(); _ledger = new(_islandSync.Store); }
         catch (Exception error) { _local = new(); _ledger = null; _islandSync.Report("本机事件记录异常，自动化暂停，请检查教室端日志"); AppLog.Error("Load island action ledger failed", error); }
@@ -123,7 +126,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     private void CompleteShout(ShoutCloseReason reason)
     {
         var active = _activeShout; _activeShout = null;
-        _state.DismissNotice(); _autoUntil = 0;
+        _state.DismissNotice();
         if (active is not null)
         {
             active.Shown.TrySetException(new InvalidOperationException("这条通知已收起。"));
@@ -141,7 +144,6 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         _timer.Interval = TimeSpan.FromMilliseconds(100);
         _waitingShouts.Remove(next); _activeShout = next;
         _state.Receive(next.Resume());
-        _autoUntil = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * next.Remaining);
         _actions.StopFeedback(); _window.SetExpanded(false);
         _ = ConfirmShoutVisible(next);
     }
@@ -173,7 +175,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     private void CancelShouts()
     {
         var requests = _waitingShouts.ToList(); if (_activeShout is { } active) requests.Add(active);
-        _waitingShouts.Clear(); _activeShout = null; _state.DismissNotice(); _autoUntil = 0;
+        _waitingShouts.Clear(); _activeShout = null; _state.DismissNotice();
         _timer.Interval = TimeSpan.FromSeconds(1);
         foreach (var item in requests)
         {
@@ -193,7 +195,6 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         if (_disposed || _activeShout is not null) return;
         EndDemo();
         _state.LocalNotice(title, text, seconds);
-        _autoUntil = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * seconds);
         Refresh();
     }
 
@@ -265,7 +266,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var appearance = new IslandAppearance { Position = source.Position, Width = source.Width,
             Theme = source.Theme, Opacity = source.Opacity, OffsetX = source.OffsetX, OffsetY = source.OffsetY,
             ClickThrough = false, HideFullscreen = false, HideDuringLessons = false };
-        _window.Update(scene.View, false);
+        _window.Update(scene.View, false, _local.AnimationsEnabled);
         _window.ApplyProfile(appearance, scene.Profile, scene.Now, "", scene.View.ConnectionText, _demo.Playing);
         if (!_window.IsVisible) _window.Show();
         _demoWindow?.Update(_demo, scene);
@@ -309,6 +310,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         if (_disposed) return;
         if (_binding is null || _offline is null)
         {
+            ScheduleKnown = false;
             SetClassTime(false);
             if (_demo is not null) { RenderDemo(); return; }
             var unbound = _state.Present(null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _connection, ReadingExperience.IsOpen);
@@ -337,11 +339,20 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         if (!shouting && _activeShout is not null) { CompleteShout(ShoutCloseReason.TimedOut); return; }
         var island = _islandSync?.Snapshot;
         var profile = island?.Revoked == true ? null : island?.Profile;
+        ScheduleKnown = profile is not null;
         var now = DateTimeOffset.FromUnixTimeMilliseconds(_offline.Now);
         var localNow = now.ToOffset(TimeSpan.FromHours(8));
         var lessons = profile is not null ? IslandSchedule.On(profile, DateOnly.FromDateTime(localNow.DateTime)) : [];
         var current = lessons.FirstOrDefault(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End));
-        SetClassTime(current is not null);
+        var lessonHidden = profile is not null && IslandSchedule.HiddenDuringLesson(profile, now);
+        if (profile?.Visibility is null && _local.Appearance?.HideDuringLessons == true && current is not null) lessonHidden = true;
+        SetClassTime(current is not null || lessonHidden);
+        if (lessonHidden && !_lessonHidden)
+        {
+            _actions.StopFeedback();
+            if (!shouting) _state.DismissNotice();
+        }
+        _lessonHidden = lessonHidden;
         if (profile is not null && profile.Enabled && _ledger is not null)
         {
             foreach (var e in IslandSchedule.Due(profile, _lastTick ?? now.AddMilliseconds(-1100), now))
@@ -373,15 +384,14 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         }
         if (island?.Revoked == true) view = view with { Status = "绑定已失效", CanOpenReading = false, ReadingTitle = "请重新绑定教室", ReadingDetail = "从教室首页打开绑定设置。" };
         if (_demo is not null) { RenderDemo(); return; }
-        _window.Update(view, _preferences.Dimmed);
+        _window.Update(view, _preferences.Dimmed, _local.AnimationsEnabled);
         var appearance = _local.Appearance ?? profile?.Appearance ?? new();
         _window.ApplyProfile(appearance, profile, now, component, (island?.Status ?? view.ConnectionText) + " · " + view.ConnectionText);
         var clock = Stopwatch.GetTimestamp();
-        var attention = _autoUntil > clock;
         var manual = _manualShowUntil > clock || _settingsWindow is not null;
         if (!shouting && (!_preferences.Enabled || ReadingExperience.IsFullscreen || (!manual &&
             (profile?.Enabled == false || appearance.HideFullscreen && IslandPlatform.ForegroundFullscreen(_window) ||
-                appearance.HideDuringLessons && current is not null && !attention))))
+                lessonHidden))))
         { _window.Hide(); return; }
         _window.DockToPrimaryScreen();
         if (!_window.IsVisible) _window.Show();
@@ -396,7 +406,9 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
             while (!_disposed && _activeShout is null && _pendingActions.TryDequeue(out var item))
             {
                 if (item.Generation != _generation || _islandSync?.Snapshot.Revoked == true) continue;
-                var result = await _actions.Execute(item.Event, item.Profile, item.Binding, _local);
+                var latest = _islandSync?.Snapshot.Profile ?? item.Profile;
+                var result = await _actions.Execute(item.Event, latest, item.Binding, _local,
+                    DateTimeOffset.FromUnixTimeMilliseconds(_offline?.Now ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
                 if (_disposed || item.Generation != _generation) continue;
                 var stamp = DateTimeOffset.Now.ToString("MM-dd HH:mm:ss") + " " + result;
                 _local.RecentActions.Add(stamp); _local.RecentActions = _local.RecentActions.TakeLast(30).ToList();

@@ -102,25 +102,41 @@ class ReleaseChecks(unittest.TestCase):
     def test_incomplete_upload_stays_draft(self):
         self.prepare()
         with patch.object(release, "gh_json", side_effect=[
-            {"sha": self.commit}, [[]], [[self.draft]], {"draft": True, "assets": []}
-        ]), patch.object(release, "gh") as gh, self.assertRaises(ValueError):
+            {"sha": self.commit}, [[]], self.draft, {"draft": True, "assets": []}
+        ]) as gh_json, patch.object(release, "gh") as gh, self.assertRaises(ValueError):
             release.publish(self.directory, "v2.4.0", "owner/repo")
-        self.assertTrue(any(call.args[:2] == ("release", "create") for call in gh.call_args_list))
+        self.assertTrue(any(call.args[:3] == ("api", "--method", "POST") for call in gh_json.call_args_list))
         self.assertFalse(any("--draft=false" in call.args for call in gh.call_args_list))
+
+    def test_new_draft_uses_creation_response_without_listing_again(self):
+        metadata = self.prepare()
+        assets = [dict(asset, state="uploaded", digest="sha256:" + asset["sha256"]) for asset in metadata["assets"]]
+        with patch.object(release, "list_releases", return_value=[]) as releases, patch.object(
+            release, "gh_json", side_effect=[
+                {"sha": self.commit}, self.draft, {"draft": True, "assets": assets},
+                {"draft": False, "html_url": "https://github.com/owner/repo/releases/tag/v2.4.0"}
+            ]
+        ) as gh_json, patch.object(release, "gh"):
+            release.publish(self.directory, "v2.4.0", "owner/repo")
+        releases.assert_called_once_with("owner/repo")
+        self.assertEqual(gh_json.call_args_list[1].args[:4], (
+            "api", "--method", "POST", "repos/owner/repo/releases"
+        ))
+        self.assertEqual(gh_json.call_args_list[-1].args, ("api", "repos/owner/repo/releases/123"))
 
     def test_uploaded_digest_required_before_publishing(self):
         metadata = self.prepare()
         assets = [dict(asset, state="uploaded", digest="sha256:wrong") for asset in metadata["assets"]]
         with patch.object(release, "gh_json", side_effect=[
-            {"sha": self.commit}, [[]], [[self.draft]], {"draft": True, "assets": assets}
+            {"sha": self.commit}, [[]], self.draft, {"draft": True, "assets": assets}
         ]), patch.object(release, "gh") as gh, self.assertRaises(ValueError):
             release.publish(self.directory, "v2.4.0", "owner/repo")
         self.assertFalse(any("--draft=false" in call.args for call in gh.call_args_list))
 
     def test_upload_failure_does_not_publish(self):
         self.prepare()
-        with patch.object(release, "gh_json", side_effect=[{"sha": self.commit}, [[]], [[self.draft]]]), patch.object(
-            release, "gh", side_effect=["draft created", RuntimeError("upload interrupted")]
+        with patch.object(release, "gh_json", side_effect=[{"sha": self.commit}, [[]], self.draft]), patch.object(
+            release, "gh", side_effect=RuntimeError("upload interrupted")
         ) as gh, self.assertRaises(RuntimeError):
             release.publish(self.directory, "v2.4.0", "owner/repo")
         self.assertFalse(any("--draft=false" in call.args for call in gh.call_args_list))
@@ -142,7 +158,7 @@ class ReleaseChecks(unittest.TestCase):
         for newer_exists in (False, True):
             releases = [{"tag_name": "v2.5.0", "draft": False, "prerelease": False}] if newer_exists else []
             with self.subTest(newer_exists=newer_exists), patch.object(release, "gh_json", side_effect=[
-                {"sha": self.commit}, [releases], [[self.draft, *releases]], {"draft": True, "assets": assets},
+                {"sha": self.commit}, [releases], self.draft, {"draft": True, "assets": assets},
                 {"draft": False, "html_url": "https://github.com/owner/repo/releases/tag/v2.4.0"}
             ]) as gh_json, patch.object(release, "gh") as gh:
                 release.publish(self.directory, "v2.4.0", "owner/repo")

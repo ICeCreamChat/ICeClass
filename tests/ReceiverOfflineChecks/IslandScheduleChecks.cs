@@ -92,6 +92,81 @@ internal static class IslandScheduleChecks
         try { IslandProfile.Parse(JsonSerializer.Serialize(rotations, IslandProfile.Json)); throw new Exception("duplicate duty accepted"); } catch (InvalidDataException) { checks++; }
         mid.Lessons.RemoveAt(1); mid.CycleWeeks = 0;
         try { IslandProfile.Parse(JsonSerializer.Serialize(rotations, IslandProfile.Json)); throw new Exception("zero duty cycle accepted"); } catch (InvalidDataException) { checks++; }
+        var quietJson = JsonNode.Parse(JsonSerializer.Serialize(new IslandProfile {
+            Slots = [new() { Id = "p1", Label = "第一节", Start = 480, End = 525 },
+                new() { Id = "e1", Label = "晚自习第一节", Start = 1100, End = 1190 },
+                new() { Id = "e2", Label = "晚自习第二节", Start = 1200, End = 1290 }],
+            Lessons = [new() { SlotId = "p1", Weekday = 1, Subject = "数学" },
+                new() { SlotId = "e1", Weekday = 1, Subject = "晚自习" }, new() { SlotId = "e2", Weekday = 1, Subject = "自习" }]
+        }, IslandProfile.Json))!.AsObject();
+        quietJson["visibility"] = new JsonObject { ["followSchool"] = true, ["hiddenSlotIds"] = new JsonArray("p1", "e1") };
+        var quiet = IslandProfile.Parse(quietJson.ToJsonString());
+        Check(IslandSchedule.Due(quiet, At(7, 59, 59), At(8, 0)).Count == 0,
+            "selected class start cannot reopen the island with an ordinary reminder");
+        Check(IslandSchedule.Due(quiet, At(8, 44, 59), At(8, 45)).Single().Title == "下课啦",
+            "break boundary restores the island and its break reminder");
+        Check(IslandSchedule.Due(quiet, At(18, 19, 59), At(18, 20)).Count == 0 &&
+            IslandSchedule.Due(quiet, At(19, 59, 59), At(20, 0)).Single().Title == "上课啦",
+            "only the first evening lesson is quiet by default");
+        quiet.Automation = [new() { Id = "quiet-text", Name = "提示", Trigger = "time", Minute = 481, Value = "保持安静" },
+            new() { Id = "explicit", Name = "课件", Trigger = "time", Minute = 481, Action = "website", Value = "https://example.com" }];
+        Check(IslandSchedule.Due(quiet, At(8, 0, 59), At(8, 1)).Single().Automation?.Id == "explicit",
+            "quiet class suppresses text and sound reminders while explicit teacher automation remains configured");
+        Check(!IslandSchedule.HiddenDuringLesson(quiet, At(7, 59, 59)) && IslandSchedule.HiddenDuringLesson(quiet, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(quiet, At(8, 45)), "quiet lesson starts inclusively and ends at the exact break boundary");
+        Check(IslandSchedule.HiddenDuringLesson(quiet, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "selected quiet slots do not depend on a course entry for the day");
+        var emptyTimetable = IslandProfile.Parse(quietJson.ToJsonString());
+        emptyTimetable.Lessons.Clear();
+        Check(IslandSchedule.HiddenDuringLesson(emptyTimetable, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(emptyTimetable, At(8, 45)) &&
+            IslandSchedule.HiddenDuringLesson(emptyTimetable, At(18, 20)) &&
+            !IslandSchedule.HiddenDuringLesson(emptyTimetable, At(19, 50)) &&
+            !IslandSchedule.HiddenDuringLesson(emptyTimetable, At(20, 0)),
+            "a classroom with only time slots hides during selected times and returns at breaks");
+        Check(IslandSchedule.On(emptyTimetable, new(2026, 10, 19)).Count == 0 &&
+            IslandSchedule.Due(emptyTimetable, At(7, 59, 59), At(8, 0)).Count == 0,
+            "quiet slots never fabricate course entries or ordinary class reminders");
+        quiet.Overrides.Add(new() { Date = "2026-10-19", SlotId = "p1", Cancelled = true });
+        Check(!IslandSchedule.HiddenDuringLesson(quiet, At(8, 0)), "temporary cancellation also cancels the quiet class interval");
+        quiet.Overrides.Clear();
+        var notified = 0;
+        using (var runner = new IslandActionRunner(_ => Task.CompletedTask, (_, _, _) => notified++))
+            runner.Execute(new("queued", At(7, 59), "课前", "准备上课"), quiet, binding, new(), At(8, 0)).GetAwaiter().GetResult();
+        Check(notified == 0, "a reminder queued before the lesson cannot execute after the quiet period starts");
+        var quietCache = new IslandLocalStore(Path.Combine(root, "island-quiet-cache"));
+        quietCache.Write("profile.json", new { classId = "a", revision = 6, config = quiet });
+        using (var sync = new IslandSyncService(binding, Path.Combine(root, "island-quiet-cache"), start: false))
+            Check(sync.Snapshot.Profile is { } cached && IslandSchedule.HiddenDuringLesson(cached, At(18, 20)) &&
+                !IslandSchedule.HiddenDuringLesson(cached, At(20, 0)), "school quiet selections survive a fully offline restart");
+        var legacyJson = quietJson.DeepClone().AsObject();
+        legacyJson["appearance"]!["hideDuringLessons"] = true;
+        legacyJson["visibility"] = new JsonObject { ["followSchool"] = false,
+            ["hiddenSlotIds"] = new JsonArray("p1", "e1"), ["lessonsOnly"] = true };
+        var legacy = IslandProfile.Parse(legacyJson.ToJsonString());
+        legacy.Lessons.RemoveAll(l => l.SlotId == "e1");
+        Check(IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))) &&
+            !IslandSchedule.HiddenDuringLesson(legacy, At(18, 20)),
+            "migrated legacy appearance hides actual courses without hiding empty days or unassigned slots");
+        legacy.Overrides.Add(new() { Date = "2026-10-19", SlotId = "p1", Cancelled = true });
+        Check(!IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)), "cancellation wins over migrated legacy course hiding");
+        legacy.Overrides.Clear(); legacy.Visibility!.HiddenSlotIds.Clear();
+        Check(!IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)), "empty selection wins over migrated legacy appearance");
+        legacy.Visibility.FollowSchool = true; legacy.Visibility.HiddenSlotIds.Add("p1");
+        Check(IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "following school rules exits migrated legacy course hiding");
+        legacy.Visibility = new() { FollowSchool = false, HiddenSlotIds = ["p1"] };
+        Check(IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "modern explicit visibility remains slot based despite legacy appearance");
+        legacy.Visibility = null;
+        Check(IslandSchedule.HiddenDuringLesson(legacy, At(8, 0)) &&
+            !IslandSchedule.HiddenDuringLesson(legacy, new DateTimeOffset(2026, 10, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+            "unmigrated legacy appearance remains course based");
+        quiet.Visibility!.FollowSchool = false; quiet.Visibility.HiddenSlotIds.Clear(); quiet.Appearance.HideDuringLessons = true;
+        Check(!IslandSchedule.HiddenDuringLesson(quiet, At(8, 0)), "explicit teacher selection overrides the legacy hide-all appearance");
+        quiet.Visibility.HiddenSlotIds.Add("missing");
+        try { IslandProfile.Parse(JsonSerializer.Serialize(quiet, IslandProfile.Json)); throw new Exception("unknown quiet slot accepted"); } catch (InvalidDataException) { checks++; }
         return checks;
     }
 }

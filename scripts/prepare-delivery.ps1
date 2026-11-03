@@ -56,6 +56,21 @@ if (Test-Path -LiteralPath $desktopExecutable) {
     New-Item -ItemType Directory -Force -Path $desktopFolder | Out-Null
     Copy-Item -LiteralPath $desktopExecutable -Destination $desktopFolder -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-desktop.ps1') -Destination (Join-Path $desktopFolder 'install.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-voice-resources.ps1') -Destination $desktopFolder -Force
+    $asrDirectory = Join-Path (Get-Location) 'Receiver\Assets\Voice\Asr'
+    $asrManifest = Get-Content -LiteralPath (Join-Path $asrDirectory 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $offlineFiles = @($asrManifest.files | ForEach-Object {
+        [ordered]@{ path = ('VoiceResources/Asr/' + $_.name); size = $_.size; sha256 = $_.sha256 }
+    })
+    $asrTarget = Join-Path $desktopFolder 'VoiceResources\Asr'
+    New-Item -ItemType Directory -Path $asrTarget -Force | Out-Null
+    foreach ($asrFile in $asrManifest.files) {
+        if ($asrFile.name -cnotin @('model.int8.onnx', 'tokens.txt')) { throw '教师端离线识别资源名称无效。' }
+        Copy-Item -LiteralPath (Join-Path $asrDirectory $asrFile.name) -Destination $asrTarget -Force
+    }
+    [IO.File]::WriteAllText((Join-Path $desktopFolder 'voice-resources.json'), (@{ files = $offlineFiles } | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
+    . (Join-Path $PSScriptRoot 'install-voice-resources.ps1')
+    Install-VoiceResources -PackageDirectory $desktopFolder -InstallDirectory $desktopFolder -ValidateOnly
     [IO.File]::WriteAllText((Join-Path $desktopFolder '安装到本机.cmd'), "@echo off`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
 }
 if ($Endpoint -and $Endpoint -ne 'https://iceclass.icecreamchat.top') {
@@ -109,12 +124,12 @@ ICe 在后台设置统计时段和统计声量门槛。目标、时长、速度�
 
 以后更新
 
-2.5.0 及更早教室端限制自动更新文件为 250 MiB，不能直接接收包含完整语音模型的大程序。这些版本本次须先使用“安装或升级.cmd”完成一次安装升级；不能只更新学校服务器后等旧程序自动升级。安装包会校验程序并在新版不能确认启动时恢复原程序，始终保留配置。升级到本次版本后，支持不超过 1 GiB 的程序更新和原有断点续传。
+2.5.0 及更早教室端限制自动更新文件为 250 MiB，不能直接接收包含完整语音模型的大程序。这些版本本次须先使用“安装或升级.cmd”完成一次安装升级；不能只更新学校服务器后等旧程序自动升级。安装包会校验程序并在新版不能确认启动时恢复原程序，始终保留配置。2.5.2 起支持增量更新，复用未变化的语音资源，弱网中断后继续下载。
 
 学校初始预设：高一 16 班、高二 14 班、高三 14 班。班级名单来自后台，增减或更名后在绑定页点击“刷新班级”，不需要重装 EXE。
 
-管理员更新服务器后，教室端会在空闲时自动检查并安装新版；早读期间暂停更新。弱网下载中断后会续传，完整校验通过才替换，也可以在托盘或设置窗口点击“检查更新”。实时通知和语音留言仍需要联网，过期通知不会补播。
-班级绑定保存到本机用户数据目录，更新和替换 EXE 会保留。旧版 config.json 首次迁移成功后自动移走；不要手动先删旧配置。更新过程中程序会自动重启，通常不需要重新绑定。
+管理员更新服务器后，教室端在课间空闲时检查和下载新版，上课、早读、录音和班班对话时暂停。下载完成后等待下次真正启动安装；关闭到托盘不会安装。也可以在托盘或设置窗口选择“立即更新”，主动重启安装。实时通知和语音留言仍需要联网，过期通知不会补播。
+班级绑定保存到本机用户数据目录，更新和替换 EXE 会保留。旧版 config.json 首次迁移成功后自动移走；不要手动先删旧配置。2.5.1 及以前版本需先升级一次，后续才能使用增量和等待安装机制。
 
 通知声音
 

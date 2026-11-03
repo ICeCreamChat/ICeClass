@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using NAudio.CoreAudioApi;
@@ -18,9 +19,8 @@ internal static class BanbanNeuralVoicePack
         lock (Gate)
         {
             if (_extracted is not null) return _extracted;
-            var assembly = typeof(BanbanNeuralVoicePack).Assembly;
             const string prefix = "ICeClass.Voice.Tts.";
-            using var manifest = assembly.GetManifestResourceStream(prefix + "manifest.json")
+            using var manifest = VoiceResourceFiles.Open(prefix + "manifest.json")
                 ?? throw new FileNotFoundException("缺少班班自然语音。");
             using var document = JsonDocument.Parse(manifest);
             var root = document.RootElement;
@@ -48,7 +48,7 @@ internal static class BanbanNeuralVoicePack
                 using (var output = File.Create(temporary))
                     foreach (var part in root.GetProperty("parts").EnumerateArray())
                     {
-                        using var input = assembly.GetManifestResourceStream(prefix + part.GetProperty("name").GetString())
+                        using var input = VoiceResourceFiles.Open(prefix + part.GetProperty("name").GetString())
                             ?? throw new FileNotFoundException("自然语音模型不完整。");
                         input.CopyTo(output);
                     }
@@ -221,13 +221,7 @@ internal sealed class BanbanSpeechPlayer : IDisposable
             synth = BanbanNeuralSynthesizer.AcquireShared();
             synth.Generate("我在，请说。", () => Volatile.Read(ref _disposed) == 0);
             Volatile.Write(ref _ready, 1);
-            foreach (var item in _text.GetConsumingEnumerable())
-            {
-                if (!Valid(item.Generation)) continue;
-                var samples = string.IsNullOrWhiteSpace(item.Text) ? [] : synth.Generate(item.Text, () => Valid(item.Generation), item.Speed);
-                var output = new AudioPart(item.Generation, samples, synth.SampleRate, item.Text, item.End, item.Volume, item.Cue);
-                while (Valid(item.Generation) && !_audio.TryAdd(output, 50)) { }
-            }
+            while (_text.TryTake(out var item, Timeout.Infinite)) SynthesizePart(synth, item);
         }
         catch (Exception error) { if (Volatile.Read(ref _disposed) == 0) _failed(error); }
         finally
@@ -237,63 +231,77 @@ internal sealed class BanbanSpeechPlayer : IDisposable
             _audio.CompleteAdding();
         }
     }
+    // Per-part stacks must return before either worker waits for its next item.
+    // Otherwise the last PCM/native-call arguments can survive all of standby.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void SynthesizePart(BanbanNeuralSynthesizer synth, TextPart item)
+    {
+        if (!Valid(item.Generation)) return;
+        var samples = string.IsNullOrWhiteSpace(item.Text) ? [] : synth.Generate(item.Text, () => Valid(item.Generation), item.Speed);
+        var output = new AudioPart(item.Generation, samples, synth.SampleRate, item.Text, item.End, item.Volume, item.Cue);
+        while (Valid(item.Generation) && !_audio.TryAdd(output, 50)) { }
+    }
     private void Play()
     {
         try
         {
-            foreach (var item in _audio.GetConsumingEnumerable())
-            {
-                if (!Valid(item.Generation)) continue;
-                if (item.Samples.Length > 0)
-                {
-                    var bytes = new byte[item.Samples.Length * sizeof(float)];
-                    Buffer.BlockCopy(item.Samples, 0, bytes, 0, bytes.Length);
-                    using var memory = new MemoryStream(bytes, false);
-                    using var source = new RawSourceWaveStream(memory, WaveFormat.CreateIeeeFloatWaveFormat(item.Rate, 1));
-                    var prepared = NotificationChime.Prepend(source.ToSampleProvider(), item.Cue);
-                    var volume = new VolumeSampleProvider(prepared) { Volume = item.Volume };
-                    var envelope = new BanbanSpeechEnvelope(item.Samples, item.Rate, item.Volume);
-                    var speechOffset = prepared is NotificationChime chime ? chime.SpeechOffsetSeconds : 0;
-                    using var devices = new MMDeviceEnumerator();
-                    using var device = devices.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
-                    using var output = new WasapiOut(device, AudioClientShareMode.Shared, false, 40);
-                    using var ended = new ManualResetEventSlim();
-                    Exception? playbackError = null;
-                    output.PlaybackStopped += (_, e) => { playbackError = e.Exception; ended.Set(); };
-                    output.Init(volume);
-                    try
-                    {
-                        lock (_gate)
-                        {
-                            if (!Valid(item.Generation)) continue;
-                            _output = output; Volatile.Write(ref _mouthGeneration, item.Generation);
-                            _playing(item.Generation, item.Text); output.Play();
-                        }
-                        while (!ended.Wait(20) && Valid(item.Generation))
-                        {
-                            // Reader position includes buffered audio that has not sounded
-                            // yet. WASAPI reports played bytes in its negotiated format,
-                            // which may differ from the mono synthesis sample rate.
-                            var seconds = (double)output.GetPosition() / output.OutputWaveFormat.AverageBytesPerSecond;
-                            Volatile.Write(ref _mouthOpening, output.PlaybackState == PlaybackState.Playing
-                                ? envelope.OpeningAt(seconds - speechOffset) : 0);
-                        }
-                        if (playbackError is not null && Valid(item.Generation)) throw new IOException("音频输出中断。", playbackError);
-                    }
-                    finally
-                    {
-                        lock (_gate)
-                        {
-                            Volatile.Write(ref _mouthOpening, 0);
-                            if (ReferenceEquals(_output, output)) _output = null;
-                            output.Stop();
-                        }
-                    }
-                }
-                if (item.End && Valid(item.Generation)) _completed(item.Generation);
-            }
+            // Do not leave a completed/cancelled PCM part rooted by an idle
+            // consuming iterator. Keep the model and welcome audio warm.
+            while (_audio.TryTake(out var item, Timeout.Infinite)) PlayPart(item);
         }
         catch (Exception error) { if (Volatile.Read(ref _disposed) == 0) _failed(error); }
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void PlayPart(AudioPart item)
+    {
+        if (!Valid(item.Generation)) return;
+        if (item.Samples.Length > 0)
+        {
+            var bytes = new byte[item.Samples.Length * sizeof(float)];
+            Buffer.BlockCopy(item.Samples, 0, bytes, 0, bytes.Length);
+            using var memory = new MemoryStream(bytes, false);
+            using var source = new RawSourceWaveStream(memory, WaveFormat.CreateIeeeFloatWaveFormat(item.Rate, 1));
+            var prepared = NotificationChime.Prepend(source.ToSampleProvider(), item.Cue);
+            var volume = new VolumeSampleProvider(prepared) { Volume = item.Volume };
+            var envelope = new BanbanSpeechEnvelope(item.Samples, item.Rate, item.Volume);
+            var speechOffset = prepared is NotificationChime chime ? chime.SpeechOffsetSeconds : 0;
+            using var devices = new MMDeviceEnumerator();
+            using var device = devices.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+            using var output = new WasapiOut(device, AudioClientShareMode.Shared, false, 40);
+            using var ended = new ManualResetEventSlim();
+            Exception? playbackError = null;
+            output.PlaybackStopped += (_, e) => { playbackError = e.Exception; ended.Set(); };
+            output.Init(volume);
+            try
+            {
+                lock (_gate)
+                {
+                    if (!Valid(item.Generation)) return;
+                    _output = output; Volatile.Write(ref _mouthGeneration, item.Generation);
+                    _playing(item.Generation, item.Text); output.Play();
+                }
+                while (!ended.Wait(20) && Valid(item.Generation))
+                {
+                    // Reader position includes buffered audio that has not sounded
+                    // yet. WASAPI reports played bytes in its negotiated format,
+                    // which may differ from the mono synthesis sample rate.
+                    var seconds = (double)output.GetPosition() / output.OutputWaveFormat.AverageBytesPerSecond;
+                    Volatile.Write(ref _mouthOpening, output.PlaybackState == PlaybackState.Playing
+                        ? envelope.OpeningAt(seconds - speechOffset) : 0);
+                }
+                if (playbackError is not null && Valid(item.Generation)) throw new IOException("音频输出中断。", playbackError);
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    Volatile.Write(ref _mouthOpening, 0);
+                    if (ReferenceEquals(_output, output)) _output = null;
+                    output.Stop();
+                }
+            }
+        }
+        if (item.End && Valid(item.Generation)) _completed(item.Generation);
     }
     public void Dispose()
     {

@@ -4,7 +4,9 @@ using Avalonia.Input;
 using Avalonia.Automation;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using ICeClass.Receiver;
+using ICeClass.Updates;
 
 namespace ICeClass.Desktop;
 
@@ -49,7 +51,10 @@ internal static class Dialogs
 
 internal sealed class SettingsWindow : Window
 {
-    internal SettingsWindow(DesktopSettings current)
+    private readonly VoiceResourcesView _voiceResources = new();
+    internal void RevealVoiceResources() => Dispatcher.UIThread.Post(() => _voiceResources.BringIntoView(), DispatcherPriority.Loaded);
+
+    internal SettingsWindow(DesktopSettings current, VoicePreparation preparation)
     {
         Title = "桌面设置"; Width = 520; Height = 480; MinWidth = 380; MinHeight = 400; CanResize = true;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = DesktopStyle.Brush("#F5F8FC"); Icon = new WindowIcon(AppIconFactory.CreateStream());
@@ -72,7 +77,12 @@ internal sealed class SettingsWindow : Window
             DesktopStyle.Text("填写学校工作台的网址，通常无需修改。班班的 API 地址和密钥请在班班的连接设置中填写。", 13, muted: true), error } };
         var behavior = new StackPanel { Spacing = 6, Children = { DesktopStyle.Text("窗口行为", 14, true), tray,
             DesktopStyle.Text("收起后，可从桌面图标或托盘重新打开。需要结束程序时，请在托盘菜单选择“退出 ICeClass 班伴 · 教师端”。", 13, muted: true) } };
-        var form = new StackPanel { Spacing = 14, Children = { DesktopStyle.Card(platform, 14), DesktopStyle.Card(behavior, 14) } };
+        var voice = new StackPanel { Spacing = 6, Children = { DesktopStyle.Text("语音资源", 14, true), _voiceResources } };
+        _voiceResources.SetState(preparation.Current);
+        preparation.Changed += _voiceResources.SetState;
+        _voiceResources.DownloadRequested += async () => await preparation.DownloadAsync();
+        Closed += (_, _) => preparation.Changed -= _voiceResources.SetState;
+        var form = new StackPanel { Spacing = 14, Children = { DesktopStyle.Card(platform, 14), DesktopStyle.Card(voice, 14), DesktopStyle.Card(behavior, 14) } };
         var heading = new StackPanel { Spacing = 4, Children = { DesktopStyle.Text("桌面设置", 20, true), DesktopStyle.Text("仅影响这台电脑上的教师端。", 13, muted: true) } };
         var layout = new Grid { Margin = new Thickness(24, 20), RowDefinitions = new RowDefinitions("Auto,14,*") };
         layout.Children.Add(heading);

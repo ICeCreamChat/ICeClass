@@ -14,11 +14,11 @@ internal sealed class ClassroomIslandWindow : Window
     private ClassroomIslandView? _view;
     private IslandAttentionPulseWindow? _pulse;
     private readonly TextBlock _readingTitle = Text("早读陪伴", 16);
-    private readonly TextBlock _readingDetail = Text("", 14, muted: true);
-    private readonly TextBlock _readingUnavailable = Text("", 13, muted: true);
-    private readonly TextBlock _connection = Text("", 14, muted: true);
-    private readonly TextBlock _noticeSender = Text("", 14);
-    private readonly TextBlock _noticeText = Text("", 15);
+    private readonly TextBlock _readingDetail = Text("", 16, muted: true);
+    private readonly TextBlock _readingUnavailable = Text("", 14, muted: true);
+    private readonly TextBlock _connection = Text("", 16, muted: true);
+    private readonly TextBlock _noticeSender = Text("", 16);
+    private readonly TextBlock _noticeText = Text("", 16);
     private readonly Button _expand = new();
     private readonly Button _reading = Button("打开早读", primary: true);
     private readonly Button _dim = Button("淡化", quiet: true);
@@ -38,7 +38,7 @@ internal sealed class ClassroomIslandWindow : Window
     private readonly Action _hide;
     private readonly StackPanel _lessonList = new() { Spacing = 6 };
     private readonly Border _lessonPanel;
-    private readonly TextBlock _component = Text("", 14, muted: true);
+    private readonly TextBlock _component = Text("", 16, muted: true);
     private IslandAppearance _appearance = new();
     private bool _interactiveOverride;
     private bool _isConnected;
@@ -46,13 +46,22 @@ internal sealed class ClassroomIslandWindow : Window
     private bool _expanded, _dimmed, _hasNotice, _closing, _opening;
     private bool _shoutShown, _shoutExpanded;
     private long _shoutSequence = -1;
+    private readonly Action<string>? _diagnostic;
+    private bool _motionSummaryRecorded;
+    private bool _animationsEnabled = true;
+    internal string DiagnosticState => $"通知窗口：显示={IsVisible}；最近通知级别={_noticeLevel}；当前通知={_shoutShown}\n" +
+        $"浮岛动画：{(_animationsEnabled ? "开启" : "关闭")}\n" +
+        $"通知动画：人物={_mascot.Animate}；通知条={_ribbon.Animate}；帧回调={_mascot.AnimationFrames}；重绘={_mascot.RenderedFrames}\n" +
+        $"通知布局：拉开 {_companion.Expansion:0.#} DIP；窗口 {ClientSize.Width:0}×{ClientSize.Height:0} DIP；缩放 {RenderScaling * 100:0}%\n" +
+        $"图层：素材已载入={_mascot.AssetsLoaded}；透明模式={ActualTransparencyLevel}\n";
 
     public ClassroomIslandWindow(Func<Task> openReading, Action openHome, Action toggleDim, Action hide, Action dismissNotice)
         : this(openReading, openHome, toggleDim, hide, dismissNotice, null) { }
 
-    public ClassroomIslandWindow(Func<Task> openReading, Action openHome, Action toggleDim, Action hide, Action dismissNotice, Action? settings, Action? dismissWithoutAcknowledging = null)
+    public ClassroomIslandWindow(Func<Task> openReading, Action openHome, Action toggleDim, Action hide, Action dismissNotice, Action? settings, Action? dismissWithoutAcknowledging = null,
+        Action<string>? diagnostic = null)
     {
-        _hide = hide;
+        _hide = hide; _diagnostic = diagnostic;
         ClassroomStyle.Apply(this);
         Styles.Add(new StyleInclude(new Uri("avares://ICeClass/")) { Source = new Uri("avares://ICeClass/ClassroomIslandStyles.axaml") });
         Title = "教室浮岛 · ICeClass 班伴";
@@ -77,7 +86,7 @@ internal sealed class ClassroomIslandWindow : Window
         _ribbon.Attention += color =>
         {
             _pulse ??= new IslandAttentionPulseWindow();
-            _pulse.Play(this, color);
+            _pulse.Play(this, color, _animationsEnabled);
         };
 
         _readingDetail.TextWrapping = TextWrapping.Wrap; _readingDetail.MaxLines = 2;
@@ -202,8 +211,8 @@ internal sealed class ClassroomIslandWindow : Window
         _importantBody.Light = light;
         foreach (var text in new[] { _readingTitle, _noticeText })
             text.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD");
-        foreach (var text in new[] { _readingDetail, _readingUnavailable, _component }) text.Foreground = DesktopStyle.Brush(light ? "#36516E" : "#C4D1E3");
-        _dim.Foreground = DesktopStyle.Brush(light ? "#29486D" : "#D4E2F6");
+        foreach (var text in new[] { _readingDetail, _readingUnavailable, _component }) text.Foreground = DesktopStyle.Brush(light ? "#29435F" : "#C4D1E3");
+        _dim.Foreground = DesktopStyle.Brush(light ? "#203D60" : "#D4E2F6");
         _noticeSender.Foreground = DesktopStyle.Brush(light ? _noticeLevel == "urgent" ? "#9C332C" : _noticeLevel == "warning" ? "#84521C" : "#005BB5" : NoticeColor(_noticeLevel));
         _connection.Foreground = DesktopStyle.Brush(light ? _isConnected ? "#1D7555" : "#8B561C" : _isConnected ? "#8CDDC3" : "#F0C480");
         _component.Text = component; ToolTip.SetTip(_component, component); _component.IsVisible = !string.IsNullOrEmpty(component);
@@ -215,14 +224,14 @@ internal sealed class ClassroomIslandWindow : Window
             if (signature != _lessonSignature)
             {
                 _lessonSignature = signature; _lessonList.Children.Clear();
-                var heading = Text("今日课表", 15); heading.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD"); _lessonList.Children.Add(heading);
-                foreach (var lesson in today) { var row = Text(lesson.Summary, 14); row.Foreground = DesktopStyle.Brush(light ? "#29486D" : "#D4E2F6"); ToolTip.SetTip(row, lesson.Summary); _lessonList.Children.Add(row); }
-                if (today.Count == 0) { var empty = Text("今天没有课程", 14); empty.Foreground = heading.Foreground; _lessonList.Children.Add(empty); }
+                var heading = Text("今日课表", 16); heading.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD"); _lessonList.Children.Add(heading);
+                foreach (var lesson in today) { var row = Text(lesson.Summary, 16); row.Foreground = DesktopStyle.Brush(light ? "#203D60" : "#D4E2F6"); ToolTip.SetTip(row, lesson.Summary); _lessonList.Children.Add(row); }
+                if (today.Count == 0) { var empty = Text("今天没有课程", 16); empty.Foreground = heading.Foreground; _lessonList.Children.Add(empty); }
             }
         }
         else if (_lessonSignature != "empty")
         {
-            _lessonSignature = "empty"; _lessonList.Children.Clear(); _lessonList.Children.Add(Text("教师尚未设置课表", 14));
+            _lessonSignature = "empty"; _lessonList.Children.Clear(); _lessonList.Children.Add(Text("教师尚未设置课表", 16));
         }
         foreach (var line in _lessonList.Children.OfType<TextBlock>()) line.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#D4E2F6");
         IslandPlatform.SetClickThrough(this, appearance.ClickThrough && !_interactiveOverride && !_shoutShown);
@@ -235,9 +244,17 @@ internal sealed class ClassroomIslandWindow : Window
         DockToPrimaryScreen(); UpdateOpacity();
     }
     private string? _lessonSignature;
-    public void Update(ClassroomIslandView view, bool dimmed)
+    public void Update(ClassroomIslandView view, bool dimmed, bool animationsEnabled = true)
     {
         _view = view;
+        var motionChanged = _animationsEnabled != animationsEnabled;
+        _animationsEnabled = _mascot.Animate = _ribbon.Animate = animationsEnabled;
+        if (!animationsEnabled) _pulse?.Stop();
+        if (motionChanged)
+        {
+            _reveal.SetExpanded(_expanded, IsVisible && animationsEnabled);
+            _shoutReveal.SetExpanded(_shoutExpanded, IsVisible && animationsEnabled);
+        }
         _readingTitle.Text = view.ReadingTitle; _readingDetail.Text = view.ReadingDetail;
         ToolTip.SetTip(_readingDetail, view.ReadingDetail);
         _canOpenReading = view.CanOpenReading; UpdateReadingAction();
@@ -261,16 +278,29 @@ internal sealed class ClassroomIslandWindow : Window
             _mascot.Begin(view.Notice!);
             _importantBody.Update(view.Notice!);
             if (newShout)
-            { _shoutSequence = view.Notice!.Sequence; SetShoutExpanded(false); }
+            {
+                _shoutSequence = view.Notice!.Sequence; _motionSummaryRecorded = false; SetShoutExpanded(false);
+                _diagnostic?.Invoke($"Notification animation start: level={_noticeLevel}; systemAnimations={DesktopStyle.AnimationsEnabled()}; islandAnimations={_animationsEnabled}; " +
+                    $"mascotAnimations={_mascot.Animate}; ribbonAnimations={_ribbon.Animate}; visibleBefore={IsVisible}");
+            }
         }
         if (shout != _shoutShown)
         {
             _shoutShown = shout;
             _dismissShout.IsVisible = shout;
-            if (!shout) { _mascot.Stop(); SetShoutExpanded(false); }
+            if (!shout)
+            {
+                _diagnostic?.Invoke("Notification animation closed: " + DiagnosticState);
+                _mascot.Stop(); SetShoutExpanded(false);
+            }
         }
         _companion.PullEnabled = view.Notice?.Level is "warning" or "urgent";
-        _companion.SetActive(shout, ClassroomIslandReveal.AnimationsEnabled(), newShout);
+        _companion.SetActive(shout, _animationsEnabled, newShout);
+        if (shout && !_motionSummaryRecorded && view.Notice!.AgeSeconds >= 2.4)
+        {
+            _motionSummaryRecorded = true;
+            _diagnostic?.Invoke("Notification animation progress: " + DiagnosticState);
+        }
         UpdateImportantBody();
         UpdateExpandName();
         ToolTip.SetTip(_expand, shout ? "点击在岛内展开或收起全文；Esc 结束喊话" : "点击查看早读、今日课表与操作；Esc 收起");
@@ -286,14 +316,14 @@ internal sealed class ClassroomIslandWindow : Window
         UpdateSurface();
         if (!expanded) { _interactiveOverride = false; IslandPlatform.SetClickThrough(this, _appearance.ClickThrough && !_shoutShown); }
         UpdateExpandName();
-        _reveal.SetExpanded(expanded, IsVisible && ClassroomIslandReveal.AnimationsEnabled());
+        _reveal.SetExpanded(expanded, IsVisible && _animationsEnabled);
         UpdateOpacity();
     }
 
     internal void SetShoutExpanded(bool expanded)
     {
         _shoutExpanded = expanded && _shoutShown;
-        _shoutReveal.SetExpanded(_shoutExpanded, IsVisible && ClassroomIslandReveal.AnimationsEnabled());
+        _shoutReveal.SetExpanded(_shoutExpanded, IsVisible && _animationsEnabled);
         UpdateImportantBody();
         UpdateSurface();
         UpdateExpandName();
@@ -313,7 +343,7 @@ internal sealed class ClassroomIslandWindow : Window
         _ribbon.FullTextExpanded = _shoutExpanded;
         _ribbon.InvalidateVisual();
         _importantReveal.SetExpanded(expanded,
-            IsVisible && ClassroomIslandReveal.AnimationsEnabled());
+            IsVisible && _animationsEnabled);
         UpdateSurface();
     }
 

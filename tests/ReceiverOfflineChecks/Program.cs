@@ -2,6 +2,29 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--manual-update-probe", var updateMode, var updateEndpoint, "--incremental-update-started"])
+{
+    ManualUpdateChecks.Probe(updateMode, updateEndpoint); return;
+}
+if (args is ["--manual-update-checks"]) { try { await ManualUpdateChecks.Run(); } catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; } return; }
+if (args is ["--update-activity-checks"]) { UpdateActivityChecks.Run(); return; }
+if (args is ["--voice-resource-state-checks"])
+{
+    try { await VoiceResourceStateChecks.Run(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--update-resource-checks", var updateRelease, var updateOutput]) { await UpdateResourceChecks.Run(updateRelease, updateOutput); return; }
+
+if (args.Length is 1 or 2 && args[0] == "--ideas-voice-checks")
+{
+    try { await IdeasVoiceTranscriptionChecks.Run(args.Length == 2 ? args[1] : null); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ideas-browser-checks", var ideasBinding, var ideasOutput]) { IdeasBrowserChecks.Run(ideasBinding, ideasOutput); return; }
+
 if (args is ["--banban-departure-review", var departureOutput]) { BanbanDepartureReview.Run(departureOutput); return; }
 
 if (args is ["--conversation-checks", var conversationOutput])
@@ -134,10 +157,12 @@ if (args is ["--island-restart-write", var restartWriteBinding, var restartWrite
 if (args is ["--island-restart-read", var restartReadBinding, var restartReadOutput]) { NativeIslandAcceptanceChecks.Run("read", restartReadBinding, restartReadOutput); return; }
 if (args is ["--island-fullscreen-probe", var probeOutput]) { NativeIslandAcceptanceChecks.FullscreenProbe(probeOutput); return; }
 if (args is ["--native-island", var bindingPath]) { NativeIslandChecks.Run(bindingPath); return; }
+if (args is ["--island-visibility", var visibilityOutput]) { NativeIslandVisibilityChecks.Run(visibilityOutput); return; }
 if (args is ["--island-ribbon"]) { NativeRibbonChecks.Run(); return; }
 if (args is ["--island-ribbon-light"]) { NativeRibbonChecks.Run(light: true); return; }
 if (args is ["--island-demo"]) { NativeDemoChecks.Run(); return; }
 if (args is ["--island-timetable"]) { NativeTimetableChecks.Run(); return; }
+if (args is ["--island-timetable", var timetableOutput]) { NativeTimetableChecks.Run(timetableOutput); return; }
 if (args is ["--island-shout"]) { NativeShoutChecks.Run(); return; }
 if (args is ["--island-arm-review", var reviewOutput]) { NativeHoldingArmReview.Run(reviewOutput); return; }
 if (args is ["--island-layout-review", var layoutOutput]) { NativeIslandLayoutReview.Run(layoutOutput); return; }
@@ -200,6 +225,7 @@ try
     using var child = Process.Start(start)!; await child.WaitForExitAsync();
     Check(child.ExitCode == 0 && new ReadingOutbox(Path.Combine(root, "crash")).Pending == 1, "an abruptly exiting process leaves its confirmed write recoverable");
     checks += await UpdateChecks.Run();
+    checks += await ManualUpdateChecks.Run();
     checks += IslandChecks.Run(root);
     checks += IslandSpringChecks.Run();
     checks += IslandHoldingArmChecks.Run();

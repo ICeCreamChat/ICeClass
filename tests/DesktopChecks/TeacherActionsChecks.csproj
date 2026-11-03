@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj/teacher-actions/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin/teacher-actions/</BaseOutputPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);TEACHER_ACTION_CHECKS</DefineConstants>
+    <AssemblyName>TeacherActionsChecks</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TeacherActionsChecks.cs" />
+    <Compile Include="../../Desktop/TeacherActions.cs" Link="TeacherActions.cs" />
+    <Compile Include="../../Desktop/DesktopSettings.cs" Link="DesktopSettings.cs" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

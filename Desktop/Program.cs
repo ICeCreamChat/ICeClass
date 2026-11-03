@@ -1,5 +1,6 @@
 using Avalonia;
 using System.IO.Pipes;
+using ICeClass.Updates;
 
 namespace ICeClass.Desktop;
 
@@ -19,7 +20,16 @@ internal static class Program
             catch (IOException) { } catch (TimeoutException) { }
             _instance.Dispose(); return;
         }
-        try { AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(args); }
+        try
+        {
+            try
+            {
+                if (!UpdateInstaller.IsUpdateLaunch && UpdateInstaller.TryLaunchPending(AppContext.BaseDirectory,
+                    "ICeClass.Desktop.exe", Options.RestartArguments(), DesktopUpdates.CurrentVersion)) return;
+            }
+            catch (Exception error) { DesktopLog.Write(error); }
+            AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(args);
+        }
         finally { _instance.ReleaseMutex(); _instance.Dispose(); }
     }
 }
