@@ -78,7 +78,10 @@ if (args is ["--file-recycle-review", var recycleOutput])
     return;
 }
 if (args is ["--banban-pet-review", var petOutput]) { BanbanPetReview.Run(petOutput); return; }
+if (args is ["--banban-pet-settings", var petSettingsOutput]) { BanbanPetSettingsChecks.Run(petSettingsOutput); return; }
+if (args is ["--banban-pet-drag-checks", var petDragOutput]) { BanbanPetDragChecks.Run(petDragOutput); return; }
 if (args is ["--banban-pet-playground", var petPlayground]) { BanbanPetReview.Playground(petPlayground); return; }
+if (args is ["--banban-pet-size-preview", var petSizePreview]) { BanbanPetReview.Playground(petSizePreview, sizeControls: true); return; }
 if (args is ["--banban-bubble-preview", var bubblePreview]) { BanbanPetReview.Playground(bubblePreview, speechBubble: true); return; }
 if (args is ["--banban-pet-demo", var petDemo]) { BanbanPetReview.Playground(petDemo, demonstrate: true); return; }
 if (args is ["--banban-motion-review", var motionOutput]) { BanbanPetMotionReview.Run(motionOutput); return; }

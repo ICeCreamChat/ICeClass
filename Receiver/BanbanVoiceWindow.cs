@@ -23,7 +23,7 @@ internal sealed class BanbanVoiceWindow : Window
     private readonly Border _notice;
     private readonly Button _retry = ClassroomStyle.Button("重新连接", true);
     private readonly DispatcherTimer _connectionTimeout = new() { Interval = TimeSpan.FromSeconds(30) };
-    private bool _canClose, _started, _background, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed, _browserFailed;
+    private bool _canClose, _started, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed, _browserFailed;
     internal event Action<string>? VoiceStatusChanged;
 
     internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null)
@@ -104,12 +104,6 @@ internal sealed class BanbanVoiceWindow : Window
         _connectionTimeout.Stop(); _connectionTimeout.Start();
     }
 
-    private void FinishBackgroundStart()
-    {
-        if (!_background) return;
-        Hide(); Opacity = 1; ShowInTaskbar = true; _background = false;
-    }
-
     private void FailConnection(string message, bool recreateBrowser = false)
     {
         if (_canClose) return;
@@ -118,7 +112,7 @@ internal sealed class BanbanVoiceWindow : Window
         if (_browserFailed) { _started = false; _browser.DisposeBrowser(); }
         _pageReady = _authorized = false; _voice.SetReady(false); _stopComputer();
         ShowNotice(message); _retry.IsEnabled = true;
-        FinishBackgroundStart(); ReportCallFailure();
+        ReportCallFailure();
     }
 
     internal bool Matches(ReceiverConfig binding) => _binding.Endpoint == binding.Endpoint && _binding.DeviceId == binding.DeviceId
@@ -136,18 +130,25 @@ internal sealed class BanbanVoiceWindow : Window
             var surface = (Grid)Content!; surface.Children.Remove(_browser);
             _browser = CreateBrowser(); surface.Children.Insert(0, _browser); _browserFailed = false;
         }
-        _started = true; _background = background;
+        _started = true;
         _pet.ShowPet(false);
-        if (background) { Opacity = 0; ShowInTaskbar = false; ShowActivated = false; }
-        Show();
         ShowNotice("正在关联班主任账号…"); _retry.IsEnabled = false;
         var browser = _browser;
         bool Current() => !_canClose && ReferenceEquals(browser, _browser) && !_browserFailed;
         using var initialize = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         initialize.CancelAfter(TimeSpan.FromSeconds(30));
-        var stage = "WebView2 initialization";
+        var stage = "native host attachment";
         try
         {
+            if (background)
+            {
+                // Attach the native browser without showing a top-level window.
+                // Opacity only hides the client area; Windows can still draw its title bar.
+                EnsureInitialized(); ApplyStyling(); ApplyTemplate();
+                Presenter!.UpdateChild();
+            }
+            else Show();
+            stage = "WebView2 initialization";
             var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_origin.AbsoluteUri + "|" + _binding.DeviceId + "|" + _binding.ClassId)))[..20];
             var profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "BanbanVoice", identity);
             Directory.CreateDirectory(profile);
@@ -240,7 +241,7 @@ internal sealed class BanbanVoiceWindow : Window
             _authorized = _pageReady && root.TryGetProperty("value", out var ready) && ready.ValueKind == JsonValueKind.True;
             if (_authorized)
             {
-                _connectionFailed = false; _connectionTimeout.Stop(); FinishBackgroundStart();
+                _connectionFailed = false; _connectionTimeout.Stop();
                 _notice.IsVisible = false; _browser.IsVisible = true;
             }
             else
@@ -324,8 +325,7 @@ internal sealed class BanbanVoiceWindow : Window
     {
         if (_suspended || _canClose) return;
         _pet.ShowPet(true);
-        // Keep the invisible host alive until WebView initialization finishes.
-        if (!_background) Hide();
+        Hide();
         if (!_pageReady || !_authorized)
         {
             if (_connectionFailed) { BringForward(); return; }
@@ -350,6 +350,6 @@ internal sealed class BanbanVoiceWindow : Window
     internal bool IsBusy => _voice.Busy;
     internal void SetInClass(bool value) => _pet.SetInClass(value);
     internal void ShowPet() => _pet.ShowPet(true);
-    internal void BringForward() { _background = false; Opacity = 1; ShowInTaskbar = true; ShowActivated = true; Show(); WindowState = WindowState.Normal; Activate(); _browser.FocusPage(); }
+    internal void BringForward() { Show(); WindowState = WindowState.Normal; Activate(); _browser.FocusPage(); }
     internal void Shutdown() { if (_canClose) return; _canClose = true; _pet.Shutdown(); _stopComputer(); _voice.Dispose(); Close(); }
 }

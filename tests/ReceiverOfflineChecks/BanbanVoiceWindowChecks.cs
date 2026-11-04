@@ -121,7 +121,7 @@ public sealed class BanbanWindowCheckApp : Application
         {
             await Run("loading", async () =>
             {
-                server.Mode = "delayed";
+                server.DelayPage();
                 await Open();
                 await Until(() => Task.FromResult(server.PageRequested), "delayed page not requested");
                 await Task.Delay(250);
@@ -222,11 +222,20 @@ public sealed class BanbanWindowCheckApp : Application
             });
             await Run("background", async () =>
             {
-                server.Mode = "healthy";
-                await Open(background: true);
+                server.DelayPage();
+                window = new BanbanVoiceWindow(binding, () => { }, enabled: false, petPreferencePath: preference);
+                using var visibility = new NativeVisibility(window);
+                await window.StartAsync(background: true);
                 Console.WriteLine($"Native voice scale={window!.RenderScaling}");
+                await Until(() => Task.FromResult(server.PageRequested), "background page not requested");
+                await Task.Delay(250);
+                Assert(!window.IsVisible && !IsWindowVisible(window.TryGetPlatformHandle()!.Handle),
+                    "background startup keeps the native window hidden while the page is loading");
+                server.ReleasePage();
                 await Until(Authorized, "background authorization");
                 await Until(() => Task.FromResult(!window!.IsVisible), "background host did not hide");
+                await Task.Delay(100);
+                Assert(visibility.ShowEvents == 0, "background initialization never shows the native top-level window");
                 window!.BringForward();
                 await Task.Delay(250);
                 Assert(window.IsVisible && window.Opacity == 1 && NoticeExposed(window) == false,
@@ -240,11 +249,76 @@ public sealed class BanbanWindowCheckApp : Application
                 Assert(await Script("document.documentElement.classList.contains('bb-native-voice-page') && !document.getElementById('bbPanel').hidden"),
                     "hide and reopen preserve the voice bridge and visible panel");
             });
+            await Run("background-open", async () =>
+            {
+                server.DelayPage();
+                await Open(background: true);
+                await Until(() => Task.FromResult(server.PageRequested), "background page not requested before opening");
+                window!.BringForward();
+                await Task.Delay(150);
+                Assert(window.IsVisible && IsWindowVisible(window.TryGetPlatformHandle()!.Handle) && NoticeExposed(window),
+                    "opening during background initialization exposes the loading notice");
+                server.ReleasePage();
+                await Until(Authorized, "opened background host did not authorize");
+                await Task.Delay(100);
+                Assert(window.IsVisible && await Script("!document.getElementById('bbPanel').hidden"),
+                    "authorization preserves an explicitly opened window and restores its content");
+            });
+            await Run("background-error", async () =>
+            {
+                server.Mode = "identity";
+                window = new BanbanVoiceWindow(binding, () => { }, enabled: false, petPreferencePath: preference);
+                using var visibility = new NativeVisibility(window);
+                await window.StartAsync(background: true);
+                await Until(() => Task.FromResult(Field<bool>(window, "_connectionFailed")), "background identity failure not received");
+                await Task.Delay(100);
+                Assert(!window.IsVisible && !IsWindowVisible(window.TryGetPlatformHandle()!.Handle) && visibility.ShowEvents == 0,
+                    "background connection failure stays hidden without flashing a native window");
+                window.BringForward();
+                await Task.Delay(150);
+                Assert(NoticeExposed(window) && Retry(window).IsEnabled,
+                    "explicitly opening a failed background host exposes its error and retry action");
+                server.Mode = "healthy";
+                Retry(window).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Until(Authorized, "background failure retry did not authorize");
+                Assert(window.IsVisible && await Script("!document.getElementById('bbPanel').hidden"),
+                    "retry after a hidden startup failure restores the visible authorized panel");
+            });
+            await Run("background-call-error", async () =>
+            {
+                server.Mode = "identity";
+                window = new BanbanVoiceWindow(binding, () => { }, enabled: false, petPreferencePath: preference);
+                window.StartConversation();
+                await window.StartAsync(background: true);
+                await Until(() => Task.FromResult(Field<bool>(window, "_connectionFailed")), "queued call identity failure not received");
+                await Task.Delay(150);
+                Assert(window.IsVisible && NoticeExposed(window) && Retry(window).IsEnabled
+                    && !Field<BanbanVoiceService>(window, "_voice").Enabled,
+                    "an explicit call exposes a startup failure without enabling audio capture");
+            });
+            await Run("background-shutdown", async () =>
+            {
+                server.Mode = "healthy";
+                window = new BanbanVoiceWindow(binding, () => { }, enabled: false, petPreferencePath: preference);
+                using var visibility = new NativeVisibility(window);
+                var startup = window.StartAsync(background: true);
+                window.Shutdown();
+                await startup;
+                await Task.Delay(100);
+                Assert(!window.IsVisible && Field<ReadingBrowser>(window, "_browser").Core is null && visibility.ShowEvents == 0,
+                    "shutdown during hidden initialization releases the browser without displaying a window");
+            });
             await Run("real-page", async () =>
             {
                 server.Mode = "real-page";
-                await Open();
+                window = new BanbanVoiceWindow(binding, () => { }, enabled: false, petPreferencePath: preference);
+                using var visibility = new NativeVisibility(window);
+                await window.StartAsync(background: true);
                 await Until(Authorized, "real classroom page did not authorize", 25);
+                await Task.Delay(100);
+                Assert(!window.IsVisible && !IsWindowVisible(window.TryGetPlatformHandle()!.Handle) && visibility.ShowEvents == 0,
+                    "actual classroom scripts authorize in the background without displaying the native window");
+                window.BringForward();
                 Assert(await Script("!!window.ICeClass.state.user && !document.getElementById('bbPanel').hidden && getComputedStyle(document.getElementById('bbPanel')).display !== 'none'"),
                     "actual classroom scripts and CSS initialize the authorized voice window");
                 await Until(() => Script("document.getElementById('bbRestore').hidden"), "real voice conversation did not initialize");
@@ -356,6 +430,28 @@ public sealed class BanbanWindowCheckApp : Application
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X, Y; }
     [DllImport("user32.dll")] private static extern IntPtr ChildWindowFromPointEx(IntPtr parent, NativePoint point, uint flags);
     [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+
+    private sealed class NativeVisibility : IDisposable
+    {
+        private delegate void WinEventCallback(IntPtr hook, uint eventType, IntPtr window, int objectId, int childId, uint thread, uint time);
+        private readonly WinEventCallback _callback;
+        private readonly IntPtr _hook;
+        internal int ShowEvents { get; private set; }
+        internal NativeVisibility(Window window)
+        {
+            var handle = window.TryGetPlatformHandle()!.Handle;
+            _callback = (_, _, shown, objectId, childId, _, _) =>
+            {
+                if (shown == handle && objectId == 0 && childId == 0) ShowEvents++;
+            };
+            _hook = SetWinEventHook(0x8002 /* EVENT_OBJECT_SHOW */, 0x8002, IntPtr.Zero, _callback, (uint)Environment.ProcessId, 0, 0);
+            if (_hook == IntPtr.Zero) throw new InvalidOperationException("Cannot observe native window visibility.");
+        }
+        public void Dispose() { UnhookWinEvent(_hook); GC.KeepAlive(_callback); }
+        [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventCallback callback, uint process, uint thread, uint flags);
+        [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hook);
+    }
 }
 
 internal sealed class FixtureServer : IDisposable
@@ -379,6 +475,11 @@ internal sealed class FixtureServer : IDisposable
         _ = Serve();
     }
     internal void ReleasePage() => _release.TrySetResult();
+    internal void DelayPage()
+    {
+        Mode = "delayed"; PageRequested = false;
+        _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
     private async Task Serve()
     {
         try { while (!_lifetime.IsCancellationRequested) { var context = await _listener.GetContextAsync().WaitAsync(_lifetime.Token); _ = Reply(context); } }

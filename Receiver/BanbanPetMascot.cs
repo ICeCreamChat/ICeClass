@@ -15,6 +15,7 @@ internal sealed class BanbanPetMascot : Control, IDisposable
 {
     private readonly Dictionary<string, Bitmap> _images = new();
     private readonly Dictionary<string, SKImage> _textures = new();
+    private readonly Dictionary<(string Name, int Level), SKImage> _filteredTextures = new();
     private readonly BanbanPetMotion _motion = new();
     private readonly DispatcherTimer _frames, _idle;
     private long _lastFrame;
@@ -259,20 +260,47 @@ internal sealed class BanbanPetMascot : Control, IDisposable
             indices[cursor++] = (ushort)a; indices[cursor++] = (ushort)b; indices[cursor++] = (ushort)d;
             indices[cursor++] = (ushort)a; indices[cursor++] = (ushort)d; indices[cursor++] = (ushort)c;
         }
-        context.Custom(new PaintedMesh(this, image, source, dest, indices));
+        context.Custom(new PaintedMesh(this, name, rect, image, source, dest, indices));
+    }
+    private SKImage MeshTexture(string name, SKImage original, Rect rect, SKMatrix matrix)
+    {
+        var scaleX = Math.Sqrt(matrix.ScaleX * matrix.ScaleX + matrix.SkewY * matrix.SkewY);
+        var scaleY = Math.Sqrt(matrix.SkewX * matrix.SkewX + matrix.ScaleY * matrix.ScaleY);
+        var ratio = Math.Max(rect.Width * scaleX / original.Width, rect.Height * scaleY / original.Height);
+        if (ratio >= .5 || ratio <= 0) return original;
+        var level = Math.Min((int)Math.Floor(Math.Log2(1 / ratio)), (int)Math.Log2(Math.Max(original.Width, original.Height)));
+        // Live compositing and offscreen rendering can use this cache concurrently.
+        lock (_filteredTextures)
+        {
+            if (_filteredTextures.TryGetValue((name, level), out var cached)) return cached;
+            var divisor = 1 << level;
+            using var bitmap = new SKBitmap(new SKImageInfo(
+                Math.Max(1, (original.Width + divisor - 1) / divisor), Math.Max(1, (original.Height + divisor - 1) / divisor),
+                SKColorType.Rgba8888, SKAlphaType.Premul));
+            using var pixels = bitmap.PeekPixels();
+            if (!original.ScalePixels(pixels, SKFilterQuality.High))
+                throw new InvalidOperationException("Banban's painted texture could not be filtered.");
+            // Power-of-two levels stay bounded by the source image size. They are
+            // reused through gestures and slider changes, rather than rebuilt each frame.
+            var filtered = SKImage.FromBitmap(bitmap);
+            _filteredTextures.Add((name, level), filtered);
+            return filtered;
+        }
     }
     // One indexed texture mesh avoids translucent triangle overlaps and clip seams.
     // SkiaSharp already ships with Avalonia.Desktop; this adds no runtime package.
     private sealed class PaintedMesh : ICustomDrawOperation
     {
         private readonly BanbanPetMascot _owner;
+        private readonly string _name;
+        private readonly Rect _rect;
         private readonly SKImage _texture;
         private readonly SKPoint[] _source, _points;
         private readonly ushort[] _indices;
         public Rect Bounds { get; }
-        internal PaintedMesh(BanbanPetMascot owner, SKImage texture, SKPoint[] source, SKPoint[] points, ushort[] indices)
+        internal PaintedMesh(BanbanPetMascot owner, string name, Rect rect, SKImage texture, SKPoint[] source, SKPoint[] points, ushort[] indices)
         {
-            _owner = owner; _texture = texture;
+            _owner = owner; _name = name; _rect = rect; _texture = texture;
             _source = source; _points = points; _indices = indices;
             var x = points.Min(p => p.X); var y = points.Min(p => p.Y);
             Bounds = new Rect(x - 1, y - 1, points.Max(p => p.X) - x + 2, points.Max(p => p.Y) - y + 2);
@@ -285,11 +313,15 @@ internal sealed class BanbanPetMascot : Control, IDisposable
             var feature = context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) as ISkiaSharpApiLeaseFeature
                 ?? throw new NotSupportedException("Banban's painted mesh needs the application's Skia renderer.");
             using var lease = feature.Lease();
-            using var vertices = SKVertices.CreateCopy(SKVertexMode.Triangles, _points, _source, null, _indices);
-            using var shader = _texture.ToShader();
+            var texture = _owner.MeshTexture(_name, _texture, _rect, lease.SkCanvas.TotalMatrix);
+            var source = texture == _texture ? _source : Array.ConvertAll(_source,
+                p => new SKPoint(p.X * texture.Width / _texture.Width, p.Y * texture.Height / _texture.Height));
+            using var vertices = SKVertices.CreateCopy(SKVertexMode.Triangles, _points, source, null, _indices);
+            using var shader = texture.ToShader();
             // Skia 2.88's high-quality vertex sampler mis-scales these WebP
             // textures when minified. Bilinear sampling preserves texture-space
-            // coordinates at the pet's small size, without mesh seams.
+            // coordinates at the pet's small size, without mesh seams. Prefilter
+            // large cutouts first so their hard alpha edges do not alias when reduced.
             using var paint = new SKPaint { IsAntialias = true, FilterQuality = SKFilterQuality.Low, Shader = shader,
                 Color = SKColors.White.WithAlpha((byte)Math.Round(255 * lease.CurrentOpacity)) };
             lease.SkCanvas.DrawVertices(vertices, SKBlendMode.Modulate, paint);
@@ -364,5 +396,10 @@ internal sealed class BanbanPetMascot : Control, IDisposable
         _images.Clear();
         foreach (var texture in _textures.Values) texture.Dispose();
         _textures.Clear();
+        lock (_filteredTextures)
+        {
+            foreach (var texture in _filteredTextures.Values) texture.Dispose();
+            _filteredTextures.Clear();
+        }
     }
 }

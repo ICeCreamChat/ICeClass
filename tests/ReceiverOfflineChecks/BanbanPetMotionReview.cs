@@ -229,6 +229,8 @@ internal static class BanbanPetMotionReview
             for (var i = 0; i < 48; i++) raisedHand.Advance(1d / 60);
             InspectBookEdge(raisedHand.Pose, "raised-right-arm.png",
                 "the raised pointing arm emerges behind the blue book edge without a translucent wrist seam across the pages");
+            InspectFace(29, 32.5, 96); InspectFace(29, 32.5, 144); InspectFace(29, 32.5, 192);
+            InspectFace(174, 195, 96); InspectFace(174, 195, 144); InspectFace(174, 195, 192);
             InspectFace(52, 62, 96); InspectFace(52, 62, 192); InspectFace(116, 130, 96); InspectFace(116, 130, 144); InspectFace(116, 130, 192);
             InspectFace(150, 168, 96); InspectFace(150, 168, 144); InspectFace(150, 168, 192);
             var openEyes = InspectFace(256, 288, 96); var winkEyes = InspectFace(256, 288, 96, wink: true);

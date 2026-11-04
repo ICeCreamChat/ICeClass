@@ -14,7 +14,7 @@ using SkiaSharp;
 
 internal static class BanbanPetReview
 {
-    internal static void Playground(string output, bool demonstrate = false, bool speechBubble = false) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Playground(string output, bool demonstrate = false, bool speechBubble = false, bool sizeControls = false) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() =>
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
@@ -52,13 +52,19 @@ internal static class BanbanPetReview
                 if (display is not null) pet.Position = new PixelPoint(pet.Position.X, display.WorkingArea.Y + (int)(100 * display.Scaling));
                 Save(); return;
             }
+            if (sizeControls)
+            {
+                button.ContextMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "大小"))
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                return;
+            }
             if (!demonstrate) return;
             var mascot = pet.GetVisualDescendants().OfType<BanbanPetMascot>().Single();
             var screen = pet.Screens.ScreenFromPoint(pet.Position) ?? pet.Screens.Primary;
             if (screen is not null)
             {
-                pet.Position = new PixelPoint(screen.WorkingArea.X, pet.Position.Y);
-                typeof(BanbanPetWindow).GetMethod("Fit", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pet, [true]);
+                button.Focus();
+                button.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Left });
             }
             var idle = (DispatcherTimer)typeof(BanbanPetMascot).GetField("_idle", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(mascot)!;
             var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
@@ -123,8 +129,9 @@ internal static class BanbanPetReview
             Call("ShowPet", true);
             await Task.Delay(150);
             Check(pet.IsVisible && !pet.ShowInTaskbar && pet.Topmost && !pet.ShowActivated, "pet stays visible without a taskbar entry or focus stealing");
-            Check(pet.Width == BanbanPetWindow.DockedWidth && pet.Height == BanbanPetWindow.SurfaceHeight,
-                "standby reserves a clear edge-peeking character instead of shrinking its entire body");
+            var dockedWidth = pet.Width;
+            Check(dockedWidth == 80 && pet.Height == BanbanPetWindow.SurfaceHeight,
+                "standby starts with the 80% default size and a clear edge-peeking character");
             Check(pet.SystemDecorations == SystemDecorations.None && pet.Background is ISolidColorBrush { Color.A: 0 }, "pet has transparent native chrome");
             var button = pet.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "BanbanPetTalk");
             var mascot = pet.GetVisualDescendants().OfType<BanbanPetMascot>().Single();
@@ -256,7 +263,7 @@ internal static class BanbanPetReview
             Call("Present", new BanbanVoiceEvent("state", "等候你好班班", "standby", true));
             Check(mascot.Gesture == "bow", "ending an active conversation bows before returning to the screen edge");
             await Task.Delay(3300);
-            Check(pet.Width == BanbanPetWindow.DockedWidth && !mascot.AnimationRunning && mascot.IdleScheduled,
+            Check(pet.Width == dockedWidth && !mascot.AnimationRunning && mascot.IdleScheduled,
                 "returning to standby leans behind the edge and schedules a sparse gesture without continuous drawing");
             var dockedBottom = pet.Position.Y + (int)Math.Ceiling(pet.Height * pet.RenderScaling);
             foreach (var side in new[] { Key.Left, Key.Right })
@@ -274,7 +281,7 @@ internal static class BanbanPetReview
                     $"{side} resting character tucks its center just behind the display edge without changing size");
                 foreach (var dpi in new[] { 96, 144, 192 })
                 {
-                    using var bitmap = new RenderTargetBitmap(new PixelSize((int)(BanbanPetWindow.DockedWidth * dpi / 96d), (int)(BanbanPetWindow.SurfaceHeight * dpi / 96d)), new Vector(dpi, dpi));
+                    using var bitmap = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(pet.Width * dpi / 96d), (int)Math.Ceiling(pet.Height * dpi / 96d)), new Vector(dpi, dpi));
                     bitmap.Render((Visual)pet.Content!); bitmap.Save(Path.Combine(output, $"docked-{side.ToString().ToLowerInvariant()}-{dpi}.png"));
                     using var stream = new MemoryStream(); bitmap.Save(stream); stream.Position = 0;
                     using var pixels = SKBitmap.Decode(stream);
@@ -299,7 +306,7 @@ internal static class BanbanPetReview
                     {
                         for (var frame = 0; frame < action.Seconds * 15; frame++) dockedMotion.Advance(1d / 60);
                         mascot.ReviewPose = dockedMotion.Pose;
-                        using var bitmap = new RenderTargetBitmap(new PixelSize(150, 261), new Vector(144, 144));
+                        using var bitmap = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(pet.Width * 1.5), (int)Math.Ceiling(pet.Height * 1.5)), new Vector(144, 144));
                         bitmap.Render((Visual)pet.Content!);
                         if (sample == 1) bitmap.Save(Path.Combine(output, $"idle-{side.ToString().ToLowerInvariant()}-{action.Id}.png"));
                         using var stream = new MemoryStream(); bitmap.Save(stream); stream.Position = 0;
@@ -363,7 +370,7 @@ internal static class BanbanPetReview
             mascot.Animate = true;
             Call("Present", new BanbanVoiceEvent("wake"));
             Check(pet.IsVisible && pet.Width > BanbanPetWindow.DockedWidth && !pet.ShowActivated, "voice wake reveals the companion during class without stealing focus");
-            Check(mascot.Width == restingSize.Width && mascot.Height == restingSize.Height,
+            Check(mascot.Bounds.Size == restingSize,
                 "voice wake preserves the same compact character size as standby");
             Check(pet.Position.Y + (int)Math.Ceiling(pet.Height * pet.RenderScaling) == dockedBottom,
                 "waking preserves the docked companion's desktop anchor");
@@ -383,10 +390,10 @@ internal static class BanbanPetReview
             Call("Suspend", false);
             Check(!pet.IsVisible, "unlock during class restores classroom hiding");
             Call("SetInClass", false);
-            Check(pet.IsVisible && pet.Width == BanbanPetWindow.DockedWidth && !mascot.AnimationRunning && mascot.IdleScheduled,
+            Check(pet.IsVisible && pet.Width == dockedWidth && !mascot.AnimationRunning && mascot.IdleScheduled,
                 "the end of class restores the edge-peeking companion and sparse idle schedule");
             await Task.Delay(80);
-            using (var bitmap = new RenderTargetBitmap(new PixelSize((int)BanbanPetWindow.DockedWidth * 2, (int)BanbanPetWindow.SurfaceHeight * 2), new Vector(192, 192)))
+            using (var bitmap = new RenderTargetBitmap(new PixelSize((int)pet.Width * 2, (int)pet.Height * 2), new Vector(192, 192)))
             { bitmap.Render(pet); bitmap.Save(Path.Combine(output, "docked.png")); }
             Call("Present", new BanbanVoiceEvent("wake"));
             await Task.Delay(6500);
@@ -394,7 +401,7 @@ internal static class BanbanPetReview
             await Task.Delay(6500);
             Check(pet.IsVisible && pet.Width > BanbanPetWindow.DockedWidth, "continued speech keeps the companion expanded past the original idle deadline");
             await Task.Delay(6500);
-            Check(pet.IsVisible && pet.Width == BanbanPetWindow.DockedWidth && !mascot.AnimationRunning && mascot.IdleScheduled,
+            Check(pet.IsVisible && pet.Width == dockedWidth && !mascot.AnimationRunning && mascot.IdleScheduled,
                 "twelve seconds without further speech returns the companion to its resting edge-peeking state");
             Check(BanbanPetWindow.Constrain(new PixelPoint(-5000, 5000), new PixelRect(-1920, -100, 1920, 1040), new Size(350, 204), 1.5)
                 == new PixelPoint(-1920, 634), "position clamping respects negative monitor coordinates and display scaling");
