@@ -169,6 +169,17 @@ if (args is ["--island-timetable", var timetableOutput]) { NativeTimetableChecks
 if (args is ["--island-shout"]) { NativeShoutChecks.Run(); return; }
 if (args is ["--island-arm-review", var reviewOutput]) { NativeHoldingArmReview.Run(reviewOutput); return; }
 if (args is ["--island-layout-review", var layoutOutput]) { NativeIslandLayoutReview.Run(layoutOutput); return; }
+if (args is ["--island-material-review"]) { NativeIslandLayoutReview.PreviewMaterial(); return; }
+if (args is ["--island-glass-bounds"]) { NativeIslandGlassChecks.Run(); return; }
+if (args is ["--island-refraction-probe"]) { NativeIslandRefractionProbe.Run(); return; }
+if (args is ["--island-refraction-checks", var refractionOutput]) { NativeIslandRefractionChecks.Run(refractionOutput); return; }
+if (args is ["--island-refraction-performance", var refractionPerformance]) { NativeIslandRefractionChecks.Run(refractionPerformance, true); return; }
+if (args is ["--island-refraction-shader"])
+{
+    try { IslandRefractionShaderChecks.Run(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--island-settings-review", var settingsOutput]) { NativeIslandSettingsReview.Run(settingsOutput); return; }
 if (args is ["--computer-control-review", var computerOutput]) { NativeComputerControlReview.Run(computerOutput); return; }
 if (args is ["--general-computer-review", var generalOutput]) { GeneralComputerControlReview.Run(generalOutput); return; }

@@ -101,10 +101,11 @@ internal static class NativeIslandAcceptanceChecks
                 Number("悬浮岛水平偏移").Value = 12;
                 Number("悬浮岛垂直偏移").Value = 16;
                 settings.GetVisualDescendants().OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "悬浮岛主题").SelectedIndex = 0;
+                settings.GetVisualDescendants().OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "悬浮岛材质").SelectedIndex = 1;
                 await Task.Delay(450); Capture(settings, Path.Combine(output, "saved-settings.png"));
                 settings.GetVisualDescendants().OfType<Button>().Single(b => b.Content?.ToString() == "保存本机设置").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var saved = Sync().Store.Read<IslandLocalSettings>("local-settings.json");
-                Assert(saved?.Appearance is { Width: 640, Opacity: 84, OffsetX: 12, OffsetY: 16, Theme: "dark" },
+                Assert(saved?.Appearance is { Width: 640, Opacity: 84, OffsetX: 12, OffsetY: 16, Theme: "dark", Material: "solid" },
                     "the production settings form persists all edited appearance fields");
                 Invoke(island, "ToggleDim"); island.SetEnabled(false);
                 Assert(new ClassroomIslandPreferencesStore(ClassroomIslandPreferencesStore.PathFor(binding)).Load() is { Enabled: false, Dimmed: true },
@@ -115,8 +116,8 @@ internal static class NativeIslandAcceptanceChecks
                 var local = Field<IslandLocalSettings>(island, "_local");
                 Assert(!island.Enabled && Field<ClassroomIslandPreferences>(island, "_preferences").Dimmed && !window.IsVisible,
                     "a fresh offline process restores the hidden and dimmed preferences");
-                Assert(local.Appearance is { Width: 640, Opacity: 84, OffsetX: 12, OffsetY: 16, Theme: "dark" },
-                    "a fresh process restores the saved width, opacity, position and theme without network access");
+                Assert(local.Appearance is { Width: 640, Opacity: 84, OffsetX: 12, OffsetY: 16, Theme: "dark", Material: "solid" },
+                    "a fresh process restores the saved width, opacity, position, theme and material without network access");
                 Assert(Sync().Snapshot is { Online: false, Revision: 1, Profile.Slots.Count: 2, Profile.Lessons.Count: 14 },
                     "offline startup recovers the last authenticated full-week timetable");
                 island.ShowControls(); await Task.Delay(650);
@@ -134,6 +135,13 @@ internal static class NativeIslandAcceptanceChecks
                 await receiver.StartAsync(binding);
                 await Until(() => connected && Sync().Snapshot.Online && window.IsVisible, "real backend connection");
                 Assert(Sync().Snapshot.Revision == 1, "the production receiver and profile sync connect to the real isolated backend");
+                // Settings persistence is covered in the write/read stages. Do
+                // not open settings here: its two-minute manual visibility
+                // override would invalidate the fullscreen lifecycle checks.
+                Field<IslandLocalSettings>(island, "_local").Appearance!.Material = "glass";
+                Invoke(island, "Refresh");
+                Assert(Field<ClassroomIslandRibbon>(window, "_ribbon").Glass && Field<IslandGlassBackdrop>(window, "_glass").IsVisible,
+                    "applying glass after restoring the original material updates the live backdrop without restarting or replacing the timetable");
                 using var http = new HttpClient { BaseAddress = new Uri(binding.Endpoint), Timeout = TimeSpan.FromSeconds(10) };
                 async Task<JsonObject> Control(string action, object? data = null)
                 {

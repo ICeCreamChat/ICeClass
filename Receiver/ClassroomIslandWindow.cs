@@ -35,6 +35,7 @@ internal sealed class ClassroomIslandWindow : Window
     private readonly ClassroomIslandReveal _importantReveal;
     private readonly Button _dismissShout = Button("已知晓", quiet: true);
     private readonly Border _surface;
+    private readonly IslandGlassBackdrop _glass;
     private readonly Action _hide;
     private readonly StackPanel _lessonList = new() { Spacing = 6 };
     private readonly Border _lessonPanel;
@@ -169,12 +170,15 @@ internal sealed class ClassroomIslandWindow : Window
         ToolTip.SetTip(_importantExpand, "点击查看完整内容；Esc 结束喊话");
         _importantReveal = new ClassroomIslandReveal(_importantExpand);
         var rows = new StackPanel { Children = { ribbonHost, _importantReveal, _shoutReveal, _reveal } };
-        _surface = new Border { Background = Brushes.Transparent, CornerRadius = new CornerRadius(24), Child = rows };
+        _glass = new IslandGlassBackdrop(_ribbon);
+        _surface = new Border { Background = Brushes.Transparent, CornerRadius = new CornerRadius(24), Child = new Grid { Children = { _glass, rows } } };
         _companion = new IslandShoutCompanion(_surface, _mascot);
         _companion.GeometryChanged += DockToPrimaryScreen;
         Content = new Border { Padding = new Thickness(6, 0, 6, 6), Child = _companion, VerticalAlignment = VerticalAlignment.Top };
         KeyDown += (_, args) => { if (args.Key == Key.Escape) { if (_shoutShown) (dismissWithoutAcknowledging ?? dismissNotice)(); else SetExpanded(false); args.Handled = true; } };
         PointerEntered += (_, _) => UpdateOpacity(); PointerExited += (_, _) => UpdateOpacity();
+        PointerMoved += (_, args) => _glass.SetHighlight(args.GetPosition(_glass));
+        PointerExited += (_, _) => _glass.SetHighlight(null);
         GotFocus += (_, _) => UpdateOpacity(); LostFocus += (_, _) => UpdateOpacity();
         Deactivated += (_, _) => { if (!_shoutShown) SetExpanded(false); };
         Opened += (_, _) => { DockToPrimaryScreen(); _companion.ResumeAnimation(); _mascot.ResumeAnimation(); IslandPlatform.SetClickThrough(this, _appearance.ClickThrough && !_interactiveOverride && !_shoutShown); };
@@ -203,12 +207,16 @@ internal sealed class ClassroomIslandWindow : Window
         UpdateImportantBody();
         var light = appearance.Theme == "light" || appearance.Theme == "system" && ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light;
         Classes.Set("island-light", light);
+        var glass = appearance.Material != "solid";
+        Classes.Set("island-glass", glass);
+        _ribbon.Glass = glass;
         UpdateSurface();
         _surface.BorderBrush = DesktopStyle.Brush(light ? "#C2CDDC" : "#3B4A5E");
         _details.BorderBrush = _surface.BorderBrush;
         _notice.Background = DesktopStyle.Brush(light ? "#E1EEFF" : "#24364C");
         _shoutCard.ApplyTheme(light);
         _importantBody.Light = light;
+        _importantBody.Glass = glass;
         foreach (var text in new[] { _readingTitle, _noticeText })
             text.Foreground = DesktopStyle.Brush(light ? "#172A44" : "#F3F7FD");
         foreach (var text in new[] { _readingDetail, _readingUnavailable, _component }) text.Foreground = DesktopStyle.Brush(light ? "#29435F" : "#C4D1E3");
@@ -347,16 +355,22 @@ internal sealed class ClassroomIslandWindow : Window
         UpdateSurface();
     }
 
-    private void UpdateSurface() => _surface.Background = _shoutShown
+    private void UpdateSurface()
+    {
+        var glass = _appearance.Material != "solid";
+        _glass.Apply(glass, Classes.Contains("island-light"), _shoutShown || _expanded || _shoutExpanded);
+        _surface.Background = glass ? Brushes.Transparent : _shoutShown
         ? DesktopStyle.Brush(Classes.Contains("island-light") ? _view?.Notice?.Level switch { "urgent" => "#FFF0F1", "warning" => "#FFF7E5", _ => "#EDF6FF" }
             : _view?.Notice?.Level switch { "urgent" => "#352025", "warning" => "#29261F", _ => "#172638" })
         : _expanded || _shoutExpanded ? DesktopStyle.Brush(Classes.Contains("island-light") ? "#FCFDFF" : "#131E2D") : Brushes.Transparent;
+    }
 
     private void CollapseImmediately()
     {
         _expanded = false; _surface.Background = Brushes.Transparent;
         _shoutShown = _shoutExpanded = false; _dismissShout.IsVisible = false;
         _shoutReveal.SetExpanded(false, false); _companion.SetActive(false, false); _mascot.Stop();
+        UpdateSurface();
         _importantReveal.SetExpanded(false, false);
         AutomationProperties.SetName(_expand, "展开悬浮岛");
         _reveal.SetExpanded(false, false); UpdateOpacity();
@@ -366,6 +380,7 @@ internal sealed class ClassroomIslandWindow : Window
     {
         var reading = _shoutShown || _expanded || IsPointerOver || IsKeyboardFocusWithin;
         _surface.Opacity = reading ? 1 : _appearance.Opacity / 100.0 * (_dimmed && !_hasNotice ? .45 : 1);
+        _glass.RefreshBlur();
     }
 
     private void UpdateReadingAction()
@@ -412,7 +427,7 @@ internal sealed class ClassroomIslandWindow : Window
         if (Position != position) Position = position;
     }
 
-    public void DisposeWindow() { _closing = true; _reveal.Dispose(); _shoutReveal.Dispose(); _importantReveal.Dispose(); _companion.Dispose(); _mascot.Dispose(); _shoutCard.Dispose(); _ribbon.Dispose(); _pulse?.Dispose(); Close(); }
+    public void DisposeWindow() { _closing = true; _reveal.Dispose(); _shoutReveal.Dispose(); _importantReveal.Dispose(); _companion.Dispose(); _mascot.Dispose(); _shoutCard.Dispose(); _ribbon.Dispose(); _glass.Dispose(); _pulse?.Dispose(); Close(); }
     private static string NoticeColor(string level) => level == "urgent" ? "#FFB8B2" : level == "warning" ? "#FFDA9B" : "#91C7FF";
     private static TextBlock Text(string text, double size, bool muted = false) => new()
     {

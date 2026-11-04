@@ -74,7 +74,7 @@ def defaults(grade=None):
             'visibility': {'followSchool': True, 'hiddenSlotIds': []},
             'reminders': {'enabled': True, 'prepare': True, 'start': True, 'end': True,
                           'prepareMinutes': 2, 'sound': False, 'speech': False, 'volume': 65, 'displaySeconds': 8},
-            'appearance': {'position': 'top-center', 'width': 560, 'opacity': 100, 'theme': 'light',
+            'appearance': {'position': 'top-center', 'width': 560, 'opacity': 100, 'theme': 'light', 'material': 'glass',
                            'clickThrough': False, 'hideFullscreen': True, 'hideDuringLessons': False,
                            'offsetX': 0, 'offsetY': 0},
             'components': [{'id': 'date', 'type': 'date', 'enabled': True, 'title': '日期', 'text': '', 'date': ''}],
@@ -257,6 +257,8 @@ def normalize(value):
                 result[group][key] = boolean(v, key)
             elif key in ('position', 'theme'):
                 result[group][key] = choice(v, key, ('top-center', 'top-left', 'top-right', 'bottom-center') if key == 'position' else ('dark', 'light', 'system'))
+            elif key == 'material':
+                result[group][key] = choice(v, '悬浮岛材质', ('glass', 'solid'))
             else:
                 lo, hi = {'prepareMinutes': (1, 30), 'volume': (0, 100), 'displaySeconds': (3, 60),
                           'width': (380, 1000), 'opacity': (30, 100), 'offsetX': (-2000, 2000), 'offsetY': (-2000, 2000)}[key]
@@ -473,6 +475,7 @@ class IslandFeature:
         row = self.db.one('SELECT * FROM island_profiles WHERE class_id=?', (cid,))
         if row:
             config = json.loads(row['value'])
+            config.setdefault('appearance', {}).setdefault('material', 'glass')
         else:
             classroom = self.db.one('SELECT name FROM classes WHERE id=?', (cid,))
             config = defaults(class_grade(classroom['name']) if classroom else None)
@@ -566,6 +569,9 @@ class IslandFeature:
                 incoming = {**incoming, 'dutyRotations': self.profile(request.match_info['class_id'])['config'].get('dutyRotations', {})}
             if isinstance(incoming, dict) and 'visibility' not in incoming:
                 incoming = {**incoming, 'visibility': self.profile(request.match_info['class_id'])['config']['visibility']}
+            if isinstance(incoming, dict) and isinstance(incoming.get('appearance', {}), dict) and 'material' not in incoming.get('appearance', {}):
+                saved_material = self.profile(request.match_info['class_id'])['config']['appearance']['material']
+                incoming = {**incoming, 'appearance': {**incoming.get('appearance', {}), 'material': saved_material}}
             config = normalize(incoming)
             expected = integer(body.get('revision'), '配置版本', 0, 2**31-1)
         except ValueError as error:

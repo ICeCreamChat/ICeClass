@@ -77,4 +77,26 @@
     <Setter Property="Foreground" Value="#52647B" />
     <Setter Property="BorderBrush" Value="#C8D3E1" />
   </Style>
+  <Style Selector="Window.island-glass Button.native-button.island-button.island-quiet">
+    <Setter Property="Background" Value="#14FFFFFF" />
+    <Setter Property="Foreground" Value="#F3F7FD" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="12" />
+  </Style>
+  <Style Selector="Window.island-glass.island-light Button.native-button.island-button.island-quiet">
+    <Setter Property="Background" Value="#38FFFFFF" />
+    <Setter Property="Foreground" Value="#183C5E" />
+  </Style>
+  <Style Selector="Window.island-glass Button.native-button.island-button.island-quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#2BFFFFFF" />
+    <Setter Property="BorderBrush" Value="#42D5EDFF" />
+  </Style>
+  <Style Selector="Window.island-glass.island-light Button.native-button.island-button.island-quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#70FFFFFF" />
+    <Setter Property="Foreground" Value="#183C5E" />
+  </Style>
+  <Style Selector="Window.island-glass.island-light Button.native-button.island-button.island-quiet:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#4DC8E6FB" />
+    <Setter Property="Foreground" Value="#183C5E" />
+  </Style>
 </Styles>

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
@@ -70,8 +71,10 @@ internal static class NativeIslandSettingsReview
             editable = new IslandSettingsWindow(saved, school, value => applied = value, () => { });
             await Show(editable);
             editable.GetVisualDescendants().OfType<NumericUpDown>().First().Value = 420;
+            editable.GetVisualDescendants().OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "悬浮岛材质").SelectedIndex = 1;
             FindButton(editable, "保存本机设置").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); window = null;
             Check(applied?.Appearance?.Width == 420 && saved.Appearance!.Width == 560, "save applies edited values without mutating the original preferences");
+            Check(applied?.Appearance?.Material == "solid" && saved.Appearance!.Material == "glass", "material selection is saved while the original preferences stay unchanged until apply");
             applied = null;
             editable = new IslandSettingsWindow(saved, school, value => applied = value, () => { });
             await Show(editable);

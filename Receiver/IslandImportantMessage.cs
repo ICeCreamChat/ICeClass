@@ -11,6 +11,7 @@ internal sealed class IslandImportantMessage : Control
 {
     private ClassroomIslandNotice? _notice;
     public bool Light { get; set; } = true;
+    public bool Glass { get; set; }
     public IslandImportantMessage() { Height = 104; IsHitTestVisible = false; }
     public void Update(ClassroomIslandNotice notice) { _notice = notice; InvalidateVisual(); }
     internal bool NeedsExpansion(double surfaceWidth)
@@ -26,8 +27,8 @@ internal sealed class IslandImportantMessage : Control
         if (_notice is not { } notice || Bounds.Width < 1) return;
         var width = Math.Max(1, Bounds.Width - 40);
         var urgent = notice.Level == "urgent";
-        var ink = Light ? urgent ? "#793B46" : "#344D63" : "#F4EEE4";
-        var muted = Light ? urgent ? "#874B55" : "#705B38" : "#DECBA8";
+        var ink = Light ? Glass ? "#183C5E" : urgent ? "#793B46" : "#344D63" : "#F4EEE4";
+        var muted = Light ? Glass ? "#2A4D6A" : urgent ? "#874B55" : "#705B38" : "#DECBA8";
         FormattedText Format(string value, double size, string color) => new(value, CultureInfo.GetCultureInfo("zh-CN"), FlowDirection.LeftToRight,
             new Typeface(ClassroomStyle.Font, FontStyle.Normal, FontWeight.Bold), size, new SolidColorBrush(Color.Parse(color)));
         var lines = IslandShoutText.Pages(notice.Text, width, text => Format(text, 20, ink).WidthIncludingTrailingWhitespace);

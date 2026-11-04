@@ -264,7 +264,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var scene = _demo.Scene();
         var source = _local.Appearance ?? _islandSync?.Snapshot.Profile?.Appearance ?? new();
         var appearance = new IslandAppearance { Position = source.Position, Width = source.Width,
-            Theme = source.Theme, Opacity = source.Opacity, OffsetX = source.OffsetX, OffsetY = source.OffsetY,
+            Theme = source.Theme, Material = source.Material, Opacity = source.Opacity, OffsetX = source.OffsetX, OffsetY = source.OffsetY,
             ClickThrough = false, HideFullscreen = false, HideDuringLessons = false };
         _window.Update(scene.View, false, _local.AnimationsEnabled);
         _window.ApplyProfile(appearance, scene.Profile, scene.Now, "", scene.View.ConnectionText, _demo.Playing);

@@ -17,10 +17,12 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
+    <IslandOpticsDirectory>$(MSBuildProjectDirectory)\obj\island-optics\x64</IslandOpticsDirectory>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Content Include="$(IslandOpticsDirectory)\ICeClass.Glass.dll" Link="ICeClass.Glass.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
@@ -61,5 +63,11 @@
     <ItemGroup>
       <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
     </ItemGroup>
+  </Target>
+  <Target Name="BuildIslandOptics" BeforeTargets="PrepareForBuild"
+          Inputs="Native\IslandGlassCapture.cpp;..\scripts\build-island-optics.ps1"
+          Outputs="$(IslandOpticsDirectory)\ICeClass.Glass.dll">
+    <Error Condition="'$(RuntimeIdentifier)' != '' And '$(RuntimeIdentifier)' != 'win-x64'" Text="The classroom native capture build currently targets Windows x64." />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\build-island-optics.ps1&quot; -OutputDirectory &quot;$(IslandOpticsDirectory)&quot;" />
   </Target>
 </Project>

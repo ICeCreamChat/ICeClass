@@ -46,6 +46,15 @@ internal static class IslandScheduleChecks
         var binding = new ReceiverConfig { Endpoint = "http://127.0.0.1:1", DeviceId = "test", ClassId = "a" };
         Check(IslandLocalStore.RootFor(binding) != IslandLocalStore.RootFor(new() { Endpoint = binding.Endpoint, DeviceId = binding.DeviceId, ClassId = "b" }), "cache and automation claims are isolated by class binding");
         var cacheRoot = Path.Combine(root, "island-profile"); var cache = new IslandLocalStore(cacheRoot);
+        var legacyMaterial = JsonNode.Parse(JsonSerializer.Serialize(p, IslandProfile.Json))!.AsObject();
+        legacyMaterial["appearance"]!.AsObject().Remove("material");
+        Check(IslandProfile.Parse(legacyMaterial.ToJsonString()).Appearance.Material == "glass", "older profiles default to liquid glass without changing their timetable");
+        foreach (var material in new[] { "solid", "glass" })
+        {
+            cache.Write("local-material.json", new IslandLocalSettings { Appearance = new() { Material = material, Width = 640 } });
+            var restored = new IslandLocalStore(cacheRoot).Read<IslandLocalSettings>("local-material.json");
+            Check(restored?.Appearance is { Width: 640 } && restored.Appearance.Material == material, material + " appearance persists independently of the class timetable");
+        }
         cache.Write("profile.json", new { classId = "a", revision = 4, config = p, revoked = false });
         using (var sync = new IslandSyncService(binding, cacheRoot, start: false))
             Check(sync.Snapshot.Profile is not null && sync.Snapshot.Revision == 4 && !sync.Snapshot.Online, "a fresh process recovers its real timetable while offline");
@@ -58,9 +67,9 @@ internal static class IslandScheduleChecks
         invalid = JsonNode.Parse(JsonSerializer.Serialize(p, IslandProfile.Json))!.AsObject();
         invalid["components"] = new JsonArray(new JsonObject { ["id"] = "broken", ["type"] = "text", ["text"] = null });
         try { IslandProfile.Parse(invalid.ToJsonString()); throw new Exception("null component accepted"); } catch (InvalidDataException) { checks++; }
-        var damaged = new IslandLocalSettings { AllowedApplications = null!, RecentActions = null!, Appearance = new() { Width = 10, Theme = null! } };
+        var damaged = new IslandLocalSettings { AllowedApplications = null!, RecentActions = null!, Appearance = new() { Width = 10, Theme = null!, Material = null! } };
         damaged.Normalize();
-        Check(damaged.AllowedApplications.Count == 0 && damaged.RecentActions.Count == 0 && damaged.Appearance.Width == 380 && damaged.Appearance.Theme == "light", "partial local preferences recover without disrupting the classroom scheduler");
+        Check(damaged.AllowedApplications.Count == 0 && damaged.RecentActions.Count == 0 && damaged.Appearance.Width == 380 && damaged.Appearance.Theme == "light" && damaged.Appearance.Material == "glass", "partial local preferences recover without disrupting the classroom scheduler");
         var rotations = new IslandProfile { Slots = [new() { Id = "mid", Label = "静校", Start = 750, End = 810 }, new() { Id = "eve", Label = "晚自习", Start = 1100, End = 1190 }],
             DutyRotations = new() {
                 ["midday"] = new() { Enabled = true, CycleWeeks = 3, WeekAnchor = "2026-09-07", SlotIds = ["mid"],

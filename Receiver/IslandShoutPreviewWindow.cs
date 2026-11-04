@@ -23,8 +23,8 @@ internal sealed class IslandShoutPreviewWindow : Window
         body.Children.Add(ClassroomStyle.SectionTitle("班班来传话"));
         body.Children.Add(ClassroomStyle.Caption("仅在这台电脑演示；真实通知会优先展示。"));
         foreach (var (level, title, detail) in new[] {
-            ("info", "普通 · 冰蓝细条", "班班在侧边招手，正文在细岛里轮播"),
-            ("warning", "重要 · 浅黄拉开", "班班迈腿小跑拉开岛条，长内容展开成两行"),
+            ("info", "普通 · 细条传话", "班班在侧边招手，正文在细岛里轮播"),
+            ("warning", "重要 · 班班拉开", "班班迈腿小跑拉开岛条，长内容展开成两行"),
             ("urgent", "紧急 · 喇叭喊话", "正文立即显示；班班握喇叭小跑，拉开后举起喊话") })
         {
             var button = ClassroomStyle.Button(""); button.HorizontalContentAlignment = HorizontalAlignment.Stretch; button.MinHeight = 68;

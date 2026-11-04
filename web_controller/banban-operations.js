@@ -7,7 +7,7 @@
     kind:'记录类型', allDates:'全部日期', revision:'当前版本', config:'教室配置', slots:'作息时段', lessons:'常规课表', overrides:'临时调课',
     weekAnchor:'起始周', dutyRotations:'循环值班', midday:'午间静校', evening:'晚自习', cycleWeeks:'循环周数', slotIds:'时段',
     reminders:'提醒', prepare:'课前', prepareMinutes:'提前分钟', sound:'提示音', speech:'语音', volume:'音量', displaySeconds:'显示秒数',
-    appearance:'外观', position:'位置', width:'宽度', opacity:'不透明度', theme:'主题', clickThrough:'鼠标穿透', hideFullscreen:'全屏时隐藏',
+    appearance:'外观', position:'位置', width:'宽度', opacity:'不透明度', theme:'主题', material:'材质', clickThrough:'鼠标穿透', hideFullscreen:'全屏时隐藏',
     hideDuringLessons:'上课时隐藏', offsetX:'水平偏移', offsetY:'垂直偏移', components:'组件', title:'标题', date:'日期', type:'类型',
     rotationSeconds:'轮播秒数', automation:'自动化', trigger:'触发时机', value:'设置值', minute:'时间', label:'名称', subject:'课程',
     teacher:'教师', room:'地点', weekday:'星期', weekType:'单双周', cancelled:'取消', bindingNote:'绑定备注', verified:'已核实', changes:'班级更名',

@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -18,6 +19,85 @@ internal static class NativeIslandLayoutReview
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
     private static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, Private)!.GetValue(target)!;
+
+    // Interactive inspection uses the production window with a taskbar entry so
+    // Windows accessibility tools can target its transparent backdrop directly.
+    internal static void PreviewMaterial() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        .AfterSetup(builder => Dispatcher.UIThread.Post(() =>
+        {
+            var profile = IslandRibbonChecks.Fixture(); profile.Reminders.Enabled = false;
+            var appearance = new IslandAppearance { Width = 760, OffsetY = 140, HideFullscreen = false };
+            var local = new IslandLocalSettings { Appearance = appearance };
+            ClassroomIslandWindow? island = null;
+            var sequence = 0L;
+            void Present(ClassroomIslandNotice? notice)
+            {
+                island!.Update(IslandRibbonChecks.View(notice), false);
+                island.ApplyProfile(appearance, profile, IslandRibbonChecks.At(10, 40), "", "本机材质验收");
+            }
+            void Settings()
+            {
+                var settings = new IslandSettingsWindow(local, appearance, value =>
+                {
+                    local = value; appearance = value.Appearance ?? new(); Present(null);
+                }, () => { });
+                settings.Show();
+            }
+            island = new ClassroomIslandWindow(() => Task.CompletedTask, () => { }, () => { }, () => { }, () => Present(null), Settings)
+            { ShowInTaskbar = true, ShowActivated = true };
+            var controls = new IslandShoutPreviewWindow((level, sound) =>
+            {
+                Present(new("班主任", level == "urgent" ? "请立即停止实验，听从老师指挥。"
+                    : "第三节是实验课，请带好课本和练习册，提前到实验室集合，按学号就座。", level,
+                    Sequence: ++sequence, Progress: .8, AgeSeconds: 4, DurationSeconds: 120));
+                return Task.CompletedTask;
+            }, () => Present(null));
+            // A separate window behind the production island makes the same
+            // sample wallpaper available for comparison; it is never a glass texture.
+            var backdrop = new Window { Title = "液态玻璃对照背景 · 本机验收", Width = 1100, Height = 360,
+                CanResize = false, Content = new SampleWallpaper(), WindowStartupLocation = WindowStartupLocation.Manual };
+            backdrop.Opened += (_, _) =>
+            {
+                var screen = backdrop.Screens.Primary;
+                if (screen is not null) backdrop.Position = new PixelPoint(screen.WorkingArea.X
+                    + (screen.WorkingArea.Width - (int)(1100 * screen.Scaling)) / 2, screen.WorkingArea.Y + 90);
+            };
+            controls.Closed += (_, _) =>
+            {
+                backdrop.Close();
+                island.DisposeWindow();
+                ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!).Shutdown();
+            };
+            backdrop.Show(); Present(null); island.Show(); controls.Show();
+        }))
+        .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+
+    private sealed class SampleWallpaper : Control
+    {
+        private static readonly Geometry Blue = Geometry.Parse("M-180 610 C-40 110 310 75 610 300 S1000 480 1300 -130");
+        private static readonly Geometry Light = Geometry.Parse("M-150 590 C-10 120 320 70 615 290 S1030 420 1270 -155");
+        private static readonly Geometry Edge = Geometry.Parse("M-210 606 C-30 82 300 15 620 244 S1040 390 1245 -175");
+        private static readonly Geometry Low = Geometry.Parse("M-130 620 C40 220 295 150 585 365 S1000 530 1300 -95");
+        private static LinearGradientBrush Gradient(params string[] colors) => new()
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, .7, RelativeUnit.Relative),
+            GradientStops = [.. colors.Select((color, index) => new GradientStop(Color.Parse(color), (double)index / (colors.Length - 1)))]
+        };
+        public override void Render(DrawingContext context)
+        {
+            context.DrawRectangle(Gradient("#EEF8FF", "#A1C9E9", "#5B98CF", "#B9D9ED"), null, new Rect(Bounds.Size));
+            using (context.PushClip(new Rect(Bounds.Size)))
+            using (context.PushTransform(Matrix.CreateScale((Bounds.Width + 340) / 1100, (Bounds.Width + 340) / 1100)
+                * Matrix.CreateTranslation(-170, -65)))
+            using (context.PushOpacity(.88))
+            {
+                context.DrawGeometry(null, new Pen(Gradient("#6B9BCB", "#98C7EC", "#4378AB", "#BBDDF5"), 210), Blue);
+                context.DrawGeometry(null, new Pen(Gradient("#F4FCFF", "#CBEAFF", "#74B8E8", "#D2EDFF"), 105), Light);
+                context.DrawGeometry(null, new Pen(new SolidColorBrush(Color.Parse("#BFE9F8FF")), 5), Edge);
+                context.DrawGeometry(null, new Pen(new SolidColorBrush(Color.Parse("#4D326B9F")), 8), Low);
+            }
+        }
+    }
 
     private static async Task Capture(string output)
     {

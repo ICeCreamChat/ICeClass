@@ -125,6 +125,7 @@ internal sealed class IslandAppearance
     public int Width { get; set; } = 560;
     public int Opacity { get; set; } = 100;
     public string Theme { get; set; } = "light";
+    public string Material { get; set; } = "glass";
     public bool ClickThrough { get; set; }
     public bool HideFullscreen { get; set; } = true;
     public bool HideDuringLessons { get; set; }
@@ -136,6 +137,7 @@ internal sealed class IslandAppearance
         OffsetX = Math.Clamp(OffsetX, -2000, 2000); OffsetY = Math.Clamp(OffsetY, -2000, 2000);
         if (Position is not ("top-center" or "top-left" or "top-right" or "bottom-center")) Position = "top-center";
         if (Theme is not ("dark" or "light" or "system")) Theme = "light";
+        if (Material is not ("glass" or "solid")) Material = "glass";
     }
 }
 internal sealed class IslandVisibility

@@ -40,6 +40,10 @@ function frame(milliseconds) {
 }
 
 const r = ribbon();
+assert.equal(r.root.dataset.material, 'glass', 'Profiles saved before material selection default to glass');
+r.update({ ...data(), appearance: { ...data().appearance, material: 'solid' } });
+assert.equal(r.root.dataset.material, 'solid', 'The preview follows the original material selection');
+r.update(data());
 for (const beat of [0, 1, 2, 4, 5, 6]) {
   r.rotationElapsed = beat * 8;
   assert.equal(r.state().key, 'timetable', 'Normal lesson days retain the native three timetable beats');

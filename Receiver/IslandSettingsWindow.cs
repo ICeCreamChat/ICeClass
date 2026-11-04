@@ -62,14 +62,18 @@ internal sealed class IslandSettingsWindow : Window
         var position = new ComboBox { ItemsSource = new[] { "顶部居中", "左上角", "右上角", "底部居中" }, SelectedIndex = Math.Max(0, Array.IndexOf(positions, appearance.Position)), HorizontalAlignment = HorizontalAlignment.Stretch };
         var themes = new[] { "dark", "light", "system" };
         var theme = new ComboBox { ItemsSource = new[] { "深色", "浅色", "跟随系统" }, SelectedIndex = Math.Max(0, Array.IndexOf(themes, appearance.Theme)), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var materials = new[] { "glass", "solid" };
+        var material = new ComboBox { ItemsSource = new[] { "液态玻璃", "原版外观" }, SelectedIndex = Math.Max(0, Array.IndexOf(materials, appearance.Material)), HorizontalAlignment = HorizontalAlignment.Stretch };
         var width = new NumericUpDown { Minimum = 380, Maximum = 1000, Increment = 20, Value = appearance.Width };
         var opacity = new NumericUpDown { Minimum = 30, Maximum = 100, Value = appearance.Opacity };
         var offsetX = new NumericUpDown { Minimum = -2000, Maximum = 2000, Value = appearance.OffsetX };
         var offsetY = new NumericUpDown { Minimum = -2000, Maximum = 2000, Value = appearance.OffsetY };
         AutomationProperties.SetName(position, "悬浮岛位置"); AutomationProperties.SetName(theme, "悬浮岛主题");
+        AutomationProperties.SetName(material, "悬浮岛材质");
         AutomationProperties.SetName(width, "悬浮岛宽度"); AutomationProperties.SetName(opacity, "悬浮岛不透明度");
         AutomationProperties.SetName(offsetX, "悬浮岛水平偏移"); AutomationProperties.SetName(offsetY, "悬浮岛垂直偏移");
-        form.Children.Add(Pair(ClassroomStyle.Field("位置", position), ClassroomStyle.Field("主题", theme)));
+        form.Children.Add(Pair(ClassroomStyle.Field("材质", material), ClassroomStyle.Field("主题", theme)));
+        form.Children.Add(ClassroomStyle.Field("位置", position));
         form.Children.Add(Pair(ClassroomStyle.Field("宽度 (DIP)", width), ClassroomStyle.Field("不透明度 (%)", opacity)));
         form.Children.Add(Pair(ClassroomStyle.Field("水平偏移", offsetX), ClassroomStyle.Field("垂直偏移", offsetY)));
         var through = new CheckBox { Content = "允许鼠标穿透", IsChecked = appearance.ClickThrough, FontSize = 14 };
@@ -155,6 +159,7 @@ internal sealed class IslandSettingsWindow : Window
         save.Click += (_, _) =>
         {
             appearance.Position = positions[position.SelectedIndex]; appearance.Theme = themes[theme.SelectedIndex]; appearance.Width = (int)(width.Value ?? 640); appearance.Opacity = (int)(opacity.Value ?? 100);
+            appearance.Material = materials[material.SelectedIndex];
             appearance.OffsetX = (int)(offsetX.Value ?? 0); appearance.OffsetY = (int)(offsetY.Value ?? 0);
             appearance.ClickThrough = through.IsChecked == true; appearance.HideFullscreen = fullscreen.IsChecked == true;
             local.Appearance = independent.IsChecked == true ? appearance : null;

@@ -32,6 +32,7 @@
       this.data = data;
       if (changedClass) { this.elapsed = null; this.scene = 'daily'; }
       this.root.dataset.theme = data.appearance.theme === 'system' ? (this.scheme.matches ? 'dark' : 'light') : data.appearance.theme;
+      this.root.dataset.material = data.appearance.material === 'solid' ? 'solid' : 'glass';
       this.root.style.width = `${Math.max(380, Math.min(1000, Number(data.appearance.width) || 560))}px`;
       this.root.style.opacity = Math.max(.3, (Number(data.appearance.opacity) || 100) / 100);
       this.dock();

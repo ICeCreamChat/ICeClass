@@ -185,6 +185,8 @@ Windows 教师端的“反馈”支持问题描述、可选联系方式、诊断
 
 按修改范围选择验证命令，完整回归入口如下：
 
+Windows 教室端源码构建需要 .NET 8 SDK、Visual Studio C++ x64 Build Tools 和 Windows SDK（含 C++/WinRT 头文件）。`Receiver` 构建会自动编译背景取样 DLL，并随单文件 EXE 打包；教室电脑无需安装这些开发工具。液态玻璃最多以 25 帧/秒取样，无法确认完整背景或持续绘制开销超出预算时保留轻量玻璃。
+
 ```powershell
 python -m pip install -r server/requirements.txt
 python -m unittest discover -s server -p "test_*.py" -v

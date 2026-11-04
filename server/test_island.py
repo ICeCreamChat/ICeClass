@@ -35,6 +35,18 @@ def rotation_sample():
 
 
 class IslandModelTest(unittest.TestCase):
+    def test_material_defaults_and_validation(self):
+        old = sample()
+        old['appearance'].pop('material')
+        self.assertEqual(normalize(old)['appearance']['material'], 'glass')
+        for material in ('glass', 'solid'):
+            old['appearance']['material'] = material
+            self.assertEqual(normalize(old)['appearance']['material'], material)
+        for invalid in ('unknown', '', None, True):
+            old['appearance']['material'] = invalid
+            with self.assertRaises(ValueError):
+                normalize(old)
+
     def test_independent_duty_cycles_and_start_dates_keep_fixed_lessons(self):
         p = normalize(rotation_sample())
         for on, midday, evening in [('2026-09-07', 1, None), ('2026-09-21', 3, 2),
@@ -179,6 +191,27 @@ class IslandModelTest(unittest.TestCase):
 
 
 class IslandTest(ServerTestCase):
+    async def test_material_roundtrip_and_older_editor_preserves_saved_choice(self):
+        device, path = await self.setup_class()
+        config = sample()
+        config['appearance']['material'] = 'solid'
+        response, saved = await self.json_request('PUT', path, {'revision': 0, 'config': config}, csrf=True)
+        self.assertEqual(response.status, 200, saved)
+        _, reloaded = await self.json_request('GET', path)
+        self.assertEqual(reloaded['config']['appearance']['material'], 'solid')
+        older = copy.deepcopy(saved['config'])
+        older['appearance'].pop('material')
+        older['appearance']['width'] = 600
+        response, saved = await self.json_request('PUT', path, {'revision': 1, 'config': older}, csrf=True)
+        self.assertEqual(response.status, 200, saved)
+        self.assertEqual(saved['config']['appearance']['material'], 'solid')
+        self.assertEqual(saved['config']['appearance']['width'], 600)
+        saved['config']['appearance']['material'] = 'glass'
+        response, saved = await self.json_request('PUT', path, {'revision': 2, 'config': saved['config']}, csrf=True)
+        self.assertEqual(response.status, 200, saved)
+        response = await self.client.get('/api/island/device?deviceId=' + device['deviceId'], headers={'Authorization': 'Bearer ' + device['deviceToken']})
+        self.assertEqual((await response.json())['config']['appearance']['material'], 'glass')
+
     async def test_rotations_save_reload_deliver_and_older_editor_preserves_them(self):
         device, path = await self.setup_class()
         response, saved = await self.json_request('PUT', path, {'revision': 0, 'config': rotation_sample()}, csrf=True)

@@ -326,6 +326,7 @@
   }
   function prepareConfig(raw) {
     const next = structuredClone(raw);
+    next.appearance.material ??= 'glass';
     next.dutyRotations ||= {};
     for (const kind of Object.keys(dutyNames)) next.dutyRotations[kind] ||= {
       enabled: false, cycleWeeks: 2, weekAnchor: next.weekAnchor, lessons: [],
@@ -977,6 +978,7 @@
     const appearanceCard = group('浮岛显示', null, [
       field('屏幕位置', select(a.position, [['top-center', '顶部居中'], ['top-left', '左上角'], ['top-right', '右上角'], ['bottom-center', '底部居中']], value => a.position = value, 'appearance.position')),
       field('显示主题', select(a.theme, [['light', '浅色'], ['dark', '深色'], ['system', '跟随系统']], value => a.theme = value, 'appearance.theme')),
+      field('外观材质', select(a.material, [['glass', '液态玻璃'], ['solid', '原版外观']], value => a.material = value, 'appearance.material')),
       field('浮岛宽度（像素）', input(a.width, value => a.width = value, 'number', { min: 380, max: 1000, required: true }, 'appearance.width')),
       field('不透明度（%）', input(a.opacity, value => a.opacity = value, 'number', { min: 30, max: 100, required: true }, 'appearance.opacity'))
     ], appearanceEnabled);

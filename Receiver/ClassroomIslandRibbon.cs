@@ -22,6 +22,8 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
     private int _shoutWidth;
     private IReadOnlyList<string> _shoutPages = [];
     public bool Light { get; set; }
+    internal bool Glass { get; set; }
+    internal event Action? MaterialGeometryChanged;
     internal bool ImportantExpanded { get; set; }
     internal bool FullTextExpanded { get; set; }
     internal bool Animate { get; set; } = true;
@@ -29,7 +31,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
     internal IslandRibbonFrame? Frame => _frame;
     public event Action<string>? Attention;
 
-    public ClassroomIslandRibbon() { Height = RibbonHeight; ClipToBounds = true; RenderOptions.SetTextRenderingMode(this,TextRenderingMode.Antialias); }
+    public ClassroomIslandRibbon() { Height = RibbonHeight; ClipToBounds = true; RenderOptions.SetTextRenderingMode(this,TextRenderingMode.Antialias); SizeChanged += (_, _) => MaterialGeometryChanged?.Invoke(); }
 
     public void Present(IslandRibbonFrame frame)
     {
@@ -42,7 +44,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         _frame = frame; _presentedAt=Stopwatch.GetTimestamp();
         AutomationProperties.SetName(this, frame.AccessibleText);
         ToolTip.SetTip(this, frame.AccessibleText + (frame.Shout is null ? " · 点击查看操作，Esc 收起" : " · 点击展开全文，Esc 收起喊话"));
-        InvalidateVisual(); QueueFrame();
+        InvalidateVisual(); MaterialGeometryChanged?.Invoke(); QueueFrame();
     }
 
     private double Phase => ReviewPhase ?? (!Animate || _previous is null ? 1 : Math.Clamp(Stopwatch.GetElapsedTime(_started).TotalSeconds / .55, 0, 1));
@@ -51,7 +53,15 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         var liveProgress=Animate && IsEffectivelyVisible && _frame is {Accent:false,Progress:>0,ProgressPerSecond:>0};
         if (_queued || _disposed || ReviewPhase.HasValue || Phase >= 1 && !liveProgress || TopLevel.GetTopLevel(this) is not { } top) return;
         _queued = true;
-        top.RequestAnimationFrame(_ => { _queued = false; if (_disposed) return; InvalidateVisual(); QueueFrame(); });
+        var transitioning = Phase < 1;
+        top.RequestAnimationFrame(_ =>
+        {
+            _queued = false;
+            if (_disposed) return;
+            InvalidateVisual();
+            if (transitioning) MaterialGeometryChanged?.Invoke();
+            QueueFrame();
+        });
     }
 
     public override void Render(DrawingContext context)
@@ -99,11 +109,11 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         {
             using (context.PushClip(new RoundedRect(area, 24)))
             {
-                context.DrawRectangle(frame.Accent ? Brush(standardLight ? "#DDF0FF" : frame.Color) : Brush(bg), null, area, 24, 24);
+                if (!Glass) context.DrawRectangle(frame.Accent ? Brush(standardLight ? "#DDF0FF" : frame.Color) : Brush(bg), null, area, 24, 24);
                 if (frame.Accent)
                 {
                     var titleArea = area.Deflate(new Thickness(52,0));
-                    var cueInk = standardLight ? "#1C517F" : "#052A32";
+                    var cueInk = Glass ? ink : standardLight ? "#1C517F" : "#052A32";
                     var title = GetText(frame.Text,titleArea,20,cueInk);
                     var left=(area.Width-title.Width)/2;
                     Label(context, frame.Text, titleArea, 20, cueInk);
@@ -138,7 +148,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         var dateWidth = layout.DateWidth;
         var gap = layout.Gap;
         var border = Light ? new Pen(Brush("#DCE6F0"),1) : null;
-        context.DrawRectangle(Brush(bg), border, new Rect(.5, .5, dateWidth-1, area.Height-1), 23.5, 23.5);
+        if (!Glass) context.DrawRectangle(Brush(bg), border, new Rect(.5, .5, dateWidth-1, area.Height-1), 23.5, 23.5);
         var dateParts=frame.Date.Split(' ',2);
         if(dateParts.Length==2 && dateWidth<80)
         {
@@ -160,7 +170,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         var courses = new Rect(dateWidth + gap, 0, Math.Max(1, area.Width - dateWidth - gap), area.Height);
         using (context.PushClip(new RoundedRect(courses, 24)))
         {
-            context.DrawRectangle(Brush(bg), border, courses.Deflate(.5), 23.5, 23.5);
+            if (!Glass) context.DrawRectangle(Brush(bg), border, courses.Deflate(.5), 23.5, 23.5);
             var visible = layout.Items;
             var x = courses.X + Math.Max(0, (courses.Width - layout.Used) / 2);
             var itemGap=layout.ItemGap;
@@ -175,7 +185,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
                 var rect = new Rect(x, 0, width, area.Height);
                 if (item.Current)
                 {
-                    context.DrawRectangle(Brush(Light ? "#EAF4FF" : "#242B38"), null, new Rect(x,layout.Stacked?3:6,width,layout.Stacked?42:36),14,14);
+                    context.DrawRectangle(Brush(Glass ? Light ? "#8CF2FAFF" : "#24B2DBFF" : Light ? "#EAF4FF" : "#242B38"), null, new Rect(x,layout.Stacked?3:6,width,layout.Stacked?42:36),14,14);
                     var size=layout.Stacked?18:compact?18:20;
                     var timeSize=layout.Stacked?12:compact?13:14;
                     if(layout.Stacked)
@@ -208,26 +218,26 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
     private void PaintShout(DrawingContext context, IslandRibbonFrame frame, Rect area)
     {
         var shout = frame.Shout!;
-        var ink = Light ? "#294D6D" : "#F1F6FC";
-        var muted = Light ? "#455D7B" : "#C4D1E3";
+        var ink = Light ? Glass ? "#183C5E" : "#294D6D" : "#F1F6FC";
+        var muted = Light ? Glass ? "#2A4D6A" : "#455D7B" : "#C4D1E3";
         var accent = Light ? shout.Level switch { "urgent" => "#DD7D82", "warning" => "#D9AA4C", _ => "#65B2ED" } : frame.Color;
         var fill = Light ? shout.Level switch { "urgent" => "#FFF0F1", "warning" => "#FFF7E5", _ => "#EDF6FF" }
             : shout.Level switch { "urgent" => "#352025", "warning" => "#29261F", _ => "#172638" };
         var content = new Rect(20, 0, Math.Max(1, area.Width - 90), area.Height);
         using var clip = context.PushClip(new RoundedRect(area, 24));
-        context.DrawRectangle(Brush(fill), Light ? new Pen(Brush("#D9E6F2"), 1) : null, area.Deflate(.5), 23.5, 23.5);
+        if (!Glass) context.DrawRectangle(Brush(fill), Light ? new Pen(Brush("#D9E6F2"), 1) : null, area.Deflate(.5), 23.5, 23.5);
         if ((FullTextExpanded || shout.Level is "warning" or "urgent" && ImportantExpanded) && !frame.Accent)
         {
             LabelLeft(context, (shout.Level == "urgent" ? "紧急传话 · " : shout.Level == "warning" ? "重要传话 · " : "班班传话 · ") + shout.Sender,
                 new Rect(20, 0, Math.Max(1, area.Width - 90), 48), 15,
-                Light ? shout.Level == "urgent" ? "#A13F49" : shout.Level == "warning" ? "#79592E" : ink : ink);
+                Light && !Glass ? shout.Level == "urgent" ? "#A13F49" : shout.Level == "warning" ? "#79592E" : ink : ink);
             return;
         }
         if (frame.Accent)
         {
             var cue = "班班传话 · " + (shout.Level == "urgent" ? "紧急 · " : shout.Level == "warning" ? "重要 · " : "") + shout.Sender;
             Label(context, cue, content, Bounds.Width < 480 ? 16 : 18,
-                Light ? ink : "#052A32");
+                Light || Glass ? ink : "#052A32");
             return;
         }
         var size = Bounds.Width < 480 ? 18 : 20;
@@ -328,6 +338,18 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
     private double FrameWidth(IslandRibbonFrame frame,double maximum)
     {
         return frame.Text.Length>0 || frame.Items.Count==0 ? maximum : Layout(frame,maximum).Width;
+    }
+
+    internal Rect[] MaterialRegions(double maximum)
+    {
+        if (_frame is null || maximum <= 0) return [];
+        var target = FrameWidth(_frame, maximum);
+        var width = _previous is null ? target : FrameWidth(_previous, maximum) + (target - FrameWidth(_previous, maximum)) * Ease(Phase);
+        var x = (maximum - width) / 2;
+        if (_frame.Shout is not null || _frame.Text.Length > 0 || _frame.Items.Count == 0)
+            return [new Rect(x, 0, width, RibbonHeight)];
+        var layout = Layout(_frame, width);
+        return [new Rect(x, 0, layout.DateWidth, RibbonHeight), new Rect(x + layout.DateWidth + layout.Gap, 0, Math.Max(1, width - layout.DateWidth - layout.Gap), RibbonHeight)];
     }
 
     private void Label(DrawingContext context, string value, Rect area, double size, string color)
