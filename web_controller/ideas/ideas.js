@@ -977,7 +977,9 @@
         $('recentSubmission').hidden = !showRecent;
         if (showRecent) $('recentSubmission').append(classItem(state.recent, true));
       }
-      $(`${kind}ListNotice`).textContent = list.error || (list.loading ? '正在加载…' : !state.authed ? '请从已绑定教室端打开。' : !list.items.length ? kind === 'class' ? '本班还没有创意。到「提交创意」说说你的想法吧。' : '还没有发布成果。已采纳的创意会在整理后展示在这里。' : '');
+      const notice = $(`${kind}ListNotice`);
+      const message = list.error || (list.loading ? '正在加载…' : !state.authed ? '请从已绑定教室端打开。' : !list.items.length ? kind === 'class' ? '本班还没有创意。到「提交创意」说说你的想法吧。' : '还没有发布成果。已采纳的创意会在整理后展示在这里。' : '');
+      notice.textContent = message; notice.hidden = !message;
       listControls(kind);
     }
 
@@ -990,6 +992,7 @@
       const epoch = ++list.epoch;
       list.loading = true; list.error = ''; listControls(kind);
       $(`${kind}ListNotice`).textContent = '正在加载…';
+      $(`${kind}ListNotice`).hidden = false;
       try {
         const path = kind === 'class' ? '/api/ideas/student' : '/api/ideas/showcase';
         const result = await request(`${path}?page=${page}&pageSize=${PAGE_SIZE}`, {}, signal);
@@ -1006,6 +1009,9 @@
 
     function setView(view, updateLocation = true) {
       if (!['submit', 'class', 'showcase'].includes(view)) return;
+      // Reselecting a tab keeps expanded replies and playing media intact.
+      // Boot and reconnect still initialize the active view with updateLocation=false.
+      if (view === state.view && updateLocation) return;
       if (view !== state.view) {
         ink.finish(); returnToDraft(false); cancelDictation(); cancelTranscription(); cancelImages();
         closeCamera(); closeDelete(false, true); void stopRecording(false); pausePlayback();

@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  const setText = (element, value) => { const text=String(value??'');if(element.textContent!==text)element.textContent=text; };
   const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const icon = name => `<svg aria-hidden="true"><use href="#icon-${name}"/></svg>`;
   const pending = new Map();
@@ -28,8 +29,8 @@
   let toastTimer;
   function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').classList.add('visible');toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4000);}
   function heading(){
-    $('page-title').textContent=view==='home'?className||'本班教室':'班级管理';
-    $('page-subtitle').textContent=view==='home'?termLabel:[className,termLabel].filter(Boolean).join(' · ');
+    setText($('page-title'),view==='home'?className||'本班教室':'班级管理');
+    setText($('page-subtitle'),view==='home'?termLabel:[className,termLabel].filter(Boolean).join(' · '));
   }
   function showView(next){
     view=next;document.body.dataset.view=next;
@@ -38,40 +39,45 @@
   }
   function showDetail(title,content){voicePanel=false;$('detail-title').textContent=title;$('detail-body').innerHTML=content;$('detail-dialog').showModal();}
   function renderVoice(){
-    const button=document.querySelector('[data-action="voice"]');button.textContent=voice.recording?'正在留言':voice.sending?'正在发送…':'开始留言';button.disabled=voice.sending;
-    $('voice-duration').textContent=voice.duration||'最长 30 秒';
-    $('voice-status').querySelector('span').textContent=voice.status||'仅本班授权老师可收听';
+    const button=document.querySelector('[data-action="voice"]');setText(button,voice.recording?'正在留言':voice.sending?'正在发送…':'开始留言');button.disabled=voice.sending;
+    setText($('voice-duration'),voice.duration||'最长 30 秒');
+    setText($('voice-status').querySelector('span'),voice.status||'仅本班授权老师可收听');
     $('voice-status').classList.toggle('success',Boolean(voice.success));
     document.querySelector('.voice-card').classList.toggle('is-recording',voice.recording);
     if(!voicePanel||!$('detail-dialog').open)return;
     const action=document.querySelector('[data-action="voice-toggle"]');
-    action.textContent=voice.recording?'结束并发送':voice.sending?'正在发送…':'开始录音';action.disabled=voice.sending;
-    $('voice-panel-time').textContent=voice.recording?voice.duration:'最长 30 秒';
+    setText(action,voice.recording?'结束并发送':voice.sending?'正在发送…':'开始录音');action.disabled=voice.sending;
+    setText($('voice-panel-time'),voice.recording?voice.duration:'最长 30 秒');
     $('voice-panel-time').classList.toggle('is-recording',voice.recording);
-    $('voice-panel-status').textContent=voice.status||'';
+    setText($('voice-panel-status'),voice.status||'');
     $('voice-panel-status').classList.toggle('success',Boolean(voice.success));
     document.querySelector('.detail-voice').classList.toggle('voice-recording',voice.recording);
   }
   function renderIsland(value){
-    island=value;if(!value)return;
-    const date=new Date(value.date+'T12:00:00+08:00');
-    if(!Number.isNaN(date.getTime())){
-      const [,month,day]=value.date.split('-');
-      $('calendar-date').innerHTML=`${Number(month)}<span>月</span>${Number(day)}<span>日</span>`;
-      $('calendar-weekday').textContent=new Intl.DateTimeFormat('zh-CN',{weekday:'long',timeZone:'Asia/Shanghai'}).format(date);
+    if(!value)return;
+    const previous=island;island=value;
+    if(value.date!==previous?.date){
+      const date=new Date(value.date+'T12:00:00+08:00');
+      if(!Number.isNaN(date.getTime())){
+        const [,month,day]=value.date.split('-');
+        $('calendar-date').innerHTML=`${Number(month)}<span>月</span>${Number(day)}<span>日</span>`;
+        setText($('calendar-weekday'),new Intl.DateTimeFormat('zh-CN',{weekday:'long',timeZone:'Asia/Shanghai'}).format(date));
+      }
     }
-    $('lesson-list').innerHTML=value.lessons.length?value.lessons.map(l=>`<div class="lesson${l.current?' is-current':''}"${l.current?' aria-label="'+esc(l.name)+'，正在进行"':''}><strong>${esc(l.name)}</strong><small>${esc(l.start)}</small></div>`).join(''):`<p class="schedule-empty">${value.scheduleKnown?'今天没有课程':'课表同步后显示全天课程'}</p>`;
+    const lessonsChanged=!previous||value.scheduleKnown!==previous.scheduleKnown||value.lessons.length!==previous.lessons.length
+      ||value.lessons.some((lesson,index)=>{const old=previous.lessons[index];return lesson.name!==old.name||lesson.start!==old.start||lesson.current!==old.current;});
+    if(lessonsChanged)$('lesson-list').innerHTML=value.lessons.length?value.lessons.map(l=>`<div class="lesson${l.current?' is-current':''}"${l.current?' aria-label="'+esc(l.name)+'，正在进行"':''}><strong>${esc(l.name)}</strong><small>${esc(l.start)}</small></div>`).join(''):`<p class="schedule-empty">${value.scheduleKnown?'今天没有课程':'课表同步后显示全天课程'}</p>`;
     const notice=value.notice;
-    $('daily-course').hidden=Boolean(notice);$('shout-course').hidden=!notice;
+    if(!previous||Boolean(previous.notice)!==Boolean(notice)){$('daily-course').hidden=Boolean(notice);$('shout-course').hidden=!notice;}
     if(notice){
-      $('shout-sender').textContent=`${notice.sender} · ${notice.category}`;$('shout-text').textContent=notice.text;
+      setText($('shout-sender'),`${notice.sender} · ${notice.category}`);setText($('shout-text'),notice.text);
       const progress=document.querySelector('.shout-progress');progress.style.animation='none';progress.style.transform=`scaleX(${Math.max(0,Math.min(1,notice.progress))})`;
     }
   }
   function renderHome(state){
     home=state;className=state.className;heading();
-    $('device-caption').textContent=state.deviceCaption;
-    $('connection-text').textContent=state.connected?'已连接平台':state.connectionText;
+    setText($('device-caption'),state.deviceCaption);
+    setText($('connection-text'),state.connected?'已连接平台':state.connectionText);
     $('connection').classList.toggle('offline',!state.connected);
     document.querySelectorAll('[data-action="reading"],[data-action="voice"],[data-action="plan"],[data-action="banban"]').forEach(button=>{
       const action=button.dataset.action;button.disabled=action==='voice'?state.voice.sending:!state.capabilities[action];

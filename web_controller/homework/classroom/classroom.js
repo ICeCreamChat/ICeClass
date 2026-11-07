@@ -100,11 +100,14 @@
   }
   function renderRoster() {
     const none = draftStatus === 'no_homework', students = roster();
-    const filtered = students.filter(s => s.name.includes(search) && (!onlyMissing || missing.has(s.id)));
+    const keyword = search.normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+    const pinyinKeyword = keyword.replace(/v/g, 'ü');
+    const filtered = students.filter(s => (!keyword || s.name.toLowerCase().includes(keyword)
+      || PinyinMatch.match(s.name, pinyinKeyword)) && (!onlyMissing || missing.has(s.id)));
     $('student-grid').hidden = none || !item(); $('none-message').hidden = !none;
     $('empty-roster').hidden = none || Boolean(item() && students.length && filtered.length);
     $('empty-roster').textContent = !item() ? '本学科暂无作业项目，请班主任在教师端设置学期预设。' : !students.length
-      ? '本班尚未设置学生名单，请班主任在教师端设置。' : search ? '没有找到这位同学，请换个名字试试。' : '全部已交，没有未交同学。';
+      ? '本班尚未设置学生名单，请班主任在教师端设置。' : keyword ? '没有找到匹配的同学，请换个关键词试试。' : '全部已交，没有未交同学。';
     $('student-grid').innerHTML = none ? '' : filtered.map(s => `<label class="student-tile" title="${esc(s.name)}"><input type="checkbox" name="submitted-student" data-student="${esc(s.id)}" ${missing.has(s.id) ? '' : 'checked'} aria-label="${esc(s.name)}，已交"><span>${esc(s.name)}</span></label>`).join('');
     updateCount();
   }

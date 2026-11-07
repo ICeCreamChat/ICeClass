@@ -5,6 +5,7 @@ using ICeClass.Receiver;
 if (args is ["--homework-review", var homeworkBinding]) { HomeworkReview.Run(homeworkBinding); return; }
 if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
 if (args is ["--classroom-home-checks"]) { await ClassroomHomeChecks.Run(); return; }
+if (args is ["--classroom-ui-checks", var classroomUiOutput]) { ClassroomUiChecks.Run(classroomUiOutput); return; }
 if (args is ["--acknowledgements-checks", var acknowledgementsOutput])
 {
     try { await AcknowledgementClientChecks.Run(acknowledgementsOutput); }

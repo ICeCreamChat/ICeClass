@@ -111,6 +111,7 @@ internal sealed class IslandSettingsWindow : Window
         RenderApps();
         var add = ActionButton("选择并允许应用…");
         var error = ClassroomStyle.Text("", 14); error.Foreground = DesktopStyle.Brush("#B42318"); error.IsVisible = false;
+        AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Polite);
         error.PropertyChanged += (_, change) => { if (change.Property == TextBlock.TextProperty) error.IsVisible = !string.IsNullOrWhiteSpace(error.Text); };
         add.Click += async (_, _) =>
         {

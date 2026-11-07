@@ -107,10 +107,15 @@
     entry.filter?.remove(); entry.filter = entry.map = null;
     entry.width = entry.height = 0;
     element.style.removeProperty('--lg-filter');
+    entry.lens?.style.removeProperty('backdrop-filter');
+    entry.lens?.style.removeProperty('-webkit-backdrop-filter');
   }
   function update(element, width, height) {
     const entry = entries.get(element);
-    if (!entry || !entry.visible || width < 1 || height < 1 || (Math.abs(entry.width-width)<1 && Math.abs(entry.height-height)<1)) return;
+    if (!entry) return;
+    // A hidden page has no optical surface. Recreate its map when it is shown.
+    if (!entry.visible || width < 1 || height < 1) { if (entry.filter) release(entry, element); return; }
+    if (Math.abs(entry.width-width)<1 && Math.abs(entry.height-height)<1) return;
     if (!entry.filter) allocate(entry, element);
     entry.width = width; entry.height = height;
     const ratio = Math.min(1, 760/width, 560/height);

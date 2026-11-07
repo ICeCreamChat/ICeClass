@@ -57,3 +57,8 @@ body:not(.native-home) .top-navigation{visibility:hidden}
 .confirm-actions .button,.settings-actions .button{width:auto;margin:0}
 
 .student-tile{min-width:0}.student-tile span{min-width:0;overflow:hidden;text-overflow:ellipsis}.class-heading>div{min-width:0}.class-heading h1{overflow-wrap:anywhere}.connection{flex-shrink:0}.app-footer #device-caption{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Match the teacher controls: a thin field edge with the existing soft focus ring. */
+:is(.search-field,.date-input-label):focus-within{outline:1px solid var(--focus);outline-offset:-1px;box-shadow:0 0 0 3px #005ed61c}
+:is(.search-field,.date-input-label) input:focus{outline:none}
+@media(forced-colors:active){:is(.search-field,.date-input-label):focus-within{outline:2px solid Highlight;outline-offset:2px;box-shadow:none}}

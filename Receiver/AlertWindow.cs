@@ -239,8 +239,13 @@ public sealed class AlertWindow : Window
 
     private void FadeTo(double target, Action? completed)
     {
+        _fadeTimer.Stop();
         _fadeTarget = target;
         _fadeCompleted = completed;
+        if (!DesktopStyle.AnimationsEnabled())
+        {
+            Opacity = target; _fadeCompleted = null; completed?.Invoke(); return;
+        }
         _fadeTimer.Start();
     }
 

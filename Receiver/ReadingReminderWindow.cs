@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -44,6 +45,7 @@ internal sealed class ReadingReminderWindow : Window
         root.Children.Add(new ScrollViewer { Content = body,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
         _error.Foreground = DesktopStyle.Brush("#B74C43"); _error.IsVisible = false;
+        AutomationProperties.SetLiveSetting(_error, AutomationLiveSetting.Polite);
         var actions = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
         var later = ClassroomStyle.Button("暂不开始"); later.MinHeight = 44; later.Margin = new Thickness(0, 0, 6, 0); later.IsCancel = true;
         later.Click += (_, _) => Close(); actions.Children.Add(later);

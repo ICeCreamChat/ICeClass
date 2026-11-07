@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Microsoft.Web.WebView2.Core;
@@ -68,6 +69,7 @@ public sealed class StudentVoiceWindow : Window
         DesktopStyle.KeepWindowInWorkingArea(this);
         Background = DesktopStyle.Brush("#E5F0F8");
         _browser = CreateBrowser();
+        AutomationProperties.SetLiveSetting(_message, AutomationLiveSetting.Polite);
         _retry.IsVisible = false; _retry.Click += async (_, _) => await LoadAsync();
         _notice = new Border {Classes = {"classroom-glass"}, CornerRadius = new CornerRadius(24), Background = Avalonia.Media.Brushes.Transparent,
             Padding = new Thickness(28), Child = new StackPanel {
@@ -98,7 +100,7 @@ public sealed class StudentVoiceWindow : Window
         && uri.Scheme == "https" && uri.Host == Host && uri.IsDefaultPort && uri.AbsolutePath == "/homework/classroom/index.html";
     private ReadingBrowser CreateBrowser()
     {
-        var browser = new ReadingBrowser {HandleEscapeKey = false, HandleFullscreenKey = false};
+        var browser = new ReadingBrowser {HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false};
         browser.FocusOutside += next => {
             if (!_closed && ReferenceEquals(browser, _browser))
                 browser.FocusPage(next ? CoreWebView2MoveFocusReason.Next : CoreWebView2MoveFocusReason.Previous);
@@ -109,6 +111,7 @@ public sealed class StudentVoiceWindow : Window
     private async Task LoadCoreAsync()
     {
         if (_closed || _loaded && !_failed) return;
+        _browser.SetPageVisible(false); _browser.IsVisible = false;
         _retry.IsVisible = false; _notice.IsVisible = true; _message.Text = "正在打开教室首页…";
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, _pageLifetime.Token);
         cancellation.CancelAfter(TimeSpan.FromSeconds(30));

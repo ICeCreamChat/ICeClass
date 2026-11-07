@@ -65,6 +65,9 @@ public sealed class EnrollmentWindow : Window
         _startup.IsChecked = existing?.StartWithWindows ?? true;
         _updateProgress.SetState($"当前版本 {ReceiverUpdateService.CurrentVersionText}", false);
         _error.Foreground = DesktopStyle.Brush("#B42318");
+        AutomationProperties.SetLiveSetting(_error, AutomationLiveSetting.Polite);
+        AutomationProperties.SetLiveSetting(_lookupStatus, AutomationLiveSetting.Polite);
+        AutomationProperties.SetLiveSetting(_connection, AutomationLiveSetting.Polite);
         _error.IsVisible = false;
         _error.PropertyChanged += (_, change) =>
         {
@@ -169,6 +172,7 @@ public sealed class EnrollmentWindow : Window
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
         var actions = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var cancel = ClassroomStyle.Button("取消"); cancel.MinWidth = 100; cancel.HorizontalAlignment = HorizontalAlignment.Left;
+        cancel.IsCancel = true;
         cancel.Click += (_, _) => Close(); actions.Children.Add(cancel);
         _save.MinWidth = 144; _save.HorizontalAlignment = HorizontalAlignment.Right;
         Grid.SetColumn(_save, 1); actions.Children.Add(_save);

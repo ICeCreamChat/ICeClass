@@ -11,6 +11,7 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/classroom-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="./readability.css">
   <script nonce="__CSP_NONCE__" src="./home.js" defer></script>
+  <script nonce="__CSP_NONCE__" src="/assets/pinyin-match-1.2.10.js" defer></script>
   <script nonce="__CSP_NONCE__" src="./classroom.js" defer></script>
   <script nonce="__CSP_NONCE__" src="/assets/classroom-glass.js" defer></script>
 </head>
@@ -76,7 +77,7 @@
       <p id="entry-feedback" class="feedback" role="alert" hidden></p>
       <div class="homework-workspace"><nav class="subject-navigation" aria-label="选择学科" id="subject-navigation"></nav>
         <div class="homework-main"><div class="assignment-header"><h3 id="assignment-title">选择学科</h3><label class="date-input-label"><svg aria-hidden="true"><use href="#icon-calendar"/></svg><input type="date" id="homework-date" name="homework-date" autocomplete="off" aria-label="作业日期" ></label></div><div class="assignment-tabs" id="assignment-tabs" role="group" aria-label="选择作业项目"></div>
-          <div class="roster-toolbar"><label class="search-field"><svg aria-hidden="true"><use href="#icon-search"/></svg><input type="search" id="student-search" name="student-search" placeholder="搜索姓名" aria-label="搜索学生姓名" autocomplete="off" spellcheck="false"></label><button class="filter-button" id="missing-filter" aria-pressed="false">只看未交 <span id="missing-badge">0</span></button><button class="text-button" data-action="select-all">全部勾选</button></div>
+          <div class="roster-toolbar"><label class="search-field"><svg aria-hidden="true"><use href="#icon-search"/></svg><input type="search" id="student-search" name="student-search" placeholder="姓名、拼音或首字母" aria-label="搜索学生姓名、拼音或首字母" autocomplete="off" spellcheck="false"></label><button class="filter-button" id="missing-filter" aria-pressed="false">只看未交 <span id="missing-badge">0</span></button><button class="text-button" data-action="select-all">全部勾选</button></div>
           <div class="roster-scroll"><div class="student-grid" id="student-grid"></div><p id="empty-roster" class="empty-roster" hidden>没有找到这位同学，请换个名字试试。</p><div id="none-message" class="none-message" hidden><svg aria-hidden="true"><use href="#icon-check"/></svg><h3>本次没有布置这项作业</h3><p>保存后，该项目不计入上交统计。</p><button class="button soft" data-action="restore-assignment">恢复正常登记</button></div></div>
         </div>
       </div>

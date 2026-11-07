@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.Web.WebView2.Core;
@@ -40,6 +41,7 @@ public sealed class CreativeIdeasWindow : Window
         _config = config;
         _origin = new Uri(config.Endpoint.TrimEnd('/') + "/");
         _browser = CreateBrowser();
+        AutomationProperties.SetLiveSetting(_message, AutomationLiveSetting.Polite);
         ClassroomStyle.Apply(this);
         Title = $"创意计划 · {config.ClassName}";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
@@ -89,7 +91,7 @@ public sealed class CreativeIdeasWindow : Window
 
     private ReadingBrowser CreateBrowser()
     {
-        var browser = new ReadingBrowser { HandleEscapeKey = false, HandleFullscreenKey = false };
+        var browser = new ReadingBrowser { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
         browser.FocusOutside += next =>
         {
             if (!_closed && ReferenceEquals(browser, _browser))
@@ -116,6 +118,7 @@ public sealed class CreativeIdeasWindow : Window
         if (_loading || _closed || _closing) return;
         CancelTranscription();
         _loading = true; _retry.IsVisible = false;
+        _browser.SetPageVisible(false); _browser.IsVisible = false;
         _message.Text = "正在连接创意计划…"; _notice.IsVisible = true;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         linked.CancelAfter(TimeSpan.FromSeconds(25));

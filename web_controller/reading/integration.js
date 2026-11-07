@@ -78,7 +78,8 @@
       : lastError ? '连接中断，正在重试统计上报' : !inPeriod() ? '当前不在早读统计时段' : !sample.active ? '统计时段内 · 等待开始或继续'
       : sample.volume >= window.ReadingIntegration.settings.threshold ? '统计中 · 声量达标' : '统计中 · 等待声量达标';
     if (status.textContent !== label) status.textContent = label;
-    clockLabel.textContent = `本次有效 ${Math.floor(localSeconds / 60)} 分 ${localSeconds % 60} 秒`;
+    const clock = `本次有效 ${Math.floor(localSeconds / 60)} 分 ${localSeconds % 60} 秒`;
+    if (clockLabel.textContent !== clock) clockLabel.textContent = clock;
     document.getElementById('reading-session-status').dataset.warning = String(!connected && !preview || !!lastError);
   }
   async function tick() {

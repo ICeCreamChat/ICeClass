@@ -1,4 +1,4 @@
-.ideas-app.classroom-liquid{--ideas-text:#193c59;--ideas-muted:#4e6c83;--ideas-blue:#0064d7;--ideas-blue-text:#005dbf;--ideas-line:#85a8c235;--ideas-surface:#f7fcffb8;font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;font-size:17px;line-height:1.65}
+.ideas-app.classroom-liquid{--ideas-text:#193c59;--ideas-muted:#4e6c83;--ideas-blue:#0064d7;--ideas-blue-text:#005dbf;--ideas-focus:#005ed6;--ideas-focus-soft:#005ed61c;--ideas-line:#85a8c235;--ideas-surface:#f7fcffb8;font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;font-size:17px;line-height:1.65}
 .ideas-app.classroom-liquid .ideas-topbar{min-height:72px;padding:16px max(26px,calc((100% - 1152px)/2));box-shadow:none;border-width:0 0 1px!important}
 .ideas-app.classroom-liquid h1{font-size:27px;letter-spacing:-.5px}.ideas-app.classroom-liquid h2{font-size:23px}.ideas-app.classroom-liquid h3{font-size:19px}
 .ideas-app.classroom-liquid .ideas-class,.ideas-app.classroom-liquid .ideas-heading p{font-size:16px}
@@ -24,6 +24,8 @@
 .ideas-app.classroom-liquid :is(.ideas-help,.ideas-counter,.ideas-optional,.ideas-total,.ideas-item-meta,.ideas-author,.ideas-feedback,.ideas-notice,.ideas-list-intro,.ideas-transcription-actions p){font-size:16px;line-height:1.7;color:var(--ideas-muted)}
 .ideas-app.classroom-liquid .ideas-error,.ideas-app.classroom-liquid .ideas-danger{color:#a33730}.ideas-app.classroom-liquid .ideas-success{color:#246543}
 .ideas-app.classroom-liquid :is(input:not([type=radio]):not([type=checkbox]),textarea,select){font-size:17px;background:#fbfeffe0;border-color:#a9c2d7;border-radius:12px;color:#193c59}
+.ideas-app.classroom-liquid :is(input:not([type=radio]):not([type=checkbox]),textarea,select):focus-visible{outline:1px solid var(--ideas-focus);outline-offset:-1px;border-color:var(--ideas-focus);box-shadow:0 0 0 3px var(--ideas-focus-soft)}
+@media(forced-colors:active){.ideas-app.classroom-liquid :is(input:not([type=radio]):not([type=checkbox]),textarea,select):focus-visible{outline:2px solid Highlight;outline-offset:2px;box-shadow:none}}
 .ideas-app.classroom-liquid .ideas-submit-row{padding:16px 24px;background:#f4faff60;gap:18px;border-color:#85a8c235}
 .ideas-app.classroom-liquid .ideas-submit-row .ideas-primary{min-width:140px}.ideas-app.classroom-liquid .ideas-submit-status{min-width:0}
 .ideas-app.classroom-liquid :is(.ideas-item,.ideas-list-notice){border-radius:23px;padding:24px}

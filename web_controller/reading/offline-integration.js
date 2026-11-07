@@ -27,7 +27,8 @@
     snapshot = data;
     if (data.config) window.ReadingIntegration.settings = data.config;
     if (data.serverTime) { anchor = data.serverTime; anchoredAt = performance.now(); }
-    if (classLabel) classLabel.textContent = data.className || '本班早读';
+    const name = data.className || '本班早读';
+    if (classLabel && classLabel.textContent !== name) classLabel.textContent = name;
   }
   const state = () => { try { return window.ReadingMonitor?.getState() || { active: false }; } catch { return { active: false }; } };
   const inPeriod = at => {
@@ -73,8 +74,9 @@
       : snapshot.pendingCount ? `已保存到本机 · ${snapshot.pendingCount} 组待同步`
       : !inPeriod(now()) ? '当前不在统计时段 · 已同步'
       : sample.active ? '正在记录 · 已同步' : '早读就绪 · 已同步');
-    status.textContent = label;
-    clockLabel.textContent = `本次达标约 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+    if (status.textContent !== label) status.textContent = label;
+    const clock = `本次达标约 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+    if (clockLabel.textContent !== clock) clockLabel.textContent = clock;
     document.getElementById('reading-session-status').dataset.warning = String(!!diskError || !!snapshot.reviewCount || !!snapshot.revoked);
   }
   function tick() {

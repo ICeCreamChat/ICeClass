@@ -774,13 +774,15 @@ window.ReadingPoems = [
     }
     function paintVolume(force = false) {
       const now = performance.now();
-      if (!force && (now - lastVolumePaint < 120 || $('classic-view').dataset.toolbarVisible !== 'true')) return;
+      if (!force && (now - lastVolumePaint < 120 || $('classic-view').dataset.panelVisible !== 'true')) return;
       lastVolumePaint = now;
       for (const group of speedSettings) {
+        if (!force && group.closest('#carving-setup')) continue;
         const meter = group.querySelector('[data-carving-volume-meter]'), value = Math.floor(displayedVolume);
         meter.setAttribute('aria-valuenow', value);
         meter.setAttribute('aria-valuetext', `相对声量 ${value}，门槛 ${config.threshold}`);
-        group.querySelector('[data-carving-volume-value]').textContent = value;
+        const label = group.querySelector('[data-carving-volume-value]');
+        if (label.textContent !== String(value)) label.textContent = value;
         group.querySelector('[data-carving-volume-fill]').style.transform = `scaleX(${displayedVolume / 100})`;
         group.querySelector('[data-carving-volume-reading]').dataset.reached = String(relativeVolume >= config.threshold);
       }

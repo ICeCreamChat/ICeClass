@@ -103,7 +103,8 @@
       </ControlTemplate>
     </Setter>
   </Style>
-  <Style Selector="Button.native-button">
+  <!-- Share the accessible template without giving the mascot an action-button surface. -->
+  <Style Selector="Button.native-button, Button.about-mascot">
     <Setter Property="FontSize" Value="15" />
     <!-- YaHei UI can resolve Medium to the regular face; keep action labels at SemiBold. -->
     <Setter Property="FontWeight" Value="SemiBold" />

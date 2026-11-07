@@ -26,7 +26,7 @@ internal sealed class AboutThankYouMascot : Button
         HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
         VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
-        Classes.Add("native-button"); Classes.Add("about-mascot");
+        Classes.Add("about-mascot");
         AutomationProperties.SetName(this, "班班鞠躬致谢，点击重播");
         ToolTip.SetTip(this, "点击班班，再鞠一躬");
         Click += (_, _) => Play();

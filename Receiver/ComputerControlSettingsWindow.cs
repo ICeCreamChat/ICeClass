@@ -112,7 +112,7 @@ internal sealed class ComputerControlSettingsWindow : Window
         body.Children.Add(error);
         var root = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         root.Children.Add(new ScrollViewer { Content = new Border { Padding = new Thickness(24), Child = body }, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(24, 12) };
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var cancel = ClassroomStyle.Button("取消"); cancel.IsCancel = true; cancel.HorizontalAlignment = HorizontalAlignment.Left; cancel.Click += (_, _) => Close(); footer.Children.Add(cancel);
         var save = ClassroomStyle.Button("保存本机设置", true); Grid.SetColumn(save, 1); footer.Children.Add(save);
         save.Click += async (_, _) =>
@@ -120,7 +120,8 @@ internal sealed class ComputerControlSettingsWindow : Window
             try { policy.Enabled = enabled.IsChecked == true; policy.AllowInteraction = interaction.IsChecked == true; policy.AllowAllFolders = allFolders.IsChecked == true; policy.Save(); if (!policy.Enabled || !policy.AllowInteraction) await StopTask(); Close(); }
             catch (Exception exception) { error.Text = "保存失败：" + exception.Message; }
         };
-        Grid.SetRow(footer, 1); root.Children.Add(footer); Content = root;
+        var footerBox = DesktopStyle.DialogFooter(footer);
+        Grid.SetRow(footerBox, 1); root.Children.Add(footerBox); Content = root;
         void Update(string text) => Dispatcher.UIThread.Post(() => status.Text = text);
         agent.StatusChanged += Update;
         Closed += (_, _) => agent.StatusChanged -= Update;
