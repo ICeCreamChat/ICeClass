@@ -63,7 +63,7 @@ internal sealed class ClassroomIslandWindow : Window
         Action<string>? diagnostic = null)
     {
         _hide = hide; _diagnostic = diagnostic;
-        ClassroomStyle.Apply(this);
+        ClassroomStyle.Apply(this, glass: false);
         Styles.Add(new StyleInclude(new Uri("avares://ICeClass/")) { Source = new Uri("avares://ICeClass/ClassroomIslandStyles.axaml") });
         Title = "教室浮岛 · ICeClass 班伴";
         Icon = new WindowIcon(AppIconFactory.CreateStream());

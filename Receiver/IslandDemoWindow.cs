@@ -36,7 +36,7 @@ internal sealed class IslandDemoWindow : Window
         {
             var selected = index;
             var button = ClassroomStyle.Button(IslandDemoPlayback.Stages[index].Title);
-            button.FontSize = 14; button.MinHeight = 40; button.Margin = new Thickness(0, 0, 6, 6);
+            button.FontSize = 16; button.MinHeight = 40; button.Margin = new Thickness(0, 0, 6, 6);
             button.Click += (_, _) => select(selected);
             _stages.Add(button); stages.Children.Add(button);
         }

@@ -1,0 +1,132 @@
+/* Approved clear header: blue-white optics behind an opaque reading layer. */
+.teacher-clear-header { --header-space: 116px; }
+.teacher-clear-header .shell { grid-template-rows: var(--header-space) minmax(0, 1fr); }
+.teacher-clear-header .topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: sticky;
+  top: 16px;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 28px;
+  height: 88px;
+  min-width: 0;
+  margin: 16px 16px 12px;
+  padding: 14px 20px 14px 14px;
+  border: 1px solid #ffffffb8;
+  border-radius: 22px;
+  background: #f4fbff70;
+  box-shadow: 0 9px 24px #28577512, inset 0 1px #ffffffed, inset 0 -1px #719db32b;
+  --teacher-pane: linear-gradient(115deg, #fffffff0, #f4fbffcc 54%, #dceffbb8);
+}
+.teacher-clear-header .header-brand { display: flex; align-items: center; min-width: 0; }
+.teacher-clear-header .header-brand .brand-lockup { gap: 12px; }
+.teacher-clear-header .header-brand img { width: 44px; height: 44px; }
+.teacher-clear-header .header-brand strong { color: var(--text); font-size: 19px; font-weight: 700; letter-spacing: 0; white-space: nowrap; }
+.teacher-clear-header .header-brand small { color: var(--muted); font-size: 14px; opacity: 1; letter-spacing: 0; }
+.teacher-clear-header .header-location { display: grid; gap: 8px; min-width: 0; }
+.teacher-clear-header .breadcrumb { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 16px; line-height: 1.4; }
+.teacher-clear-header .breadcrumb > span { color: var(--muted); white-space: nowrap; }
+.teacher-clear-header .breadcrumb svg { width: 14px; height: 14px; flex: none; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.7; }
+.teacher-clear-header .breadcrumb strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text); }
+.teacher-clear-header .header-context { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 14px; line-height: 1.4; white-space: nowrap; }
+.teacher-clear-header #headerConnection { display: flex; align-items: center; gap: 6px; }
+.teacher-clear-header #headerConnection::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #39846d; }
+.teacher-clear-header #headerEnvironment { border-left: 1px solid var(--line); padding-left: 14px; }
+.teacher-clear-header .topbar-date { display: none; font-size: 14px; font-variant-numeric: tabular-nums; }
+.teacher-clear-header .header-actions { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.teacher-clear-header .header-tools { display: flex; align-items: center; gap: 8px; }
+.teacher-clear-header .header-tools .btn { min-height: 44px; padding: 10px 14px; gap: 8px; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.teacher-clear-header .header-tools svg { width: 18px; height: 18px; }
+.teacher-clear-header .header-account { display: flex; align-items: center; gap: 10px; min-width: 44px; min-height: 54px; padding: 6px 10px; border-radius: 16px; text-align: left; }
+.teacher-clear-header .header-account .user-avatar { width: 36px; height: 36px; background: #d7ebfa; font-size: 16px; font-weight: 600; }
+.teacher-clear-header .header-account .user-meta { display: grid; min-width: 0; gap: 3px; line-height: 1.3; }
+.teacher-clear-header .header-account .user-meta strong { max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+.teacher-clear-header .header-account .user-meta span { font-size: 13px; font-weight: 400; white-space: nowrap; }
+.teacher-clear-header .header-account-chevron { width: 16px; height: 16px; }
+.teacher-clear-header .teacher-header-menu {
+  position: fixed;
+  inset: var(--header-menu-top, 112px) var(--header-menu-right, 28px) auto auto;
+  width: 248px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - var(--header-menu-top, 112px) - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #ffffffd9;
+  border-radius: 18px;
+  color: var(--text);
+  background: #edf7fce8;
+  box-shadow: 0 16px 40px #1d4f7330, inset 0 1px #ffffffed;
+  --teacher-pane: linear-gradient(120deg, #fffffff5, #e5f3fbe8);
+}
+.teacher-clear-header .header-menu-row,
+.teacher-clear-header #logoutButton { display: flex; align-items: center; width: 100%; min-height: 46px; padding: 11px 12px; border: 0; border-radius: 11px; background: transparent; color: var(--text); font-size: 16px; font-weight: 400; text-align: left; line-height: 1.5; }
+.teacher-clear-header .header-menu-row:hover,
+.teacher-clear-header #logoutButton:hover { color: var(--text); background: #d9edfb99; }
+.teacher-clear-header .header-menu-identity { display: grid; gap: 6px; padding: 12px; overflow-wrap: anywhere; }
+.teacher-clear-header .header-menu-identity strong { font-size: 16px; font-weight: 600; }
+.teacher-clear-header .header-menu-identity span { color: var(--muted); font-size: 14px; }
+.teacher-clear-header .header-menu-divider { height: 1px; background: var(--line); margin: 6px 4px; }
+.teacher-clear-header .compact-refresh,
+.teacher-clear-header .compact-settings { display: none; }
+.teacher-clear-header:not(.teacher-native-header) .header-more { display: none; }
+.teacher-clear-header [hidden] { display: none !important; }
+.teacher-clear-header .sidebar { grid-row: 2; top: var(--header-space); height: calc(100dvh - var(--header-space)); padding-top: 16px; }
+.teacher-clear-header main { padding-top: 24px; scroll-margin-top: var(--header-space); }
+html:has(.teacher-clear-header) { scroll-padding-top: 132px; }
+@media (min-width: 1600px) {
+  .teacher-clear-header .topbar-date { display: block; }
+}
+@media (max-width: 1250px) {
+  .teacher-clear-header .topbar { grid-template-columns: 194px minmax(0, 1fr) auto; gap: 18px; padding-right: 14px; }
+  .teacher-clear-header .header-brand strong { font-size: 17px; }
+  .teacher-clear-header .header-brand img { width: 40px; height: 40px; }
+  .teacher-clear-header .header-account .user-meta strong { max-width: 7em; }
+  .teacher-clear-header .header-account .user-meta span { display: none; }
+}
+@media (max-width: 1100px) {
+  .teacher-clear-header .breadcrumb .header-home,
+  .teacher-clear-header .header-refresh { display: none; }
+  .teacher-clear-header .compact-refresh { display: flex; }
+  .teacher-clear-header:not(.teacher-native-header) .header-more { display: inline-flex; }
+}
+@media (max-width: 880px) {
+  .teacher-clear-header .topbar { grid-template-columns: minmax(0, 1fr) auto; height: 108px; top: 8px; gap: 12px; margin: 8px 10px 16px; padding: 10px 12px; border-radius: 20px; }
+  .teacher-clear-header .header-brand { gap: 8px; }
+  .teacher-clear-header .header-brand .brand-lockup { gap: 8px; }
+  .teacher-clear-header .header-brand img { width: 32px; height: 32px; }
+  .teacher-clear-header .header-brand strong { font-size: 16px; }
+  .teacher-clear-header .header-brand small { display: none; }
+  .teacher-clear-header .header-brand .menu-toggle { width: 44px; min-height: 44px; padding: 10px; }
+  .teacher-clear-header .header-location { grid-row: 2; grid-column: 1 / -1; padding: 3px 2px; }
+  .teacher-clear-header .breadcrumb { font-size: 15px; }
+  .teacher-clear-header .header-context,
+  .teacher-clear-header .header-settings { display: none; }
+  .teacher-clear-header .compact-settings { display: flex; }
+  .teacher-clear-header .header-actions { grid-row: 1; grid-column: 2; gap: 8px; }
+  .teacher-clear-header .header-tools .btn { min-width: 44px; padding: 10px; }
+  .teacher-clear-header .header-more > span { display: none; }
+  .teacher-clear-header .header-account { min-height: 44px; padding: 4px; border-radius: 13px; }
+  .teacher-clear-header .header-account .user-meta,
+  .teacher-clear-header .header-account-chevron { display: none; }
+  .teacher-clear-header .header-account .user-avatar { width: 34px; height: 34px; }
+  .teacher-clear-header .sidebar { top: 0; height: 100dvh; padding-top: 64px; z-index: 50; }
+  .teacher-clear-header .nav-backdrop { z-index: 45; }
+  .teacher-clear-header main { padding-top: 12px; }
+}
+@media (max-width: 370px) {
+  .teacher-clear-header .header-brand img { display: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .teacher-clear-header .topbar,
+  .teacher-clear-header .teacher-header-menu { background: #edf7fc; }
+}
+@media (forced-colors: active) {
+  .teacher-clear-header .header-menu-row,
+  .teacher-clear-header #logoutButton { color: CanvasText; }
+  .teacher-clear-header .header-menu-row:hover { color: HighlightText; background: Highlight; }
+}

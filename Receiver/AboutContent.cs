@@ -4,23 +4,13 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using ICeClass.About;
 
 namespace ICeClass.Receiver;
 
-// One layout for both native editions; only the product description and update action differ.
+// One layout for both native editions; edition metadata and the update action differ.
 internal static class AboutContent
 {
-    internal const string GroupAcknowledgement = "感谢马鞍山市第二十二中学 AI建模社的全体成员";
-    internal static readonly (string School, string Name)[] Acknowledgements =
-    [
-        ("马鞍山市第二十二中学", "高琦璐校长"),
-        ("马鞍山市第二十二中学", "汪冰主任"),
-        ("马鞍山市第二十二中学", "李善忠干事"),
-        ("马鞍山市第二十二中学", "陈胜老师"),
-        ("马鞍山市第二十二中学", "许斌老师"),
-        ("马鞍山市理工学校", "李妮姗老师"),
-    ];
-
     internal static readonly (string Title, string Resource)[] Notices =
     [
         ("应用许可", "LICENSE"), ("第三方说明", "THIRD_PARTY_NOTICES.md"),
@@ -35,16 +25,17 @@ internal static class AboutContent
         return reader.ReadToEnd();
     }
 
-    internal static Control Build(string edition, string version, string description, string note, Action close, Action? checkUpdates = null,
+    internal static Control Build(string edition, string version, Action close, Action? checkUpdates = null,
         Func<CancellationToken, Task<string>>? collectDiagnostics = null,
-        Func<string, CancellationToken, Task<string>>? submitDiagnostics = null)
+        Func<string, CancellationToken, Task<string>>? submitDiagnostics = null,
+        string? acknowledgementsEndpoint = null)
     {
         var root = new Grid { Background = Brushes.White, RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(28, 16) };
         brand.Children.Add(DesktopStyle.Logo(48));
         var metadata = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        metadata.Children.Add(DesktopStyle.Text($"{edition} · 版本 {version}", 14, muted: true));
-        var registration = DesktopStyle.Text("皖ICP备2025106471号", 14, muted: true);
+        metadata.Children.Add(DesktopStyle.Text($"{edition} · 版本 {version}", 16, muted: true));
+        var registration = DesktopStyle.Text("皖ICP备2025106471号", 16, muted: true);
         registration.Margin = new Thickness(16, 0, 0, 0);
         registration.HorizontalAlignment = HorizontalAlignment.Right;
         registration.TextWrapping = TextWrapping.NoWrap;
@@ -55,8 +46,6 @@ internal static class AboutContent
         root.Children.Add(brand);
 
         var body = new Grid { Margin = new Thickness(28, 8, 28, 16), RowDefinitions = new RowDefinitions("Auto,12,*") };
-        var summary = new StackPanel { Spacing = 6, Children = {
-            DesktopStyle.Text(description, 15), DesktopStyle.Text(note, 14, muted: true) } };
         var thanksButton = DesktopStyle.Button("致谢名单");
         var licensesButton = DesktopStyle.Button("许可与说明");
         var historyButton = DesktopStyle.Button("更新记录");
@@ -72,13 +61,34 @@ internal static class AboutContent
             pageButtons[i].Margin = new Thickness(i == 0 ? 0 : 4, 0, i == pageButtons.Length - 1 ? 0 : 4, 0);
             Grid.SetColumn(pageButtons[i], i); pages.Children.Add(pageButtons[i]);
         }
-        body.Children.Add(pages);
-        var licenses = new Grid { RowDefinitions = new RowDefinitions("Auto,16,Auto,10,*"), IsVisible = false };
-        licenses.Children.Add(summary);
-        var thanks = BuildAcknowledgements(out var mascot);
+        body.Children.Add(new Border { Classes = { "classroom-tab-strip" }, Background = DesktopStyle.Brush("#EDF2F8"),
+            CornerRadius = new CornerRadius(19), Padding = new Thickness(4), Child = pages });
+        var licenses = new Grid { RowDefinitions = new RowDefinitions("Auto,10,*"), IsVisible = false };
+        var thanks = BuildAcknowledgements(out var mascot, out var sections);
+        if (!string.IsNullOrWhiteSpace(acknowledgementsEndpoint))
+        {
+            var client = new AboutAcknowledgementsClient(acknowledgementsEndpoint);
+            PopulateAcknowledgements(sections, client.ReadCached());
+            CancellationTokenSource? refresh = null;
+            root.AttachedToVisualTree += async (_, _) =>
+            {
+                refresh?.Cancel(); refresh?.Dispose();
+                var request = refresh = new CancellationTokenSource();
+                try
+                {
+                    var content = await client.RefreshAsync(request.Token);
+                    if (!request.IsCancellationRequested) PopulateAcknowledgements(sections, content);
+                }
+                catch (Exception error) when (error is OperationCanceledException or System.Net.Http.HttpRequestException
+                    or System.Text.Json.JsonException or InvalidDataException or IOException)
+                { /* The bundled or last synchronized text remains readable offline. */ }
+            };
+            root.DetachedFromVisualTree += (_, _) => { refresh?.Cancel(); refresh?.Dispose(); refresh = null; };
+        }
         var history = DocumentReader(AboutReleaseNotes.Text, "版本更新与修复记录");
         var diagnostics = collectDiagnostics is null ? null : new AboutDiagnosticsView(edition, version, collectDiagnostics, submitDiagnostics);
-        var diagnosticsPage = (Control?)diagnostics ?? DesktopStyle.Text("暂时无法读取本机日志，请重新打开主程序后重试。", 14);
+        var diagnosticsPage = DesktopStyle.Card((Control?)diagnostics ?? DesktopStyle.Text("暂时无法读取本机日志，请重新打开主程序后重试。", 16), 20);
+        diagnosticsPage.CornerRadius = new CornerRadius(23);
         var pageViews = new[] { thanks, licenses, history, diagnosticsPage };
         var pageContent = new Grid();
         foreach (var page in pageViews) pageContent.Children.Add(page);
@@ -107,7 +117,7 @@ internal static class AboutContent
             };
         }
 
-        var document = new SelectableTextBlock { FontSize = 14, LineHeight = 24, TextWrapping = TextWrapping.Wrap,
+        var document = new SelectableTextBlock { FontSize = 16, LineHeight = 24, TextWrapping = TextWrapping.Wrap,
             Foreground = DesktopStyle.Ink, FontFamily = new FontFamily("Microsoft YaHei UI, Microsoft YaHei, Segoe UI") };
         var documentScroll = new ScrollViewer { Content = document,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
@@ -140,12 +150,12 @@ internal static class AboutContent
             };
             Grid.SetColumn(button, i); choices.Children.Add(button); buttons.Add(button);
         }
-        var tabs = new Border { Background = DesktopStyle.Brush("#EDF2F8"), CornerRadius = new CornerRadius(11),
+        var tabs = new Border { Classes = { "classroom-tab-strip" }, Background = DesktopStyle.Brush("#EDF2F8"), CornerRadius = new CornerRadius(16),
             Padding = new Thickness(4), Child = choices };
-        Grid.SetRow(tabs, 2); licenses.Children.Add(tabs);
-        var readerBox = new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E2E8F0"),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 12), Child = documentScroll };
-        Grid.SetRow(readerBox, 4); licenses.Children.Add(readerBox);
+        licenses.Children.Add(tabs);
+        var readerBox = new Border { Classes = { "native-card" }, Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E2E8F0"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(23), Padding = new Thickness(23, 19), Child = documentScroll };
+        Grid.SetRow(readerBox, 2); licenses.Children.Add(readerBox);
         Grid.SetRow(body, 1); root.Children.Add(body);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, HorizontalAlignment = HorizontalAlignment.Right };
@@ -165,45 +175,46 @@ internal static class AboutContent
 
     private static Control DocumentReader(string content, string accessibleName)
     {
-        var text = new SelectableTextBlock { Text = content, FontSize = 14, LineHeight = 24, TextWrapping = TextWrapping.Wrap,
+        var text = new SelectableTextBlock { Text = content, FontSize = 16, LineHeight = 24, TextWrapping = TextWrapping.Wrap,
             Foreground = DesktopStyle.Ink, FontFamily = new FontFamily("Microsoft YaHei UI, Microsoft YaHei, Segoe UI") };
         AutomationProperties.SetName(text, accessibleName);
-        return new Border { BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 12),
+        return new Border { Classes = { "native-card" }, BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(23), Padding = new Thickness(23, 19),
             Child = new ScrollViewer { Content = text, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
     }
 
-    private static Control BuildAcknowledgements(out AboutThankYouMascot mascot)
+    private static void PopulateAcknowledgements(StackPanel sections, AcknowledgementsDocument document)
+    {
+        sections.Children.Clear();
+        foreach (var section in document.Sections)
+        {
+            var title = DesktopStyle.Text(section.Title, 20, true);
+            title.Foreground = DesktopStyle.Brush("#193C59");
+            var body = DesktopStyle.Text(section.Body, 18, muted: true);
+            body.Foreground = DesktopStyle.Brush("#4E6C83");
+            sections.Children.Add(new StackPanel { Spacing = 8, Children = { title, body } });
+        }
+    }
+
+    private static Control BuildAcknowledgements(out AboutThankYouMascot mascot, out StackPanel sections)
     {
         mascot = new AboutThankYouMascot
         {
-            Width = double.NaN, Height = 252,
+            Width = double.NaN, Height = 230,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var message = DesktopStyle.Text(GroupAcknowledgement, 17, true);
-
-        var people = new StackPanel { Spacing = 24, VerticalAlignment = VerticalAlignment.Center };
-        foreach (var school in Acknowledgements.GroupBy(person => person.School))
-        {
-            var names = new StackPanel { Spacing = 8 };
-            foreach (var person in school)
-            {
-                names.Children.Add(DesktopStyle.Text(person.Name, 16));
-            }
-            var schoolName = DesktopStyle.Text(school.Key, 14, muted: true);
-            people.Children.Add(new StackPanel { Spacing = 8, Children = { schoolName, names } });
-        }
-        var composition = new Grid { ColumnDefinitions = new ColumnDefinitions("1.6*,24,*"),
-            RowDefinitions = new RowDefinitions("Auto,24,Auto"),
+        sections = new StackPanel { Spacing = 26, VerticalAlignment = VerticalAlignment.Center };
+        PopulateAcknowledgements(sections, AboutAcknowledgementsClient.Default);
+        var composition = new Grid { ColumnDefinitions = new ColumnDefinitions("*,24,156"),
             Margin = new Thickness(28), VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumnSpan(message, 3); composition.Children.Add(message);
-        Grid.SetRow(people, 2); composition.Children.Add(people);
-        Grid.SetRow(mascot, 2); Grid.SetColumn(mascot, 2); composition.Children.Add(mascot);
+        composition.Children.Add(sections);
+        Grid.SetColumn(mascot, 2); composition.Children.Add(mascot);
+        composition.SizeChanged += (_, _) => composition.ColumnDefinitions[2].Width = new GridLength(composition.Bounds.Width < 550 ? 120 : 156);
         var scroll = new ScrollViewer { Content = composition, Focusable = true,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         AutomationProperties.SetName(scroll, "致谢名单");
-        return new Border { Background = DesktopStyle.Brush("#F4F8FD"), CornerRadius = new CornerRadius(12),
+        return new Border { Classes = { "native-card" }, Background = DesktopStyle.Brush("#F4F8FD"), CornerRadius = new CornerRadius(23),
             ClipToBounds = true, Child = scroll };
     }
 }

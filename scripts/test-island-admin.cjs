@@ -261,8 +261,10 @@ test('Changing viewed weeks and toggling rotation preserves teachers and empty w
   ] });
   const page = await open(t, data);
   const cycle = () => page.getByLabel('晚自习轮换周次', { exact: true });
-  await cycle().press('Home');
-  await cycle().press('ArrowDown');
+  await cycle().press('Space');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
   assert.equal(await cycle().inputValue(), '2');
   assert.match(await page.locator('.island-week tbody').innerText(), /轮换教师/);
   assert.equal(await page.locator('#islandSave').isDisabled(), true);

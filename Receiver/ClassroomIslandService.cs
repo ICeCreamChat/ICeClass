@@ -42,6 +42,8 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     internal bool InClass { get; private set; }
     internal bool ScheduleKnown { get; private set; }
     internal event Action<bool>? ClassTimeChanged;
+    internal ClassroomHomeSnapshot? HomeState { get; private set; }
+    internal event Action<ClassroomHomeSnapshot>? HomeStateChanged;
     public event Action? ShoutPreviewRequested;
 
     public ClassroomIslandService(Func<ReceiverConfig, Task> openReading, Action openHome)
@@ -122,6 +124,12 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     }
 
     private void AcknowledgeNotice() => CompleteShout(ShoutCloseReason.Acknowledged);
+    internal void AcknowledgeHomeNotice(long sequence)
+    {
+        if (HomeState?.Notice?.Sequence != sequence) return;
+        if (_activeShout is not null) AcknowledgeNotice();
+        else { _state.DismissNotice(); Refresh(); }
+    }
 
     private void CompleteShout(ShoutCloseReason reason)
     {
@@ -344,6 +352,11 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var localNow = now.ToOffset(TimeSpan.FromHours(8));
         var lessons = profile is not null ? IslandSchedule.On(profile, DateOnly.FromDateTime(localNow.DateTime)) : [];
         var current = lessons.FirstOrDefault(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End));
+        HomeState = new ClassroomHomeSnapshot(localNow.ToString("yyyy-MM-dd"), ScheduleKnown,
+            lessons.Select(l => new ClassroomHomeLesson(l.Lesson.Subject,
+                $"{l.Slot.Start / 60:00}:{l.Slot.Start % 60:00}", $"{l.Slot.End / 60:00}:{l.Slot.End % 60:00}",
+                l == current)).ToList(), view.Notice);
+        HomeStateChanged?.Invoke(HomeState);
         var lessonHidden = profile is not null && IslandSchedule.HiddenDuringLesson(profile, now);
         if (profile?.Visibility is null && _local.Appearance?.HideDuringLessons == true && current is not null) lessonHidden = true;
         SetClassTime(current is not null || lessonHidden);

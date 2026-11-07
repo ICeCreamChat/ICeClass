@@ -58,6 +58,7 @@ public sealed partial class App : Application
         _island.ShoutPreviewRequested += PreviewShout;
         _island.PreferenceChanged += UpdateIslandMenu;
         _island.ClassTimeChanged += value => _banbanVoiceWindow?.SetInClass(value);
+        _island.HomeStateChanged += state => _studentVoiceWindow?.SetIslandState(state);
         ReadingExperience.Configure(ShowStudentVoice, () => _studentVoiceWindow?.MinimizeToTray());
         _receiver.ConnectionStateChanged += ReceiverOnConnectionStateChanged;
         _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => {
@@ -190,7 +191,8 @@ public sealed partial class App : Application
                 $"客户端更新：检查或下载中={_updateInProgress != 0}；待安装={_readyUpdateVersion ?? "无"}\n" +
                 $"早读：已打开={ReadingExperience.IsOpen}；全屏={ReadingExperience.IsFullscreen}\n" +
                 (_island?.DiagnosticState ?? "通知窗口尚未初始化。"), token),
-                (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticBinding));
+                (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticBinding),
+                acknowledgementsEndpoint: string.IsNullOrEmpty(diagnosticBinding.Endpoint) ? ReceiverConfig.TryLoadDefaultEndpoint() : diagnosticBinding.Endpoint);
             _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         }
         _aboutWindow.Show(); _aboutWindow.WindowState = WindowState.Normal; _aboutWindow.Activate();
@@ -297,8 +299,9 @@ public sealed partial class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban, ShowCreativeIdeas);
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban, ShowCreativeIdeas, acknowledge: sequence => _island?.AcknowledgeHomeNotice(sequence));
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
+        if (_island?.HomeState is { } homeState) _studentVoiceWindow.SetIslandState(homeState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
         KeepInTray(_studentVoiceWindow);
         _studentVoiceWindow.Show();
@@ -334,6 +337,12 @@ public sealed partial class App : Application
 
     private async Task ExitAsync()
     {
+        if (_exitRequested) return;
+        if (_studentVoiceWindow is { } home)
+        {
+            if (home.HasHomeworkActivity) { home.Show(); home.WindowState = WindowState.Normal; home.Activate(); }
+            if (!await home.PrepareToLeaveAsync()) return;
+        }
         if (_exitRequested) return;
         _exitRequested = true;
         await ReadingExperience.StopAsync();

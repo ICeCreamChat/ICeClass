@@ -400,4 +400,72 @@
     <Setter Property="Padding" Value="0,10,0,0" />
     <Setter Property="MinHeight" Value="0" />
   </Style>
+  <!-- Opt-in classroom material; teacher windows retain their existing layout. -->
+  <Style Selector="Window.classroom-surface">
+    <Setter Property="FontSize" Value="17" />
+    <Setter Property="Foreground" Value="#193C59" />
+  </Style>
+  <Style Selector="Window.classroom-surface Button.native-button">
+    <Setter Property="FontSize" Value="17" />
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Padding" Value="17,9" />
+    <Setter Property="CornerRadius" Value="13" />
+    <Setter Property="Background" Value="#C8F8FDFF" />
+    <Setter Property="BorderBrush" Value="#80A8C1D7" />
+    <Setter Property="Foreground" Value="#234F73" />
+  </Style>
+  <Style Selector="Window.classroom-surface Button.native-primary">
+    <Setter Property="Background">
+      <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Color="#1681E6" Offset="0" />
+        <GradientStop Color="#0064D7" Offset="1" />
+      </LinearGradientBrush>
+    </Setter>
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="#1179D9" />
+  </Style>
+  <Style Selector="Window.classroom-surface Button.native-document">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="#4E6C83" />
+  </Style>
+  <Style Selector="Window.classroom-surface Button.native-document.selected">
+    <Setter Property="Background" Value="#D9FCFFFF" />
+    <Setter Property="Foreground" Value="#005DBF" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Window.classroom-surface TextBox, Window.classroom-surface ComboBox, Window.classroom-surface NumericUpDown">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Background" Value="#E0FBFEFF" />
+    <Setter Property="Foreground" Value="#193C59" />
+    <Setter Property="BorderBrush" Value="#A9C2D7" />
+  </Style>
+  <Style Selector="Window.classroom-surface CheckBox">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="Foreground" Value="#193C59" />
+    <Setter Property="MinHeight" Value="40" />
+  </Style>
+  <Style Selector="Window.classroom-surface Border.classroom-glass, Window.classroom-surface Border.native-card">
+    <Setter Property="BoxShadow" Value="0 8 22 0 #16235276" />
+  </Style>
+  <Style Selector="Window.classroom-surface Border.native-dialog-footer">
+    <Setter Property="Padding" Value="24,14" />
+    <Setter Property="BorderBrush" Value="#5085A8C2" />
+  </Style>
+  <Style Selector="Button.native-button.about-diagnostic-action">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Padding" Value="10,9" />
+    <Setter Property="CornerRadius" Value="12" />
+  </Style>
+  <Style Selector="Button.native-button.about-diagnostic-submit">
+    <Setter Property="Background" Value="#B8F8FDFF" />
+    <Setter Property="BorderBrush" Value="#CCFFFFFF" />
+    <Setter Property="Foreground" Value="#005DBF" />
+  </Style>
 </Styles>

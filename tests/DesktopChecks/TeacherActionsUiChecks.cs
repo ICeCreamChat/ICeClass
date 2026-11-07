@@ -96,6 +96,13 @@ public sealed class TeacherActionsCheckApp : Application
             await Until(() => Task.FromResult(browser.Core is not null), "WebView2 initialization");
             var core = browser.Core!;
             await Until(async () => await core.ExecuteScriptAsync("!!window.ICeClassTeacherHost && document.readyState === 'complete'") == "true", "embedded bridge injection");
+            var toolbar = (Border)typeof(DesktopWindow).GetField("_toolbar", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
+            Assert(toolbar.IsVisible, "Loading and sign-in keep the native recovery tools available");
+            await core.ExecuteScriptAsync("window.ICeClassTeacherHost.setWorkbenchHeader(true)");
+            await Until(() => Task.FromResult(!toolbar.IsVisible), "unified workbench header");
+            Assert(!toolbar.IsVisible, "A ready workbench replaces the duplicate native toolbar");
+            await core.ExecuteScriptAsync("window.ICeClassTeacherHost.setWorkbenchHeader(false)");
+            await Until(() => Task.FromResult(toolbar.IsVisible), "native recovery toolbar");
             async Task<JsonElement> Result(string expression)
             {
                 await core.ExecuteScriptAsync("window.teacherActionTestResult = undefined; Promise.resolve(" + expression + ")" +
@@ -113,13 +120,16 @@ public sealed class TeacherActionsCheckApp : Application
             catalog = await Result("window.ICeClassTeacherHost.catalog()");
             var clientId = catalog.GetProperty("clientId").GetString();
             var ids = catalog.GetProperty("actions").EnumerateArray().Select(item => item.GetProperty("id").GetString()).ToArray();
-            Assert(ids.SequenceEqual(new[] { "teacher.settings.open", "teacher.about", "teacher.feedback", "teacher.refresh", "teacher.updates.check" }), "The real embedded script receives exactly the five registered actions");
+            Assert(ids.SequenceEqual(new[] { "teacher.settings.open", "teacher.about", "teacher.feedback", "teacher.refresh", "teacher.updates.check", "teacher.voice.download" }), "The real embedded script receives exactly the six registered actions, including local voice preparation");
             Assert(catalog.GetProperty("actions").EnumerateArray().All(item => item.GetProperty("fields").GetArrayLength() == 0), "The real catalog advertises only empty payload fields");
             Assert(!catalog.GetProperty("actions").EnumerateArray().Single(item => item.GetProperty("id").GetString() == "teacher.refresh")
                 .GetProperty("confirmation").GetBoolean(), "Refresh catalog avoids a server confirmation card while retaining the native confirmation");
             Assert((await Result("window.ICeClassTeacherHost.execute('teacher.about', {password: 'never-logged'}, 'invalid-fields')")).GetProperty("code").GetString() == "invalid-fields", "Native field validation survives the WebView transport");
             Assert((await Result(Execute("teacher.unknown", "unknown"))).GetProperty("code").GetString() == "unknown-action", "Unknown native actions fail through the real bridge");
 
+            // The harness uses a secondary window as the app's main window. Give
+            // its settings the normal voice preparation without starting downloads.
+            typeof(DesktopWindow).GetMethod("InitializeVoiceResources", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
             var settings = await Result(Execute("teacher.settings.open", "settings"));
             Assert(settings.GetProperty("state").GetString() == "opened" && window.OwnedWindows.OfType<SettingsWindow>().Count() == 1,
                 "Settings reports opened while the real unsaved settings dialog is visible");
@@ -149,6 +159,13 @@ public sealed class TeacherActionsCheckApp : Application
             await core.ExecuteScriptAsync("document.querySelector('#bridge-child').contentWindow.chrome.webview.postMessage({type:'iceclass-teacher-action',requestId:crypto.randomUUID(),clientId:window.ICeClassTeacherHost.clientId,method:'execute',action:'teacher.about',payload:{},operationId:'iframe-spoof'});");
             await Task.Delay(200);
             Assert(!window.OwnedWindows.Any(), "Frame WebView messages cannot invoke the main-frame native bridge");
+            await core.ExecuteScriptAsync("window.ICeClassTeacherHost.setWorkbenchHeader(true)");
+            await Until(() => Task.FromResult(!toolbar.IsVisible), "unified header before frame message");
+            await core.ExecuteScriptAsync("document.querySelector('#bridge-child').contentWindow.chrome.webview.postMessage({type:'iceclass-teacher-shell',ready:false});");
+            await Task.Delay(200);
+            Assert(!toolbar.IsVisible, "A child frame cannot change the main workbench toolbar");
+            await core.ExecuteScriptAsync("window.ICeClassTeacherHost.setWorkbenchHeader(false)");
+            await Until(() => Task.FromResult(toolbar.IsVisible), "recovery toolbar after frame check");
             Volatile.Write(ref signedIn, 0);
             Assert((await Result("window.ICeClassTeacherHost.catalog()")).GetProperty("actions").GetArrayLength() == 0, "Server-side logout hides native capabilities even while the old cookie remains");
             Assert(!(await Result(Execute("teacher.about", "about-once"))).GetProperty("success").GetBoolean() && !window.OwnedWindows.Any(),

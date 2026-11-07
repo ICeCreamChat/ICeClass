@@ -62,7 +62,7 @@ internal sealed class BanbanVoiceWindow : Window
         };
         var message = new StackPanel { Spacing = 18, MaxWidth = 380, HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _status, _retry } };
-        _notice = new Border { Background = DesktopStyle.Brush("#F5F8FC"), Padding = new Avalonia.Thickness(24), Child = message };
+        _notice = new Border { Classes = { "classroom-glass" }, CornerRadius = new Avalonia.CornerRadius(24), Background = Avalonia.Media.Brushes.Transparent, Padding = new Avalonia.Thickness(24), Child = message };
         Content = new Grid { Children = { _browser, _notice } };
         _connectionTimeout.Tick += (_, _) =>
         {

@@ -74,7 +74,12 @@
     return operation.promise;
   }
   Object.defineProperty(window, "ICeClassTeacherHost", {
-    value: Object.freeze({clientId, catalog: async () => request("catalog"), execute}),
+    value: Object.freeze({clientId, catalog: async () => request("catalog"), execute,
+      workbenchHeader: true,
+      setWorkbenchHeader: ready => {
+        if (current() && typeof ready === "boolean") transport.postMessage({type: "iceclass-teacher-shell", ready});
+      }
+    }),
     configurable: false, writable: false
   });
 })();

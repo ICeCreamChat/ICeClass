@@ -76,6 +76,8 @@ internal static class BanbanPetSettingsChecks
                 && !string.IsNullOrWhiteSpace(AutomationProperties.GetName(slider)),
                 "the keyboard-accessible size slider opens at 80% with a 25% to 150% range");
             var mascot = Field<BanbanPetMascot>(pet, "_mascot");
+            var captionSize = Field<TextBlock>(pet, "_caption").FontSize;
+            var labelSize = Field<TextBlock>(pet, "_label").FontSize;
             var bottom = pet.Position.Y + (int)Math.Ceiling(pet.Height * screen.Scaling);
             var panelPosition = slider.PointToScreen(default);
             foreach (var size in new[] { 25, 50, 100, 150 })
@@ -84,7 +86,9 @@ internal static class BanbanPetSettingsChecks
                 Check(Math.Abs(mascot.Bounds.Width - 116 * size / 100d) <= .5 / screen.Scaling + .01
                     && Math.Abs(mascot.Bounds.Height - 130 * size / 100d) <= .5 / screen.Scaling + .01,
                     $"{size}% updates the actual painted character layout immediately ({mascot.Bounds}, requested {mascot.Width}×{mascot.Height}, slider {slider.Value})");
-                Check(Field<TextBlock>(pet, "_caption").FontSize == 14 && Field<TextBlock>(pet, "_label").FontSize == 13,
+                Check(captionSize >= 15 && labelSize >= 15
+                    && Field<TextBlock>(pet, "_caption").FontSize == captionSize
+                    && Field<TextBlock>(pet, "_label").FontSize == labelSize,
                     $"{size}% preserves readable caption and state text sizes");
                 Check(pet.Position.X + (int)Math.Ceiling(pet.Width * screen.Scaling) == screen.WorkingArea.Right
                     && pet.Position.Y + (int)Math.Ceiling(pet.Height * screen.Scaling) == bottom,

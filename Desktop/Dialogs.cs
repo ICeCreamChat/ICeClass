@@ -14,12 +14,13 @@ internal static class Dialogs
 {
     internal static Button Button(string text, bool primary = false)
     {
-        var button = DesktopStyle.Button(text, primary); button.FontSize = 14; button.MinHeight = 40; return button;
+        var button = DesktopStyle.Button(text, primary); button.FontSize = 16; button.MinHeight = 44; return button;
     }
     internal static Window Window(string title, double width = 480)
     {
         var window = new Window { Title = title, Width = width, SizeToContent = SizeToContent.Height, CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = DesktopStyle.Brush("#F5F8FC"), Icon = new WindowIcon(AppIconFactory.CreateStream()) };
+        TeacherStyle.Apply(window);
         window.KeyDown += (_, args) => { if (args.Key == Key.Escape) { args.Handled = true; window.Close(); } };
         return window;
     }
@@ -59,7 +60,8 @@ internal sealed class SettingsWindow : Window
         Title = "桌面设置"; Width = 520; Height = 480; MinWidth = 380; MinHeight = 400; CanResize = true;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = DesktopStyle.Brush("#F5F8FC"); Icon = new WindowIcon(AppIconFactory.CreateStream());
         DesktopStyle.KeepWindowInWorkingArea(this);
-        var endpoint = new TextBox { Text = current.Endpoint, Watermark = DesktopSettings.DefaultEndpoint, FontSize = 14 };
+        TeacherStyle.Apply(this);
+        var endpoint = new TextBox { Text = current.Endpoint, Watermark = DesktopSettings.DefaultEndpoint, FontSize = 16 };
         AutomationProperties.SetName(endpoint, "学校平台地址");
         var tray = new CheckBox { Content = "关闭窗口后收起到托盘", IsChecked = current.CloseToTray, FontSize = 14 };
         var error = DesktopStyle.Text("", 13); error.Foreground = DesktopStyle.Brush("#AC3D32"); error.IsVisible = false;

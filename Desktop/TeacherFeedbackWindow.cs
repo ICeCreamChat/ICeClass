@@ -22,8 +22,8 @@ internal sealed class TeacherFeedbackWindow : Window
     private Task<string>? _logs;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly List<(FeedbackImage Image, Bitmap Preview)> _images = [];
-    private readonly TextBox _description = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, MinHeight = 104, MaxHeight = 160, MaxLength = 2000, FontSize = 14, Watermark = "例如：收到教室来音后，点击收听没有声音…" };
-    private readonly TextBox _contact = new() { MaxLength = 120, FontSize = 14, Watermark = "邮箱或其他联系方式…" };
+    private readonly TextBox _description = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, MinHeight = 104, MaxHeight = 160, MaxLength = 2000, FontSize = 16, Watermark = "例如：收到教室来音后，点击收听没有声音…" };
+    private readonly TextBox _contact = new() { MaxLength = 120, FontSize = 16, Watermark = "邮箱或其他联系方式…" };
     private readonly CheckBox _includeLogs = new() { Content = "附诊断日志", IsChecked = true, FontSize = 14 };
     private readonly WrapPanel _previews = new() { Orientation = Orientation.Horizontal };
     private readonly TextBlock _imageHint = DesktopStyle.Text("最多 3 张 · 单张 2 MB · 合计 3 MB", 12, muted: true);
@@ -41,6 +41,7 @@ internal sealed class TeacherFeedbackWindow : Window
         Title = "使用反馈"; Width = 600; Height = 520; MinWidth = 450; MinHeight = 460;
         Background = Brushes.White; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Icon = new WindowIcon(AppIconFactory.CreateStream());
+        TeacherStyle.Apply(this);
         DesktopStyle.KeepWindowInWorkingArea(this);
         AutomationProperties.SetName(_description, "问题描述");
         AutomationProperties.SetName(_contact, "联系方式，选填");
@@ -78,7 +79,7 @@ internal sealed class TeacherFeedbackWindow : Window
         identity.VerticalAlignment = VerticalAlignment.Center; identity.MaxWidth = 260;
         identity.TextWrapping = TextWrapping.NoWrap; identity.TextTrimming = TextTrimming.CharacterEllipsis;
         ToolTip.SetTip(identity, account.DisplayName); Grid.SetColumn(identity, 2); heading.Children.Add(identity);
-        var header = new Border { Padding = new Thickness(24, 12), Background = DesktopStyle.Brush("#F7FAFE"),
+        var header = new Border { Classes = { "teacher-glass" }, Padding = new Thickness(24, 16), Background = Brushes.Transparent,
             BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(0, 0, 0, 1), Child = heading };
         var buttons = new Grid { ColumnDefinitions = new ColumnDefinitions("*,10,*") };
         buttons.Children.Add(_cancel); Grid.SetColumn(_send, 2); buttons.Children.Add(_send);
@@ -124,7 +125,7 @@ internal sealed class TeacherFeedbackWindow : Window
             var window = Dialogs.Window("诊断日志预览", 620); window.CanResize = true;
             window.SizeToContent = SizeToContent.Manual; window.Height = 500; window.MinWidth = 380; window.MinHeight = 300;
             DesktopStyle.KeepWindowInWorkingArea(window);
-            var text = new TextBox { Text = logs, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, FontSize = 13 };
+            var text = new TextBox { Text = logs, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, FontSize = 14 };
             AutomationProperties.SetName(text, "将发送的诊断日志");
             window.Content = new Grid { Margin = new Thickness(16), Children = { text } };
             await window.ShowDialog(this);

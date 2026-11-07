@@ -24,7 +24,11 @@ public sealed class App : Application
     internal DesktopSettings Settings { get; private set; } = null!;
     internal bool HasTray => _tray is not null;
     internal static string DataDirectory => Program.Options.DataDirectory;
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        DesktopStyle.TeacherTheme = true;
+        AvaloniaXamlLoader.Load(this);
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {

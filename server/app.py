@@ -40,6 +40,8 @@ from island import install_island
 from feedback import install_feedback
 from client_diagnostics import install_client_diagnostics, cleanup_client_diagnostics
 from ideas import install_ideas
+from homework import install_homework
+from acknowledgements import install_acknowledgements
 from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 
 
@@ -1734,6 +1736,8 @@ async def static_file(request: web.Request) -> web.Response:
         relative = "reading/index.html"
     if relative in {"ideas", "ideas/"}:
         relative = "ideas/index.html"
+    if relative in {"homework/classroom", "homework/classroom/"}:
+        relative = "homework/classroom/index.html"
     if relative == "favicon.svg":
         target = WEB_ROOT / "favicon.svg"
     elif relative == "index.html":
@@ -1926,6 +1930,8 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_feedback(app, sys.modules[__name__])
     install_client_diagnostics(app, sys.modules[__name__])
     install_ideas(app, sys.modules[__name__])
+    install_homework(app, sys.modules[__name__])
+    install_acknowledgements(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)

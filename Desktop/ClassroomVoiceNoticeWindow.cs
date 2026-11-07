@@ -53,10 +53,11 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         SystemDecorations = SystemDecorations.None; ShowInTaskbar = false; ShowActivated = false; Topmost = true;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Background = Brushes.Transparent;
+        TeacherStyle.Apply(this, floating: true);
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         AutomationProperties.SetName(this, "教室来音提醒");
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var label = DesktopStyle.Text("教室来音", 14, true); label.Foreground = DesktopStyle.Brush("#424242");
+        var label = DesktopStyle.Text("教室来音", 15, true);
         label.VerticalAlignment = _time.VerticalAlignment = VerticalAlignment.Center;
         heading.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
             Children = { label, _time } });
@@ -69,7 +70,7 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         close.Click += (_, _) => Close(); Grid.SetColumn(close, 1); heading.Children.Add(close);
         foreach (var button in new[] { _previous, _next })
         {
-            button.Classes.Add("native-flyout-action"); button.MinHeight = 28; button.Padding = new Thickness(8, 3);
+            button.Classes.Add("native-flyout-action"); button.MinHeight = 38; button.FontSize = 14; button.Padding = new Thickness(10, 7);
             button.VerticalAlignment = VerticalAlignment.Center;
         }
         _previous.Click += (_, _) => MoveMessage(-1);
@@ -114,8 +115,9 @@ internal sealed class ClassroomVoiceNoticeWindow : Window
         };
         var content = new StackPanel { Spacing = 12, Children = { heading, source, recording, _status, actions, _transcriptionPanel } };
         Content = new Border { Classes = { "native-flyout-surface" },
-            Margin = new Thickness(16, 12, 16, 20), Padding = new Thickness(18, 20, 18, 22),
-            Child = new ScrollViewer { VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, Content = content } };
+            Margin = new Thickness(16, 12, 16, 20),
+            Child = ClassroomGlassHost.Wrap(new Border { Padding = new Thickness(18, 20, 18, 22),
+                Child = new ScrollViewer { VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, Content = content } }, 23, teacher: true) };
         AutomationProperties.SetLiveSetting(_status, AutomationLiveSetting.Polite);
         AutomationProperties.SetLiveSetting(_transcriptionStatus, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(_transcript, "语音识别结果");

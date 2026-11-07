@@ -52,7 +52,7 @@ public sealed class CreativeIdeasWindow : Window
         _retry.Click += async (_, _) => await LoadAsync();
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12,
             HorizontalAlignment = HorizontalAlignment.Center, Children = { home, _retry } };
-        _notice = new Border { Background = Background, Padding = new Thickness(28),
+        _notice = new Border { Classes = { "classroom-glass" }, CornerRadius = new CornerRadius(24), Background = Brushes.Transparent, Padding = new Thickness(28),
             Child = new StackPanel { Spacing = 18, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center, Children = {
                     ClassroomStyle.Title("创意计划"), _message, actions } } };
@@ -341,7 +341,7 @@ public sealed class CreativeIdeasWindow : Window
         if (_closed) return;
         if (!safe && !_closed && !_forceClose)
         {
-            var dialog = new Window { Title = "草稿尚未保存", Width = 460, Height = 230, CanResize = false,
+            var dialog = new Window { Title = "草稿尚未保存", Width = 460, MinHeight = 230, SizeToContent = SizeToContent.Height, CanResize = false,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Brushes.White };
             ClassroomStyle.Apply(dialog); DesktopStyle.KeepWindowInWorkingArea(dialog);
             var keep = ClassroomStyle.Button("继续编辑", true); var discard = ClassroomStyle.Button("放弃并关闭");

@@ -2,6 +2,16 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--homework-review", var homeworkBinding]) { HomeworkReview.Run(homeworkBinding); return; }
+if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
+if (args is ["--classroom-home-checks"]) { await ClassroomHomeChecks.Run(); return; }
+if (args is ["--acknowledgements-checks", var acknowledgementsOutput])
+{
+    try { await AcknowledgementClientChecks.Run(acknowledgementsOutput); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args is ["--manual-update-probe", var updateMode, var updateEndpoint, "--incremental-update-started"])
 {
     ManualUpdateChecks.Probe(updateMode, updateEndpoint); return;

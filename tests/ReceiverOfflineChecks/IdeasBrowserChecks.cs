@@ -5,9 +5,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Interactivity;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using ICeClass.Receiver;
 using Microsoft.Web.WebView2.Core;
 
@@ -342,11 +340,14 @@ internal static class IdeasBrowserChecks
                 && window.Bounds.Width < classroom.Bounds.Width && window.Bounds.Height < classroom.Bounds.Height);
             classroom.Activate();
             await Until(() => Task.FromResult(classroom.IsActive), "the classroom can take focus while ideas is open", 8);
-            var readingButton = classroom.GetVisualDescendants().OfType<Button>()
-                .Single(button => button.Content?.ToString() == "打开早读陪伴");
-            readingButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var homeBrowser = Field<ReadingBrowser>(classroom, "_browser");
+            await Until(() => Is(homeBrowser, "!!document.querySelector('[data-action=reading]:not(:disabled)')"),
+                "the real classroom home has its reading action ready");
+            await homeBrowser.Core!.ExecuteScriptAsync("document.querySelector('[data-action=reading]').click(); true");
+            await Until(() => Task.FromResult(readingRequests == 1), "the home reading action reaches the native callback");
             Record("classroom actions remain enabled without closing the ideas window",
-                readingRequests == 1 && readingButton.IsEnabled && window.IsVisible && !Field<bool>(window, "_closed"));
+                readingRequests == 1 && classroom.IsEnabled && window.IsVisible && !Field<bool>(window, "_closed")
+                && await Is(homeBrowser, "!document.querySelector('[data-action=reading]').disabled"));
             var ideasPosition = window.Position;
             var classroomPosition = classroom.Position;
             classroom.Position = new PixelPoint(classroomPosition.X + 20, classroomPosition.Y + 12);

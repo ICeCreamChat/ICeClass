@@ -65,7 +65,7 @@ internal sealed class ReadingCompanionWindow : Window
         _runtime.Click += (_, _) => Process.Start(new ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true });
         _errorTitle.TextAlignment = TextAlignment.Center; _errorText.TextAlignment = TextAlignment.Center;
         var message = new StackPanel { Spacing = 16, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _errorTitle, _errorText, _retry, _runtime } };
-        _notice = new Border { Background = DesktopStyle.Brush("#F5F5F7"), Padding = new Thickness(28),
+        _notice = new Border { Classes = { "classroom-glass" }, CornerRadius = new CornerRadius(24), Background = Brushes.Transparent, Padding = new Thickness(28),
             Child = new ScrollViewer { Content = message,
                 HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
         _surface.Children.Add(_notice); Grid.SetRow(_surface, 1); root.Children.Add(_surface); Content = root;
@@ -102,7 +102,7 @@ internal sealed class ReadingCompanionWindow : Window
         Grid.SetColumn(classTag, 1); title.Children.Add(classTag);
         Grid.SetColumn(title, 1); header.Children.Add(title);
         fullscreen.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(fullscreen, 2); header.Children.Add(fullscreen);
-        return new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E5E5EA"),
+        return new Border { Classes = { "classroom-glass" }, Background = Brushes.Transparent, BorderBrush = DesktopStyle.Brush("#BFFFFFFF"),
             BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
     }
 

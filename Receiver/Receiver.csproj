@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.5.9</Version>
+    <Version>2.5.10</Version>
     <EmbedVoiceResources Condition="'$(EmbedVoiceResources)' == ''">true</EmbedVoiceResources>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\acknowledgements-default.json" LogicalName="ICeClass.About.acknowledgements.json" />
     <Content Include="$(IslandOpticsDirectory)\ICeClass.Glass.dll" Link="ICeClass.Glass.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
@@ -41,6 +42,7 @@
     <EmbeddedResource Include="..\web_controller\assets\banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\banban\rig\forearm-right.webp;..\web_controller\assets\banban\rig\socket-*.webp;..\web_controller\assets\banban\rig\iris-*.webp;..\web_controller\assets\banban\rig\lash-*.webp;..\web_controller\assets\banban\rig\smile-*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\reading\**\*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\homework\classroom\**\*" LogicalName="ICeClass.Local/homework/classroom/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\*" LogicalName="ICeClass.Local/assets/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\favicon.ico" LogicalName="ICeClass.Local/favicon.ico" />
     <EmbeddedResource Include="..\branding\app.ico" LogicalName="ICeClass.Branding.app.ico" />

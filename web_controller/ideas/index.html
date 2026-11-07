@@ -8,11 +8,14 @@
   <title>创意计划</title>
   <link rel="stylesheet" href="./ideas.css" nonce="__CSP_NONCE__">
   <link rel="stylesheet" href="./ideas-paper.css" nonce="__CSP_NONCE__">
+  <link rel="stylesheet" href="/assets/classroom-glass.css" nonce="__CSP_NONCE__">
+  <link rel="stylesheet" href="./liquid-glass.css" nonce="__CSP_NONCE__">
   <script src="./ideas-ink.js" defer nonce="__CSP_NONCE__"></script>
   <script src="./ideas-paper.js" defer nonce="__CSP_NONCE__"></script>
   <script src="./ideas.js" defer nonce="__CSP_NONCE__"></script>
+  <script src="/assets/classroom-glass.js" defer nonce="__CSP_NONCE__"></script>
 </head>
-<body class="ideas-app">
+<body class="ideas-app classroom-liquid">
   <a class="ideas-skip" href="#ideasMain">跳到主要内容</a>
   <header class="ideas-topbar">
     <div class="ideas-heading">
@@ -126,7 +129,7 @@
       </section>
       <section id="panel-class" role="tabpanel" aria-labelledby="tab-class" hidden>
         <div class="ideas-section-head ideas-list-head">
-          <h2>本班进度<span id="classTotal" class="ideas-total"></span></h2>
+          <span id="classTotal" class="ideas-total" role="status"></span>
           <button id="refreshClass" type="button" class="ideas-button">刷新</button>
         </div>
         <p class="ideas-help ideas-list-intro">查看评审回复，待评审的创意可删除。</p>
@@ -142,10 +145,9 @@
       </section>
       <section id="panel-showcase" role="tabpanel" aria-labelledby="tab-showcase" hidden>
         <div class="ideas-section-head ideas-list-head">
-          <h2>全校成果<span id="showcaseTotal" class="ideas-total"></span></h2>
+          <span id="showcaseTotal" class="ideas-total" role="status"></span>
           <button id="refreshShowcase" type="button" class="ideas-button">刷新</button>
         </div>
-        <p class="ideas-help ideas-list-intro">从同学们的想法，到正在发生的改变。</p>
         <div id="showcaseList" class="ideas-list" aria-live="polite"></div>
         <div id="showcaseListNotice" class="ideas-list-notice" role="status"></div>
         <button id="retryShowcase" type="button" class="ideas-button" hidden>重新加载</button>

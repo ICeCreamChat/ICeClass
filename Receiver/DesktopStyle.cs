@@ -10,12 +10,27 @@ namespace ICeClass.Receiver;
 
 internal static class DesktopStyle
 {
+    // Each edition runs in its own process. Shared controls retain the classroom
+    // palette unless the teacher application's initialization opts in.
+    internal static bool TeacherTheme { get; set; }
     internal static bool AnimationsEnabled() => !OperatingSystem.IsWindows() ||
         !SystemParametersInfo(0x1042 /* SPI_GETCLIENTAREAANIMATION */, 0, out var enabled, 0) || enabled != 0;
 
     [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SystemParametersInfo(uint action, uint parameter, out int value, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HighContrast { public uint Size; public uint Flags; public IntPtr Scheme; }
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadHighContrast(uint action, uint parameter, ref HighContrast value, uint flags);
+    internal static bool HighContrastEnabled()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        var value = new HighContrast { Size = (uint)Marshal.SizeOf<HighContrast>() };
+        return ReadHighContrast(0x0042 /* SPI_GETHIGHCONTRAST */, value.Size, ref value, 0) && (value.Flags & 1) != 0;
+    }
 
     public static void KeepWindowInWorkingArea(Window window)
     {
@@ -55,15 +70,20 @@ internal static class DesktopStyle
             Math.Clamp(window.Position.X, work.X, Math.Max(work.X, work.Right - width)),
             Math.Clamp(window.Position.Y, work.Y, Math.Max(work.Y, work.Bottom - height)));
     }
-    public static IBrush Ink => Brush("#243349");
-    public static IBrush Muted => Brush("#697586");
-    public static IBrush Blue => Brush("#0071E3");
+    public static IBrush Ink => Brush(TeacherTheme ? "#193C59" : "#243349");
+    public static IBrush Muted => Brush(TeacherTheme ? "#3E5B72" : "#697586");
+    public static IBrush Blue => Brush(TeacherTheme ? "#075CAD" : "#0071E3");
     public static IBrush Brush(string hex) => new SolidColorBrush(Color.Parse(hex));
-    public static TextBlock Text(string text, double size = 16, bool bold = false, bool muted = false) => new()
+    public static TextBlock Text(string text, double size = 16, bool bold = false, bool muted = false)
     {
-        Text = text, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
-        Foreground = muted ? Muted : Ink, TextWrapping = TextWrapping.Wrap, LineHeight = size * 1.6,
-    };
+        if (TeacherTheme) size = Math.Max(14, size);
+        return new TextBlock
+        {
+            Text = text, FontSize = size,
+            FontWeight = bold ? TeacherTheme && size >= 20 ? FontWeight.Bold : FontWeight.SemiBold : FontWeight.Normal,
+            Foreground = muted ? Muted : Ink, TextWrapping = TextWrapping.Wrap, LineHeight = size * 1.6,
+        };
+    }
     public static Image Logo(double size = 56) => new()
     {
         Source = new Bitmap(AppIconFactory.CreateBitmapStream()), Width = size, Height = size,
@@ -71,8 +91,9 @@ internal static class DesktopStyle
     };
     public static Border Card(Control child, double padding = 24) => new()
     {
+        Classes = { "native-card" },
         Background = Brushes.White, BorderBrush = Brush("#E2E8F0"), BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(14), Padding = new Thickness(padding), Child = child,
+        CornerRadius = new CornerRadius(TeacherTheme ? 25 : 14), Padding = new Thickness(padding), Child = child,
     };
     public static Border DialogFooter(Control child, double horizontalPadding = 24) => new()
     {

@@ -25,6 +25,8 @@ public sealed class AlertWindow : Window
 
     public AlertWindow(ShoutData payload)
     {
+        Classes.Add("classroom-surface");
+        RenderOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
         _alertLevel = payload.AlertLevel is "info" or "urgent" ? payload.AlertLevel : "warning";
         _remainingSeconds = Math.Clamp(payload.DisplayDurationSec, 5, 60);
         SystemDecorations = SystemDecorations.None;
@@ -40,7 +42,7 @@ public sealed class AlertWindow : Window
         _typeLabel = new TextBlock
         {
             Text = palette.Label,
-            FontSize = 14,
+            FontSize = 16,
             FontWeight = FontWeight.SemiBold,
             Foreground = new SolidColorBrush(palette.Accent),
         };
@@ -55,7 +57,7 @@ public sealed class AlertWindow : Window
         var timestamp = new TextBlock
         {
             Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            FontSize = 12,
+            FontSize = 15,
             Foreground = new SolidColorBrush(Color.Parse("#6E6E73")),
             Margin = new Thickness(0, 3, 0, 0),
         };
@@ -85,7 +87,7 @@ public sealed class AlertWindow : Window
         _countdown = new TextBlock
         {
             Text = $"{_remainingSeconds} 秒",
-            FontSize = 12,
+            FontSize = 15,
             Foreground = new SolidColorBrush(Color.Parse("#6E6E73")),
             HorizontalAlignment = HorizontalAlignment.Right,
         };
@@ -140,8 +142,10 @@ public sealed class AlertWindow : Window
             BorderBrush = new SolidColorBrush(palette.Border),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(_alertLevel == "urgent" ? 0 : 18),
-            Padding = new Thickness(_alertLevel == "urgent" ? 64 : 24),
-            Child = content,
+            ClipToBounds = true,
+            Child = ClassroomGlassHost.Wrap(new Border {
+                Padding = new Thickness(_alertLevel == "urgent" ? 64 : 24), Child = content
+            }, _alertLevel == "urgent" ? 0 : 18),
         };
 
         _closeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };

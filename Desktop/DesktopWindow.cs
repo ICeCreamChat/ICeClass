@@ -50,7 +50,7 @@ internal sealed partial class DesktopWindow : Window
     private readonly HashSet<Guid> _recordingFrames = [];
     private readonly HashSet<CoreWebView2DownloadOperation> _pageDownloads = [];
     private readonly TeacherActions _teacherActions;
-    private bool _teacherDocumentActive;
+    private bool _teacherDocumentActive, _unifiedHeader;
 
     internal DesktopWindow(App app, string endpoint, bool main, string? address = null)
     {
@@ -76,6 +76,7 @@ internal sealed partial class DesktopWindow : Window
         Background = Brushes.White; SystemDecorations = SystemDecorations.Full;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; Icon = new WindowIcon(AppIconFactory.CreateStream());
         DesktopStyle.KeepWindowInWorkingArea(this);
+        TeacherStyle.Apply(this);
         _browser.EscapePressed += async () => await ExitFullscreen();
         KeyDown += async (_, args) =>
         {
@@ -91,7 +92,11 @@ internal sealed partial class DesktopWindow : Window
         var more = ToolbarButton("关于"); more.Click += async (_, _) =>
         { await ShowAbout(); };
         var feedback = _feedbackAction; feedback.Click += async (_, _) => await ShowFeedback();
-        _browser.FocusOutside += forward => (forward ? refresh : feedback).Focus();
+        _browser.FocusOutside += forward =>
+        {
+            if (_unifiedHeader) _browser.FocusPage();
+            else (forward ? refresh : feedback).Focus();
+        };
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { refresh, settings, more, feedback } };
         var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,16,Auto"), Margin = new Thickness(16, 5) };
         _status.VerticalAlignment = VerticalAlignment.Center; _status.TextTrimming = TextTrimming.CharacterEllipsis; toolbar.Children.Add(_status);
@@ -107,10 +112,10 @@ internal sealed partial class DesktopWindow : Window
         };
         _runtime.Click += (_, _) => OpenExternal("https://developer.microsoft.com/microsoft-edge/webview2/#download-section");
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
-        _toolbar = new Border { Background = DesktopStyle.Brush("#F7FAFE"), BorderBrush = DesktopStyle.Brush("#E4ECF5"), BorderThickness = new Thickness(0, 0, 0, 1), Child = toolbar };
+        _toolbar = new Border { Classes = { "teacher-glass" }, Background = Brushes.Transparent, BorderBrush = DesktopStyle.Brush("#80FFFFFF"), BorderThickness = new Thickness(0, 0, 0, 1), Child = toolbar };
         layout.Children.Add(_toolbar);
         Grid.SetRow(_progress, 1); layout.Children.Add(_progress);
-        _updatePanel = new Border { Background = DesktopStyle.Brush("#F7FAFE"), Padding = new Thickness(16, 8),
+        _updatePanel = new Border { Classes = { "teacher-glass" }, Background = Brushes.Transparent, Padding = new Thickness(16, 8),
             BorderBrush = DesktopStyle.Brush("#E4ECF5"), BorderThickness = new Thickness(0, 0, 0, 1),
             Child = _updateProgress, IsVisible = false };
         Grid.SetRow(_updatePanel, 2); layout.Children.Add(_updatePanel);
@@ -137,8 +142,8 @@ internal sealed partial class DesktopWindow : Window
     private string ConnectedStatus => new Uri(_endpoint).IsLoopback ? "本地验收" : "已连接学校平台";
     private static Button ToolbarButton(string text)
     {
-        var button = Dialogs.Button(text); button.Classes.Add("toolbar-action"); button.FontSize = 13;
-        button.MinHeight = 32; button.Padding = new Thickness(12, 5); return button;
+        var button = Dialogs.Button(text); button.Classes.Add("toolbar-action"); button.FontSize = 14;
+        button.MinHeight = 38; button.Padding = new Thickness(13, 7); return button;
     }
 
     private async Task InitializePage()
@@ -164,6 +169,7 @@ internal sealed partial class DesktopWindow : Window
                 }
                 if (!_disposed && DesktopSettings.SameOrigin(_endpoint, args.Source))
                 {
+                    if (ReadWorkbenchHeader(args.WebMessageAsJson)) return;
                     if (ReadUpdateWork(args.WebMessageAsJson)) return;
                     _app.Diagnostics.RecordBrowser(args.WebMessageAsJson, _endpoint);
                 }
@@ -186,6 +192,7 @@ internal sealed partial class DesktopWindow : Window
                 if (!DesktopSettings.SameOrigin(_endpoint, args.Uri))
                 { args.Cancel = true; if (args.IsUserInitiated) OpenExternal(args.Uri); return; }
                 _teacherDocumentActive = false; _teacherActions.InvalidateDocument();
+                _unifiedHeader = false; _toolbar.IsVisible = WindowState != WindowState.FullScreen;
                 _updateDownload?.Cancel(); _recordingFrames.Clear();
                 _navigated = false; _progress.IsVisible = true; SetStatus("正在连接…");
                 _navigationWatch.Restart();
@@ -240,7 +247,7 @@ internal sealed partial class DesktopWindow : Window
                 {
                     _browser.HandleEscapeKey = false;
                     WindowState = _beforeFullscreen;
-                    _toolbar.IsVisible = true;
+                    _toolbar.IsVisible = !_unifiedHeader;
                 }
                 Dispatcher.UIThread.Post(() => { if (!_disposed) _browser.FocusPage(); }, DispatcherPriority.Background);
             };
@@ -271,6 +278,25 @@ internal sealed partial class DesktopWindow : Window
         if (_disposed || _browser.Core is null) return null;
         var cookies = await _browser.Core.CookieManager.GetCookiesAsync(_endpoint + "/api/classroom-voice");
         return _disposed ? null : cookies.FirstOrDefault(cookie => cookie.Name == "iceclass_session")?.Value;
+    }
+
+    private bool ReadWorkbenchHeader(string message)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(message);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String ||
+                type.GetString() != "iceclass-teacher-shell") return false;
+            if (_teacherDocumentActive && root.TryGetProperty("ready", out var ready) &&
+                ready.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                _unifiedHeader = ready.GetBoolean();
+                _toolbar.IsVisible = !_unifiedHeader && WindowState != WindowState.FullScreen;
+            }
+            return true;
+        }
+        catch (JsonException) { return false; }
     }
 
     private async Task<string?> ReadTeacherDocumentAsync()
@@ -478,7 +504,8 @@ internal sealed partial class DesktopWindow : Window
     private void ShowPage() { _error.IsVisible = false; _browser.IsVisible = true; _browser.SetPageVisible(IsVisible); }
     private void ShowError(string title, string note)
     {
-        if (WindowState == WindowState.FullScreen) { WindowState = _beforeFullscreen; _toolbar.IsVisible = true; }
+        if (WindowState == WindowState.FullScreen) WindowState = _beforeFullscreen;
+        _unifiedHeader = false; _toolbar.IsVisible = true;
         _progress.IsVisible = false; _browser.SetPageVisible(false); _browser.IsVisible = false;
         _errorTitle.Text = title; _errorNote.Text = note; _error.IsVisible = true; _retry.IsVisible = true;
         SetStatus("等待重新连接");
@@ -528,10 +555,10 @@ internal sealed partial class DesktopWindow : Window
         window.MinWidth = 600; window.MinHeight = 500;
         DesktopStyle.KeepWindowInWorkingArea(window);
         window.Content = AboutContent.Build("教师端", DesktopUpdates.CurrentVersion,
-            "查看晨读统计、发送班级通知、收听教室来音，也可以向班班提问。",
-            "网页功能随学校平台更新。桌面程序可在这里检查更新。", () => window.Close(),
+            () => window.Close(),
             async () => { window.Close(); await CheckUpdatesAsync(); }, CollectFeedbackDiagnostics,
-            (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticSession));
+            (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticSession),
+            acknowledgementsEndpoint: _endpoint);
         await window.ShowDialog(this);
     }
     internal async Task CheckUpdatesAsync() => await CheckUpdatesCoreAsync(checkOnly: false);

@@ -16,14 +16,14 @@ internal sealed class AboutDiagnosticsView : Grid
     private readonly TextBox _text = new()
     {
         IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
-        VerticalContentAlignment = VerticalAlignment.Top, FontSize = 13,
+        VerticalContentAlignment = VerticalAlignment.Top, FontSize = 15,
         FontFamily = new FontFamily("Microsoft YaHei UI, Microsoft YaHei, Segoe UI")
     };
-    private readonly TextBlock _status = DesktopStyle.Text("选择此页后读取本机记录。", 13, muted: true);
+    private readonly TextBlock _status = DesktopStyle.Text("选择此页后读取本机记录。", 15, muted: true);
     private readonly Button _refresh = DesktopStyle.Button("刷新日志");
     private readonly Button _copy = DesktopStyle.Button("复制日志");
     private readonly Button _export = DesktopStyle.Button("导出诊断包");
-    private readonly Button _upload = DesktopStyle.Button("提交诊断", true);
+    private readonly Button _upload = DesktopStyle.Button("提交诊断");
     private readonly string _edition, _version;
     private bool _busy, _disposed;
     private string _report = "";
@@ -33,16 +33,24 @@ internal sealed class AboutDiagnosticsView : Grid
     {
         _collect = collect; _submit = submit; _edition = edition; _version = version;
         RowDefinitions = new RowDefinitions("Auto,12,*,10,Auto");
-        var actions = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var button in new[] { _refresh, _copy, _export, _upload })
-        { button.Margin = new Thickness(0, 0, 8, 0); actions.Children.Add(button); }
+        var actions = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*,Auto") };
+        var buttons = new[] { _refresh, _copy, _export, _upload };
+        for (var i = 0; i < buttons.Length; i++)
+        {
+            var button = buttons[i];
+            button.Classes.Add("about-diagnostic-action");
+            button.Margin = new Thickness(0, 0, i < 3 ? 4 : 0, 0);
+            Grid.SetColumn(button, i < 3 ? i : 4);
+            actions.Children.Add(button);
+        }
+        _upload.Classes.Add("about-diagnostic-submit");
         Children.Add(actions);
         AutomationProperties.SetName(_text, "本机诊断日志，可选择并复制");
         AutomationProperties.SetName(_status, "诊断日志状态");
         AutomationProperties.SetLiveSetting(_status, AutomationLiveSetting.Polite);
         Grid.SetRow(_text, 2); Children.Add(_text);
         var footer = new StackPanel { Spacing = 4, Children = { _status,
-            DesktopStyle.Text("错误会自动上报；提交会将本页脱敏日志发给学校平台管理员。导出另含更新记录。", 13, muted: true) } };
+            DesktopStyle.Text("提交会将本页脱敏日志发给学校平台管理员；导出另含更新记录。错误会自动上报。", 15, muted: true) } };
         Grid.SetRow(footer, 4); Children.Add(footer);
         _refresh.Click += async (_, _) => await RefreshAsync();
         _copy.Click += async (_, _) => await CopyAsync();

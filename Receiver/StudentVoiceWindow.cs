@@ -1,282 +1,364 @@
-﻿using Avalonia;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Avalonia.Media;
 using Avalonia.Threading;
+using Microsoft.Web.WebView2.Core;
 using NAudio.Wave;
 
 namespace ICeClass.Receiver;
 
-/// <summary>Classroom home with early reading and class-scoped teacher voice messages.</summary>
+/// <summary>The classroom home uses the approved local glass surface; native services own devices and credentials.</summary>
 public sealed class StudentVoiceWindow : Window
 {
+    private const string Host = "classroom.iceclass.local";
+    private const string Page = "https://" + Host + "/homework/classroom/index.html";
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly HttpClient Http = new(new HttpClientHandler {AllowAutoRedirect = false}) {Timeout = TimeSpan.FromSeconds(25)};
+    private readonly ClassroomHomeApi _api = new(Http);
     private readonly Func<byte[], Task> _send;
-    private readonly Button _recordButton = ClassroomStyle.Button("开始留言", true);
-    private readonly TextBlock _status = ClassroomStyle.Caption("");
-    private readonly TextBlock _duration = ClassroomStyle.Text("最长 30 秒", 16, true);
-    private readonly TextBlock _connection = ClassroomStyle.Text("正在连接…", 14);
-    private readonly Border _connectionPill = new();
-    private readonly TextBlock _className = ClassroomStyle.Title("");
-    private readonly TextBlock _computerCaption = ClassroomStyle.Text("", 14, muted: true);
-    private readonly TextBlock _readingStatus = ClassroomStyle.Caption("离线可用 · 联网后自动同步早读记录");
+    private readonly Func<Task>? _openReading;
+    private readonly Action? _openSettings, _openAbout, _showIsland, _showBanban;
+    private readonly Action<string>? _openIdeas;
+    private readonly Action<long>? _acknowledge;
     private readonly ReceiverConfig _config;
+    private readonly Grid _surface = new();
+    private readonly Border _notice;
+    private readonly TextBlock _message = ClassroomStyle.Caption("正在打开教室首页…");
+    private readonly Button _retry = ClassroomStyle.Button("重新打开", true);
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource _pageLifetime = new();
+    private ReadingBrowser _browser;
+    private Task? _loadTask;
+    private TaskCompletionSource<bool>? _ready, _leaveResponse;
+    private Task<bool>? _leaveCheck;
+    private Window? _closeDialog;
+    private bool _initialized, _loaded, _failed, _closed, _homeworkBusy, _openManagement;
+    private int _bindingVersion;
+    private string _scope;
+    private ReceiverConnectionState _connection = new(false, "正在连接…");
+    private ClassroomHomeSnapshot? _islandState;
+    private string? _islandJson;
     private readonly DispatcherTimer _timer;
+    private readonly object _audioGate = new();
     private WaveInEvent? _waveIn;
     private WaveFileWriter? _writer;
     private MemoryStream? _buffer;
     private DateTimeOffset _startedAt;
-    private bool _recording, _sending, _closing;
-    internal bool IsBusy => _recording || _sending;
+    private bool _recording, _sending, _voiceSuccess;
+    private string _voiceStatus = "", _duration = "最长 30 秒";
+    internal bool IsBusy => _recording || _sending || _homeworkBusy;
+    internal bool HasHomeworkActivity => _homeworkBusy;
 
-    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null, Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null, Action<string>? openIdeas = null)
+    public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null,
+        Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null,
+        Action<string>? openIdeas = null, Action<long>? acknowledge = null)
     {
         ClassroomStyle.Apply(this);
-        _send = send; _config = config; Title = $"ICeClass 班伴 · {config.ClassName}";
+        _config = config; _scope = BindingScope(config); _send = send; _openReading = openReading;
+        _openSettings = openSettings; _openAbout = openAbout; _showIsland = showIsland;
+        _showBanban = showBanban; _openIdeas = openIdeas; _acknowledge = acknowledge;
+        Title = $"ICeClass 班伴 · {config.ClassName}";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
-        Width = 1000; Height = 760; MinWidth = 720; MinHeight = 520;
-        SystemDecorations = SystemDecorations.Full; CanResize = true; ShowInTaskbar = true;
-        DesktopStyle.KeepWindowInWorkingArea(this);
+        Width = 1280; Height = 850; MinWidth = 720; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = DesktopStyle.Brush("#F5F7FB");
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(28, 10) };
-        var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
-        brand.Children.Add(DesktopStyle.Logo(44));
-        var brandText = new StackPanel { Spacing = 0, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            Children = { ClassroomStyle.SectionTitle("ICeClass 班伴"), ClassroomStyle.Caption("教室端") } };
-        Grid.SetColumn(brandText, 1); brand.Children.Add(brandText); toolbar.Children.Add(brand);
-        var settings = ClassroomStyle.Button("教室设置"); settings.MinHeight = 44; settings.Click += (_, _) => openSettings?.Invoke();
-        settings.VerticalAlignment = VerticalAlignment.Center;
-        var toolbarActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        if (openIdeas is not null)
-        {
-            var ideas = ClassroomStyle.Button("创意计划"); ideas.MinHeight = 44;
-            ideas.Click += (_, _) => openIdeas("submit"); toolbarActions.Children.Add(ideas);
-        }
-        if (showBanban is not null)
-        {
-            var banban = ClassroomStyle.Button("呼叫班班"); banban.MinHeight = 44;
-            ToolTip.SetTip(banban, "叫出班班，直接开始语音对话");
-            banban.Click += (_, _) => showBanban(); toolbarActions.Children.Add(banban);
-        }
-        if (showIsland is not null)
-        {
-            var island = ClassroomStyle.Button("教室浮岛"); island.MinHeight = 44;
-            island.Click += (_, _) => showIsland();
-            ToolTip.SetTip(island, "显示并展开教室浮岛"); toolbarActions.Children.Add(island);
-        }
-        toolbarActions.Children.Add(settings); Grid.SetColumn(toolbarActions, 2); toolbar.Children.Add(toolbarActions);
-        root.Children.Add(new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E1E7EF"), BorderThickness = new Thickness(0, 0, 0, 1), Child = toolbar });
-
-        var main = new StackPanel { Spacing = 16, MaxWidth = 1200, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        _className.Text = config.ClassName;
-        var classText = new StackPanel { Spacing = 4, Children = { _className } };
-        heading.Children.Add(classText);
-        _connectionPill.Margin = new Thickness(16, 0, 0, 0);
-        _connectionPill.Padding = new Thickness(12, 6); _connectionPill.CornerRadius = new CornerRadius(10);
-        _connectionPill.VerticalAlignment = VerticalAlignment.Center; _connectionPill.Child = _connection;
-        Grid.SetColumn(_connectionPill, 1); heading.Children.Add(_connectionPill); main.Children.Add(heading);
-        SetBinding(config);
-
-        var reading = ClassroomStyle.Button("打开早读陪伴", true); reading.MinHeight = 48;
-        reading.Click += async (_, _) =>
-        {
-            if (openReading is null) return; reading.IsEnabled = false; reading.Content = "正在打开…";
-            try { await openReading(); _readingStatus.Text = "时段内的活动计入本班记录，联网后同步。"; }
-            catch (Exception error) { _readingStatus.Text = $"暂时无法打开：{error.Message}"; }
-            finally { reading.IsEnabled = true; reading.Content = "打开早读陪伴"; }
+        DesktopStyle.KeepWindowInWorkingArea(this);
+        Background = DesktopStyle.Brush("#E5F0F8");
+        _browser = CreateBrowser();
+        _retry.IsVisible = false; _retry.Click += async (_, _) => await LoadAsync();
+        _notice = new Border {Classes = {"classroom-glass"}, CornerRadius = new CornerRadius(24), Background = Avalonia.Media.Brushes.Transparent,
+            Padding = new Thickness(28), Child = new StackPanel {
+            Spacing = 18, MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = {DesktopStyle.Logo(64), ClassroomStyle.Title("ICeClass 班伴"), _message, _retry}}};
+        _surface.Children.Add(_browser); _surface.Children.Add(_notice); Content = _surface;
+        _timer = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(100)};
+        _timer.Tick += (_, _) => {
+            var elapsed = (DateTimeOffset.Now - _startedAt).TotalSeconds;
+            _duration = $"{elapsed:0.0} / 30.0 秒"; PublishVoice();
+            if (elapsed >= 30) FinishRecording();
         };
-        _recordButton.MinHeight = 48; _recordButton.Click += RecordButtonClicked;
-        _status.Text = "再次点击即可结束录音并发送。";
-        _duration.Foreground = DesktopStyle.Brush("#36516E");
-        var activities = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto") };
-        var activityNames = new[] { "兔拔萝卜", "诗词镌刻", "粒子浮雕", "火箭升空" };
-        for (var i = 0; i < activityNames.Length; i++)
-        {
-            var name = ClassroomStyle.Text(activityNames[i], 15, true);
-            var item = new Border { Background = Brushes.White, CornerRadius = new CornerRadius(7), Padding = new Thickness(10, 6),
-                Margin = new Thickness(i % 2 == 0 ? 0 : 4, i < 2 ? 0 : 8, i % 2 == 0 ? 4 : 0, 0), Child = name };
-            Grid.SetColumn(item, i % 2); Grid.SetRow(item, i / 2); activities.Children.Add(item);
+        Opened += async (_, _) => await LoadAsync();
+        PropertyChanged += (_, args) => {
+            if (args.Property == WindowStateProperty || args.Property == IsVisibleProperty)
+                _browser.SetPageVisible(IsVisible && WindowState != WindowState.Minimized && _loaded && !_notice.IsVisible);
+        };
+        Closed += (_, _) => {
+            _closed = true; StopRecorder(); _ready?.TrySetCanceled(); _leaveResponse?.TrySetResult(true);
+            _closeDialog?.Close(true); _lifetime.Cancel(); _pageLifetime.Cancel(); _browser.DisposeBrowser();
+            _pageLifetime.Dispose(); _lifetime.Dispose();
+        };
+    }
+    private static string BindingScope(ReceiverConfig config) =>
+        ReceiverConfig.NormalizeEndpoint(config.Endpoint) + "\n" + config.DeviceId + "\n" + config.ClassId + "\n" + config.DeviceToken;
+    private static bool AllowedPage(string source) => Uri.TryCreate(source, UriKind.Absolute, out var uri)
+        && uri.Scheme == "https" && uri.Host == Host && uri.IsDefaultPort && uri.AbsolutePath == "/homework/classroom/index.html";
+    private ReadingBrowser CreateBrowser()
+    {
+        var browser = new ReadingBrowser {HandleEscapeKey = false, HandleFullscreenKey = false};
+        browser.FocusOutside += next => {
+            if (!_closed && ReferenceEquals(browser, _browser))
+                browser.FocusPage(next ? CoreWebView2MoveFocusReason.Next : CoreWebView2MoveFocusReason.Previous);
+        };
+        return browser;
+    }
+    private Task LoadAsync() => _loadTask is {IsCompleted:false} ? _loadTask : _loadTask = LoadCoreAsync();
+    private async Task LoadCoreAsync()
+    {
+        if (_closed || _loaded && !_failed) return;
+        _retry.IsVisible = false; _notice.IsVisible = true; _message.Text = "正在打开教室首页…";
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, _pageLifetime.Token);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(30));
+        try {
+            if (_failed) ResetBrowser();
+            if (!_initialized) {
+                var assets = await ReadingLocalAssets.EnsureAsync(cancellation.Token);
+                if (!File.Exists(Path.Combine(assets, "homework", "classroom", "index.html")))
+                    throw new IOException("客户端缺少教室首页资源，请重新安装最新版本。");
+                var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                    _config.Endpoint.TrimEnd('/') + "\n" + _config.DeviceId + "\n" + _config.ClassId)))[..24];
+                var root = ReceiverConfig.IsPreview(_config) ? AppContext.BaseDirectory :
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass");
+                await _browser.InitializeAsync(Path.Combine(root, "ClassroomHome", key), cancellation.Token).WaitAsync(cancellation.Token);
+                var core = _browser.Core!;
+                core.SetVirtualHostNameToFolderMapping(Host, assets, CoreWebView2HostResourceAccessKind.DenyCors);
+                core.Settings.AreDefaultContextMenusEnabled = false; core.Settings.AreDevToolsEnabled = false;
+                core.Settings.IsStatusBarEnabled = false; core.Settings.IsGeneralAutofillEnabled = false;
+                core.Settings.IsPasswordAutosaveEnabled = false; core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("window.ICeClassNativeHome=true;");
+                core.NavigationStarting += (_, args) => { if (!AllowedPage(args.Uri)) args.Cancel = true; };
+                core.NewWindowRequested += (_, args) => args.Handled = true;
+                core.DownloadStarting += (_, args) => args.Cancel = true;
+                core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
+                core.PermissionRequested += (_, args) => args.State = CoreWebView2PermissionState.Deny;
+                core.WebMessageReceived += async (_, args) => await ReceiveAsync(core, args);
+                core.ProcessFailed += (_, _) => {
+                    _failed = true; _loaded = false; _homeworkBusy = false;
+                    _ready?.TrySetResult(false); _leaveResponse?.TrySetResult(false);
+                    var interruptedRecording = _waveIn is not null;
+                    StopRecorder();
+                    if (interruptedRecording) ResetVoice("页面中断，录音未发送，请重新开始。");
+                    ShowError("页面已停止，请重新打开并核对已保存的记录。未保存的选择需要重新填写。");
+                };
+                _initialized = true;
+            }
+            _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _browser.Core!.Navigate(Page);
+            if (!await _ready.Task.WaitAsync(cancellation.Token)) return;
+            _notice.IsVisible = false; _browser.IsVisible = true; _browser.SetPageVisible(IsVisible && WindowState != WindowState.Minimized);
+            _browser.FocusPage();
         }
-        var recordInfo = new StackPanel { Spacing = 5, Children = { _duration,
-            ClassroomStyle.Caption("仅本班授权教师可收听"), ClassroomStyle.Caption("联网发送 · 最长保留 30 分钟") } };
-        var cards = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto") };
-        Grid.SetIsSharedSizeScope(cards, true);
-        Border FeatureCard(string icon, string title, string description, Control detail, TextBlock status, Button action)
-        {
-            var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto") };
-            // Keep both actions on the card's bottom edge when an error wraps.
-            // The flexible status row absorbs the difference between captions.
-            for (var row = 0; row < 3; row++) layout.RowDefinitions[row].SharedSizeGroup = "Feature" + row;
-            var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 0, 0, 10) };
-            header.Children.Add(ClassroomStyle.IconBadge(icon));
-            var label = ClassroomStyle.SectionTitle(title); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(label, 1); header.Children.Add(label); layout.Children.Add(header);
-            var descriptionBlock = ClassroomStyle.Text(description, 15, muted: true); descriptionBlock.Margin = new Thickness(0, 0, 0, 12);
-            Grid.SetRow(descriptionBlock, 1); layout.Children.Add(descriptionBlock);
-            var detailBox = new Border { MinHeight = 96, Background = DesktopStyle.Brush("#F4F7FC"), CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(12, 8), Child = detail, Margin = new Thickness(0, 0, 0, 10) };
-            detail.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetRow(detailBox, 2); layout.Children.Add(detailBox);
-            status.MinHeight = 34; status.Margin = new Thickness(0, 0, 0, 8); status.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetRow(status, 3); layout.Children.Add(status);
-            Grid.SetRow(action, 4); layout.Children.Add(action);
-            return ClassroomStyle.Card(layout);
+        catch (OperationCanceledException) when (_closed || _pageLifetime.IsCancellationRequested) { }
+        catch (Exception error) {
+            _failed = true; AppLog.Error("Open classroom home failed", error);
+            ShowError(error is WebView2RuntimeNotFoundException ? "请先安装 Microsoft Edge WebView2，再打开教室端。" : "暂时无法打开教室首页，请重新打开。早读和浮岛仍可从托盘使用。");
         }
-        var readingCard = FeatureCard("book-open", "早读陪伴", "选择喜欢的活动，让朗读更有趣。", activities, _readingStatus, reading);
-        var voiceCard = FeatureCard("mic", "给老师留言", "录下想说的话，发送给本班老师。", recordInfo, _status, _recordButton);
-        cards.Children.Add(readingCard); Grid.SetColumn(voiceCard, 1); cards.Children.Add(voiceCard); main.Children.Add(cards);
-        main.Children.Add(ClassroomStyle.Caption("早读全屏时，长按空白处 2 秒即可退出全屏。"));
-        void ArrangeCards()
-        {
-            var stacked = Bounds.Width < 900;
-            cards.ColumnDefinitions = new ColumnDefinitions(stacked ? "*" : "*,*");
-            Grid.SetColumn(voiceCard, stacked ? 0 : 1); Grid.SetRow(voiceCard, stacked ? 1 : 0);
-            readingCard.Margin = stacked ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 12, 0);
-            voiceCard.Margin = stacked ? new Thickness(0) : new Thickness(12, 0, 0, 0);
+        finally { _ready = null; }
+    }
+    private void ResetBrowser()
+    {
+        _browser.DisposeBrowser(); _surface.Children.Remove(_browser); _browser = CreateBrowser();
+        _surface.Children.Insert(0, _browser); _initialized = false; _loaded = false; _failed = false; _islandJson = null;
+    }
+    private void ShowError(string message)
+    {
+        if (_closed) return;
+        _browser.SetPageVisible(false); _browser.IsVisible = false; _message.Text = message; _retry.IsVisible = true; _notice.IsVisible = true;
+    }
+    private void Post(object message)
+    {
+        if (_closed || !_loaded || _browser.Core is not { } core || !AllowedPage(core.Source)) return;
+        core.PostWebMessageAsJson(JsonSerializer.Serialize(message, Json));
+    }
+    private object VoiceState() => new {recording = _recording, sending = _sending, status = _voiceStatus, duration = _duration, success = _voiceSuccess};
+    private void PublishVoice() => Post(new {type = "voice-state", state = VoiceState()});
+    private void PublishHome() => Post(new {type = "home-state", state = new {
+        className = _config.ClassName,
+        deviceCaption = $"{_config.DeviceName} · 设备编号 {ComputerIdentity.DeviceCode(_config.DeviceId)}",
+        connected = _connection.Connected, connectionText = _connection.Text,
+        capabilities = new {reading = _openReading is not null, plan = _openIdeas is not null, banban = _showBanban is not null},
+        voice = VoiceState(), island = _islandState ?? ClassroomHomeSnapshot.Empty()}});
+    private async Task ReceiveAsync(CoreWebView2 core, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        if (_closed || !ReferenceEquals(core, _browser.Core) || !AllowedPage(args.Source) || args.WebMessageAsJson.Length > 65_536) return;
+        int id = 0, version = _bindingVersion;
+        try {
+            using var document = JsonDocument.Parse(args.WebMessageAsJson);
+            var message = document.RootElement;
+            if (message.ValueKind != JsonValueKind.Object) return;
+            if (message.TryGetProperty("type", out var type)) {
+                switch (type.GetString()) {
+                    case "classroom-ready":
+                        _loaded = true; PublishHome();
+                        if (_openManagement) {Post(new {type="open-management"});_openManagement=false;}
+                        _ready?.TrySetResult(true); break;
+                    case "homework-activity": _homeworkBusy = message.GetProperty("busy").GetBoolean(); break;
+                    case "homework-leave": _leaveResponse?.TrySetResult(message.GetProperty("safe").GetBoolean()); break;
+                }
+                return;
+            }
+            id = message.GetProperty("id").GetInt32();
+            if (id <= 0) return;
+            object? value = null;
+            switch (message.GetProperty("action").GetString()) {
+                case "homework":
+                    var path = message.GetProperty("path").GetString() ?? "";
+                    JsonElement? body = message.TryGetProperty("body", out var b) && b.ValueKind != JsonValueKind.Null ? b : null;
+                    value = await _api.SendAsync(_config, path, body, _pageLifetime.Token); break;
+                case "reading": if (_openReading is not null) await _openReading(); break;
+                case "voice": if (!_sending) {if (_recording) FinishRecording();else StartRecording();} break;
+                case "cancel-voice": if (_recording) {StopRecorder(); ResetVoice("录音已取消，可以重新开始。");} break;
+                case "plan": _openIdeas?.Invoke("submit"); break;
+                case "banban": _showBanban?.Invoke(); break;
+                case "binding": _openSettings?.Invoke(); break;
+                case "about": _openAbout?.Invoke(); break;
+                case "island": _showIsland?.Invoke(); break;
+                case "acknowledge": _acknowledge?.Invoke(message.GetProperty("sequence").GetInt64()); break;
+                default: throw new ArgumentException("当前操作不可用。");
+            }
+            if (version == _bindingVersion && ReferenceEquals(core, _browser.Core)) Post(new {type="response", id, value});
         }
-        SizeChanged += (_, _) => ArrangeCards(); ArrangeCards();
-        var scroll = new ScrollViewer { Content = new Border { Padding = new Thickness(28, 20), Child = main }, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
-        Grid.SetRow(scroll, 1); root.Children.Add(scroll);
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(28, 6) };
-        _computerCaption.VerticalAlignment = VerticalAlignment.Center;
-        _computerCaption.MaxLines = 2; _computerCaption.TextTrimming = TextTrimming.CharacterEllipsis;
-        footer.Children.Add(_computerCaption);
-        var footerInfo = new StackPanel { Height = 40, Spacing = 2, Margin = new Thickness(16, 0, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        var about = ClassroomStyle.Button($"关于 · {ReceiverUpdateService.CurrentVersionText}");
-        about.FontSize = 12;
-        about.Padding = new Thickness(12, 0); about.Classes.Add("native-quiet");
-        about.MinHeight = 22; about.Height = 22; about.HorizontalAlignment = HorizontalAlignment.Right;
-        about.Click += (_, _) => openAbout?.Invoke(); footerInfo.Children.Add(about);
-        var registration = ClassroomStyle.Text("皖ICP备2025106471号", 12, muted: true);
-        registration.Height = 16; registration.LineHeight = 16; registration.TextWrapping = TextWrapping.NoWrap;
-        registration.Margin = new Thickness(12, 0); registration.HorizontalAlignment = HorizontalAlignment.Right;
-        footerInfo.Children.Add(registration);
-        Grid.SetColumn(footerInfo, 1); footer.Children.Add(footerInfo);
-        var footerBox = new Border { Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E1E7EF"), BorderThickness = new Thickness(0, 1, 0, 0), Child = footer };
-        Grid.SetRow(footerBox, 2); root.Children.Add(footerBox); Content = root;
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
-        _timer.Tick += (_, _) => { var elapsed = (DateTimeOffset.Now - _startedAt).TotalSeconds; _duration.Text = $"{elapsed:0.0} / 30.0 秒"; if (elapsed >= 30) FinishRecording(); };
-        SetConnectionState(new ReceiverConnectionState(false, "正在连接…"));
-        Closed += (_, _) => { _closing = true; StopRecorder(); };
+        catch (Exception error) when (error is not OutOfMemoryException) {
+            if (_closed || version != _bindingVersion || !ReferenceEquals(core, _browser.Core)) return;
+            var text = error is HttpRequestException or JsonException ? "暂时无法连接，请检查网络后重新载入。"
+                : error is OperationCanceledException ? "连接超时，当前选择已保留，请重新载入核对。" : error.Message;
+            if (id > 0) Post(new {type="response", id, error=text});
+            else AppLog.Error("Classroom page message failed", error);
+        }
     }
     public void SetBinding(ReceiverConfig binding)
     {
-        if (_config.ClassId != binding.ClassId && _recording) { StopRecorder(); Reset("班级归属已更新，请重新开始留言。"); }
+        var scope = BindingScope(binding); var changed = _scope != scope; _scope = scope;
+        _config.Endpoint = binding.Endpoint; _config.DeviceId = binding.DeviceId; _config.DeviceToken = binding.DeviceToken;
         _config.ClassId = binding.ClassId; _config.ClassName = binding.ClassName; _config.DeviceName = binding.DeviceName;
-        Title = $"ICeClass 班伴 · {binding.ClassName}"; _className.Text = binding.ClassName;
-        _computerCaption.Text = $"{binding.DeviceName} · 设备编号 {ComputerIdentity.DeviceCode(binding.DeviceId)}";
-        ToolTip.SetTip(_computerCaption, $"关闭窗口后收起到托盘，仍会在后台接收通知。\n电脑名称：{Environment.MachineName}\n设备完整编号：{binding.DeviceId}\n局域网：{string.Join("、", ComputerIdentity.LocalAddresses())}");
+        Title = $"ICeClass 班伴 · {binding.ClassName}";
+        if (!changed) {PublishHome(); return;}
+        StopRecorder(); ResetVoice("班级归属已更新，请重新开始留言。");
+        _bindingVersion++; _islandState = null; _loaded = false; _homeworkBusy = false;
+        _closeDialog?.Close(false);
+        _pageLifetime.Cancel(); _notice.IsVisible = true; _browser.SetPageVisible(false);
+        _ = ReloadBindingAsync(_bindingVersion);
+    }
+    private async Task ReloadBindingAsync(int version)
+    {
+        if (_loadTask is not null) await _loadTask;
+        if (_closed || version != _bindingVersion) return;
+        _pageLifetime.Dispose(); _pageLifetime = new(); ResetBrowser(); await LoadAsync();
+    }
+    public void SetConnectionState(ReceiverConnectionState state) {_connection = state;PublishHome();}
+    internal void SetIslandState(ClassroomHomeSnapshot state)
+    {
+        _islandState = state;
+        var json = JsonSerializer.Serialize(state, Json);
+        if (_islandJson == json) return;
+        _islandJson = json; Post(new {type="island-state",state});
+    }
+    public void OpenManagement()
+    {
+        Show(); WindowState = WindowState.Normal; Activate();
+        if (_loaded) Post(new {type="open-management"}); else _openManagement = true;
+        _browser.FocusPage();
     }
     public void MinimizeToTray()
     {
-        if (_recording) { StopRecorder(); Reset("录音已取消。需要留言时，请重新点击开始。"); }
-        WindowState = WindowState.Minimized; Hide();
+        if (_recording) {StopRecorder();ResetVoice("录音已取消。需要留言时，请重新点击开始。");}
+        _browser.SetPageVisible(false); WindowState = WindowState.Minimized; Hide();
     }
-    public void SetConnectionState(ReceiverConnectionState state)
+    public async Task<bool> PrepareToLeaveAsync()
     {
-        _connection.Text = state.Connected ? "已连接平台" : state.Text;
-        _connection.MaxWidth = 170;
-        _connection.Foreground = DesktopStyle.Brush(state.Connected ? "#35795B" : "#97591B");
-        _connectionPill.Background = DesktopStyle.Brush(state.Connected ? "#EAF3EE" : "#FFF2DF");
+        if (_leaveCheck is not null) return await _leaveCheck;
+        _leaveCheck = CheckLeaveAsync();
+        try {return await _leaveCheck;} finally {_leaveCheck = null;}
     }
-    private void RecordButtonClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs args)
+    private async Task<bool> CheckLeaveAsync()
     {
-        if (_sending) return;
-        if (_recording) FinishRecording();
-        else StartRecording();
+        if (_closed || !_loaded || _failed || _browser.Core is null) return true;
+        var pageToken = _pageLifetime.Token;
+        _leaveResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try {
+            var ready = await _browser.Core.ExecuteScriptAsync("""
+                (()=>{
+                  if (typeof window.ICeClassHomework?.prepareToLeave !== 'function') return false;
+                  window.ICeClassHomework.prepareToLeave().then(safe => {
+                    window.chrome.webview.postMessage({type:'homework-leave',safe});
+                  }).catch(() => window.chrome.webview.postMessage({type:'homework-leave',safe:false}));
+                  return true;
+                })();
+                """).WaitAsync(TimeSpan.FromSeconds(5), pageToken);
+            if (ready != "true") throw new InvalidOperationException("Homework leave handler is unavailable.");
+            return await _leaveResponse.Task.WaitAsync(pageToken);
+        }
+        catch (OperationCanceledException) when (_closed || pageToken.IsCancellationRequested) {return _closed;}
+        catch (Exception error) when (error is not OutOfMemoryException) {
+            AppLog.Error("Check classroom changes before exit", error);
+            if (_closed) return true;
+            var dialog = new Window {Title="确认退出",Width=460,MinHeight=240,SizeToContent=SizeToContent.Height,CanResize=false,
+                WindowStartupLocation=WindowStartupLocation.CenterOwner,Background=Avalonia.Media.Brushes.White};
+            ClassroomStyle.Apply(dialog); DesktopStyle.KeepWindowInWorkingArea(dialog);
+            var keep = ClassroomStyle.Button("继续填写",true); var discard = ClassroomStyle.Button("放弃并退出");
+            keep.Click += (_,_)=>dialog.Close(false);discard.Click += (_,_)=>dialog.Close(true);
+            dialog.Content = new StackPanel {Margin=new Thickness(24),Spacing=18,Children={
+                ClassroomStyle.SectionTitle("暂时无法确认保存状态"),ClassroomStyle.Caption("继续填写并保存，或放弃未保存的选择。"),
+                new StackPanel {Orientation=Orientation.Horizontal,Spacing=12,Children={discard,keep}}}};
+            _closeDialog=dialog;
+            try{return await dialog.ShowDialog<bool>(this);}finally{_closeDialog=null;}
+        }
+        finally {_leaveResponse=null;}
     }
-
     private void StartRecording()
     {
-        try
-        {
+        try {
             if (WaveInEvent.DeviceCount <= 0) throw new InvalidOperationException("没有检测到可用麦克风，请检查 Windows 麦克风连接和权限。");
-            _buffer = new MemoryStream();
-            _writer = new WaveFileWriter(_buffer, new WaveFormat(16_000, 16, 1));
-            _waveIn = new WaveInEvent { WaveFormat = new WaveFormat(16_000, 16, 1), BufferMilliseconds = 50 };
-            _waveIn.DataAvailable += (_, args) => _writer?.Write(args.Buffer, 0, args.BytesRecorded);
-            _waveIn.RecordingStopped += (source, _) => Dispatcher.UIThread.Post(() => { if (ReferenceEquals(source, _waveIn)) RecordingStopped(); });
-            _waveIn.StartRecording();
-            _recording = true;
-            _startedAt = DateTimeOffset.Now;
-            _timer.Start();
-            _recordButton.Content = "结束并发送";
-            _recordButton.Classes.Add("classroom-recording");
-            _status.Text = "正在录音…再次点击按钮结束并发送。";
+            _buffer = new MemoryStream(); _writer = new WaveFileWriter(_buffer, new WaveFormat(16_000,16,1));
+            _waveIn = new WaveInEvent {WaveFormat=new WaveFormat(16_000,16,1),BufferMilliseconds=50};
+            _waveIn.DataAvailable += (_,args)=>{lock(_audioGate)_writer?.Write(args.Buffer,0,args.BytesRecorded);};
+            _waveIn.RecordingStopped += (source,args)=>Dispatcher.UIThread.Post(()=>{if(ReferenceEquals(source,_waveIn))RecordingStopped(args.Exception);});
+            _waveIn.StartRecording(); _recording=true; _startedAt=DateTimeOffset.Now; _timer.Start();
+            _voiceSuccess=false;_voiceStatus="正在录音…再次点击按钮结束并发送。";PublishVoice();
         }
-        catch (Exception exception)
-        {
-            StopRecorder();
-            _status.Text = $"无法使用麦克风：{exception.Message}";
-            AppLog.Error("Student voice recording failed", exception);
-        }
+        catch (Exception error) {StopRecorder();ResetVoice($"无法使用麦克风：{error.Message}");AppLog.Error("Student voice recording failed",error);}
     }
-
     private void FinishRecording()
     {
         if (!_recording) return;
-        _recording = false;
-        _timer.Stop();
-        _recordButton.IsEnabled = false;
-        _recordButton.Content = "正在发送…";
-        _status.Text = "正在发送给本班教师，请稍候…";
-        _waveIn?.StopRecording();
+        _recording=false;_sending=true;_timer.Stop();_voiceStatus="正在发送给本班教师，请稍候…";PublishVoice();
+        try {_waveIn?.StopRecording();}catch(Exception error){StopRecorder();ResetVoice($"录音结束失败：{error.Message}");}
     }
-
-    private async void RecordingStopped()
+    private async void RecordingStopped(Exception? recordingError)
     {
-        if (_closing) return;
-        var writer = _writer;
-        var buffer = _buffer;
-        _writer = null;
-        _buffer = null;
-        _waveIn?.Dispose();
-        _waveIn = null;
-        writer?.Dispose();
-        var bytes = buffer?.ToArray() ?? Array.Empty<byte>();
-        buffer?.Dispose();
-        if (bytes.Length < 44)
-        {
-            Reset("录音太短，请至少录音 0.5 秒。");
-            return;
+        if (_closed) return;
+        var version=_bindingVersion;
+        byte[] bytes;
+        lock(_audioGate){
+            var writer=_writer;var buffer=_buffer;_writer=null;_buffer=null;
+            writer?.Dispose();bytes=buffer?.ToArray()??[];buffer?.Dispose();
         }
-        _sending = true;
-        try
-        {
-            await _send(bytes);
-            Reset("已发送给本班教师。可以再次点击开始录音。", true);
-        }
-        catch (Exception exception)
-        {
-            AppLog.Error("Student voice upload failed", exception);
-            Reset($"发送失败：{exception.Message}");
-        }
-        finally { _sending = false; }
+        _waveIn?.Dispose();_waveIn=null;_timer.Stop();_recording=false;
+        if(recordingError is not null){ResetVoice($"录音失败：{recordingError.Message}");return;}
+        if(bytes.Length<16_044){ResetVoice("录音太短，请至少录音 0.5 秒。");return;}
+        _sending=true;PublishVoice();
+        try {await _send(bytes);if(version==_bindingVersion)ResetVoice("已发送给本班教师。可以再次点击开始录音。",true);}
+        catch(Exception error){AppLog.Error("Student voice upload failed",error);if(version==_bindingVersion)ResetVoice($"发送失败：{error.Message}");}
+        finally{if(version==_bindingVersion){_sending=false;if(!_closed)PublishVoice();}}
     }
-
-    private void Reset(string text, bool success = false)
+    private void ResetVoice(string status,bool success=false)
     {
-        _recordButton.IsEnabled = true;
-        _recordButton.Content = "开始留言";
-        _recordButton.Classes.Remove("classroom-recording");
-        _duration.Text = "最长 30 秒";
-        _status.Text = text;
-        _status.Foreground = new SolidColorBrush(Color.Parse(success ? "#14804A" : "#6E6E73"));
+        _sending=false;_duration="最长 30 秒";_voiceStatus=status;_voiceSuccess=success;PublishVoice();
     }
-
     private void StopRecorder()
     {
-        _timer.Stop();
-        try { _waveIn?.StopRecording(); } catch { }
-        _waveIn?.Dispose();
-        _waveIn = null;
-        _writer?.Dispose();
-        _writer = null;
-        _buffer?.Dispose();
-        _buffer = null;
-        _recording = false;
+        _timer.Stop();var wave=_waveIn;_waveIn=null;
+        try{wave?.StopRecording();}catch{ }wave?.Dispose();
+        lock(_audioGate){_writer?.Dispose();_writer=null;_buffer?.Dispose();_buffer=null;}
+        _recording=false;
     }
+}
+
+internal sealed record ClassroomHomeLesson(string Name,string Start,string End,bool Current);
+internal sealed record ClassroomHomeSnapshot(string Date,bool ScheduleKnown,List<ClassroomHomeLesson> Lessons,ClassroomIslandNotice? Notice)
+{
+    internal static ClassroomHomeSnapshot Empty() => new(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd"),false,[],null);
 }

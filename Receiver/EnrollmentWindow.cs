@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -76,7 +76,7 @@ public sealed class EnrollmentWindow : Window
         CompactAction(_checkUpdate); _checkUpdate.MinWidth = 104;
         CompactAction(_audioTest); _audioTest.MinWidth = 132;
         _audioTestStatus.IsVisible = false;
-        _singleUse.FontSize = 14; _startup.FontSize = 14;
+        _singleUse.FontSize = 16; _startup.FontSize = 16;
         ToolTip.SetTip(_checkUpdate, "下载并安装更新，完成后自动重新打开；保留本教室绑定和本机设置。");
         _lookup.Click += async (_, _) => await LoadClassesAsync();
         _checkUpdate.Click += (_, _) =>
@@ -122,7 +122,7 @@ public sealed class EnrollmentWindow : Window
             var current = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             current.Children.Add(new StackPanel { Spacing = 2, Children = {
                 ClassroomStyle.Text("当前班级", 13, muted: true), ClassroomStyle.Text(existing.ClassName, 18, true) } });
-            _connection.FontSize = 13; _connection.MaxWidth = 160; _connection.VerticalAlignment = VerticalAlignment.Center;
+            _connection.FontSize = 15; _connection.MaxWidth = 160; _connection.VerticalAlignment = VerticalAlignment.Center;
             var changeClass = DesktopStyle.Button("更换班级"); CompactAction(changeClass);
             changeClass.Classes.Add("settings-binding-toggle");
             var classActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12,
@@ -210,7 +210,7 @@ public sealed class EnrollmentWindow : Window
 
     private static void CompactAction(Button button)
     {
-        button.FontSize = 14; button.MinHeight = 40; button.Padding = new Thickness(12, 6);
+        button.FontSize = 16; button.MinHeight = 40; button.Padding = new Thickness(12, 6);
         button.HorizontalAlignment = HorizontalAlignment.Left;
     }
     private static Border SettingsCard(Control content) => ClassroomStyle.SettingsCard(content);

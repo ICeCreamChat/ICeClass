@@ -13,14 +13,19 @@ internal static class ClassroomStyle
     internal static readonly FontFamily Font = new("Microsoft YaHei UI, Microsoft YaHei, Segoe UI");
     internal static TextBlock Title(string text) => Text(text, 24, true);
     internal static TextBlock SectionTitle(string text) => Text(text, 20, true);
-    internal static TextBlock Caption(string text) => Text(text, 14, muted: true);
-    internal static void Apply(Window window) => RenderOptions.SetTextRenderingMode(window, TextRenderingMode.Antialias);
+    internal static TextBlock Caption(string text) => Text(text, 15, muted: true);
+    internal static void Apply(Window window, bool glass = true)
+    {
+        RenderOptions.SetTextRenderingMode(window, TextRenderingMode.Antialias);
+        if (glass) ClassroomGlassHost.Apply(window);
+    }
     internal static TextBlock Text(string text, double size = 16, bool bold = false, bool muted = false)
     {
+        size = Math.Max(15, size);
         var block = new TextBlock {
         Text = text, FontFamily = Font, FontSize = size,
         FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
-        Foreground = muted ? DesktopStyle.Muted : DesktopStyle.Ink,
+        Foreground = DesktopStyle.Brush(muted ? "#4E6C83" : "#193C59"),
         TextWrapping = TextWrapping.Wrap, LineHeight = size * 1.5,
         };
         RenderOptions.SetTextRenderingMode(block, TextRenderingMode.Antialias);
@@ -28,30 +33,31 @@ internal static class ClassroomStyle
     }
     internal static Border Card(Control content, bool accent = false) => new()
     {
-        Background = DesktopStyle.Brush(accent ? "#F0F6FF" : "#FFFFFF"),
-        BorderBrush = DesktopStyle.Brush(accent ? "#DBE8F8" : "#E2E8F0"),
-        BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14),
+        Classes = { "classroom-glass" }, Background = Brushes.Transparent,
+        BorderBrush = DesktopStyle.Brush("#BFFFFFFF"),
+        BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(24),
         Padding = new Thickness(20), Child = content,
     };
     internal static Button Button(string text, bool primary = false)
     {
-        var button = DesktopStyle.Button(text, primary); button.FontFamily = Font; button.FontSize = 16;
+        var button = DesktopStyle.Button(text, primary); button.FontFamily = Font; button.FontSize = 17;
         button.Classes.Add(primary ? "classroom-primary" : "classroom-secondary");
         return button;
     }
     internal static StackPanel Field(string label, Control input) => new()
     {
-        Spacing = 6, Children = { Text(label, 14, true), input },
+        Spacing = 8, Children = { Text(label, 16, true), input },
     };
     internal static Border SettingsCard(Control content) => new()
     {
-        Background = Brushes.White, BorderBrush = DesktopStyle.Brush("#E2E8F0"), BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 12), Child = content,
+        Classes = { "classroom-glass" }, Background = Brushes.Transparent,
+        BorderBrush = DesktopStyle.Brush("#BFFFFFFF"), BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(23), Padding = new Thickness(23, 19), Child = content,
     };
     internal static Border SettingsDivider() => new() { Height = 1, Background = DesktopStyle.Brush("#EDF1F6") };
     internal static StackPanel SettingsSection(string title, Control content) => new()
     {
-        Spacing = 8, Children = { Text(title, 15, true), SettingsCard(content) },
+        Spacing = 10, Children = { Text(title, 17, true), SettingsCard(content) },
     };
     // Unmodified Lucide paths, bundled locally; see Assets/Icons/SOURCE.md.
     internal static Border IconBadge(string name)

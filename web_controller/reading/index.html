@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="reading-liquid">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-src 'self' blob:; base-uri 'self'; form-action 'self'">
@@ -353,6 +353,9 @@ button:disabled { cursor: default; opacity: .5; }
 <link rel="stylesheet" href="/reading/integration.css">
 <link rel="stylesheet" href="/reading/companion.css">
 <script src="/reading/desktop.js"></script>
+  <link rel="stylesheet" href="/assets/classroom-glass.css">
+  <link rel="stylesheet" href="/reading/liquid-glass.css">
+  <script src="/assets/classroom-glass.js" defer></script>
 </head>
 <body class="reading-loading">
   <svg class="stone-filter-definitions" aria-hidden="true" width="0" height="0">
@@ -413,7 +416,7 @@ button:disabled { cursor: default; opacity: .5; }
   <path d="M32 23C19 24 11 17 13 8c10-1 18 3 19 15Z" fill="#94b17b"/>
   <path d="M32 19C32 7 41 2 52 4c0 11-8 17-20 15Z" fill="#557f62"/>
   <path d="m20 14 12 10m0-5 12-8" stroke="#f7faf1" stroke-opacity=".52" stroke-width="1.4" stroke-linecap="round"/>
-</svg></span><h1>让朗读，<span>看得见。</span></h1><p>选择活动，开始今天的朗读。</p></div>
+</svg></span><h1>早读陪伴</h1><p>选择今天的朗读活动</p></div>
       <div class="mode-choices">
         <button type="button" id="open-classic" class="mode-choice rabbit-choice">
           <div class="mode-art rabbit-art" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" fill="none">
@@ -494,7 +497,7 @@ button:disabled { cursor: default; opacity: .5; }
           <div class="mode-copy"><h2>火箭升空</h2><p>朗读积蓄能量，让火箭飞向星空。</p><span class="choice-use">声音驱动 · 达标点火升空</span><span class="choice-action">开始火箭升空</span></div>
         </button>
       </div>
-      <p class="home-note">仅在本机感知声量，不上传录音。朗读带动活动进度。</p>
+      <p class="home-note">仅在本机感知声量，不上传录音。</p>
     </section>
     <div id="classic-frame-holder" hidden></div>
     <section id="carving-setup" class="app-content carving-setup" hidden aria-label="诗词镌刻设置">
@@ -1739,7 +1742,8 @@ window.ReadingPoems = [
       };
     })();`;
     const touchBridge = "document.addEventListener('DOMContentLoaded',()=>window.parent.ReadingDesktop?.attachFrameDocument(document),{once:true});";
-    frame.srcdoc = source.replace('<head>', '<head><script>' + touchBridge + (rocket ? '' : bridge) + '</scr' + 'ipt>');
+    source = source.replace('</head>', '<link rel="stylesheet" href="/assets/classroom-glass.css"><link rel="stylesheet" href="/reading/liquid-glass.css"><script src="/assets/classroom-glass.js" defer></scr' + 'ipt></head>');
+    frame.srcdoc = source.replace('<head>', '<head><script>document.documentElement.classList.add("reading-liquid","reading-game");' + touchBridge + (rocket ? '' : bridge) + '</scr' + 'ipt>');
     const loadingFrame = frame;
     frame.addEventListener('load', () => { if (frame === loadingFrame) installFramePanel(loadingFrame, rocket ? 'rocket' : 'classic'); });
     $('classic-frame-holder').append(frame);

@@ -7,5 +7,6 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://ICeClass.Desktop/Shared/NativeControls.axaml" />
+    <StyleInclude Source="avares://ICeClass.Desktop/TeacherControls.axaml" />
   </Application.Styles>
 </Application>

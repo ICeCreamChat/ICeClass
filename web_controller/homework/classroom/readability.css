@@ -1,0 +1,47 @@
+/* Keep the approved layout and font family; make small operational text readable. */
+body{font-size:17px}
+.brand small,.class-heading p,.connection,.card-top p,.card-footnote,.entry-text p,.entry-meta,.management-hint,.app-footer,.view-toolbar>span{font-size:16px;line-height:1.65}
+.button,.text-button,.nav-content button{font-size:17px}
+.duration-label,.coming-soon,.app-footer .text-button,.shout-copy small,.back-button,.empty-roster,.toast,.detail-content .demo-note,.activity-list button,.settings-row,.settings-row small,.date-capsule small,.date-capsule strong span,.lesson small{font-size:16px;line-height:1.65}
+.shout-content .button,.nav-content button{font-size:17px}
+.lesson strong{font-size:17px}.date-capsule strong{font-size:26px}.date-capsule{min-width:125px}
+.module-card .card-top h2{font-size:23px}.module-card .card-top p{font-size:16px;line-height:1.65;margin-top:6px;text-wrap:pretty}
+.module-heading{min-height:32px}.module-heading .coming-soon{line-height:1.5;padding:3px 9px}
+.module-footer .card-footnote svg{width:16px;height:16px}.module-footer>.button{font-size:17px;min-height:48px}.module-card .button{flex-shrink:0}.homework-entry-content .button{font-size:17px;min-height:46px}
+.dialog-header p,.field-label,.assignment-tab,.subject-button,.search-field input,.filter-button,.roster-toolbar .text-button,.date-input-label input,.homework-bottom-actions>.text-button,.submission-count small,.detail-timetable>div,.detail-timetable small,.none-message p,.detail-content p{font-size:16px}
+.student-tile{font-size:17px;min-height:49px}.student-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.assignment-tab,.subject-button,.filter-button{min-height:43px}.assignment-tabs{gap:8px}.date-input-label input{width:130px}
+.search-field{min-height:43px}.save-button{font-size:17px;min-height:46px}.submission-count>span{font-size:16px}
+.detail-content{font-size:17px;line-height:1.75}.dialog-toast{font-size:16px}
+/* Voice messages use one invitation, a quiet duration and a single privacy note. */
+.voice-message .detail-voice{height:auto;margin:32px 0 20px}
+.detail-content .voice-prompt{margin:0;color:var(--ink);font-size:17px;line-height:1.65;text-align:center;text-wrap:balance}
+.voice-message .recording-time{margin:8px 0 0;color:var(--muted);font-size:16px;line-height:1.65;letter-spacing:normal;font-variant-numeric:tabular-nums}
+.voice-message .recording-time.is-recording{color:var(--ink);font-weight:600}
+.voice-message .button{min-height:46px;margin-top:24px;white-space:normal}
+.detail-content .voice-feedback{margin:0;font-size:16px;line-height:1.65;text-align:center;overflow-wrap:anywhere}
+.detail-content .voice-feedback:not(:empty){margin-top:14px}
+.detail-content .voice-feedback.success{color:#246543}
+.detail-content .voice-privacy{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:24px 0 0;padding-top:18px;border-top:1px solid #6c96b633;color:var(--muted);font-size:16px;line-height:1.65}
+.voice-access{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.voice-access>svg{width:16px;height:16px}
+.voice-retention{margin-left:auto;text-align:right;white-space:nowrap}
+@media(max-width:1150px){.student-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.homework-entry-content .button{margin-left:0}.homework-bottom{flex-wrap:wrap}}
+@media(max-width:800px){.student-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.button,.text-button,.nav-content button{font-size:17px}.nav-content button{min-width:44px;min-height:44px}.nav-content button svg{width:20px;height:20px}.module-footer>.button{width:100%}.module-footer .card-footnote{flex-basis:100%}}
+@media(max-width:560px){.brand small,.class-heading p,.connection,.card-top p,.card-footnote,.entry-text p,.entry-meta,.management-hint,.app-footer,.view-toolbar>span{font-size:15px}.app-header{height:auto;min-height:104px;padding-block:16px}.module-footer>.button{width:auto}.module-footer .card-footnote{flex-basis:200px}.module-card .card-content{padding:23px}.card-top h2{font-size:23px}.student-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.student-tile{font-size:16px;min-height:48px}.subject-button,.assignment-tab,.filter-button,.roster-toolbar .text-button,.search-field input,.dialog-header p,.field-label,.submission-count small,.homework-bottom-actions>.text-button{font-size:15px}.subject-button{min-height:44px}.subject-navigation{padding:10px}.assignment-header{flex-wrap:wrap;gap:12px}.homework-main{padding:16px 14px 0}.homework-bottom{gap:13px;padding:14px 16px}.homework-bottom-actions{width:100%;justify-content:flex-end}.date-input-label input{font-size:15px;width:119px}.dialog-header h2{font-size:24px}.homework-entry-content .button{width:auto;font-size:17px;margin:0}.entry-text p{max-width:none}}
+
+/* Approved B artwork stays in the crisp foreground, above the glass lens. */
+.module-card{min-height:278px}
+.module-card .card-content{padding:25px 28px 22px;gap:16px}
+.module-card .card-top p.poetic-copy{font-size:17px;line-height:1.7;letter-spacing:.025em;margin-top:5px;color:#41647f}
+.poetic-copy>span{white-space:nowrap}
+/* Give previews a modest inset, easing it in narrow cards. */
+.module-card .module-body{min-height:88px;gap:18px;padding-inline-start:clamp(0px,calc(100% - 252px),32px)}
+.module-illustration{height:88px;width:252px;max-width:100%;min-width:0;display:flex;align-items:center;flex:0 1 252px}
+.module-illustration>img{display:block;width:240px;height:100px;max-width:100%;object-fit:contain;object-position:left center}
+.management-card .module-illustration{width:216px;flex-basis:216px;min-width:105px}
+.management-card .module-illustration>img{width:180px}
+.student-total{margin-left:auto;white-space:nowrap;color:#41647f;font-size:16px;line-height:1.65;font-variant-numeric:tabular-nums}
+@media(max-width:1150px){.module-card .card-content{padding:23px}}
+@media(max-width:800px){.module-card .card-top p.poetic-copy{font-size:16px}.module-card .module-body{gap:10px}.module-illustration{width:220px;flex-basis:220px}.management-card .module-illustration{width:135px;flex-basis:135px}.management-card .module-illustration>img{width:135px}.voice-card .waveform{max-width:154px}.student-total{font-size:15px}}
+@media(max-width:560px){.management-card .module-illustration{width:175px;flex-basis:175px}.management-card .module-illustration>img{width:165px}.voice-card .waveform{max-width:180px}}

@@ -8,7 +8,14 @@
 
 ## 当前版本
 
-当前源码版本为 **2.5.9**。该版本包含教室浮岛统一批量设置、两端诊断日志、错误自动上报、轻量安装、语音资源后台下载、增量更新，以及通知和致谢动画修复。
+当前源码版本为 **2.5.10**，包含班级作业统计、教室端与教师端液态玻璃、教师统一顶栏和可维护的致谢名单，保留课表浮岛、班班、批量设置、诊断、轻量安装和增量更新功能。
+
+2026-11-04 至 2026-11-06 的源码改进：
+
+- **作业统计**：教室端按学科和作业登记已交、未交及无作业状态；教师端维护名单与学期预设，按作业或学生查询并导出 CSV。补交保留原名单快照，版本冲突不会覆盖他人修改。见[作业统计](docs/作业统计.md)。
+- **教室端液态玻璃**：首页、班级管理、创意计划、早读、设置和关于使用统一材料，文字与控件保持清晰；浮岛可切回原版白色外观。见[教室端液态玻璃](docs/教室端液态玻璃.md)和[内页改造](docs/教室端内页液态玻璃.md)。
+- **教师端液态玻璃与统一顶栏**：网页和 Windows 教师端统一品牌、当前位置、桌面工具及账号入口；工作台就绪后收起重复的原生工具条，连接失败时保留恢复操作。见[教师端设计规范](docs/teacher-liquid-glass/DESIGN.md)和[统一顶栏验收](docs/teacher-liquid-glass/header-clear-acceptance.md)。
+- **致谢名单维护**：超级管理员可在账号设置中编辑分组和名单，两端下次打开关于时同步，离线保留上次成功读取的内容。见[致谢名单维护](docs/致谢名单维护.md)。
 
 2026-11-04 的后续源码改进：
 
@@ -26,7 +33,7 @@
 | --- | --- | --- |
 | 网页工作台 | 教师、管理员维护班级、课表、通知、统计和权限 | 现代浏览器，连接学校平台 |
 | Windows 教师端 | 网页工作台功能，加桌面来音提醒、本机转文字、反馈和自动更新 | Windows 10/11 x64、WebView2 Evergreen Runtime |
-| Windows 教室端 | 教室绑定、离线早读、通知接收、课表浮岛、留言、创意计划和班班语音 | Windows 10/11 x64、WebView2 Evergreen Runtime |
+| Windows 教室端 | 教室绑定、离线早读、通知接收、课表浮岛、作业登记、留言、创意计划和班班语音 | Windows 10/11 x64、WebView2 Evergreen Runtime |
 
 Windows 发布程序自带 .NET 运行环境，使用者无需安装 .NET、Python 或 Node.js。缺少 WebView2 时按客户端提示安装。
 
@@ -244,7 +251,7 @@ sudo bash server/install-ubuntu.sh YOUR_DOMAIN YOUR_RANDOM_BOOTSTRAP_TOKEN
 已有安装使用与目标版本配套的服务器 ZIP 更新，例如：
 
 ```bash
-sudo bash scripts/update-ubuntu.sh /path/to/ICeClass-2.5.9-server.zip 2.5.9
+sudo bash scripts/update-ubuntu.sh /path/to/ICeClass-2.5.10-server.zip 2.5.10
 sudo systemctl status iceclass
 sudo journalctl -u iceclass --no-pager -n 80
 ```

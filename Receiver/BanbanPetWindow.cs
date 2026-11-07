@@ -68,7 +68,7 @@ internal sealed class BanbanPetWindow : Window
         SystemDecorations = SystemDecorations.None; Background = Brushes.Transparent;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         WindowStartupLocation = WindowStartupLocation.Manual;
-        ClassroomStyle.Apply(this);
+        ClassroomStyle.Apply(this, glass: false);
 
         _dot = new Border { Width = 6, Height = 6, CornerRadius = new CornerRadius(3), Background = DesktopStyle.Muted, VerticalAlignment = VerticalAlignment.Center };
         _pill = new Border { Background = DesktopStyle.Brush("#F7FAFF"), BorderBrush = DesktopStyle.Brush("#DCE8F4"),

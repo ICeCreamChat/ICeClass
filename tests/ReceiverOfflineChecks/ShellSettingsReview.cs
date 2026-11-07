@@ -25,8 +25,9 @@ internal static class ShellSettingsReview
                 var about = new AboutWindow { Width = width, Height = height }; windows.Add(about); about.Show();
                 await Task.Delay(100); about.UpdateLayout();
                 var text = about.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToArray();
-                Assert(text.Contains(AboutContent.GroupAcknowledgement), $"{width}: AI建模社 acknowledgement is visible on the initial page");
-                Assert(AboutContent.Acknowledgements.All(p => text.Contains(p.Name)), $"{width}: all six supplied people remain in the acknowledgement list");
+                Assert(new[] { "感谢 AI 建模社", "感谢支持与指导", "特别感谢" }.All(text.Contains), $"{width}: the sample's three acknowledgement groups remain readable");
+                Assert(new[] { "高琦璐校长", "汪冰主任", "李善忠干事", "陈胜老师", "许斌老师", "李妮姗老师" }
+                    .All(name => text.Any(value => value?.Contains(name) == true)), $"{width}: all six supplied people remain in the acknowledgement list");
                 var mascot = about.GetVisualDescendants().OfType<AboutThankYouMascot>().Single();
                 mascot.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Task.Delay(1100);

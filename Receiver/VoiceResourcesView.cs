@@ -16,7 +16,7 @@ internal sealed class VoiceResourcesView : Grid
     {
         ColumnDefinitions = new("*,Auto"); RowDefinitions = new("Auto,Auto");
         _progress.VerticalAlignment = VerticalAlignment.Center;
-        _download.MinHeight = 36; _download.Padding = new Thickness(12, 6); _download.FontSize = 13;
+        _download.MinHeight = 36; _download.Padding = new Thickness(12, 6); _download.FontSize = 15;
         _download.VerticalAlignment = VerticalAlignment.Center; _download.HorizontalAlignment = HorizontalAlignment.Left;
         SetColumn(_download, 1); Children.Add(_progress); Children.Add(_download);
         _download.Click += (_, _) => DownloadRequested?.Invoke();

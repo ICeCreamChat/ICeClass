@@ -1,0 +1,44 @@
+.ideas-app.classroom-liquid{--ideas-text:#193c59;--ideas-muted:#4e6c83;--ideas-blue:#0064d7;--ideas-blue-text:#005dbf;--ideas-line:#85a8c235;--ideas-surface:#f7fcffb8;font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;font-size:17px;line-height:1.65}
+.ideas-app.classroom-liquid .ideas-topbar{min-height:72px;padding:16px max(26px,calc((100% - 1152px)/2));box-shadow:none;border-width:0 0 1px!important}
+.ideas-app.classroom-liquid h1{font-size:27px;letter-spacing:-.5px}.ideas-app.classroom-liquid h2{font-size:23px}.ideas-app.classroom-liquid h3{font-size:19px}
+.ideas-app.classroom-liquid .ideas-class,.ideas-app.classroom-liquid .ideas-heading p{font-size:16px}
+.ideas-app.classroom-liquid .ideas-shell{max-width:1200px;padding:22px 26px 26px;gap:18px}
+.ideas-app.classroom-liquid .ideas-tabs{gap:5px;padding:5px;border-radius:21px;align-self:flex-start;margin:0;max-width:100%}
+.ideas-app.classroom-liquid .ideas-tabs button{font-size:17px;font-weight:600;border-radius:16px;min-height:47px;padding:10px 23px}
+.ideas-app.classroom-liquid .ideas-tabs button[aria-selected="true"]{background:#fcffffd9;border-color:#ffffffc2;box-shadow:0 3px 8px #2c5c7810}
+.ideas-app.classroom-liquid .ideas-form{border-radius:27px}
+.ideas-app.classroom-liquid .ideas-steps{background:#f3faff42;padding:17px 24px;gap:30px}
+.ideas-app.classroom-liquid .ideas-steps li{font-size:17px}.ideas-app.classroom-liquid .ideas-step-number{width:29px;height:29px;font-size:16px;background:#ffffff62}
+.ideas-app.classroom-liquid .ideas-workspace{padding:22px 24px}
+.ideas-app.classroom-liquid .ideas-button,.ideas-paper-dialog .ideas-paper-button{font-size:17px;font-weight:600;min-height:46px;border-radius:13px;padding:10px 18px;border-color:#a8c1d778;background:#f9fdffb5;color:#234f73;box-shadow:inset 0 1px #ffffffc4}
+.ideas-app.classroom-liquid .ideas-primary,.ideas-paper-dialog .ideas-paper-primary{background:linear-gradient(#1681e6,#0064d7);color:#fff;border-color:#1179d9;box-shadow:inset 0 1px #ffffff40,0 5px 10px #0065bd22}
+.ideas-app.classroom-liquid .ideas-primary:hover:enabled,.ideas-paper-dialog .ideas-paper-primary:hover:enabled{background:linear-gradient(#0874d9,#005bc8);color:#fff}
+.ideas-app.classroom-liquid .ideas-primary:disabled{background:#d2e4f3;color:#526d82;box-shadow:none}
+.ideas-app.classroom-liquid .ideas-quiet{background:transparent;border-color:transparent;box-shadow:none}
+.ideas-app.classroom-liquid .ideas-composer-actions{gap:12px;margin-bottom:20px}
+.ideas-app.classroom-liquid .ideas-composer-actions .ideas-button{font-size:17px;min-width:118px;padding-inline:17px}
+.ideas-app.classroom-liquid .ideas-composer-controls{margin-bottom:12px;gap:14px}.ideas-app.classroom-liquid .ideas-ink-toolbar{border-radius:16px;padding:4px;background:#eaf5fc70}
+.ideas-app.classroom-liquid .ideas-ink-area{width:min(100%,1000px,max(440px,calc((100cqh - 150px) * 1600 / 853)));border-radius:18px;border-color:#a9c5da;background:#ffffffeb;box-shadow:inset 0 2px 4px #23527606}
+.ideas-app.classroom-liquid .ideas-composer-controls h2{font-size:18px;color:#345c7a}
+.ideas-app.classroom-liquid .ideas-ink-empty{font-size:20px;color:#4e6c83}.ideas-app.classroom-liquid .ideas-field-head{gap:12px}
+.ideas-app.classroom-liquid :is(.ideas-help,.ideas-counter,.ideas-optional,.ideas-total,.ideas-item-meta,.ideas-author,.ideas-feedback,.ideas-notice,.ideas-list-intro,.ideas-transcription-actions p){font-size:16px;line-height:1.7;color:var(--ideas-muted)}
+.ideas-app.classroom-liquid .ideas-error,.ideas-app.classroom-liquid .ideas-danger{color:#a33730}.ideas-app.classroom-liquid .ideas-success{color:#246543}
+.ideas-app.classroom-liquid :is(input:not([type=radio]):not([type=checkbox]),textarea,select){font-size:17px;background:#fbfeffe0;border-color:#a9c2d7;border-radius:12px;color:#193c59}
+.ideas-app.classroom-liquid .ideas-submit-row{padding:16px 24px;background:#f4faff60;gap:18px;border-color:#85a8c235}
+.ideas-app.classroom-liquid .ideas-submit-row .ideas-primary{min-width:140px}.ideas-app.classroom-liquid .ideas-submit-status{min-width:0}
+.ideas-app.classroom-liquid :is(.ideas-item,.ideas-list-notice){border-radius:23px;padding:24px}
+.ideas-app.classroom-liquid .ideas-list{gap:18px}.ideas-app.classroom-liquid .ideas-list-head>.ideas-total{margin:0}.ideas-app.classroom-liquid .ideas-item-title{font-size:20px}.ideas-app.classroom-liquid .ideas-item-body{font-size:17px;line-height:1.85}
+.ideas-app.classroom-liquid .ideas-reply{background:#e6f3fd8c;border-radius:15px;padding:16px 19px;border-color:#c6dceb}
+.ideas-app.classroom-liquid .ideas-status{font-size:15px;padding:5px 10px}.ideas-app.classroom-liquid .ideas-pagination{padding:17px 0;gap:16px;font-size:16px}
+.ideas-app.classroom-liquid :is(.ideas-camera-dialog,.ideas-delete-dialog,.ideas-image-dialog),.ideas-paper-dialog{border-radius:26px;color:#193c59}
+.ideas-app.classroom-liquid .ideas-camera-shell,.ideas-paper-dialog .ideas-paper-shell{padding:22px;gap:15px}
+.ideas-app.classroom-liquid .ideas-camera-preview,.ideas-paper-dialog .ideas-paper-workspace,.ideas-paper-dialog .ideas-paper-preview{border-radius:17px;background:#e1eef8}
+.ideas-app.classroom-liquid .ideas-camera-guide,.ideas-paper-dialog :is(.ideas-paper-help,.ideas-paper-status,.ideas-paper-error,.ideas-paper-label,.ideas-paper-value){font-size:16px;line-height:1.7}
+.ideas-paper-dialog .ideas-paper-title{font-size:23px;color:#193c59}.ideas-paper-dialog .ideas-paper-lens{pointer-events:none}
+.ideas-app.classroom-liquid .ideas-review-content{gap:20px}.ideas-app.classroom-liquid .ideas-signing-options{gap:18px;padding:19px 0}
+.ideas-app.classroom-liquid .ideas-review-part{background:#f9fdff94;border-radius:17px}.ideas-app.classroom-liquid .ideas-review-heading{margin-bottom:20px}
+.ideas-app.classroom-liquid .ideas-camera-actions{gap:12px}.ideas-app.classroom-liquid .ideas-delete-title{font-size:23px}
+.ideas-app.classroom-liquid .ideas-image-attachment{border-radius:16px;background:#edf7fcbd}.ideas-app.classroom-liquid .ideas-audio-attachment{border-radius:16px;background:#edf7fcbd}
+@media(max-width:760px){.ideas-app.classroom-liquid .ideas-shell{padding:15px;gap:14px}.ideas-app.classroom-liquid .ideas-topbar{min-height:66px;padding:14px 20px}.ideas-app.classroom-liquid .ideas-class{font-size:15px}.ideas-app.classroom-liquid .ideas-workspace{padding:17px}.ideas-app.classroom-liquid .ideas-steps{padding:13px 17px;gap:24px}.ideas-app.classroom-liquid .ideas-tabs button{padding:9px 17px}.ideas-app.classroom-liquid .ideas-submit-row{padding:14px 17px}.ideas-app.classroom-liquid .ideas-composer-controls{flex-wrap:wrap}.ideas-app.classroom-liquid .ideas-ink-toolbar{max-width:100%;flex-wrap:wrap}.ideas-app.classroom-liquid .ideas-ink-toolbar .ideas-button{padding:9px 12px}.ideas-app.classroom-liquid .ideas-form{border-radius:23px}}
+@media(max-width:480px){.ideas-app.classroom-liquid h1{font-size:24px}.ideas-app.classroom-liquid .ideas-class{max-width:140px}.ideas-app.classroom-liquid .ideas-topbar{padding-inline:16px;gap:12px}.ideas-app.classroom-liquid .ideas-tabs{align-self:stretch;justify-content:space-between}.ideas-app.classroom-liquid .ideas-tabs button{padding:9px 11px;font-size:16px;flex:1}.ideas-app.classroom-liquid .ideas-composer-actions{gap:7px}.ideas-app.classroom-liquid .ideas-composer-actions .ideas-button{font-size:16px;min-width:0;flex:1;padding:9px 8px}.ideas-app.classroom-liquid .ideas-submit-row{flex-wrap:wrap}.ideas-app.classroom-liquid .ideas-submit-status{flex-basis:100%}.ideas-app.classroom-liquid .ideas-submit-row>.ideas-button{margin-left:auto}.ideas-app.classroom-liquid .ideas-steps li{font-size:16px}.ideas-app.classroom-liquid .ideas-steps{gap:15px}.ideas-app.classroom-liquid :is(.ideas-help,.ideas-counter,.ideas-item-meta,.ideas-author){font-size:15px}.ideas-app.classroom-liquid .ideas-ink-toolbar .ideas-button{font-size:16px;padding:8px}.ideas-app.classroom-liquid .ideas-item{padding:20px}.ideas-paper-dialog .ideas-paper-shell{padding:16px}.ideas-paper-dialog .ideas-paper-footer{flex-wrap:wrap}}
+@media(max-height:650px) and (min-width:481px){.ideas-app.classroom-liquid .ideas-topbar{min-height:58px;padding-block:10px}.ideas-app.classroom-liquid .ideas-shell{padding-top:12px;gap:12px}.ideas-app.classroom-liquid .ideas-steps{padding-block:10px}.ideas-app.classroom-liquid .ideas-composer-actions{margin-bottom:12px}.ideas-app.classroom-liquid .ideas-workspace{padding-top:15px}}

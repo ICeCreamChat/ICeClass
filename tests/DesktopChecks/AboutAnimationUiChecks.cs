@@ -43,7 +43,7 @@ public sealed class AboutAnimationUiApp : Application
         window.Height = 660; window.SizeToContent = SizeToContent.Manual; window.CanResize = true;
         window.MinWidth = 600; window.MinHeight = 500;
         DesktopStyle.KeepWindowInWorkingArea(window);
-        window.Content = AboutContent.Build("教师端", DesktopUpdates.CurrentVersion, "", "", window.Close);
+        window.Content = AboutContent.Build("教师端", DesktopUpdates.CurrentVersion, window.Close);
         void Assert(bool value, string label) { if (!value) throw new InvalidOperationException(label); checks.Add(label); }
         var lifetime = (IClassicDesktopStyleApplicationLifetime)ApplicationLifetime!;
         try
@@ -68,6 +68,8 @@ public sealed class AboutAnimationUiApp : Application
                 }
                 window.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "致谢名单")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var replay = Stopwatch.StartNew();
+                while (!mascot.IsPlaying && replay.Elapsed.TotalSeconds < 2) await Task.Delay(20);
                 Assert(mascot.IsPlaying, $"{width}: returning to teacher acknowledgements replays the greeting");
             }
             if (AboutAnimationUiChecks.Preview)

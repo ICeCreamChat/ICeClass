@@ -294,7 +294,7 @@
       else if (count > 3) $('draftNotice').textContent = '手写与图片合计最多 3 份，请删去一张图片。';
       else if (state.draft.rawAudio) $('draftNotice').textContent = '录音尚未保存，请重试保存或删除这段录音。';
       else if (hasContent() && state.storageAvailable === false) $('draftNotice').textContent = '草稿仅保留在当前窗口，请勿关闭。';
-      else if (reviewing) $('draftNotice').textContent = '确认后发送给创意评审。';
+      else if (reviewing) $('draftNotice').textContent = '提交给创意评审';
       else if (hasContent() && state.storageAvailable === true) $('draftNotice').textContent = '草稿已保存在本机。';
       else $('draftNotice').textContent = '手写、语音和图片可以一起提交。';
       updateVoiceUI();

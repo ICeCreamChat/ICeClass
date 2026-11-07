@@ -27,7 +27,7 @@ internal sealed class IslandSettingsWindow : Window
         var body = new StackPanel { Spacing = 16, MaxWidth = 656, HorizontalAlignment = HorizontalAlignment.Stretch };
         body.Children.Add(new StackPanel { Spacing = 4, Children = {
             ClassroomStyle.Title("教室浮岛设置"),
-            ClassroomStyle.Caption("课表与提醒由教师端配置；在这里管理本机外观、自动化应用与预览。") } });
+            ClassroomStyle.Caption("管理本机外观与自动化应用；课表和提醒由教师端配置。") } });
         var pairedFields = new List<(Grid Grid, Control Left, Control Right)>();
         var previewRows = new List<(Grid Grid, Control Action)>();
         Grid Pair(Control left, Control right)
@@ -38,7 +38,7 @@ internal sealed class IslandSettingsWindow : Window
         }
         Button ActionButton(string label)
         {
-            var button = ClassroomStyle.Button(label); button.FontSize = 14; button.MinHeight = 40;
+            var button = ClassroomStyle.Button(label); button.FontSize = 16; button.MinHeight = 40;
             button.Padding = new Thickness(12, 6); button.HorizontalAlignment = HorizontalAlignment.Left;
             return button;
         }
@@ -49,7 +49,7 @@ internal sealed class IslandSettingsWindow : Window
                 ClassroomStyle.Text(title, 14, true), ClassroomStyle.Text(description, 13, muted: true) } });
             Grid.SetColumn(action, 1); row.Children.Add(action); previewRows.Add((row, action)); return row;
         }
-        var independent = new CheckBox { Content = "本机使用独立外观", IsChecked = local.Appearance is not null, FontSize = 14 };
+        var independent = new CheckBox { Content = "本机使用独立外观", IsChecked = local.Appearance is not null, FontSize = 16 };
         var appearanceHint = ClassroomStyle.Caption("");
         var form = new StackPanel { Spacing = 12 };
         void UpdateAppearanceMode()
@@ -76,13 +76,13 @@ internal sealed class IslandSettingsWindow : Window
         form.Children.Add(ClassroomStyle.Field("位置", position));
         form.Children.Add(Pair(ClassroomStyle.Field("宽度 (DIP)", width), ClassroomStyle.Field("不透明度 (%)", opacity)));
         form.Children.Add(Pair(ClassroomStyle.Field("水平偏移", offsetX), ClassroomStyle.Field("垂直偏移", offsetY)));
-        var through = new CheckBox { Content = "允许鼠标穿透", IsChecked = appearance.ClickThrough, FontSize = 14 };
-        var fullscreen = new CheckBox { Content = "全屏应用时自动隐藏", IsChecked = appearance.HideFullscreen, FontSize = 14 };
+        var through = new CheckBox { Content = "允许鼠标穿透", IsChecked = appearance.ClickThrough, FontSize = 16 };
+        var fullscreen = new CheckBox { Content = "全屏应用时自动隐藏", IsChecked = appearance.HideFullscreen, FontSize = 16 };
         form.Children.Add(ClassroomStyle.SettingsDivider());
         form.Children.Add(new StackPanel { Spacing = 0, Children = { through,
             ClassroomStyle.Text("启用后，从教室首页或托盘恢复悬浮岛操作。", 13, muted: true) } });
         form.Children.Add(fullscreen);
-        var motion = new CheckBox { Content = "播放浮岛动画", IsChecked = local.AnimationsEnabled, FontSize = 14 };
+        var motion = new CheckBox { Content = "播放浮岛动画", IsChecked = local.AnimationsEnabled, FontSize = 16 };
         AutomationProperties.SetName(motion, "播放浮岛动画");
         body.Children.Add(ClassroomStyle.SettingsSection("外观与显示", new StackPanel { Spacing = 12, Children = {
             new StackPanel { Spacing = 2, Children = { motion,

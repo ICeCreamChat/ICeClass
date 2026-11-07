@@ -18,8 +18,8 @@ internal sealed class ComputerControlSettingsWindow : Window
         Background = DesktopStyle.Brush("#F5F7FB");
         DesktopStyle.KeepWindowInWorkingArea(this); WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var policy = initialPolicy ?? ClassroomAgentPolicy.Load();
-        var enabled = new CheckBox { Content = "允许有本班操作权限的教师使用班班控制本机", IsChecked = policy.Enabled, FontSize = 14 };
-        var interaction = new CheckBox { Content = "允许打开课件、操作应用与填写内容", IsChecked = policy.AllowInteraction, FontSize = 14 };
+        var enabled = new CheckBox { Content = "允许有本班操作权限的教师使用班班控制本机", IsChecked = policy.Enabled, FontSize = 16 };
+        var interaction = new CheckBox { Content = "允许打开课件、操作应用与填写内容", IsChecked = policy.AllowInteraction, FontSize = 16 };
         var status = ClassroomStyle.Text(agent.Status, 14);
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         var stop = ClassroomStyle.Button("立即停止电脑操作");
@@ -38,7 +38,7 @@ internal sealed class ComputerControlSettingsWindow : Window
                 ClassroomStyle.Caption("仅操作已绑定教室和允许的应用。关闭此权限会立即停止后续输入。"), stop, status } }) } };
         var apps = new StackPanel { Spacing = 8 };
         var folders = new StackPanel { Spacing = 8 };
-        var allFolders = new CheckBox { Content = "允许访问本机所有文件夹", IsChecked = policy.AllowAllFolders, FontSize = 14,
+        var allFolders = new CheckBox { Content = "允许访问本机所有文件夹", IsChecked = policy.AllowAllFolders, FontSize = 16,
             Name = "AllowAllFolders" };
         void RenderApps()
         {

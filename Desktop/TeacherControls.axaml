@@ -1,0 +1,112 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Teacher-only materials. Shared native controls keep their existing roles. -->
+  <Style Selector="Window.teacher-surface">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="Foreground" Value="#193C59" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.native-button, Window.teacher-surface Button.native-flyout-action">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Padding" Value="18,10" />
+    <Setter Property="CornerRadius" Value="13" />
+    <Setter Property="Foreground" Value="#234F73" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="#B8FFFFFF" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.native-primary">
+    <Setter Property="Foreground" Value="#075CAD" />
+    <Setter Property="Background" Value="#66B6DFFA" />
+    <Setter Property="BorderBrush" Value="#B3A9D6F8" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.native-button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Window.teacher-surface Button.native-flyout-action:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#65FFFFFF" />
+    <Setter Property="BorderBrush" Value="#E6FFFFFF" />
+    <Setter Property="TextElement.Foreground" Value="#174E79" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.native-button:pressed /template/ ContentPresenter#PART_ContentPresenter, Window.teacher-surface Button.native-flyout-action:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#509BCBF5" />
+    <Setter Property="BorderBrush" Value="#8BBCE2" />
+    <Setter Property="TextElement.Foreground" Value="#075CAD" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.native-document">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="#3E5B72" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.native-document.selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="#005DBF" />
+    <Setter Property="Background" Value="#75F7FCFF" />
+    <Setter Property="BorderBrush" Value="#B8FFFFFF" />
+  </Style>
+  <Style Selector="Window.teacher-surface Button.toolbar-action">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="MinHeight" Value="38" />
+    <Setter Property="Padding" Value="13,7" />
+    <Setter Property="CornerRadius" Value="11" />
+  </Style>
+  <Style Selector="Window.teacher-surface TextBox, Window.teacher-surface ComboBox, Window.teacher-surface NumericUpDown">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Background" Value="#60FFFFFF" />
+    <Setter Property="Foreground" Value="#193C59" />
+    <Setter Property="BorderBrush" Value="#8C92B4CC" />
+  </Style>
+  <Style Selector="Window.teacher-surface TextBox /template/ TextBlock#PART_Watermark">
+    <Setter Property="Foreground" Value="#46637A" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Window.teacher-surface TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="#75FFFFFF" />
+    <Setter Property="BorderBrush" Value="#6F9DBD" />
+  </Style>
+  <Style Selector="Window.teacher-surface TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="#60FFFFFF" />
+    <Setter Property="BorderBrush" Value="#005ED6" />
+    <Setter Property="BoxShadow" Value="0 0 0 3 #1C005ED6" />
+  </Style>
+  <Style Selector="Window.teacher-surface ComboBox:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="#75FFFFFF" />
+    <Setter Property="BorderBrush" Value="#6F9DBD" />
+  </Style>
+  <Style Selector="Window.teacher-surface ComboBox:pressed /template/ Border#Background">
+    <Setter Property="Background" Value="#75E6F6FF" />
+    <Setter Property="BorderBrush" Value="#005ED6" />
+  </Style>
+  <Style Selector="Window.teacher-surface ComboBox:focus-visible /template/ Border#HighlightBackground">
+    <Setter Property="BorderBrush" Value="#005ED6" />
+  </Style>
+  <Style Selector="Window.teacher-surface ComboBox /template/ Border#PopupBorder">
+    <Setter Property="Background" Value="#ECEDF8FF" />
+    <Setter Property="BorderBrush" Value="#D9FFFFFF" />
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="BoxShadow" Value="0 12 28 0 #28193C59" />
+  </Style>
+  <Style Selector="Window.teacher-surface CheckBox">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Foreground" Value="#193C59" />
+    <Setter Property="MinHeight" Value="40" />
+  </Style>
+  <Style Selector="Window.teacher-surface Border.native-card">
+    <Setter Property="CornerRadius" Value="25" />
+    <Setter Property="BorderBrush" Value="#B8FFFFFF" />
+    <Setter Property="BoxShadow" Value="0 8 22 0 #14285775" />
+  </Style>
+  <Style Selector="Window.teacher-surface Border.native-dialog-footer">
+    <Setter Property="Padding" Value="24,16" />
+    <Setter Property="BorderBrush" Value="#3D8DAEC0" />
+  </Style>
+  <Style Selector="Window.teacher-surface Border.native-flyout-surface">
+    <Setter Property="CornerRadius" Value="24" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="#C2FFFFFF" />
+    <Setter Property="BoxShadow" Value="0 12 30 0 #30193C59" />
+  </Style>
+</Styles>
