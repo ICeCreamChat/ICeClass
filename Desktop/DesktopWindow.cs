@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Input;
@@ -19,7 +20,7 @@ internal sealed partial class DesktopWindow : Window
     private readonly string _endpoint;
     private readonly string _initialAddress;
     private readonly bool _main;
-    private readonly ReadingBrowser _browser = new() { HandleEscapeKey = false, HandleFullscreenKey = false };
+    private readonly ReadingBrowser _browser = new() { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _status = DesktopStyle.Text("正在打开学校平台…", 12, muted: true);
     private readonly StackPanel _error = new() { MaxWidth = 460, Spacing = 16, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(32) };
@@ -103,6 +104,7 @@ internal sealed partial class DesktopWindow : Window
         ToolTip.SetTip(_status, _endpoint);
         Grid.SetColumn(actions, 2); toolbar.Children.Add(actions);
         var surface = new Grid(); surface.Children.Add(_browser);
+        AutomationProperties.SetLiveSetting(_errorTitle, AutomationLiveSetting.Polite);
         _error.Children.Add(_errorTitle); _error.Children.Add(_errorNote); _error.Children.Add(_retry); _error.Children.Add(_runtime); surface.Children.Add(_error);
         _retry.IsVisible = false; _runtime.IsVisible = false;
         _retry.Click += async (_, _) =>
@@ -149,7 +151,7 @@ internal sealed partial class DesktopWindow : Window
     private async Task InitializePage()
     {
         if (_initialized || _disposed) return;
-        _retry.IsVisible = false; _runtime.IsVisible = false; _progress.IsVisible = true;
+        ShowLoading();
         try
         {
             await _browser.InitializeAsync(DesktopSettings.ProfileDirectory(App.DataDirectory, _endpoint), _lifetime.Token);
@@ -194,7 +196,7 @@ internal sealed partial class DesktopWindow : Window
                 _teacherDocumentActive = false; _teacherActions.InvalidateDocument();
                 _unifiedHeader = false; _toolbar.IsVisible = WindowState != WindowState.FullScreen;
                 _updateDownload?.Cancel(); _recordingFrames.Clear();
-                _navigated = false; _progress.IsVisible = true; SetStatus("正在连接…");
+                _navigated = false; ShowLoading(); SetStatus("正在连接…");
                 _navigationWatch.Restart();
                 _app.Diagnostics.Record("navigation", "开始加载", args.Uri);
                 _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose(); _navigationTimeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
@@ -488,7 +490,6 @@ internal sealed partial class DesktopWindow : Window
     private void Navigate()
     {
         if (_disposed || _browser.Core is null) return;
-        _error.IsVisible = false; _browser.IsVisible = true; _browser.SetPageVisible(true);
         try
         {
             if (_browser.Core.Source is { Length: > 0 } source && DesktopSettings.SameOrigin(_endpoint, source)) _browser.Core.Reload();
@@ -500,6 +501,12 @@ internal sealed partial class DesktopWindow : Window
     {
         try { await Task.Delay(TimeSpan.FromSeconds(35), token); if (!_disposed && !_navigated) { _browser.Core?.Stop(); ShowError("连接时间有些长", "网络可能较弱。请检查网络后重试，或稍后再打开工作台。"); } }
         catch (OperationCanceledException) { }
+    }
+    private void ShowLoading()
+    {
+        _browser.SetPageVisible(false); _browser.IsVisible = false;
+        _errorTitle.Text = "正在准备工作台"; _errorNote.Text = "首次打开可能需要片刻，请稍候。";
+        _error.IsVisible = true; _retry.IsVisible = false; _runtime.IsVisible = false; _progress.IsVisible = true;
     }
     private void ShowPage() { _error.IsVisible = false; _browser.IsVisible = true; _browser.SetPageVisible(IsVisible); }
     private void ShowError(string title, string note)

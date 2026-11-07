@@ -7,6 +7,7 @@
   const filters = {role: 'all', page: 1};
   const pageSize = 12;
   let context;
+  let menuTrigger;
   function node(tag, text, cls) {
     const item = document.createElement(tag);
     if (text !== undefined) item.textContent = text;
@@ -41,15 +42,19 @@
   function button(text, handler, cls = 'btn') {
     const item = node('button', text, cls); item.type = 'button'; item.onclick = handler; return item;
   }
-  function closeMenu() {
+  function closeMenu(returnFocus = false) {
     const menu = $('userActionsPopover');
     if (menu?.matches(':popover-open')) menu.hidePopover();
+    if (returnFocus && menuTrigger?.isConnected) menuTrigger.focus();
   }
   function more(user, anchor) {
     const menu = $('userActionsPopover');
     const alreadyOpen = menu.matches(':popover-open') && menu.dataset.user === user.id;
     closeMenu();
     if (alreadyOpen) return;
+    menuTrigger = anchor;
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', user.display_name + '的账号操作');
     menu.dataset.user = user.id;
     menu.replaceChildren(node('span', user.display_name + '的账号', 'user-menu-title'));
     for (const [label, action, danger] of [
@@ -57,7 +62,8 @@
       [Number(user.enabled) === 1 ? '停用账号' : '启用账号', () => context.onToggle(user)],
       ['删除账号', () => context.onDelete(user), true]
     ]) {
-      menu.append(button(label, () => { closeMenu(); action(); }, 'btn' + (danger ? ' danger' : '')));
+      const item = button(label, () => { closeMenu(); action(); }, 'btn' + (danger ? ' danger' : ''));
+      item.setAttribute('role', 'menuitem'); menu.append(item);
     }
     menu.showPopover();
     const box = anchor.getBoundingClientRect(), menuBox = menu.getBoundingClientRect();
@@ -123,11 +129,13 @@
       const actions = node('div', undefined, 'user-row-actions');
       if (user.canManage) {
         actions.append(button('编辑权限', () => context.onEdit(user), 'btn user-edit'));
-        const moreButton = button('更多', () => more(user, moreButton)); moreButton.setAttribute('aria-label', user.display_name + '的更多操作'); moreButton.setAttribute('aria-haspopup', 'menu'); actions.append(moreButton);
+        const moreButton = button('更多', () => more(user, moreButton)); moreButton.setAttribute('aria-label', user.display_name + '的更多操作'); moreButton.setAttribute('aria-haspopup', 'menu');
+        moreButton.setAttribute('aria-controls', 'userActionsPopover'); moreButton.setAttribute('aria-expanded', 'false'); actions.append(moreButton);
       } else actions.append(node('span', '当前账号', 'hint'));
       row.insertCell().append(actions);
     }
-    const wrap = node('div', undefined, 'table-wrap users-table-wrap'); wrap.append(table); container.append(wrap);
+    const wrap = node('div', undefined, 'table-wrap users-table-wrap'); wrap.tabIndex = 0;
+    wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', '用户列表，可左右滚动'); wrap.append(table); container.append(wrap);
   }
   function reset() { filters.role = 'all'; filters.page = 1; $('userSearch').value = ''; $('userGradeFilter').value = 'all'; $('userStatusFilter').value = 'all'; draw(); }
   for (const id of ['userSearch', 'userGradeFilter', 'userStatusFilter']) $(id).addEventListener(id === 'userSearch' ? 'input' : 'change', () => { filters.page = 1; draw(); });
@@ -135,7 +143,18 @@
   $('userClearFilters').onclick = reset;
   $('userPrevPage').onclick = () => { filters.page--; draw(); };
   $('userNextPage').onclick = () => { filters.page++; draw(); };
-  window.addEventListener('resize', closeMenu); window.addEventListener('scroll', closeMenu, true);
+  $('userActionsPopover').addEventListener('toggle', event => menuTrigger?.setAttribute('aria-expanded', String(event.newState === 'open')));
+  $('userActionsPopover').addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); closeMenu(true); return; }
+    if (!['ArrowDown','ArrowUp','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...$('userActionsPopover').querySelectorAll('button')];
+    const current = items.indexOf(document.activeElement);
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[index]?.focus();
+  });
+  window.addEventListener('resize', () => closeMenu()); window.addEventListener('scroll', () => closeMenu(), true);
   window.ICeClassUsers = {render(value) { context = value; draw(); }};
   window.dispatchEvent(new Event('iceclass-users-ready'));
 })();

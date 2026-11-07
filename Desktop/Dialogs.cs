@@ -31,6 +31,7 @@ internal static class Dialogs
     internal static Window CreateConfirmation(string title, string message, string action)
     {
         var window = Window(title); var cancel = Button("取消"); var accept = Button(action, true);
+        cancel.IsCancel = true;
         cancel.Click += (_, _) => window.Close(false); accept.Click += (_, _) => window.Close(true);
         var buttons = new Grid { ColumnDefinitions = new ColumnDefinitions("*,10,*") };
         buttons.Children.Add(cancel); Grid.SetColumn(accept, 2); buttons.Children.Add(accept);
@@ -45,6 +46,7 @@ internal static class Dialogs
     internal static Window CreateMessage(string title, string message)
     {
         var window = Window(title); var done = Button("知道了", true); done.Click += (_, _) => window.Close();
+        done.IsCancel = true; done.IsDefault = true;
         window.Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 16, Children = { DesktopStyle.Text(title, 20, true), DesktopStyle.Text(message, 14, muted: true), done } };
         return window;
     }
@@ -65,7 +67,9 @@ internal sealed class SettingsWindow : Window
         AutomationProperties.SetName(endpoint, "学校平台地址");
         var tray = new CheckBox { Content = "关闭窗口后收起到托盘", IsChecked = current.CloseToTray, FontSize = 14 };
         var error = DesktopStyle.Text("", 13); error.Foreground = DesktopStyle.Brush("#AC3D32"); error.IsVisible = false;
+        AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Polite);
         var cancel = Dialogs.Button("取消"); var save = Dialogs.Button("保存设置", true);
+        cancel.IsCancel = true;
         KeyDown += (_, args) => { if (args.Key == Key.Escape) { args.Handled = true; Close(null); } };
         cancel.Click += (_, _) => Close(null);
         save.Click += (_, _) =>

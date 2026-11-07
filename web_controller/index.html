@@ -306,7 +306,8 @@
           <h1>通知记录</h1>
           <div class="toolbar"><div class="field"><label for="historyClass">班级</label><select id="historyClass"></select></div><button id="refreshHistory" class="btn">刷新</button><button id="exportHistory" class="btn">导出 CSV</button></div>
         </div>
-        <div id="historyContainer"></div>
+        <p id="historyFeedback" class="hint" role="status" hidden></p>
+        <div id="historyContainer" aria-busy="false"></div>
       </section>
 
       <section id="view-classroom-voice" class="view hidden">
@@ -513,7 +514,8 @@
       const nativeClassroom = window.ICeClassVoiceHost?.classroomAccount === true && Boolean(window.chrome?.webview);
       let classroomIdentityTimer = null;
       const viewVisible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
-      let voiceRequest = 0, recentRequest = 0, presenceRequest = 0;
+      let voiceRequest = 0, recentRequest = 0, presenceRequest = 0, historyRequest = 0, historyLoading = false;
+      let historyClassLoaded = null;
       let recordingRequest = 0, recordingRequested = false, recordingTimer = null;
       let scheduleFieldId = 0;
       const roleLabels = { superadmin: "超级管理员", teacher: "班主任", subject_teacher: "任课老师", grade_leader: "年级部", director: "主任", principal: "校长" };
@@ -731,6 +733,7 @@
         if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
         if (state.csrf && (nativeClassroom && path !== "/api/session" || !["GET", "HEAD"].includes(options.method || "GET"))) headers.set("X-CSRF-Token", state.csrf);
         const response = await fetch(path, { credentials: "same-origin", ...options, headers });
+        if (path === "/api/session") state.preview = response.headers.get("X-ICeClass-Preview") === "1";
         const type = response.headers.get("Content-Type") || "";
         const data = type.includes("application/json") ? await response.json() : await response.text();
         if (response.status === 401 && !["/api/session", "/api/auth/login"].includes(path)) {
@@ -811,10 +814,12 @@
         document.querySelector('[data-view="classroom-voice"]').classList.toggle('hidden', !user.permissions.receiveClassroomVoice);
         document.querySelector('[data-view="homework"]').classList.toggle('hidden', nativeClassroom);
         configureStaffOptions();
-        await loadClasses();
+        try { await loadClasses(); }
+        catch (error) { toast("班级载入失败，请刷新工作台后重试：" + error.message); }
         prepareIdeasAdmin();
         window.dispatchEvent(new Event("iceclass-ready"));
-        await Promise.all([loadHistory(), loadRecent(), loadClassroomVoice(), loadQuietHours(), isManager() ? Promise.all([loadTeachers(), loadDevices()]) : Promise.resolve()]);
+        const loaded = await Promise.allSettled([loadHistory(), loadRecent(), loadClassroomVoice(), loadQuietHours(), ...(isManager() ? [loadTeachers(), loadDevices()] : [])]);
+        for (const result of loaded) if (result.status === "rejected") toast(result.reason.message || "部分内容未能载入，请刷新后重试。");
         $("settingsAccount").textContent = `${user.displayName}（${user.username}）`;
         updatePresence();
         clearInterval(state.presenceTimer);
@@ -862,12 +867,32 @@
 
       async function loadHistory(append = false) {
         const classId = $("historyClass")?.value || "";
+        if (append && (historyLoading || historyClassLoaded !== classId)) return;
+        const request = ++historyRequest;
         const offset = append ? state.historyOffset : 0;
-        const data = await api(`/api/history?limit=100&offset=${offset}${classId ? `&classId=${encodeURIComponent(classId)}` : ""}`);
-        state.history = append ? [...state.history, ...data.history] : data.history;
-        state.historyOffset = offset + data.history.length;
-        state.historyHasMore = Boolean(data.hasMore);
-        renderHistory();
+        historyLoading = true; $("historyContainer").setAttribute("aria-busy", "true");
+        $("refreshHistory").disabled = true; $("historyFeedback").hidden = true;
+        const more = $("historyContainer").querySelector('.load-more');
+        if (more) { more.disabled = true; if (append) more.textContent = "正在加载…"; }
+        try {
+          const data = await api(`/api/history?limit=100&offset=${offset}${classId ? `&classId=${encodeURIComponent(classId)}` : ""}`);
+          if (request !== historyRequest) return;
+          historyClassLoaded = classId;
+          state.history = append ? [...state.history, ...data.history] : data.history;
+          state.historyOffset = offset + data.history.length;
+          state.historyHasMore = Boolean(data.hasMore);
+          renderHistory();
+        } catch (error) {
+          if (request !== historyRequest) return;
+          $("historyFeedback").textContent = "刷新失败，当前为上次读取的记录。请重试。";
+          $("historyFeedback").hidden = false; throw error;
+        } finally {
+          if (request === historyRequest) {
+            historyLoading = false; $("historyContainer").setAttribute("aria-busy", "false"); $("refreshHistory").disabled = false;
+            const next = $("historyContainer").querySelector('.load-more');
+            if (next) { next.disabled = historyClassLoaded !== ($("historyClass")?.value || ""); next.textContent = "加载更多"; }
+          }
+        }
       }
 
       async function loadRecent() {
@@ -897,9 +922,18 @@
         renderClassroomVoice();
       }
 
+      function releaseClassroomVoiceAudio(audio) {
+        audio.pause();
+        const source = audio.getAttribute("src");
+        if (source?.startsWith("blob:")) URL.revokeObjectURL(source);
+        audio.removeAttribute("src"); audio.load();
+      }
+      window.addEventListener("pagehide", () => $("classroomVoiceContainer").querySelectorAll("audio").forEach(releaseClassroomVoiceAudio));
+
       function renderClassroomVoice() {
         const container = $("classroomVoiceContainer");
         if (!container) return;
+        container.querySelectorAll("audio").forEach(releaseClassroomVoiceAudio);
         container.replaceChildren();
         if (!state.classroomVoice.length) return container.append(el("div", "empty", "暂无语音留言"));
         for (const item of state.classroomVoice) {
@@ -917,7 +951,7 @@
           audio.controls = true; audio.preload = "none"; audio.className = "hidden";
           play.addEventListener("click", async () => {
             if (audio.src) {
-              try { status.textContent = "正在播放"; await audio.play(); return; } catch { audio.removeAttribute("src"); }
+              try { status.textContent = "正在播放"; await audio.play(); return; } catch { releaseClassroomVoiceAudio(audio); }
             }
             play.disabled = true;
             play.textContent = "正在加载…";
@@ -926,12 +960,15 @@
               const response = await fetch(item.audio_url, { credentials: "same-origin", cache: "no-store" });
               if (!response.ok) throw new Error(`HTTP ${response.status}`);
               const blob = await response.blob();
+              if (!node.isConnected) return;
               audio.src = URL.createObjectURL(blob);
               audio.classList.remove("hidden");
               await audio.play();
               play.textContent = "重新播放";
               status.textContent = "正在播放";
             } catch (error) {
+              releaseClassroomVoiceAudio(audio); audio.classList.add("hidden");
+              if (!node.isConnected) return;
               toast("语音暂时无法播放，可能已清理或登录已过期。请刷新后重试。");
               play.textContent = "播放语音";
               status.textContent = "播放失败：语音已清理或登录已过期";
@@ -1095,6 +1132,7 @@
         content.append(wrapTable(table));
         if (state.historyHasMore) {
           const more = actionButton("加载更多", () => loadHistory(true).catch(error => toast(error.message)));
+          more.disabled = historyLoading || historyClassLoaded !== ($("historyClass")?.value || "");
           more.classList.add("block", "load-more"); content.append(more);
         }
         container.replaceChildren(content);

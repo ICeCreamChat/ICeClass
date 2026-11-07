@@ -2,6 +2,12 @@ using ICeClass.Desktop;
 using ICeClass.Updates;
 using System.Text;
 
+if (args is ["--teacher-ui-checks", var teacherUiOutput])
+{
+    TeacherUiChecks.Run(teacherUiOutput);
+    return;
+}
+
 if (args is ["--about-animation-checks", var aboutOutput])
 {
     AboutAnimationUiChecks.Run(aboutOutput);

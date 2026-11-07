@@ -106,19 +106,16 @@
     const initials = name.split(/\s+/).filter(Boolean);
     return initials.length > 1 ? initials.slice(0, 2).map(part => [...part][0]).join('').toUpperCase() : [...name].slice(0, 3).join('') || '师';
   }
-  window.addEventListener('iceclass-ready', async () => {
+  window.addEventListener('iceclass-ready', () => {
     const user = window.ICeClass.state.user;
     $('userAvatar').textContent = avatarLabel(user);
     $('userAvatar').title = user.displayName + '（' + user.username + '）';
     syncNavigation();
-    try {
-      const response = await fetch('/api/session', {cache:'no-store'});
-      if (response.headers.get('X-ICeClass-Preview') === '1' && !document.getElementById('previewNotice')) {
-        const notice = document.createElement('p'); notice.id = 'previewNotice'; notice.className = 'preview-notice';
-        notice.textContent = '本地验收 · 当前展示演示数据。';
-        $('mainContent').prepend(notice);
-      }
-    } catch {}
+    if (window.ICeClass.state.preview && !document.getElementById('previewNotice')) {
+      const notice = document.createElement('p'); notice.id = 'previewNotice'; notice.className = 'preview-notice';
+      notice.textContent = '本地验收 · 当前展示演示数据。';
+      $('mainContent').prepend(notice);
+    }
   });
   syncNavigation();
 })();
