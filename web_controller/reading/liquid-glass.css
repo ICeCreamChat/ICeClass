@@ -85,7 +85,6 @@
 .reading-game .stat-divider{background:#8ba9bb59}
 .reading-game .welcome-emblem{background:#fff0d88a}
 .reading-liquid .panel-heading-actions .panel-pin[aria-pressed="true"]{background:#daedfc70;color:#075cad;border-color:#84b6dd80}
-.reading-liquid .panel-icon-button:focus-visible{outline-color:#005ed6}
 .reading-game .modal-content{border-radius:25px;border-color:#b3d0e5;padding:26px;color:#193c59;max-height:calc(100dvh - 36px);overflow:auto}
 .reading-game .modal-content>.lg-lens{background:linear-gradient(125deg,#f5fcffd1,#edf7ffc2)}
 .reading-game .modal-content h2{font-size:26px;color:#193c59}.reading-game .modal-content :is(label,p,span){font-size:17px}.reading-game .modal-content .help{font-size:16px;color:#4e6c83}
@@ -97,7 +96,6 @@
 .reading-game .radio-options label:has(input[type="radio"]:checked){border-color:#84b6dd;background:#daedfc;box-shadow:none}
 .reading-game .radio-options input[type="radio"]:checked+span{color:#005dbf}
 .reading-game .radio-options label{background:#f8fdffb8;border-color:#a9c2d780}
-.reading-game .radio-options label:focus-within{outline-color:#005ed6}
 .reading-game #settlement-text{border-color:#b3d0e5}
 .reading-game #copyright-container{font-size:15px;color:#4e6c83}.reading-game .stats-box{border-color:#95b7cc60}.reading-game .bar-container{background:#aecbdc66}.reading-game #status-label{font-size:16px;color:#345c7a!important;background:transparent}
 .reading-game:is([data-material="white"],.reduce-transparency) #dashboard .dash-btn.lg-pane,.reading-game:is([data-material="white"],.reduce-transparency) #big-start-btn.lg-pane{background:#f4faff!important}

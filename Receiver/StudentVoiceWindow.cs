@@ -25,6 +25,7 @@ public sealed class StudentVoiceWindow : Window
     private readonly Action? _openSettings, _openAbout, _showIsland, _showBanban;
     private readonly Action<string>? _openIdeas;
     private readonly Action<long>? _acknowledge;
+    private readonly Func<string, object?>? _selfStudy;
     private readonly ReceiverConfig _config;
     private readonly Grid _surface = new();
     private readonly Border _notice;
@@ -56,12 +57,13 @@ public sealed class StudentVoiceWindow : Window
 
     public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null,
         Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null,
-        Action<string>? openIdeas = null, Action<long>? acknowledge = null)
+        Action<string>? openIdeas = null, Action<long>? acknowledge = null, Func<string, object?>? selfStudy = null)
     {
         ClassroomStyle.Apply(this);
         _config = config; _scope = BindingScope(config); _send = send; _openReading = openReading;
         _openSettings = openSettings; _openAbout = openAbout; _showIsland = showIsland;
         _showBanban = showBanban; _openIdeas = openIdeas; _acknowledge = acknowledge;
+        _selfStudy = selfStudy;
         Title = $"ICeClass 班伴 · {config.ClassName}";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
         Width = 1280; Height = 850; MinWidth = 720; MinHeight = 520;
@@ -211,6 +213,11 @@ public sealed class StudentVoiceWindow : Window
                     var path = message.GetProperty("path").GetString() ?? "";
                     JsonElement? body = message.TryGetProperty("body", out var b) && b.ValueKind != JsonValueKind.Null ? b : null;
                     value = await _api.SendAsync(_config, path, body, _pageLifetime.Token); break;
+                case "self-study":
+                    var operation = message.TryGetProperty("operation", out var op) ? op.GetString() : "status";
+                    if (operation is not ("status" or "pause")) throw new ArgumentException("晚自习操作无效。");
+                    value = _selfStudy?.Invoke(operation) ?? throw new InvalidOperationException("晚自习服务尚未启动。");
+                    break;
                 case "reading": if (_openReading is not null) await _openReading(); break;
                 case "voice": if (!_sending) {if (_recording) FinishRecording();else StartRecording();} break;
                 case "cancel-voice": if (_recording) {StopRecorder(); ResetVoice("录音已取消，可以重新开始。");} break;

@@ -405,6 +405,13 @@ internal sealed class ClassroomIslandWindow : Window
         await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    internal async Task<bool> WaitForLocalNoticeAsync(long sequence, CancellationToken token)
+    {
+        var shown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RequestAnimationFrame(_ => shown.TrySetResult(IsVisible && _view?.Notice?.Sequence == sequence));
+        return await shown.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+    }
+
     public void DockToPrimaryScreen()
     {
         var screen = Screens.Primary ?? Screens.ScreenFromWindow(this);

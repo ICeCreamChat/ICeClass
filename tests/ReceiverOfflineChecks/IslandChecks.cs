@@ -26,7 +26,7 @@ internal static class IslandChecks
             state.Present(snapshot ?? rules, (at ?? monday).ToUnixTimeMilliseconds(), online, opened);
         var active = View();
         Check(active.Clock == "07:25" && active.Date.Contains("周一"), "island uses the server clock in UTC+8");
-        Check(active.ReadingTitle == "早读时段" && active.ReadingDetail.Contains("07:20–07:40"), "overlapping scoring periods remain active when reminders are disabled");
+        Check(active.ReadingTitle == "早读时段" && active.ReadingDetail.Contains("07:20-07:40"), "overlapping scoring periods remain active when reminders are disabled");
         Check(active.ReadingDetail.Contains("15 分钟"), "merged period shows the remaining time without inventing gameplay progress");
         var ended = View(at: monday.AddMinutes(15));
         Check(ended.ReadingTitle == "早读待开始" && ended.ReadingDetail.Contains("10月26日 07:20"), "end boundary switches to the next weekly period");

@@ -121,7 +121,7 @@ class BanbanPlatform:
             cfg = self.f.reading.config()
             data['reading'] = {'enabled': cfg['enabled'], 'reminderEnabled': cfg.get('reminderEnabled', True),
                                'threshold': cfg['threshold'], 'periods': cfg['periods'],
-                               'thresholdUnit': '应用归一化声量 0–100，不是声学分贝 dB',
+                               'thresholdUnit': '应用归一化声量 0-100，不是声学分贝 dB',
                                'settingsPath': '早读统计 → 全校统计规则',
                                'inPeriod': inside_period(snapshot['generatedAt'], cfg)}
         return data
@@ -193,11 +193,11 @@ class BanbanPlatform:
                 finding('晨读统计', '已启用' if cfg['enabled'] else '未启用', 'reading')
                 for period in cfg['periods']:
                     clock = lambda m: f'{m // 60:02d}:{m % 60:02d}'
-                    finding('统计时段', '周' + '、'.join(str(d) for d in period['weekdays']) + f" · {clock(period['start'])}–{clock(period['end'])}", 'reading')
+                    finding('统计时段', '周' + '、'.join(str(d) for d in period['weekdays']) + f" · {clock(period['start'])}-{clock(period['end'])}", 'reading')
                 card['details'] += [f"声量门槛 {cfg['threshold']}；到点提醒{'已启用' if cfg['reminderEnabled'] else '未启用'}。"]
             finding('当前禁言', data['quiet']['activeName'] or '不在禁言时段', 'quiet')
             card['details'] += data['principles']
-            card['details'] += [f"{p['name']} · 周{'、'.join(str(d) for d in p['weekdays'])} · {p['startTime']}–{p['endTime']}" for p in data['quiet']['periods']]
+            card['details'] += [f"{p['name']} · 周{'、'.join(str(d) for d in p['weekdays'])} · {p['startTime']}-{p['endTime']}" for p in data['quiet']['periods']]
             action('reading'); action('quiet')
         elif topic == 'accounts':
             roles = self.db.all('''SELECT role,enabled,COUNT(*) amount FROM users WHERE deleted_at IS NULL GROUP BY role,enabled''')

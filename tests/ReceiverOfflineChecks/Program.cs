@@ -2,6 +2,14 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--self-study-checks"])
+{
+    try { SelfStudyChecks.Run(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--self-study-review", var selfStudyBinding]) { HomeworkReview.Run(selfStudyBinding, selfStudy: true); return; }
+
 if (args is ["--homework-review", var homeworkBinding]) { HomeworkReview.Run(homeworkBinding); return; }
 if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
 if (args is ["--classroom-home-checks"]) { await ClassroomHomeChecks.Run(); return; }

@@ -32,7 +32,6 @@
 .ideas-app button, .ideas-app summary, .ideas-app a { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .ideas-app button { cursor: pointer; }
 .ideas-app button:disabled { cursor: not-allowed; }
-.ideas-app :focus-visible { outline: 2px solid var(--ideas-focus); outline-offset: 2px; }
 .ideas-app h1, .ideas-app h2, .ideas-app h3, .ideas-app p { margin: 0; }
 .ideas-app h1, .ideas-app h2, .ideas-app h3 { overflow-wrap: anywhere; text-wrap: balance; }
 .ideas-app h1 { font-size: 20px; font-weight: 700; line-height: 1.4; }
@@ -112,7 +111,6 @@
 .ideas-app input, .ideas-app textarea, .ideas-app select { width: 100%; min-width: 0; min-height: 44px; padding: 9px 12px; border: 1px solid #b7cbe2; border-radius: 8px; background: var(--ideas-surface); color: var(--ideas-text); caret-color: var(--ideas-blue-text); }
 .ideas-app textarea { min-height: 120px; resize: vertical; line-height: 1.7; }
 .ideas-app input::placeholder, .ideas-app textarea::placeholder { color: #657489; opacity: 1; }
-.ideas-app input:focus-visible, .ideas-app textarea:focus-visible, .ideas-app select:focus-visible { outline: 2px solid var(--ideas-focus-soft); outline-offset: 1px; border-color: var(--ideas-focus); box-shadow: 0 0 0 3px var(--ideas-focus-soft); }
 .ideas-app input[aria-invalid="true"], .ideas-app textarea[aria-invalid="true"] { border-color: var(--ideas-error); }
 .ideas-app fieldset:disabled input, .ideas-app fieldset:disabled textarea { background: #f6f8fc; color: #435369; }
 .ideas-app .ideas-counter { justify-self: end; font-size: 13px; line-height: 1.5; color: var(--ideas-muted); font-variant-numeric: tabular-nums; }
@@ -176,7 +174,7 @@
 .ideas-app .ideas-item details[open] > summary { border-radius: 9px 9px 0 0; }
 .ideas-app .ideas-item.ideas-deletable summary { padding-inline-end: 104px; }
 .ideas-app .ideas-item-remove { position: absolute; inset-block-start: 12px; inset-inline-end: 14px; }
-.ideas-app .ideas-item summary:focus-visible { outline: 2px solid var(--ideas-focus); outline-offset: -3px; }
+.ideas-app .ideas-item summary:focus-visible { --focus-offset: -3px; }
 .ideas-app .ideas-item summary::marker { color: var(--ideas-blue-text); }
 .ideas-app .ideas-item summary:hover { background: var(--ideas-blue-soft); }
 .ideas-app .ideas-item-title { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
@@ -214,13 +212,11 @@
 .ideas-app .ideas-signing-options label:hover { background: #f4f8ff; }
 .ideas-app .ideas-signing-options label:has(input:checked) { border-color: #9fbfea; background: var(--ideas-blue-soft); color: var(--ideas-blue-text); }
 .ideas-app .ideas-signing-options input[type="radio"] { flex: none; width: 18px; height: 18px; min-width: 18px; min-height: 18px; margin: 0; padding: 0; accent-color: var(--ideas-blue-text); cursor: pointer; box-shadow: none; }
-.ideas-app .ideas-signing-options input[type="radio"]:focus-visible { outline: 2px solid var(--ideas-focus); outline-offset: 3px; }
 .ideas-app .ideas-signing-options label:has(input:disabled) { color: #7b8da3; cursor: not-allowed; }
 .ideas-app .ideas-signing-options input:disabled { cursor: not-allowed; }
 .ideas-app #signatureError { margin-top: 8px; font-size: 14px; line-height: 1.5; }
 .ideas-app #cancelSubmit, .ideas-app #confirmSubmit { min-width: 104px; }
 .ideas-app .ideas-paper-dialog { color: var(--ideas-text); border-color: var(--ideas-line); }
-.ideas-app .ideas-paper-dialog :focus-visible { outline: 2px solid var(--ideas-focus); outline-offset: 2px; }
 .ideas-app .ideas-paper-dialog .ideas-paper-button { min-height: 44px; color: var(--ideas-text); border-color: #bdcfe3; border-radius: 8px; }
 .ideas-app .ideas-paper-dialog .ideas-paper-primary { color: #fff; border-color: var(--ideas-blue); }
 @media (max-width: 600px) {

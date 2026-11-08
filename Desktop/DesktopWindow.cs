@@ -39,6 +39,8 @@ internal sealed partial class DesktopWindow : Window
     private WindowState _beforeFullscreen;
     private CancellationTokenSource? _navigationTimeout;
     private ClassroomVoiceInbox? _voiceInbox;
+    private SelfStudyInbox? _selfStudyInbox;
+    private SelfStudyNoticeWindow? _selfStudyNotice;
     private ClassroomVoiceNoticeWindow? _voiceNotice;
     private TeacherFeedbackWindow? _feedbackWindow;
     private bool _openingFeedback;
@@ -259,6 +261,8 @@ internal sealed partial class DesktopWindow : Window
             {
                 _voiceInbox = new ClassroomVoiceInbox(_endpoint, ReadSessionAsync, diagnostics: _app.Diagnostics);
                 _voiceInbox.Changed += UpdateVoiceNotice;
+                _selfStudyInbox = new SelfStudyInbox(_endpoint, ReadSessionAsync);
+                _selfStudyInbox.Changed += UpdateSelfStudyNotice;
                 _ = WatchClassroomVoiceAsync(_lifetime.Token);
                 _ = WatchDesktopUpdatesAsync(_lifetime.Token);
             }
@@ -469,6 +473,10 @@ internal sealed partial class DesktopWindow : Window
                 catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
                 catch (Exception error) when (error is HttpRequestException or IOException or System.Text.Json.JsonException)
                 { /* Keep the current reminder through temporary connection failures. */ }
+                try { await _selfStudyInbox!.RefreshAsync(token); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                catch (Exception error) when (error is HttpRequestException or IOException or System.Text.Json.JsonException)
+                { /* The next bounded poll retries metadata, never model calls. */ }
             }
             while (await timer.WaitForNextTickAsync(token));
         }
@@ -485,6 +493,24 @@ internal sealed partial class DesktopWindow : Window
         _voiceNotice = new ClassroomVoiceNoticeWindow(_voiceInbox, this, StartVoiceDownload);
         _voiceNotice.Closed += (_, _) => _voiceNotice = null;
         _voiceNotice.Show();
+    }
+
+    private void UpdateSelfStudyNotice()
+    {
+        if (_disposed || _selfStudyInbox is null) return;
+        if (_selfStudyInbox.Pending.Count == 0)
+        {
+            var previous = _selfStudyNotice; _selfStudyNotice = null; previous?.Close(); return;
+        }
+        if (_selfStudyNotice is not null) { _selfStudyNotice.Update(); return; }
+        var notice = new SelfStudyNoticeWindow(_selfStudyInbox, this, () => {
+            Show(); WindowState = WindowState.Normal; Activate();
+            if (_browser.Core is { } core && DesktopSettings.SameOrigin(_endpoint, core.Source))
+                _ = core.ExecuteScriptAsync("document.querySelector('[data-view=\"self-study\"]:not(.hidden)')?.click()");
+        });
+        _selfStudyNotice = notice;
+        notice.Closed += (_, _) => { if (ReferenceEquals(_selfStudyNotice, notice)) _selfStudyNotice = null; };
+        notice.Show();
     }
 
     private void Navigate()
@@ -759,6 +785,7 @@ internal sealed partial class DesktopWindow : Window
         _lifetime.Cancel(); _navigationTimeout?.Cancel(); _navigationTimeout?.Dispose();
         _voicePreparation?.Dispose();
         _feedbackWindow?.CloseWithOwner(); _voiceNotice?.Close(); _voiceInbox?.Dispose();
+        _selfStudyNotice?.Close(); _selfStudyInbox?.Dispose();
         foreach (var child in _children.ToArray()) child.Close(); _browser.DisposeBrowser();
     }
 }

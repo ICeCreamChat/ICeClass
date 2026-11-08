@@ -19,7 +19,7 @@
     <Setter Property="Foreground" Value="#36516E" />
   </Style>
   <Style Selector="Window.island-settings NumericUpDown:focus-within">
-    <Setter Property="BorderBrush" Value="#0071E3" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBorderBrush}" />
   </Style>
   <Style Selector="Window.island-settings NumericUpDown:disabled">
     <Setter Property="Background" Value="#F4F6F9" />

@@ -2,6 +2,9 @@ using ICeClass.Desktop;
 using ICeClass.Updates;
 using System.Text;
 
+if (args is ["--self-study-inbox-checks"]) { await SelfStudyInboxChecks.Run(); return; }
+if (args is ["--self-study-review", var selfStudyEndpoint, var selfStudyDirectory]) { SelfStudyReview.Run(selfStudyEndpoint, selfStudyDirectory); return; }
+
 if (args is ["--teacher-ui-checks", var teacherUiOutput])
 {
     TeacherUiChecks.Run(teacherUiOutput);

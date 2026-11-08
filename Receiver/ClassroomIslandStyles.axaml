@@ -6,7 +6,7 @@
     <Setter Property="CornerRadius" Value="24" />
   </Style>
   <Style Selector="Button.island-ribbon-button">
-    <Setter Property="FocusAdorner"><Template><Border BorderThickness="2" CornerRadius="24" BorderBrush="#64E5E7" IsHitTestVisible="False" /></Template></Setter>
+    <Setter Property="FocusAdorner"><Template><Border BorderThickness="1" CornerRadius="24" BorderBrush="#8FC3FF" BoxShadow="0 0 0 3 #1C005ED6" IsHitTestVisible="False" /></Template></Setter>
   </Style>
   <Style Selector="Button.native-button.island-button">
     <Setter Property="FontSize" Value="16" />
@@ -18,7 +18,7 @@
     <Setter Property="Foreground" Value="#E5EDF8" />
     <Setter Property="BorderBrush" Value="#3B4B60" />
     <Setter Property="FocusAdorner">
-      <Template><Border BorderThickness="2" CornerRadius="8" Margin="1" BorderBrush="#8FC3FF" IsHitTestVisible="False" /></Template>
+      <Template><Border BorderThickness="1" CornerRadius="8" Margin="1" BorderBrush="#8FC3FF" BoxShadow="0 0 0 3 #1C005ED6" IsHitTestVisible="False" /></Template>
     </Setter>
   </Style>
   <Style Selector="Button.native-button.island-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">

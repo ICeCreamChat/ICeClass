@@ -10,7 +10,6 @@
   --blue: #0064d7;
   --blue-text: #075cad;
   --blue-soft: #e3f3ff8a;
-  --focus: #005ed6;
   --green: #24654e;
   --red: #943e3b;
   --red-soft: #fbe6e175;
@@ -47,7 +46,6 @@
 }
 .teacher-liquid * { scrollbar-width: thin; scrollbar-color: #7099b58a transparent; }
 .teacher-liquid ::selection { background: #aed4f5; color: #143a58; }
-.teacher-liquid :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .teacher-liquid :is(button, input, textarea, select) { font-family: inherit; }
 .teacher-liquid h1 { font-size: 30px; line-height: 1.4; letter-spacing: -.02em; font-weight: 700; text-wrap: balance; }
 .teacher-liquid h2 { font-size: 22px; line-height: 1.5; font-weight: 700; }
@@ -120,8 +118,7 @@
 .teacher-liquid .btn.block { font-size: 16px; }
 .teacher-liquid .btn.icon { width: 40px; min-height: 40px; padding: 8px; border-radius: 50%; font-size: 22px; flex: none; }
 .teacher-liquid :is(.dialog-head, .ideas-detail-header) .btn.icon { box-shadow: none; border-color: transparent; background: #f8fdff6b; }
-.teacher-liquid :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]), textarea, select),
-.teacher-liquid .bb-settings #bbProvider {
+.teacher-liquid :is(input:where(:not([type=checkbox], [type=radio], [type=range], [type=hidden])), textarea, select) {
   border-radius: 12px;
   background: linear-gradient(120deg, #ffffffb8, #f1faff80);
   border-color: #92b4cc8c;
@@ -131,9 +128,7 @@
   box-shadow: inset 0 1px 2px #28577506, 0 1px #ffffff80;
 }
 .teacher-liquid :is(input, textarea)::placeholder { color: #46637a; opacity: 1; }
-.teacher-liquid :is(input, textarea, select):focus { border-color: var(--focus); box-shadow: 0 0 0 3px #005ed61c; }
 .teacher-liquid .bb-settings #bbProvider { line-height: 1.5; }
-.teacher-liquid .bb-settings #bbProvider:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-color: var(--focus); }
 .teacher-liquid :is(input, textarea, select):disabled { color: var(--muted); background: #e2edf36b; }
 .teacher-liquid input[type=range] { accent-color: #3884be; }
 .teacher-liquid input[type=checkbox], .teacher-liquid input[type=radio] { accent-color: #0967be; }
@@ -144,8 +139,9 @@
   .teacher-liquid select::picker(select) { margin-block: 7px; padding: 7px; max-height: min(400px, 65dvh); border: 1px solid #ffffffd9; border-radius: 16px; color: var(--text); background: linear-gradient(125deg, #f5fcffe8, #dcefffd4); box-shadow: 0 15px 38px #193c592c, inset 0 1px #fff; backdrop-filter: blur(16px) saturate(1.16); }
   .teacher-liquid select::picker-icon { color: var(--muted); margin-left: auto; }
   .teacher-liquid select option { min-height: 40px; padding: 9px 12px; border-radius: 9px; font-size: 15px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; white-space: normal; }
-  .teacher-liquid select option:checked { background: #f8fdffb8; color: #075cad; font-weight: 600; }
-  .teacher-liquid select option:hover, .teacher-liquid select option:focus { background: #ffffffa6; outline: 2px solid #005ed6; outline-offset: -2px; }
+  .teacher-liquid select option:checked { background: var(--blue-soft); color: var(--blue-text); font-weight: 600; box-shadow: inset 0 0 0 1px #a9d6f8b3; }
+  .teacher-liquid select option:hover, .teacher-liquid select option:focus { background: var(--teacher-control); outline: 1px solid #a9d6f8b3; outline-offset: -1px; box-shadow: var(--focus-shadow), inset 0 1px #ffffffed; }
+  .teacher-liquid select option:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 }
 
 /* Data and editing surfaces. Long tables keep their own scroll region. */
@@ -247,7 +243,6 @@
 .teacher-liquid .ideas-admin .ideas-field :is(input, select, textarea) { font-size: 16px; border-radius: 12px; border-color: #92b4cc8c; }
 .teacher-liquid .ideas-entry-top > strong { font-size: 16px; }
 .teacher-liquid :is(.ideas-subtle, .ideas-counts, .ideas-digest, .ideas-entry-meta, .ideas-entry-preview, .ideas-entry-media, .ideas-page-info, .ideas-latest-review, .ideas-feedback, .ideas-state), .teacher-liquid .ideas-admin .ideas-dates { color: var(--muted); font-size: 14px; }
-.teacher-liquid .ideas-admin :is(button, input, textarea, select):focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .teacher-liquid .ideas-detail-header { border-radius: 25px 25px 0 0; }
 .teacher-liquid .ideas-review-actions { border-radius: 0 0 25px 25px; }
 .teacher-liquid :is(.ideas-entry, .ideas-detail-header, .ideas-review-actions) { background: #f4fbff40; border-color: var(--line); }
@@ -399,5 +394,6 @@
   .teacher-liquid::before, .teacher-liquid .lg-pseudo::before { display: none !important; }
   .teacher-liquid .lg-pane, .teacher-liquid :is(input, textarea, select, .btn) { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText !important; box-shadow: none; }
   .teacher-liquid .nav button.active { outline: 1px solid Highlight; }
-  .teacher-liquid :focus-visible { outline-color: Highlight; }
+  .teacher-liquid select option:is(:checked, :hover, :focus) { background: Highlight; color: HighlightText; box-shadow: none; }
+  .teacher-liquid select option:focus-visible { outline: 1px solid HighlightText; outline-offset: -2px; }
 }

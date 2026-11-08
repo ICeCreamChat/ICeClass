@@ -929,7 +929,7 @@
     const hidden = v.followSchool ? schedule.schoolHiddenSlots(config, schoolVisibility().config) : v.hiddenSlotIds;
     for (const slot of [...config.slots].sort((a, b) => a.start - b.start)) {
       const state = { selected: hidden.includes(slot.id) };
-      choices.append(toggle(slot.label, state, 'selected', `visibility.slot.${slot.id}`, `${clock(slot.start)}–${clock(slot.end)}`, () => {
+      choices.append(toggle(slot.label, state, 'selected', `visibility.slot.${slot.id}`, `${clock(slot.start)}-${clock(slot.end)}`, () => {
         delete v.lessonsOnly;
         v.hiddenSlotIds = state.selected ? [...v.hiddenSlotIds, slot.id] : v.hiddenSlotIds.filter(id => id !== slot.id);
       }));
@@ -1165,7 +1165,7 @@
     ];
     for (const [path, label, low, high] of ranges) {
       const value = path.split('.').reduce((object, key) => object[key], config);
-      if (!Number.isInteger(value) || value < low || value > high) return issue(path === 'rotationSeconds' ? 'components' : 'settings', path, `${label}应为 ${low}–${high} 的整数。`);
+      if (!Number.isInteger(value) || value < low || value > high) return issue(path === 'rotationSeconds' ? 'components' : 'settings', path, `${label}应为 ${low}-${high} 的整数。`);
     }
     for (const [index, component] of config.components.entries()) if (component.type === 'countdown' && !validDate(component.date)) return issue('components', `components.${index}.date`, '请为倒数日选择目标日期。');
     for (const [index, rule] of config.automation.entries()) {

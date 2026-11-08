@@ -2,6 +2,7 @@
 import copy
 import csv
 import io
+import json
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -62,6 +63,43 @@ class HomeworkTests(ServerTestCase):
         report = await self.get_json('/api/homework/report')
         self.assertEqual(report['totals']['expected'], 0)
         self.assertEqual(report['total'], 0)
+
+    async def test_default_academic_year_uses_a_short_hyphen(self):
+        data = await self.get_json('/api/homework/classroom', device=True)
+        self.assertRegex(data['value']['terms'][0]['label'], r'^\d{4}-\d{4} 学年第[一二]学期$')
+
+    async def test_legacy_academic_year_labels_display_consistently_without_rewriting_history(self):
+        value = profile()
+        value['terms'][0]['label'] = '2026—2027 学年第一学期'
+        custom = copy.deepcopy(value['terms'][0])
+        custom.update(id='project', label='项目—阶段一')
+        value['terms'].append(custom)
+        configured = await self.configure(value)
+        expected = '2026-2027 学年第一学期'
+        self.assertEqual(configured['value']['terms'][0]['label'], expected)
+        self.assertEqual(configured['value']['terms'][1]['label'], '项目—阶段一')
+        raw_profile = json.dumps(value, ensure_ascii=False)
+        self.db.run('UPDATE homework_profiles SET value=? WHERE class_id=?', (raw_profile, self.cid))
+        await self.save()
+        snapshot = json.loads(self.db.one('SELECT value FROM homework_records WHERE class_id=?', (self.cid,))['value'])
+        snapshot['termName'] = '2026–2027 学年第一学期'
+        raw_record = json.dumps(snapshot, ensure_ascii=False)
+        self.db.run('UPDATE homework_records SET value=? WHERE class_id=?', (raw_record, self.cid))
+        for path, device in [(self.url, False), ('/api/homework/classroom', True)]:
+            data = await self.get_json(path, device=device)
+            self.assertEqual(data['revision'], 1)
+            self.assertEqual(data['value']['terms'][0]['label'], expected)
+            self.assertEqual(data['value']['terms'][1]['label'], '项目—阶段一')
+        for group in ('assignments', 'students'):
+            report = await self.get_json('/api/homework/report?group=' + group)
+            self.assertTrue(report['rows'])
+            self.assertTrue(all(row['termName'] == expected for row in report['rows']))
+            response = await self.client.get('/api/homework/export?group=' + group, headers=self.headers())
+            self.assertEqual(response.status, 200)
+            rows = list(csv.reader(io.StringIO((await response.read()).decode('utf-8-sig'))))
+            self.assertTrue(all(row[1] == expected for row in rows[1:]))
+        self.assertEqual(self.db.one('SELECT value FROM homework_profiles WHERE class_id=?', (self.cid,))['value'], raw_profile)
+        self.assertEqual(self.db.one('SELECT value FROM homework_records WHERE class_id=?', (self.cid,))['value'], raw_record)
 
     async def test_items_are_independent_and_resubmission_replaces_counts(self):
         await self.configure()

@@ -64,7 +64,7 @@
 .ranking-columns > li { min-width: 0; flex: 1 0 124px; width: 124px; scroll-snap-align: start; }
 .ranking-column { border: 1px solid transparent; width: 100%; height: 100%; min-width: 0; padding: 0 8px 13px; background: transparent; color: #294763; border-radius: 14px; display: flex; flex-direction: column; align-items: center; text-align: center; transition: background .16s, border-color .16s; }
 .ranking-column:hover, .ranking-column.is-selected { background: #e7f3ff88; border-color: #bddafa; }
-.ranking-column:focus-visible { outline-offset: -3px; }
+.ranking-column:focus-visible { --focus-offset: -3px; }
 .ranking-column-plot { position: relative; display: block; height: calc(var(--plot-height) + 30px); flex: none; width: 100%; }
 .ranking-column-fill { position: absolute; display: block; bottom: 0; left: 50%; transform: translateX(-50%); width: 32px; height: calc(var(--score) * var(--plot-height)); border-radius: 6px 6px 1px 1px; background: #91c4f4; transform-origin: bottom; }
 .ranking-column[data-grade="高一"] .ranking-column-fill { background: #438fdc; }
@@ -95,7 +95,7 @@
 .ranking-waiting svg { display: block; width: 34px; height: 34px; margin: 0 auto 15px; stroke: #5799d8; stroke-width: 1.5; fill: none; }
 .ranking-waiting strong { display: block; font-size: 18px; color: #375f87; }
 .ranking-waiting p { margin: 9px auto 0; max-width: 370px; color: #637b94; font-size: 14px; }
-#readingCalendarTitle:focus-visible { outline-offset: 5px; border-radius: 3px; }
+#readingCalendarTitle:focus-visible { --focus-offset: 5px; border-radius: 3px; }
 @media(max-width:1150px) {
   .ranking-heading { flex-wrap: wrap; align-items: flex-start; }
   .ranking-leaders { gap: 9px; }

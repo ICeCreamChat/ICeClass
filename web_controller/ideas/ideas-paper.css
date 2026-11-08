@@ -21,7 +21,6 @@
 .ideas-paper-dialog *, .ideas-paper-dialog *::before, .ideas-paper-dialog *::after { box-sizing: border-box; }
 .ideas-paper-dialog [hidden] { display: none !important; }
 .ideas-paper-dialog ::selection { background: #cce3ff; color: #163e69; }
-.ideas-paper-dialog :focus-visible { outline: 3px solid #005bb8; outline-offset: 2px; }
 .ideas-paper-dialog .ideas-paper-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px; padding: 12px; }
 .ideas-paper-dialog .ideas-paper-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
 .ideas-paper-dialog .ideas-paper-title { min-width: 0; margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; text-wrap: balance; }

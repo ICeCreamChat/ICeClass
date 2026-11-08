@@ -6,7 +6,7 @@ internal sealed record ReadingPeriod(int[] Weekdays, int Start, int End);
 internal sealed record ReadingWindow(string Day, int Start, int End, string ClassId, string ClassName)
 {
     private static string Clock(int minute) => minute == 1440 ? "24:00" : $"{minute / 60:00}:{minute % 60:00}";
-    public string TimeLabel => $"{Clock(Start)}–{Clock(End)}";
+    public string TimeLabel => $"{Clock(Start)}-{Clock(End)}";
 }
 
 internal sealed class ReadingSchedule

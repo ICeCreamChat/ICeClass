@@ -16,6 +16,7 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=4">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ideas-admin.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/homework-admin.css?v=1">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/self-study-admin.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/acknowledgements.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=12">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=35">
@@ -23,8 +24,9 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-operations.css?v=5">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/classroom-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/classroom-banban-glass.css">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=7">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-header.css?v=1">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=1">
   <script nonce="__CSP_NONCE__" defer src="/assets/classroom-glass.js?v=4"></script>
   <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261101.1"></script>
 </head>
@@ -109,6 +111,7 @@
         <button data-view="reading" class="active"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6c-2-2-5-3-9-2v15c4-1 7 0 9 2 2-2 5-3 9-2V4c-4-1-7 0-9 2ZM12 6v15"/></svg></span><span data-label>早读统计</span></button>
         <!-- Lucide panel-top (ISC); attribution: assets/island-icons-SOURCE.txt. -->
         <button data-view="homework"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h12v16H4V4h4m0-1h8v4H8zM8 11h8M8 15h6"/></svg></span><span data-label>作业统计</span></button>
+        <button data-view="self-study" class="hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>晚自习管理</span><span id="ss-nav-count" class="ss-nav-count" hidden></span></button>
         <button data-view="island"><span class="nav-icon" aria-hidden="true"><svg class="lucide lucide-panel-top" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/></svg></span><span data-label>教室浮岛</span></button>
         <button data-view="console"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span><span data-label>班级通知</span></button>
         <button data-view="classroom-voice"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>教室来音</span></button>
@@ -124,6 +127,7 @@
     </aside>
     <main id="mainContent" tabindex="-1">
       <section id="view-homework" class="view hidden" aria-label="作业统计"><div id="homeworkAdminRoot"></div></section>
+      <section id="view-self-study" class="view hidden" aria-label="晚自习管理"><div id="selfStudyRoot"></div></section>
       <section id="view-ideas" class="view hidden" aria-label="创意计划评审">
         <div id="ideasAdminRoot"></div>
       </section>
@@ -277,7 +281,7 @@
         <details class="reading-settings hidden" data-admin>
           <summary>全校统计规则<small>校长与超级管理员可调整全校规则</small></summary>
           <form id="readingSettingsForm">
-            <div class="toolbar"><label><input id="readingEnabled" type="checkbox"> 启用早读统计</label><div class="field"><label for="readingThreshold">统一声量门槛（5—90）</label><input id="readingThreshold" type="number" min="5" max="90" value="30" required></div></div>
+            <div class="toolbar"><label><input id="readingEnabled" type="checkbox"> 启用早读统计</label><div class="field"><label for="readingThreshold">统一声量门槛（5-90）</label><input id="readingThreshold" type="number" min="5" max="90" value="30" required></div></div>
             <label class="reading-reminder-toggle"><input id="readingReminderEnabled" type="checkbox" checked> 到点提醒教室开始晨读</label>
             <p class="reading-note">启用后，已绑定且正在运行的新版教室端会在时段开始时弹出提醒。教师可以选择“开始晨读”或“暂不开始”；同一时段只提醒一次，晚开机则在剩余时段内提醒，结束后自动收起。</p>
             <p class="reading-note">时间按北京时间计算。时段之外仍能使用陪伴，成绩只累计时段内的活动。结束时间 00:00 表示当天结束。</p>
@@ -1477,14 +1481,19 @@
         $("logoutButton").addEventListener("click", async () => {
           if (window.ICeClassIdeasAdmin?.canLogout() === false) return;
           if (window.ICeClassHomeworkAdmin?.canLeave(() => $("logoutButton").click()) === false) return;
+          if (window.ICeClassSelfStudy?.canLeave(() => $("logoutButton").click()) === false) return;
           if (window.ICeClassAcknowledgements?.canLogout() === false) return;
           try { await api("/api/auth/logout", { method: "POST" }); }
-          finally { window.ICeClassIdeasAdmin?.destroy(); window.ICeClassHomeworkAdmin?.destroy(); location.reload(); }
+          finally { window.ICeClassIdeasAdmin?.destroy(); window.ICeClassHomeworkAdmin?.destroy(); window.ICeClassSelfStudy?.destroy(); location.reload(); }
         });
         $("mainNav").addEventListener("click", event => {
           const button = event.target.closest("button[data-view]"); if (!button) return;
           if (button.classList.contains("hidden") || button.dataset.view === "ideas" && !canReviewIdeas()) return;
           if (button.dataset.view === "homework" && viewVisible("homework")) return;
+          if (button.dataset.view === "self-study" && viewVisible("self-study")) return;
+          if (button.dataset.view !== "self-study" && viewVisible("self-study") && window.ICeClassSelfStudy?.canLeave(() => button.click()) === false) {
+            event.stopImmediatePropagation(); return;
+          }
           if (button.dataset.view !== "homework" && viewVisible("homework") && window.ICeClassHomeworkAdmin?.canLeave(() => button.click()) === false) {
             event.stopImmediatePropagation(); return;
           }
@@ -1502,6 +1511,7 @@
           if (button.dataset.view === "quiet") loadQuietHours().catch(error => toast(error.message));
           if (button.dataset.view === "ideas") { prepareIdeasAdmin(); window.ICeClassIdeasAdmin?.load().catch(error => toast(error.message)); }
           if (button.dataset.view === "homework") window.ICeClassHomeworkAdmin?.load().catch(error => toast(error.message));
+          if (button.dataset.view === "self-study") window.ICeClassSelfStudy?.load().catch(error => toast(error.message));
         });
         $("targetClass").addEventListener("change", () => { updatePresence(); loadRecent().catch(error => toast(error.message)); });
         $("classGradeFilter").addEventListener("click", event => {
@@ -1578,7 +1588,7 @@
          $("batchGrade").addEventListener("change", () => { $("batchEnd").value = $("batchGrade").value === "高一" ? "16" : "14"; });
          $("batchClassButton").addEventListener("click", () => { $("batchError").textContent = ""; $("batchDialog").showModal(); });
          $("allClassesButton").addEventListener("click", async () => {
-           if (!confirm("将创建高一 1–16 班、高二 1–14 班、高三 1–14 班，共 44 个班级。已有班级会跳过，不会删除多余班级或覆盖绑定和记录。继续吗？")) return;
+           if (!confirm("将创建高一 1-16 班、高二 1-14 班、高三 1-14 班，共 44 个班级。已有班级会跳过，不会删除多余班级或覆盖绑定和记录。继续吗？")) return;
            const button = $("allClassesButton");
            button.disabled = true;
            const originalText = button.textContent;
@@ -1685,6 +1695,7 @@
   <script nonce="__CSP_NONCE__" src="/teacher-header.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/homework-admin.js?v=1" defer></script>
+  <script nonce="__CSP_NONCE__" src="/self-study-admin.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/acknowledgements.js?v=1" defer></script>
   <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>

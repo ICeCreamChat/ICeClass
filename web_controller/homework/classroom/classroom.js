@@ -79,7 +79,8 @@
     $('subject-count').textContent = `${term().subjects.length} 个学科`;
     $('record-summary').textContent = data.records.length ? `已登记 ${count} 项 · 无作业 ${data.records.length-count} 项` : '今日尚未登记';
     $('homework-description').textContent = `${data.className} · ${roster().length} 人 · 默认全部已交，取消勾选未交同学`;
-    window.dispatchEvent(new CustomEvent('homework-context',{detail:{className:data.className,term:term().label}}));
+    const label = term().label.replace(/(\d{4})\s*[–—－]\s*(\d{4})(?=\s*学年)/g,'$1-$2');
+    window.dispatchEvent(new CustomEvent('homework-context',{detail:{className:data.className,term:label}}));
   }
   function prepare(sid, iid) {
     selectedSubject = sid || ''; selectedItem = iid || '';

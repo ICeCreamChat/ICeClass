@@ -1,7 +1,6 @@
 /* Connection state is explicit; keep the activity cards legible on whiteboards. */
 #reading-session-status button { pointer-events: auto; touch-action: manipulation; border: 1px solid #b1cae8; border-radius: 9px; min-height: 44px; padding: 8px 14px; background: #e7f1ff; color: #075cad; font: inherit; font-weight: 600; cursor: pointer; }
 #reading-session-status button[hidden] { display: none; }
-#reading-session-status button:focus-visible { outline: 3px solid #0071e3; outline-offset: 3px; }
 #reading-session-status { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 100; max-width: calc(100vw - 24px); padding: 10px 18px; border: 1px solid #d2d2d7; border-radius: 12px; background: rgba(255,255,255,.96); color: #355d89; display: flex; gap: 16px; align-items: center; font: 15px/1.6 "Microsoft YaHei UI","PingFang SC",sans-serif; pointer-events: none; box-shadow: 0 2px 12px #00000012; }
 #reading-session-status strong { white-space: nowrap; }
 #reading-session-status [aria-live] { white-space: nowrap; font-variant-numeric: tabular-nums; }

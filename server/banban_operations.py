@@ -361,6 +361,12 @@ class Operations:
                 raise ValueError('创意不存在，请重新查询。')
             cid = self.authorized_class(user, row['class_id'], True)
             match['idea_id'], target = row['id'], row['title']
+        elif spec.target == 'self-study-event':
+            row = self.db.one('SELECT id,class_id FROM self_study_events WHERE id=?', (args.get('targetId'),))
+            if not row:
+                raise ValueError('晚自习事件不存在或已过期。')
+            cid = self.authorized_class(user, row['class_id'], True)
+            match['event_id'], target = row['id'], '晚自习事件'
         elif spec.workflow == 'download' and (args.get('className') or args.get('classId')):
             if 'classId' not in spec.fields.split():
                 raise ValueError('此导出不支持班级筛选。')
@@ -393,6 +399,8 @@ class Operations:
             if data and operation.startswith('island.'):
                 data['profile'] = self.db.one('SELECT revision,value FROM island_profiles WHERE class_id=?', (match['class_id'],))
                 data['schoolVisibility'] = self.db.one('SELECT revision FROM island_visibility WHERE id=1')
+            if data and operation == 'self-study.update':
+                data['settings'] = self.db.one('SELECT revision FROM self_study_settings WHERE class_id=?', (match['class_id'],))
         elif 'teacher_id' in match:
             data = self.db.one('SELECT username,display_name,role,enabled,updated_at FROM users WHERE id=?', (match['teacher_id'],))
             if data:
@@ -402,6 +410,8 @@ class Operations:
             data = self.db.one('SELECT class_id,name,enabled,binding_note,verified_at FROM devices WHERE id=?', (match['device_id'],))
         elif 'idea_id' in match:
             data = self.db.one('SELECT version FROM ideas WHERE id=?', (match['idea_id'],))
+        elif 'event_id' in match:
+            data = self.db.one('SELECT status,handled_at,resolution FROM self_study_events WHERE id=?', (match['event_id'],))
         elif operation == 'quiet.update':
             data = self.s.quiet_period_rows(self.db)
         elif operation == 'reading.update':

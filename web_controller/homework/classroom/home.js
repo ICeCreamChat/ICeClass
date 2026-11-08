@@ -123,7 +123,7 @@
         </div>`);
         voicePanel=true;renderVoice();
       }else if(action==='voice-toggle'){await request('voice');}
-      else if(action==='schedule')showDetail('全天课表',island?.lessons.length?`<div class="detail-timetable">${island.lessons.map(l=>`<div><strong>${esc(l.name)}</strong><small>${esc(l.start)}–${esc(l.end)}</small></div>`).join('')}</div>`:'<p>今天暂无课程，课表会在同步后显示。</p>');
+      else if(action==='schedule')showDetail('全天课表',island?.lessons.length?`<div class="detail-timetable">${island.lessons.map(l=>`<div><strong>${esc(l.name)}</strong><small>${esc(l.start)}-${esc(l.end)}</small></div>`).join('')}</div>`:'<p>今天暂无课程，课表会在同步后显示。</p>');
       else if(action==='acknowledge')await request('acknowledge',{sequence:island?.notice?.sequence});
       else if(['reading','plan','banban','binding','island','about'].includes(action)){
         if(action==='reading')control.disabled=true;

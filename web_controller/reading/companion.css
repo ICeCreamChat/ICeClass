@@ -46,7 +46,6 @@ html[data-desktop-fullscreen="true"] .home-view { padding-top: max(68px, 3.5vh);
 .mode-choice { display: flex; flex-direction: column; min-width: 0; padding: 12px; border: 1px solid #e3e8ef; border-radius: 22px; background: #fff; box-shadow: 0 4px 10px #23395703, 0 14px 34px #23395705; transition: transform .18s, box-shadow .18s, border-color .18s; }
 .mode-choice:hover { transform: none; border-color: #c4d9f0; box-shadow: 0 14px 36px #23395710; }
 .mode-choice:active { transform: scale(.985); }
-.mode-choice:focus-visible { outline: 3px solid #1672db; outline-offset: 5px; }
 .mode-choice .mode-art { flex-shrink: 0; width: 100%; height: clamp(150px, 23vh, 250px); border-radius: 18px; overflow: hidden; }
 .mode-choice .rabbit-art { background: #edf4fc; }
 .mode-choice .rocket-art { background: #edf4ef; }

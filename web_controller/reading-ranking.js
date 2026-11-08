@@ -135,7 +135,7 @@
     scroll.append(list); stage.append(axis, scroll); section.append(stage);
     scroll.addEventListener('scroll', updateScroll, { passive: true });
     const foot = node('div', undefined, 'ranking-axis');
-    foot.append(node('span', `有效发声 · 统一 0–${Math.round(scale / 60)} 分钟刻度`), node('span', max ? `当前最高 ${duration(max)}` : '尚无有效发声记录'));
+    foot.append(node('span', `有效发声 · 统一 0-${Math.round(scale / 60)} 分钟刻度`), node('span', max ? `当前最高 ${duration(max)}` : '尚无有效发声记录'));
     section.append(foot); return section;
   }
   function table(report) {
