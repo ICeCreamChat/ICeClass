@@ -5,7 +5,7 @@ colors:
   ink: "#193c59"
   muted: "#4e6c83"
   blue: "#0064d7"
-  focus: "#005ed6"
+  focus: "#4e87b2"
   module-teal: "#177a83"
   module-violet: "#6964b6"
   canvas: "#e5f0f8"
@@ -158,7 +158,7 @@ components:
 - 首页、班级管理与作业上层弹窗保持连续的操作上下文。
 - 桌面双列、窄屏单列；作业名单独立滚动，底部操作保持可见。
 
-取值依据为正式的 `classroom.css`、`index.html`、`glass.js`、`home.js`、`classroom.js` 与 `Receiver/StudentVoiceWindow.cs`。已批准的 `PRODUCT.md` 与 `iceclass-classroom-glass-design.md` 提供使用范围及既定视觉方向；颜色、尺寸和状态以最终代码为准。前置令牌记录可复用的现有值，阴影、渐变、折射、动态和断点由 `.impeccable/design.json` 扩展记录。
+取值依据为正式的 `classroom.css`、`index.html`、`glass.js`、`home.js`、`classroom.js` 与 `Receiver/StudentVoiceWindow.cs`。使用范围见[教室端液态玻璃](docs/教室端液态玻璃.md)；颜色、尺寸和状态以最终代码为准。前置令牌记录可复用的现有值，阴影、渐变、折射、动态和断点由本机 `.impeccable/design.json` 扩展记录。
 
 ## Colors
 
@@ -167,7 +167,7 @@ components:
 ### Primary
 
 - **操作蓝**（`blue`）：文本输入光标等主要蓝色基准；主按钮使用其现有的纵向蓝色渐变，不能以单一背景色代替。
-- **焦点蓝**（`focus`）：键盘轮廓，保持独立于 hover 与选中反馈。
+- **焦点蓝**（`focus`）：柔和键盘轮廓，保持独立于 hover 与选中反馈。最终样式复用共享 [control-focus.css](web_controller/assets/control-focus.css) 的细浅蓝描边与淡蓝微光，不照搬历史片段中的粗蓝框。
 - **项目选中蓝**（`assignment-active`）：作业项目的实色选中状态。
 - **名单勾选蓝**（`student-checked`）：已交复选框，配合白色勾线。
 

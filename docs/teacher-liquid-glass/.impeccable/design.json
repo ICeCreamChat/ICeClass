@@ -694,7 +694,7 @@
   ],
   "narrative": {
     "northStar": "教师端蓝白液态玻璃",
-    "overview": "蓝白曲面延续教师已确认的玻璃工作台。透明渐变、边缘折射和内高光提供连续的材料；深蓝标题、正文、图标、表单值与键盘焦点保留在独立前景。浅层工作台和深层编辑、确认、班班面板使用同一字体与材料语言，操作文字保持清楚。\n\n本规范从正式网页和 Windows 教师端源码提取，范围以 [PRODUCT.md](PRODUCT.md) 和[正式实施计划](../superpowers/plans/2026-11-05-teacher-liquid-glass.md)为准。网页主依据是 [teacher-liquid-glass.css](../../web_controller/teacher-liquid-glass.css)，并结合 [ui.css](../../web_controller/ui.css)、[index.html](../../web_controller/index.html) 与[背景镜片运行时](../../web_controller/assets/classroom-glass.js)的层叠结果。Windows 依据 [TeacherStyle.cs](../../Desktop/TeacherStyle.cs)、[TeacherControls.axaml](../../Desktop/TeacherControls.axaml)、[DesktopStyle.cs](../../Receiver/DesktopStyle.cs) 和[背景画布](../../Receiver/ClassroomGlassHost.cs)。此目录独立持有教师端规范；仓库根 DESIGN.md 与根 sidecar 的教室端范围保持原样。",
+    "overview": "蓝白曲面延续教师已确认的玻璃工作台。透明渐变、边缘折射和内高光提供连续的材料；深蓝标题、正文、图标、表单值与键盘焦点保留在独立前景。浅层工作台和深层编辑、确认、班班面板使用同一字体与材料语言，操作文字保持清楚。\n\n本规范适用于正式教师网页与 Windows 教师端：统计、作业、晚自习、课表、通知、教室来音、控制、创意、班级、用户、账号和班班，以及桌面设置、反馈、关于等原生窗口。保留既有权限、校验、确认和真实业务行为，样板目录与模拟数据不进入正式功能。\n\n网页主依据是 [teacher-liquid-glass.css](../../web_controller/teacher-liquid-glass.css)，并结合 [ui.css](../../web_controller/ui.css)、[index.html](../../web_controller/index.html) 与[背景镜片运行时](../../web_controller/assets/classroom-glass.js)的层叠结果。Windows 依据 [TeacherStyle.cs](../../Desktop/TeacherStyle.cs)、[TeacherControls.axaml](../../Desktop/TeacherControls.axaml)、[DesktopStyle.cs](../../Receiver/DesktopStyle.cs) 和[背景画布](../../Receiver/ClassroomGlassHost.cs)。仓库根 DESIGN.md 仍只描述教室嵌入页。",
     "keyCharacteristics": [
       "蓝白曲面、独立背景镜片、边缘折射与内高光共同表达玻璃。",
       "微软雅黑优先，普通操作半粗，说明文字保留自己的层级。",

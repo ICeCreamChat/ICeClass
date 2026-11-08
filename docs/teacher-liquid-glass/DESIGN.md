@@ -11,7 +11,7 @@ colors:
   blue: "#0064d7"
   blue-text: "#075cad"
   blue-soft: "#e3f3ff8a"
-  focus: "#005ed6"
+  focus: "#4e87b2"
   green: "#24654e"
   red: "#943e3b"
   red-soft: "#fbe6e175"
@@ -219,7 +219,9 @@ components:
 
 蓝白曲面延续教师已确认的玻璃工作台。透明渐变、边缘折射和内高光提供连续的材料；深蓝标题、正文、图标、表单值与键盘焦点保留在独立前景。浅层工作台和深层编辑、确认、班班面板使用同一字体与材料语言，操作文字保持清楚。
 
-本规范从正式网页和 Windows 教师端源码提取，范围以 [PRODUCT.md](PRODUCT.md) 和[正式实施计划](../superpowers/plans/2026-11-05-teacher-liquid-glass.md)为准。网页主依据是 [teacher-liquid-glass.css](../../web_controller/teacher-liquid-glass.css)，并结合 [ui.css](../../web_controller/ui.css)、[index.html](../../web_controller/index.html) 与[背景镜片运行时](../../web_controller/assets/classroom-glass.js)的层叠结果。Windows 依据 [TeacherStyle.cs](../../Desktop/TeacherStyle.cs)、[TeacherControls.axaml](../../Desktop/TeacherControls.axaml)、[DesktopStyle.cs](../../Receiver/DesktopStyle.cs) 和[背景画布](../../Receiver/ClassroomGlassHost.cs)。此目录独立持有教师端规范；仓库根 DESIGN.md 与根 sidecar 的教室端范围保持原样。
+本规范适用于正式教师网页与 Windows 教师端：统计、作业、晚自习、课表、通知、教室来音、控制、创意、班级、用户、账号和班班，以及桌面设置、反馈、关于等原生窗口。保留既有权限、校验、确认和真实业务行为，样板目录与模拟数据不进入正式功能。
+
+网页主依据是 [teacher-liquid-glass.css](../../web_controller/teacher-liquid-glass.css)，并结合 [ui.css](../../web_controller/ui.css)、[index.html](../../web_controller/index.html) 与[背景镜片运行时](../../web_controller/assets/classroom-glass.js)的层叠结果。Windows 依据 [TeacherStyle.cs](../../Desktop/TeacherStyle.cs)、[TeacherControls.axaml](../../Desktop/TeacherControls.axaml)、[DesktopStyle.cs](../../Receiver/DesktopStyle.cs) 和[背景画布](../../Receiver/ClassroomGlassHost.cs)。仓库根 DESIGN.md 仍只描述教室嵌入页。
 
 **Key Characteristics:**
 
@@ -237,7 +239,7 @@ frontmatter 是颜色、字体、圆角、间距与组件基础值的唯一规�
 ### Primary
 
 - **blue** 用于动作提示、光标等既有强调；**blue-text** 用于浅色主按钮与明确操作。
-- **focus** 用于网页键盘轮廓、字段焦点与教师原生字段焦点。
+- **focus** 用于柔和的键盘轮廓。网页最终焦点以共享 [control-focus.css](../../web_controller/assets/control-focus.css) 为准，字段使用细浅蓝边和淡蓝微光；原生复用 [NativeControls.axaml](../../Receiver/NativeControls.axaml) 的共享焦点资源。历史组件片段不能覆盖这些正式样式。
 - **selected-ink** 用于主导航与分段导航的选中项；**blue-soft** 保留既有轻量选中与悬停背景用途。
 
 ### Neutral
@@ -268,7 +270,7 @@ Windows 的 native-body、native-title 与 native-supporting 特指 DesktopStyle
 
 ## Layout
 
-网页维持左侧导航、顶部状态与主要内容区域的工作台结构，主体和内容宽度分别受现有最大宽度约束。主内容允许收缩，长表格在自身滚动区域内展开。字段纵向排列并保留标签关联；弹窗头尾固定在容器内，正文独立滚动，操作区可换行。
+网页维持左侧导航、统一顶栏与主要内容区域的工作台结构，主体和内容宽度分别受现有最大宽度约束。顶栏集中品牌、当前位置、桌面工具及账号入口；Windows 工作台就绪后收起重复原生工具条，加载或连接失败时保留恢复入口。主内容允许收缩，长表格在自身滚动区域内展开。字段纵向排列并保留标签关联；弹窗头尾固定在容器内，正文独立滚动，操作区可换行。
 
 宽窗口和紧凑桌面有独立侧栏、主区内距；窄屏进一步调整面板、弹窗和操作文字。所有断点及其真实作用记录在 sidecar。最终教师外壳与共享抽屉使用同一窄屏切换点，紧凑桌面从相邻的下一个宽度起生效；不保留原来相互错开的侧栏切换规则。
 
@@ -344,4 +346,4 @@ sidecar 的十个片段均为独立 `ds-` 作用域的 HTML/CSS，只展示静�
 - **Don't** 将教师端样式写回教室端根规范，或改变共享光学算法的原教室端默认模式。
 - **Don't** 将局部紧凑按钮或未验证的辅助偏好能力提升为全局规则。
 
-本次文档提取只核对正式代码、格式和引用，未重跑 detector、构建或业务测试，也未逐项人工验收历史样板的全部项目。当前截图及正式实现的最终视觉结论由独立 finish review 给出；不能用历史样板通过记录替代本次正式程序验收。未规范化或修复的源码差异及文档校验结果见[提取与校验报告](extraction-validation.json)。
+本规范描述设计与维护约定，不作为测试通过证明。每次修改仍需验证受影响页面和原生窗口，不能用历史样板的检查记录代替当前程序验收。
