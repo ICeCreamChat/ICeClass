@@ -60,7 +60,7 @@
         button.addEventListener('click', () => showDetail(item.id)); action.append(button); row.append(action); rows.append(row);
       }
       status(total ? `共 ${total} 条记录` : '暂无符合条件的日志。新版客户端运行后开始上报，也可从“关于”手动提交。');
-      byId('diagnosticPage').textContent = total ? `${offset + 1}–${offset + result.items.length} / ${total}` : '0 条记录';
+      byId('diagnosticPage').textContent = total ? `${offset + 1}-${offset + result.items.length} / ${total}` : '0 条记录';
     } catch (error) { if (request === serial && allowed()) status(readError(error), true); }
     finally { if (request === serial) { busy = false; controls(); } }
   }

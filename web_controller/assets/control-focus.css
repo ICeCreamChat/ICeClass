@@ -1,0 +1,49 @@
+/* One focus treatment for the teacher, classroom, activities and Banban views. */
+:root {
+  --focus: #4e87b2;
+  --focus-border: #88bce5;
+  --focus-soft: #005ed61c;
+  --focus-shadow: 0 0 0 3px var(--focus-soft);
+}
+:root :focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: var(--focus-offset, 2px);
+  box-shadow: var(--focus-shadow);
+}
+:root :is(input, textarea, select):where(:not([type=checkbox], [type=radio], [type=range], [type=hidden], [type=button], [type=submit], [type=reset], [type=image])):focus {
+  border-color: var(--focus-border);
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+  box-shadow: var(--focus-shadow);
+}
+:root :is(.bb-input-box, .search-field, .date-input-label):focus-within {
+  border-color: var(--focus-border);
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+  box-shadow: var(--focus-shadow);
+}
+:root :is(.bb-input-box, .search-field, .date-input-label) :is(input, textarea):focus {
+  outline: none;
+  box-shadow: none;
+}
+:root :is(.bb-connection-choice, .level-option):has(input:focus-visible),
+.reading-game .radio-options label:focus-within {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: var(--focus-shadow);
+}
+@media (forced-colors: active) {
+  :root { --focus: Highlight; --focus-border: Highlight; --focus-shadow: none; }
+  :root :focus-visible,
+  :root :is(input, textarea, select):where(:not([type=checkbox], [type=radio], [type=range], [type=hidden], [type=button], [type=submit], [type=reset], [type=image])):focus,
+  :root :is(.bb-input-box, .search-field, .date-input-label):focus-within,
+  :root :is(.bb-connection-choice, .level-option):has(input:focus-visible),
+  .reading-game .radio-options label:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+  :root :is(.bb-input-box, .search-field, .date-input-label) :is(input, textarea):focus {
+    outline: none;
+  }
+}

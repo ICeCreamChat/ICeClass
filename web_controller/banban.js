@@ -104,7 +104,7 @@
     }
     const className = classesForAnalysis().find(c => c.id === scope.classId)?.name;
     const range = className || (scope.grades || '').split(',').filter(Boolean).join('、') || (schoolAnalysis ? '全校' : classesForAnalysis().length === 1 ? classesForAnalysis()[0].name : '我的班级');
-    const dates = scope.start === scope.end ? scope.start.slice(5) : `${scope.start.slice(5)} — ${scope.end.slice(5)}`;
+    const dates = scope.start === scope.end ? scope.start.slice(5) : `${scope.start.slice(5)} - ${scope.end.slice(5)}`;
     $('bbScopeLabel').textContent = `${dates} · ${range}`;
     $('bbScopeLabel').title = `${scope.start} 至 ${scope.end} · ${range} · ${schoolAnalysis ? '全校数据分析' : '仅分析本人负责范围内的班级'}`;
     $('bbScopeToggle').setAttribute('aria-label', '分析范围：' + $('bbScopeLabel').title);
@@ -297,7 +297,7 @@
     head.append(node('strong', data.title), node('span', tag, 'bb-result-tag')); card.append(head);
     const className = classesForAnalysis().find(c => c.id === data.scope.classId)?.name;
     const rangeName = className || data.scope.grades?.join('、') || '全部授权班级';
-    const dateLabel = data.scope.start === data.scope.end ? data.scope.start : `${data.scope.start} — ${data.scope.end}`;
+    const dateLabel = data.scope.start === data.scope.end ? data.scope.start : `${data.scope.start} - ${data.scope.end}`;
     card.append(node('p', data.scopeLabel || (data.temporal === 'current' ? rangeName + ' · 当前' : `${dateLabel} · ${rangeName}`), 'bb-result-range'));
     const figures = node('div', undefined, 'bb-result-metrics');
     data.metrics.forEach(metric => {
@@ -305,7 +305,7 @@
       if (typeof metric.delta === 'number') item.append(node('small', metric.delta === 0 ? '记录与对照期持平' : `比对照期${metric.delta > 0 ? '多' : '少'} ${metricText(metric, metric.delta)}`, 'bb-metric-change'));
       figures.append(item);
     }); if (data.metrics.length) card.append(figures);
-    if (data.previousScope) card.append(node('p', `对照期 ${data.previousScope.start} — ${data.previousScope.end}`, 'bb-result-range'));
+    if (data.previousScope) card.append(node('p', `对照期 ${data.previousScope.start} - ${data.previousScope.end}`, 'bb-result-range'));
     if (data.rows?.length) {
       const rows = node('div', undefined, 'bb-result-classes'), maximum = Math.max(1, ...data.rows.map(r => r.value));
       data.rows.forEach(row => {

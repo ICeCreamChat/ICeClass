@@ -87,7 +87,7 @@
     const unchanged = report && JSON.stringify(report) === JSON.stringify(data);
     report = data;
     const scope = report.grades?.join('、') || '全部年级';
-    $('readingReportStatus').textContent = `${scope} · ${report.start} — ${report.end} · 更新于 ` + new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
+    $('readingReportStatus').textContent = `${scope} · ${report.start} - ${report.end} · 更新于 ` + new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
     if (unchanged) {
       $('readingRanking').setAttribute('aria-busy', 'false');
       void window.ICeClassCalendar?.refresh();

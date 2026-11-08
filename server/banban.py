@@ -44,6 +44,7 @@ def install_banban(app, service):
     app.router.add_post('/api/banban/chat', feature.chat)
     from banban_agent import install_agent
     install_agent(app, feature, SYSTEM)
+    return feature
 
 
 class Banban:

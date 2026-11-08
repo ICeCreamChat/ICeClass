@@ -206,6 +206,24 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         Refresh();
     }
 
+    private long _selfStudyUntil;
+    internal void CancelSelfStudyWarning()
+    {
+        _selfStudyUntil = 0;
+        if (!_disposed && HomeState?.Notice?.Sender == "晚自习提醒") { _state.DismissNotice(); Refresh(); }
+    }
+    internal async Task<bool> ShowSelfStudyWarningAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (_disposed || _activeShout is not null || HomeState?.Notice is not null) return false;
+        _selfStudyUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 15;
+        Notify("晚自习提醒", "交谈声有些多，请保持安静，把时间留给自己。", 15);
+        var sequence = HomeState?.Notice?.Sequence;
+        if (sequence is null) return false;
+        try { return await _window.WaitForLocalNoticeAsync(sequence.Value, token); }
+        catch (TimeoutException) { return false; }
+    }
+
     public void SetEnabled(bool enabled)
     {
         if (_disposed) return;
@@ -360,7 +378,8 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var lessonHidden = profile is not null && IslandSchedule.HiddenDuringLesson(profile, now);
         if (profile?.Visibility is null && _local.Appearance?.HideDuringLessons == true && current is not null) lessonHidden = true;
         SetClassTime(current is not null || lessonHidden);
-        if (lessonHidden && !_lessonHidden)
+        var selfStudy = _selfStudyUntil > Stopwatch.GetTimestamp() && view.Notice?.Sender == "晚自习提醒";
+        if (lessonHidden && !_lessonHidden && !selfStudy)
         {
             _actions.StopFeedback();
             if (!shouting) _state.DismissNotice();
@@ -402,7 +421,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         _window.ApplyProfile(appearance, profile, now, component, (island?.Status ?? view.ConnectionText) + " · " + view.ConnectionText);
         var clock = Stopwatch.GetTimestamp();
         var manual = _manualShowUntil > clock || _settingsWindow is not null;
-        if (!shouting && (!_preferences.Enabled || ReadingExperience.IsFullscreen || (!manual &&
+        if (!shouting && !selfStudy && (!_preferences.Enabled || ReadingExperience.IsFullscreen || (!manual &&
             (profile?.Enabled == false || appearance.HideFullscreen && IslandPlatform.ForegroundFullscreen(_window) ||
                 lessonHidden))))
         { _window.Hide(); return; }

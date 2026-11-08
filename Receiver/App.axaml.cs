@@ -25,6 +25,7 @@ public sealed partial class App : Application
     private IslandShoutPreviewWindow? _shoutPreviewWindow;
     private ReadingReminderService? _readingReminders;
     private ClassroomIslandService? _island;
+    private SelfStudyMonitor? _selfStudy;
     private NativeMenuItem? _islandMenuItem;
     private CancellationTokenSource? _automaticUpdateCancellation;
     private int _updateInProgress;
@@ -54,6 +55,12 @@ public sealed partial class App : Application
         _receiver = new CloudReceiverService(_speech);
         _readingReminders = new ReadingReminderService();
         _island = new ClassroomIslandService(config => ClassroomControlService.OpenReadingAsync(config), ShowStudentVoice);
+        _selfStudy = new SelfStudyMonitor(
+            token => _island.ShowSelfStudyWarningAsync(token),
+            () => _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
+                _creativeIdeasWindow?.IsVisible == true || ReadingExperience.IsOpen || _speech?.IsBusy == true,
+            () => _island.CancelSelfStudyWarning());
+        _receiver.SelfStudyChanged += () => Dispatcher.UIThread.Post(() => _selfStudy?.Invalidate());
         _receiver.NotificationPresenter = _island;
         _island.ShoutPreviewRequested += PreviewShout;
         _island.PreferenceChanged += UpdateIslandMenu;
@@ -66,6 +73,7 @@ public sealed partial class App : Application
             if (_creativeIdeasWindow is not null && !_creativeIdeasWindow.Matches(binding)) { _creativeIdeasWindow.CloseWithoutPrompt(); _creativeIdeasWindow = null; }
             ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding);
             ReadingExperience.BindingChanged(binding); _island?.SetBinding(binding);
+            _selfStudy?.SetBinding(binding);
             if (_banbanVoiceWindow is null || !_banbanVoiceWindow.Matches(binding)) StartBanbanVoice(binding, _banbanVoiceWindow?.IsVisible != true);
         });
         CreateTray();
@@ -83,6 +91,7 @@ public sealed partial class App : Application
             _ = _receiver.StartAsync(config);
             _readingReminders.Start(config);
             _island.SetBinding(config);
+            _selfStudy.SetBinding(config);
             Dispatcher.UIThread.Post(() => StartBanbanVoice(config, true));
             StartAutomaticUpdates(config);
             // Keep the student entry point visible on classroom screens so nobody has to find the tray menu.
@@ -272,6 +281,7 @@ public sealed partial class App : Application
             await _receiver!.RestartAsync(saved);
             _readingReminders?.Start(saved);
             _island?.SetBinding(saved);
+            _selfStudy?.SetBinding(saved);
             StartBanbanVoice(saved, _banbanVoiceWindow?.IsVisible != true);
             StartAutomaticUpdates(saved);
             InitializeVoiceResources();
@@ -299,7 +309,8 @@ public sealed partial class App : Application
             ShowEnrollment();
             return;
         }
-        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban, ShowCreativeIdeas, acknowledge: sequence => _island?.AcknowledgeHomeNotice(sequence));
+        _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban, ShowCreativeIdeas, acknowledge: sequence => _island?.AcknowledgeHomeNotice(sequence),
+            selfStudy: action => action == "pause" ? _selfStudy?.Pause() : _selfStudy?.View());
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
         if (_island?.HomeState is { } homeState) _studentVoiceWindow.SetIslandState(homeState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
@@ -354,6 +365,7 @@ public sealed partial class App : Application
         AppLog.ErrorRecorded -= QueueClientError; _clientErrors?.Dispose();
         _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
         _banbanVoiceWindow?.Shutdown();
+        _selfStudy?.Dispose();
         _shoutPreviewWindow?.Close();
         _island?.Dispose();
         await ReadingExperience.StopAsync();

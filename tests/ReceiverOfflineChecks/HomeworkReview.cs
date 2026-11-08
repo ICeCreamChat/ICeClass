@@ -7,21 +7,33 @@ using ICeClass.Receiver;
 /// <summary>Open the actual classroom windows with an explicit isolated loopback binding.</summary>
 internal static class HomeworkReview
 {
-    internal static void Run(string bindingPath, bool compact = false)
+    internal static void Run(string bindingPath, bool compact = false, bool selfStudy = false)
     {
         if (!ReceiverConfig.TryRead(bindingPath, out var config) || !ReceiverConfig.IsPreview(config))
             throw new InvalidOperationException("Homework review requires an explicit loopback preview binding.");
         var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
-            .AfterSetup(_ => Dispatcher.UIThread.Post(() => Open(config, compact)))
+            .AfterSetup(_ => Dispatcher.UIThread.Post(() => Open(config, compact, selfStudy)))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose));
         thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();
     }
 
-    private static void Open(ReceiverConfig config, bool compact)
+    private static void Open(ReceiverConfig config, bool compact, bool selfStudy)
     {
-        var home = new StudentVoiceWindow(config, _ => Task.FromException(new InvalidOperationException("本地作业验收未启用录音发送。")));
+        SelfStudyMonitor? monitor = null;
+        ClassroomIslandService? island = null;
+        var home = new StudentVoiceWindow(config, _ => Task.FromException(new InvalidOperationException("本地验收未启用录音发送。")),
+            selfStudy: selfStudy ? action => action == "pause" ? monitor?.Pause() : monitor?.View() : null);
+        if (selfStudy)
+        {
+            island = new ClassroomIslandService(_ => Task.CompletedTask, () => home.Show());
+            island.SetBinding(config);
+            monitor = new SelfStudyMonitor(token => island.ShowSelfStudyWarningAsync(token), () => home.IsBusy,
+                () => island.CancelSelfStudyWarning());
+            monitor.SetBinding(config);
+            home.Closed += (_, _) => { monitor.Dispose(); island.Dispose(); };
+        }
         if (compact) { home.Width = 720; home.Height = 520; }
-        home.Title += " · 作业统计本地验收";
+        home.Title += selfStudy ? " · 晚自习管理本地验收" : " · 作业统计本地验收";
         home.SetConnectionState(new ReceiverConnectionState(true, "已连接本地验收"));
         var lifetime = (IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!;
         lifetime.MainWindow = home;
@@ -32,5 +44,6 @@ internal static class HomeworkReview
             if (await home.PrepareToLeaveAsync()) {canClose = true;home.Close();}
         };
         home.Show(); home.Activate();
+        if (selfStudy) home.OpenManagement();
     }
 }

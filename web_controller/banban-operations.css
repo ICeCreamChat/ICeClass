@@ -31,7 +31,6 @@
 .bb-operation-feedback[data-error=true] { color: #a12f30; }
 .bb-operation-feedback:empty { display: none; }
 .bb-document-text { max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.65; }
-.bb-operation :is(button, input, summary, a):focus-visible { outline: 2px solid #0069d3; outline-offset: 3px; }
 .bb-operation-field { display: flex; flex-direction: column; gap: 5px; margin-block: 10px; min-width: 0; font-size: 13px; color: #325773; }
 .bb-operation-field input { width: 100%; min-width: 0; max-width: 100%; font: inherit; color: #193b5d; border: 1px solid #bed2e3; border-radius: 8px; background: #fff; padding: 8px 10px; caret-color: #0069d3; }
 .bb-operation :is(button, a, input[type=file]) { touch-action: manipulation; -webkit-tap-highlight-color: #cce4fa; }

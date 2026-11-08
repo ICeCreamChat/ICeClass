@@ -92,7 +92,7 @@ def text(value, label, limit=80, empty=False):
 
 def integer(value, label, low, high):
     if type(value) is not int or not low <= value <= high:
-        raise ValueError(f'{label}应为 {low}—{high} 的整数。')
+        raise ValueError(f'{label}应为 {low}-{high} 的整数。')
     return value
 
 
@@ -616,7 +616,7 @@ class IslandFeature:
             if (not isinstance(ids, list) or not 1 <= len(ids) <= 500
                     or any(not isinstance(cid, str) or not cid or len(cid) > 80 for cid in ids)
                     or len(set(ids)) != len(ids)):
-                raise ValueError('请选择 1—500 个不重复的班级。')
+                raise ValueError('请选择 1-500 个不重复的班级。')
             if template:
                 if 'changes' in body:
                     raise ValueError('不能同时提交模板设置和旧版设置内容。')

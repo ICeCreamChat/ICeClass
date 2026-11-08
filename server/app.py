@@ -43,6 +43,7 @@ from ideas import install_ideas
 from homework import install_homework
 from acknowledgements import install_acknowledgements
 from teacher_capabilities import teacher_action, teacher_read, teacher_manual
+from self_study import install_self_study
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1926,7 +1927,8 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
                     clock=lambda: now_ms(), digest=sha256, class_sort=class_sort_key)
     install_management(app, sys.modules[__name__])
     install_island(app, sys.modules[__name__])
-    install_banban(app, sys.modules[__name__])
+    banban = install_banban(app, sys.modules[__name__])
+    install_self_study(app, sys.modules[__name__], banban.connections)
     install_feedback(app, sys.modules[__name__])
     install_client_diagnostics(app, sys.modules[__name__])
     install_ideas(app, sys.modules[__name__])

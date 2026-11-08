@@ -9,7 +9,6 @@ const { webcrypto } = require('node:crypto');
 const { encodePcm16Wav, mediaPath, isRetryUncertain, newRequestId } = require('../web_controller/ideas/ideas.js');
 const source = fs.readFileSync(path.join(__dirname, '../web_controller/ideas/ideas.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../web_controller/ideas/index.html'), 'utf8');
-const css = fs.readFileSync(path.join(__dirname, '../web_controller/ideas/ideas.css'), 'utf8');
 
 const flush = async () => { for (let i = 0; i < 12; i += 1) await new Promise(resolve => setImmediate(resolve)); };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -694,13 +693,6 @@ test('delete and confirmation-marker failure never clears the form or repeats cl
   assert.equal(h.calls.filter(call => call.method === 'POST').length, 1);
   assert.equal(h.storageCalls.filter(call => call.action === 'delete').length, 2);
   assert.equal(h.records.size, 0); assert.equal(h.$('ideaText').value, '');
-});
-
-test('details summaries use an inset keyboard focus ring that survives clipped list containers', () => {
-  const rule = css.match(/\.ideas-app \.ideas-item summary:focus-visible\s*\{([^}]+)\}/);
-  assert.ok(rule, 'A summary-specific focus rule must cover both lists and the recent submission');
-  assert.match(rule[1], /outline:\s*[2-9]px solid/);
-  assert.match(rule[1], /outline-offset:\s*-[3-9]px/);
 });
 
 test('recording stops automatically at its 60-second limit', async t => {

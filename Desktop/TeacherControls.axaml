@@ -68,7 +68,7 @@
   </Style>
   <Style Selector="Window.teacher-surface TextBox:focus /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="#60FFFFFF" />
-    <Setter Property="BorderBrush" Value="#005ED6" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBorderBrush}" />
     <Setter Property="BoxShadow" Value="0 0 0 3 #1C005ED6" />
   </Style>
   <Style Selector="Window.teacher-surface ComboBox:pointerover /template/ Border#Background">
@@ -77,10 +77,10 @@
   </Style>
   <Style Selector="Window.teacher-surface ComboBox:pressed /template/ Border#Background">
     <Setter Property="Background" Value="#75E6F6FF" />
-    <Setter Property="BorderBrush" Value="#005ED6" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBorderBrush}" />
   </Style>
   <Style Selector="Window.teacher-surface ComboBox:focus-visible /template/ Border#HighlightBackground">
-    <Setter Property="BorderBrush" Value="#005ED6" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBrush}" />
   </Style>
   <Style Selector="Window.teacher-surface ComboBox /template/ Border#PopupBorder">
     <Setter Property="Background" Value="#ECEDF8FF" />

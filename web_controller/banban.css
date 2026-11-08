@@ -1,6 +1,5 @@
 .banban-root { --bb-blue: #0069d3; --bb-ink: #193b5d; position: fixed; z-index: 70; right: 26px; bottom: 22px; font-size: 15px; line-height: 1.65; color: var(--bb-ink); }
 .banban-root [hidden] { display: none !important; }
-.banban-root button:focus-visible { outline: 3px solid #74b1ee; outline-offset: 3px; }
 .bb-launcher { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; padding: 4px 10px 7px; border-radius: 22px; color: #284b6b; background: transparent; touch-action: none; user-select: none; min-width: 88px; }
 .bb-launcher:hover { background: #e9f3ffb8; }
 .bb-launcher:active { cursor: grabbing; }
@@ -92,7 +91,7 @@
 .bb-results[open] > .bb-evidence-toggle { margin-bottom: 5px; }
 .bb-results > .bb-result + .bb-result { margin-top: 10px; }
 .bb-evidence-toggle:hover, .bb-answer-extra > summary:hover { color: #145ba0; }
-.bb-evidence-toggle:focus-visible, .bb-answer-extra > summary:focus-visible { outline: 2px solid #4487ca; outline-offset: 3px; border-radius: 5px; }
+.bb-evidence-toggle:focus-visible, .bb-answer-extra > summary:focus-visible { border-radius: 5px; }
 .bb-answer-extra { margin-top: 5px; white-space: normal; }
 .bb-answer-extra > summary { min-height: 44px; cursor: pointer; color: #316b9e; font-size: 12px; line-height: 44px; }
 .bb-answer-extra > div { white-space: pre-wrap; padding-top: 4px; }
@@ -142,7 +141,6 @@ button.bb-finding:hover { background: #edf5ff; }
 .bb-compose-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
 .bb-compose-footer .bb-tool { padding: 2px 5px; min-height: 32px; font-size: 12px; }
 .bb-input-box { border: 1px solid #cddfec; border-radius: 14px; padding: 9px; background: #fbfdff; }
-.bb-input-box:focus-within { border-color: #70a9e4; box-shadow: 0 0 0 3px #e7f2ff; }
 .bb-input-box textarea { display: block; border: 0; background: transparent; resize: none; height: 40px; min-height: 0; width: 100%; padding: 0 3px; outline: none; font-size: 15px; color: #193b5d; box-shadow: none; line-height: 1.6; }
 .bb-input-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .bb-input-actions small { color: #8193a3; font-size: 11px; }

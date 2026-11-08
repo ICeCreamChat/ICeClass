@@ -241,7 +241,7 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 .island-duty-weeks > .btn { flex: none; min-height: 48px; padding: 9px 16px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); background: transparent; box-shadow: none; }
 .island-duty-weeks > .btn:hover { color: var(--blue); background: var(--blue-soft); }
 .island-duty-weeks > .btn[aria-selected=true] { color: var(--blue); border-bottom-color: var(--blue); }
-.island-duty-weeks > .btn:focus-visible { outline-offset: -3px; }
+.island-duty-weeks > .btn:focus-visible { --focus-offset: -3px; }
 .island-duty-actions { display: flex; flex: none; gap: 8px; padding-block: 6px; }
 .island-duty-actions .btn { min-height: 40px; padding: 7px 11px; font-size: 14px; }
 .island-duty-actions .danger { border-color: transparent; background: transparent; }
@@ -311,7 +311,6 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 :is(#islandTabContent, .island-dialog) .island-switch > input[type=checkbox]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #142c461f; }
 :is(#islandTabContent, .island-dialog) .island-switch > input[type=checkbox]:checked { background: var(--blue); }
 :is(#islandTabContent, .island-dialog) .island-switch > input[type=checkbox]:checked::after { transform: translateX(16px); }
-:is(#islandTabContent, .island-dialog) .island-switch > input[type=checkbox]:focus-visible { outline: 3px solid #0071e366; outline-offset: 3px; }
 :is(#islandTabContent, .island-dialog) .island-switch > input[type=checkbox]:disabled { cursor: not-allowed; }
 #islandTabContent:is([data-panel=duties], [data-panel=settings], [data-panel=components]) .island-field,
 #islandTabContent:is([data-panel=duties], [data-panel=settings], [data-panel=components]) .island-toggle { font-size: 15px; }

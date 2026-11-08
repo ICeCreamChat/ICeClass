@@ -4,7 +4,6 @@
 .bb-voice-button[aria-pressed=true] { background: #e6f1ff; color: #075fae; }
 .bb-voice-button[data-state=listening], .bb-voice-button[data-state=speaking] { background: #dcecff; color: #07569c; }
 .bb-voice-button[data-state=error] { color: #9c3b35; }
-.bb-voice-button:focus-visible { outline: 2px solid #0969ba; outline-offset: 2px; }
 .bb-voice-button[aria-pressed=true][data-level="1"] { box-shadow: 0 0 0 2px #bad7f5; }
 .bb-voice-button[aria-pressed=true][data-level="2"] { box-shadow: 0 0 0 4px #a0c8f0; }
 .bb-voice-button[aria-pressed=true][data-level="3"] { box-shadow: 0 0 0 6px #8ab9e9; }

@@ -8,7 +8,6 @@
 .classroom-liquid::before,.reading-liquid body::before,.bb-native-voice-page body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:radial-gradient(ellipse 112% 79% at 21% 98%,transparent 61.8%,#ffffff73 62%,#ffffff73 63%,transparent 63.3%),radial-gradient(ellipse 98% 108% at 102% -4%,transparent 60%,#effaff4d 60.2%,#effaff4d 73%,transparent 73.2%),radial-gradient(ellipse 120% 108% at -34% -2%,transparent 64%,#ffffff66 64.2%,#ffffff66 65%,transparent 65.3%)}
 .classroom-liquid,.reading-liquid body,.bb-native-voice-page body{isolation:isolate;caret-color:#0064d7;scrollbar-color:#85a7bf #eaf4fa}
 :is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) ::selection{background:#b9dcfa;color:#143a58}
-:is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) :focus-visible{outline:3px solid #005ed6;outline-offset:3px}
 :is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) :is(button,input,select,textarea){font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif}
 :is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) :is(button,a,input,select,textarea){touch-action:manipulation}
 :is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) :is(dialog)::backdrop{background:#183e5b51;backdrop-filter:blur(4px)}
@@ -16,4 +15,4 @@
 [data-material="white"] .lg-lens,.reduce-transparency .lg-lens{display:none}
 @media(prefers-reduced-transparency:reduce){.lg-pane{background:#f4faff!important}.lg-pane>.lg-lens{display:none}}
 @media(prefers-reduced-motion:reduce){:is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
-@media(forced-colors:active){.lg-pane{background:Canvas!important;color:CanvasText!important;border-color:CanvasText!important;box-shadow:none}.lg-pane>.lg-lens{display:none}.classroom-liquid::before,.reading-liquid body::before,.bb-native-voice-page body::before{display:none}:is(.classroom-liquid,.reading-liquid,.bb-native-voice-page) :focus-visible{outline-color:Highlight}}
+@media(forced-colors:active){.lg-pane{background:Canvas!important;color:CanvasText!important;border-color:CanvasText!important;box-shadow:none}.lg-pane>.lg-lens{display:none}.classroom-liquid::before,.reading-liquid body::before,.bb-native-voice-page body::before{display:none}}

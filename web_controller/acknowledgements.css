@@ -18,7 +18,6 @@
 #acknowledgementsPreview section + section { margin-top: 26px; }
 #acknowledgementsPreview h4 { margin: 0 0 10px; font-size: 20px; line-height: 1.5; overflow-wrap: anywhere; }
 #acknowledgementsPreview p { margin: 0; font-size: 18px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
-#acknowledgementsSection :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 @media (max-width: 1000px) {
   .acknowledgements-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .acknowledgements-preview { border-left: 0; border-top: 1px solid var(--line); padding: 24px 0 8px; }

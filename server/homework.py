@@ -41,8 +41,12 @@ def defaults():
     spring = 2 <= current.month < 8
     term_id = f'{start + 1}-spring' if spring else f'{start}-fall'
     return {'activeTermId': term_id, 'students': [], 'terms': [{
-        'id': term_id, 'label': f'{start}—{start + 1} 学年' + ('第二学期' if spring else '第一学期'),
+        'id': term_id, 'label': f'{start}-{start + 1} 学年' + ('第二学期' if spring else '第一学期'),
         'subjects': [{'id': sid, 'name': name, 'items': []} for sid, name in SUBJECTS]}]}
+
+
+def term_label(value):
+    return re.sub(r'(\d{4})\s*[–—－]\s*(\d{4})(?=\s*学年)', r'\1-\2', value)
 
 
 def text(value, label, maximum=60):
@@ -113,7 +117,7 @@ def validate_profile(value):
             subjects.append({'id': sid, 'name': SUBJECT_NAMES[sid], 'items': items})
         if seen != set(SUBJECT_NAMES):
             raise ValueError('请保留完整的九个学科。')
-        terms.append({'id': tid, 'label': text(term.get('label'), '学期名称'), 'subjects': subjects})
+        terms.append({'id': tid, 'label': term_label(text(term.get('label'), '学期名称')), 'subjects': subjects})
     active = identifier(value.get('activeTermId'))
     if active not in term_ids:
         raise ValueError('当前学期不存在。')
@@ -144,7 +148,12 @@ class Homework:
 
     def profile(self, class_id):
         row = self.db.one('SELECT revision,value FROM homework_profiles WHERE class_id=?', (class_id,))
-        return {'revision': row['revision'], 'value': json.loads(row['value'])} if row else {'revision': 0, 'value': defaults()}
+        if not row:
+            return {'revision': 0, 'value': defaults()}
+        value = json.loads(row['value'])
+        for term in value['terms']:
+            term['label'] = term_label(term['label'])
+        return {'revision': row['revision'], 'value': value}
 
     def payload(self, class_id, user=None):
         room = self.db.one('SELECT name FROM classes WHERE id=?', (class_id,))
@@ -294,7 +303,7 @@ class Homework:
             totals['expected'] += expected
             totals['missing'] += count
             totals['submitted'] += expected - count
-            base = {'classId': record['class_id'], 'className': record['class_name'], 'termId': value['termId'], 'termName': value['termName']}
+            base = {'classId': record['class_id'], 'className': record['class_name'], 'termId': value['termId'], 'termName': term_label(value['termName'])}
             if group == 'assignments':
                 rows.append({**base, 'date': record['day'], 'subjectId': value['subjectId'], 'subjectName': value['subjectName'],
                              'itemName': value['itemName'], 'status': value['status'], 'expected': expected, 'missing': count,

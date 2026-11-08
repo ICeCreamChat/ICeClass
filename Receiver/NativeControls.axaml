@@ -1,5 +1,9 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="NativeFocusBrush">#4E87B2</SolidColorBrush>
+    <SolidColorBrush x:Key="NativeFocusBorderBrush">#88BCE5</SolidColorBrush>
+  </Styles.Resources>
   <!-- Shared by the classroom and teacher shells. Explicit template selectors
        also cover Fluent's hover/disabled states, which override control brushes. -->
   <Style Selector="Window">
@@ -119,8 +123,8 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="FocusAdorner">
       <Template>
-        <Border BorderThickness="2" CornerRadius="8" Margin="1"
-                BorderBrush="#397CC6" IsHitTestVisible="False" />
+        <Border BorderThickness="1" CornerRadius="8" Margin="1"
+                BorderBrush="{DynamicResource NativeFocusBrush}" BoxShadow="0 0 0 3 #1C005ED6" IsHitTestVisible="False" />
       </Template>
     </Setter>
     <Setter Property="Template">
@@ -272,9 +276,9 @@
   </Style>
   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="White" />
-    <Setter Property="BorderBrush" Value="#0071E3" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="BoxShadow" Value="0 0 0 3 #160071E3" />
+    <Setter Property="BoxShadow" Value="0 0 0 3 #1C005ED6" />
   </Style>
   <Style Selector="TextBox /template/ DataValidationErrors">
     <Setter Property="ClipToBounds" Value="False" />
@@ -302,12 +306,13 @@
   </Style>
   <Style Selector="ComboBox:pressed /template/ Border#Background">
     <Setter Property="Background" Value="#F0F6FF" />
-    <Setter Property="BorderBrush" Value="#0071E3" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBorderBrush}" />
   </Style>
   <Style Selector="ComboBox:focus-visible /template/ Border#HighlightBackground">
     <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="#0071E3" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NativeFocusBrush}" />
     <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BoxShadow" Value="0 0 0 3 #1C005ED6" />
   </Style>
   <Style Selector="ComboBox:disabled /template/ Border#Background">
     <Setter Property="Background" Value="#F4F6F9" />

@@ -28,6 +28,7 @@ public sealed class CloudReceiverService
         => (_speech, ComputerAgent) = (speech, computerAgent);
     public event EventHandler<ReceiverConnectionState>? ConnectionStateChanged;
     public event EventHandler<ReceiverConfig>? BindingChanged;
+    internal event Action? SelfStudyChanged;
     public event EventHandler<ShoutData>? NotificationDisplayed;
     public event EventHandler<ShoutData>? NotificationAcknowledged;
 
@@ -268,6 +269,10 @@ public sealed class CloudReceiverService
             try
             {
                 using var command = JsonDocument.Parse(message.ToArray());
+                if (command.RootElement.ValueKind == JsonValueKind.Object &&
+                    command.RootElement.TryGetProperty("type", out var selfStudyKind) &&
+                    selfStudyKind.GetString() == "self_study_config")
+                { SelfStudyChanged?.Invoke(); continue; }
                 if (command.RootElement.ValueKind == JsonValueKind.Object && command.RootElement.TryGetProperty("type", out var kind) && kind.GetString() is "connected" or "binding_updated")
                 {
                     var binding = command.RootElement;
