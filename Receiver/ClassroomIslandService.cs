@@ -63,6 +63,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         if (_disposed) return;
         var scope = ReceiverConfig.NormalizeEndpoint(binding.Endpoint) + "\n" + binding.DeviceId + "\n" + binding.ClassId;
         if (_bindingScope.Length > 0 && _bindingScope != scope) { EndDemo(); CancelShouts(); }
+        if (_bindingScope != scope) { _pendingSelfStudyStatus = null; _selfStudyUntil = 0; }
         _bindingScope = scope;
         _binding = binding; _state.SetBinding(binding);
         _generation++; _islandSync?.Dispose(); _islandSync = new(binding); _lastTick = null; _pendingActions.Clear();
@@ -207,17 +208,44 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     }
 
     private long _selfStudyUntil;
+    internal void UpdateSelfStudyFeedback(SelfStudyFeedback? feedback)
+    {
+        if (_disposed) return;
+        _window.UpdateSelfStudyFeedback(feedback);
+    }
+    internal void UpdateSelfStudyLevel(double level)
+    {
+        if (!_disposed) _window.UpdateSelfStudyLevel(level);
+    }
+    private (string Title, string Text)? _pendingSelfStudyStatus;
     internal void CancelSelfStudyWarning()
     {
-        _selfStudyUntil = 0;
-        if (!_disposed && HomeState?.Notice?.Sender == "晚自习提醒") { _state.DismissNotice(); Refresh(); }
+        if (!_disposed && HomeState?.Notice?.Sender == "晚自习提醒")
+        { _selfStudyUntil = 0; _state.DismissNotice(); Refresh(); }
+    }
+    internal void ShowSelfStudyStatus(string state, string detail)
+    {
+        if (_disposed || _binding is null) return;
+        var title = state switch
+        {
+            "reported" => "已通知班主任", "paused" => "本节监测已暂停", "budget" => "晚自习预算不足",
+            "error" => "晚自习监测异常", "observing" => "晚自习继续观察", "inactive" => "晚自习监测暂歇", _ => null
+        };
+        if (title is null) return;
+        EndDemo();
+        // Keep the latest status until the current reminder or teacher shout ends.
+        _pendingSelfStudyStatus = (title, detail);
+        Refresh(); _timer.Start();
     }
     internal async Task<bool> ShowSelfStudyWarningAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (_disposed || _activeShout is not null || HomeState?.Notice is not null) return false;
+        if (_disposed || _activeShout is not null || HomeState?.Notice is { Category: not "晚自习通知" }) return false;
+        _pendingSelfStudyStatus = null;
         _selfStudyUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 15;
-        Notify("晚自习提醒", "交谈声有些多，请保持安静，把时间留给自己。", 15);
+        EndDemo();
+        _state.LocalNotice("晚自习提醒", "交谈声有些多，请保持安静，把时间留给自己。", 15, "晚自习通知");
+        Refresh();
         var sequence = HomeState?.Notice?.Sequence;
         if (sequence is null) return false;
         try { return await _window.WaitForLocalNoticeAsync(sequence.Value, token); }
@@ -363,6 +391,14 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         }
         var shouting = view.Notice is { Category: "班级通知" };
         if (!shouting && _activeShout is not null) { CompleteShout(ShoutCloseReason.TimedOut); return; }
+        if (!shouting && (view.Notice is null || view.Notice is { Category: "晚自习通知", Sender: not "晚自习提醒" })
+            && _pendingSelfStudyStatus is { } selfStudyStatus)
+        {
+            _pendingSelfStudyStatus = null;
+            _selfStudyUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 15;
+            _state.LocalNotice(selfStudyStatus.Title, selfStudyStatus.Text, 15, "晚自习通知");
+            view = _state.Present(_snapshot, _offline.Now, _connection, ReadingExperience.IsOpen);
+        }
         var island = _islandSync?.Snapshot;
         var profile = island?.Revoked == true ? null : island?.Profile;
         ScheduleKnown = profile is not null;
@@ -378,7 +414,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var lessonHidden = profile is not null && IslandSchedule.HiddenDuringLesson(profile, now);
         if (profile?.Visibility is null && _local.Appearance?.HideDuringLessons == true && current is not null) lessonHidden = true;
         SetClassTime(current is not null || lessonHidden);
-        var selfStudy = _selfStudyUntil > Stopwatch.GetTimestamp() && view.Notice?.Sender == "晚自习提醒";
+        var selfStudy = _selfStudyUntil > Stopwatch.GetTimestamp() && view.Notice?.Category == "晚自习通知";
         if (lessonHidden && !_lessonHidden && !selfStudy)
         {
             _actions.StopFeedback();
@@ -427,7 +463,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         { _window.Hide(); return; }
         _window.DockToPrimaryScreen();
         if (!_window.IsVisible) _window.Show();
-        if (shouting) PlatformTopmostService.Reassert(_window);
+        if (shouting || selfStudy) PlatformTopmostService.Reassert(_window);
     }
 
     private async Task RunActions()
@@ -455,7 +491,7 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; EndDemo(); CancelShouts(); _timer.Stop(); ReadingExperience.StateChanged -= ReadingStateChanged;
+        _disposed = true; _pendingSelfStudyStatus = null; EndDemo(); CancelShouts(); _timer.Stop(); ReadingExperience.StateChanged -= ReadingStateChanged;
         _islandSync?.Dispose(); _actions.Dispose(); _settingsWindow?.Close();
         _window.DisposeWindow();
     }

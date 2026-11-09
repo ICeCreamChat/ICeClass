@@ -45,7 +45,7 @@
       <div class="dialog-body"><p class="reading-note">勾选要更新的班级，检查新的名称后一起保存。班级编号、设备绑定、教师授权和历史记录会保留。多个年级可以同时更新。</p>
         <div class="options-row"><div class="field"><label for="graduatingYear">毕业届别年份</label><input id="graduatingYear" type="number" min="2000" max="2100" required></div><button id="classRolloverPreset" class="btn" type="button">预填高中升班</button></div>
         <p class="hint">预填会将高一升高二、高二升高三、高三更名为所填年份的毕业班。毕业班仍保留绑定；换教室时请在设备管理中改绑。</p>
-        <div id="classRolloverRows" class="rollover-rows"></div><p id="classRolloverError" class="form-error" role="alert"></p></div>
+        <div id="classRolloverRows" class="rollover-rows" tabindex="0" role="region" aria-label="升班名单，可左右滚动"></div><p id="classRolloverError" class="form-error" role="alert"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存选中班级的新名称</button></div>
     </form></dialog>`;
   document.body.append(host);
@@ -123,7 +123,7 @@
   $('classRolloverButton').onclick=()=>{
     $('classRolloverError').textContent='';$('graduatingYear').value=new Date().getFullYear();
     const table=document.createElement('table'),head=table.createTHead().insertRow();
-    ['更新','当前名称','新的班级名称'].forEach(text=>{const th=document.createElement('th');th.textContent=text;head.append(th);});
+    ['更新','当前名称','新的班级名称'].forEach(text=>{const th=document.createElement('th');th.textContent=text;th.scope='col';head.append(th);});
     const body=table.createTBody();
     window.ICeClass.state.classes.forEach(c=>{
       const row=body.insertRow();row.dataset.classId=c.id;row.dataset.name=c.name;

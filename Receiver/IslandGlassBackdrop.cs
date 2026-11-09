@@ -100,7 +100,7 @@ internal sealed class IslandGlassBackdrop : Panel, IDisposable
     private void SetMaterial()
     {
         foreach (var pane in _panes)
-            pane.Background = new SolidColorBrush(Color.Parse(_light ? "#52E2F3FF" : "#AD112339"));
+            pane.Background = new SolidColorBrush(Color.Parse(_light ? "#24E2F3FF" : "#AD112339"));
         _edges.Light = _light;
     }
 
@@ -130,16 +130,16 @@ internal sealed class IslandGlassBackdrop : Panel, IDisposable
 
     private sealed class GlassEdges : Control
     {
-        private static readonly LinearGradientBrush Sheen = Gradient("#2BFFFFFF", "#00FFFFFF", "#1A4D7797");
+        private static readonly LinearGradientBrush Sheen = Gradient("#14FFFFFF", "#00FFFFFF", "#104D7797");
         private static readonly LinearGradientBrush DarkSheen = Gradient("#12D9F2FF", "#00FFFFFF", "#3306182F");
-        private static readonly LinearGradientBrush Rim = Gradient("#D6FFFFFF", "#08FFFFFF", "#70608EAE");
-        private static readonly LinearGradientBrush DarkRim = Gradient("#9CF0FAFF", "#08FFFFFF", "#38C7EAFF");
+        private static readonly LinearGradientBrush Rim = Gradient("#52FFFFFF", "#08FFFFFF", "#38608EAE");
+        private static readonly LinearGradientBrush DarkRim = Gradient("#52F0FAFF", "#08FFFFFF", "#38C7EAFF");
         private static readonly LinearGradientBrush Glint = new()
         {
             StartPoint = new RelativePoint(0, .5, RelativeUnit.Relative), EndPoint = new RelativePoint(1, .5, RelativeUnit.Relative),
-            GradientStops = [new GradientStop(Colors.Transparent, 0), new GradientStop(Color.Parse("#DCFFFFFF"), .5), new GradientStop(Colors.Transparent, 1)]
+            GradientStops = [new GradientStop(Colors.Transparent, 0), new GradientStop(Color.Parse("#52FFFFFF"), .5), new GradientStop(Colors.Transparent, 1)]
         };
-        private static readonly RadialGradientBrush Glow = GlowBrush("#6BFFFFFF");
+        private static readonly RadialGradientBrush Glow = GlowBrush("#24FFFFFF");
         private static readonly RadialGradientBrush DarkGlow = GlowBrush("#30B4E0FF");
         private static readonly BoxShadows Shadow = new(new BoxShadow { OffsetY = 3, Blur = 9, Color = Color.Parse("#20163D67") });
         public bool Light { get; set; }
@@ -162,7 +162,7 @@ internal sealed class IslandGlassBackdrop : Panel, IDisposable
                         new Rect(x - rect.Width * .42, y - rect.Height * 1.1, rect.Width * .84, rect.Height * 2.2));
                     context.DrawRectangle(Glint, null, new Rect(x - rect.Width * .19, rect.Top + .5, rect.Width * .38, 1.3));
                 }
-                context.DrawRectangle(null, new Pen(Light ? Rim : DarkRim, 1.25), rect, 23.5, 23.5);
+                context.DrawRectangle(null, new Pen(Light ? Rim : DarkRim, 1), rect, 23.5, 23.5);
             }
         }
 

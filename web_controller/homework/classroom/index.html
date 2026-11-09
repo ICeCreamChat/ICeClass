@@ -10,9 +10,10 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="./classroom.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/classroom-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="./readability.css">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="./course-ribbon.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=1">
   <script nonce="__CSP_NONCE__" src="./home.js" defer></script>
-  <script nonce="__CSP_NONCE__" src="./self-study.js" defer></script>
+  <script nonce="__CSP_NONCE__" src="./self-study.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/assets/pinyin-match-1.2.10.js" defer></script>
   <script nonce="__CSP_NONCE__" src="./classroom.js" defer></script>
   <script nonce="__CSP_NONCE__" src="/assets/classroom-glass.js" defer></script>
@@ -36,7 +37,7 @@
       <section class="course-area" hidden aria-label="全天课程总览">
         <div id="daily-course" class="daily-course">
           <div class="glass date-capsule"><span class="glass-lens" aria-hidden="true"></span><div class="glass-content"><strong id="calendar-date"></strong><small id="calendar-weekday"></small></div></div>
-          <div class="glass timetable-capsule"><span class="glass-lens" aria-hidden="true"></span><div class="glass-content timetable-content"><div class="lesson-list" id="lesson-list"></div><button class="icon-button schedule-more" data-action="schedule" aria-label="查看全天课表"><svg aria-hidden="true"><use href="#icon-calendar"/></svg></button></div></div>
+          <div class="glass timetable-capsule"><span class="glass-lens" aria-hidden="true"></span><div class="glass-content timetable-content"><div class="lesson-list" id="lesson-list" tabindex="0" role="region" aria-label="今日课程，可左右滚动"></div><button class="icon-button schedule-more" data-action="schedule" aria-label="查看全天课表"><svg aria-hidden="true"><use href="#icon-calendar"/></svg></button></div></div>
         </div>
         <div id="shout-course" class="glass shout-capsule" hidden><span class="glass-lens" aria-hidden="true"></span><div class="glass-content shout-content"><div class="shout-symbol"><svg aria-hidden="true"><use href="#icon-megaphone"/></svg></div><div class="shout-copy"><small id="shout-sender"></small><strong id="shout-text"></strong></div><button class="button soft" data-action="acknowledge">已知晓</button></div><div class="shout-progress" aria-hidden="true"></div></div>
       </section>
@@ -68,7 +69,7 @@
         <div class="view-toolbar"><button class="button back-button" data-action="home">返回教室首页</button><span id="class-context"></span></div>
         <article class="glass homework-entry"><span class="glass-lens" aria-hidden="true"></span><div class="glass-content homework-entry-content"><span class="module-icon teal"><svg aria-hidden="true"><use href="#icon-checklist"/></svg></span><div class="entry-text"><h2>作业统计</h2><p>选择学科和作业，取消勾选未交同学。</p><div class="entry-meta"><span>学期预设</span><span id="subject-count">按学科登记</span><span id="record-summary">今日尚未登记</span></div></div><div class="entry-actions"><button class="button primary" data-action="homework">登记今日作业</button><button class="text-button" data-action="reload">重新载入</button></div></div></article>
         <div class="management-hint"><svg aria-hidden="true"><use href="#icon-info"/></svg><p>课代表可直接登记；补交后，再次打开同一份作业更新即可。</p></div>
-        <article class="glass homework-entry"><span class="glass-lens" aria-hidden="true"></span><div class="glass-content homework-entry-content"><span class="module-icon teal"><svg aria-hidden="true"><use href="#icon-mic"/></svg></span><div class="entry-text"><h2>晚自习管理</h2><p>跟随第二节晚自习课表，陪伴班级安静自习。</p><div class="entry-meta"><span>先提醒，再上报</span><span>老师讲题自动观察</span></div></div><div class="entry-actions"><button type="button" class="button soft" id="self-study-open">查看晚自习</button></div></div></article>
+        <article class="glass homework-entry"><span class="glass-lens" aria-hidden="true"></span><div class="glass-content homework-entry-content"><span class="module-icon teal"><svg aria-hidden="true"><use href="#icon-mic"/></svg></span><div class="entry-text"><h2>自习管理</h2><p>跟随第二节晚自习课表，先提醒，再通知老师。</p></div><div class="entry-actions"><button type="button" class="button soft" id="self-study-open">自习管理</button></div></div></article>
       </section>
     </main>
     <footer class="app-footer"><span id="device-caption">ICeClass 班伴</span><span>陪伴每一间教室</span><button class="text-button" data-action="about">关于</button></footer>

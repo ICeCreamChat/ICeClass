@@ -15,15 +15,21 @@ from feedback import image_type
 from permissions import scope_sql
 from reading import SHANGHAI, local_day
 from island import lessons_on
-from self_study_ai import RESERVATION, classify, messages_for
+from self_study_ai import RESERVATION, classify, messages_for, has_chat_evidence
 from teacher_capabilities import teacher_action, teacher_manual, teacher_read
 
 FEATURE_KEY = web.AppKey('self_study', object)
 DEFAULT = {'enabled': False, 'authorized': False, 'aiEnabled': False, 'photoEnabled': True,
-           'dailyCalls': 4, 'dailyTokens': 2400}
+           'dailyCalls': 4, 'dailyTokens': 2400, 'sensitivity': 'balanced', 'voiceTriggerMs': 600,
+           'observationSeconds': 10, 'reminderWaitSeconds': 90, 'confirmationsAfterReminder': 1}
 PHOTO_TTL = 24 * 3600000
 EVENT_TTL = 7 * 24 * 3600000
 REVIEW_INTERVAL = 90000
+WARNING_TTL = 300000
+# Conservative veto: explicit learning context wins over a noisy semantic label.
+# This deliberately favors missed chatter over interrupting a lesson.
+LEARNING_CUES = re.compile(r'这(?:道)?题|第[一二三四五六七八九十百0-9]+题|方程|函数|等式|系数|定理|公式|课文|单词|语法|作业|练习册|'
+                           r'\b(?:equation|coefficient|theorem|homework|grammar)\b', re.IGNORECASE)
 MAX_PHOTO_BYTES = 320000
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS self_study_settings(
@@ -44,7 +50,8 @@ CREATE TABLE IF NOT EXISTS self_study_events(
  reported_at INTEGER, status TEXT NOT NULL, classification TEXT NOT NULL DEFAULT 'chat',
  photo_status TEXT NOT NULL DEFAULT 'none', photo BLOB, photo_at INTEGER,
  handled_at INTEGER, handled_by TEXT, resolution TEXT, revision INTEGER NOT NULL,
- session_key TEXT NOT NULL, ended_at INTEGER);
+ session_key TEXT NOT NULL, ended_at INTEGER,
+ confirmations INTEGER NOT NULL DEFAULT 0, last_confirmation_at INTEGER, expires_at INTEGER);
 CREATE INDEX IF NOT EXISTS self_study_events_class ON self_study_events(class_id,started_at DESC);
 CREATE TABLE IF NOT EXISTS self_study_status(
  device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
@@ -64,6 +71,12 @@ def validate_config(body):
         raise ValueError('每日 AI 请求上限为 0-4 次。')
     if type(cfg['dailyTokens']) is not int or not 1500 <= cfg['dailyTokens'] <= 2400:
         raise ValueError('每日 token 上限为 1500-2400。')
+    if cfg['sensitivity'] not in ('low', 'balanced', 'high'):
+        raise ValueError('请选择有效的声音灵敏度。')
+    for key, low, high in (('voiceTriggerMs', 300, 3000), ('observationSeconds', 10, 30),
+                           ('reminderWaitSeconds', 90, 300), ('confirmationsAfterReminder', 1, 3)):
+        if type(cfg[key]) is not int or not low <= cfg[key] <= high:
+            raise ValueError('请检查观察时长、等待时间和确认次数的范围。')
     if cfg['enabled'] and not cfg['authorized']:
         raise ValueError('启用前请确认学校已完成告知授权。')
     return cfg
@@ -90,7 +103,27 @@ def validate_observation(body, now):
     text = body.get('text', '')
     if not isinstance(text, str) or len(text) > 120 or any(ord(c) < 32 and c not in '\n\t' for c in text):
         raise ValueError('本次文字片段超出限制。')
-    return {key: body[key] for key in ('id', 'revision', 'startAt', 'endAt', 'speechMs', 'segments', 'longestMs', 'level')} | {'text': text}
+    utterances = body.get('utterances')
+    if utterances is not None:
+        if not isinstance(utterances, list) or not 1 <= len(utterances) <= 6 or len(utterances) != body['segments']:
+            raise ValueError('分段数量不正确。')
+        previous_end = start
+        characters = 0
+        for u in utterances:
+            if (not isinstance(u, dict) or any(type(u.get(k)) is not int for k in ('startAt', 'endAt', 'speechMs'))
+                    or not previous_end <= u['startAt'] < u['endAt'] <= end
+                    or not 300 <= u['speechMs'] <= u['endAt'] - u['startAt'] <= 8500
+                    or not isinstance(u.get('text'), str) or not u['text'].strip()
+                    or any(ord(c) < 32 for c in u['text'])):
+                raise ValueError('分段时间或文字不正确。')
+            previous_end = u['endAt']
+            characters += len(u['text'])
+        if (characters > 120 or end - start > 60000 or utterances[0]['startAt'] != start
+                or utterances[-1]['endAt'] != end or sum(u['speechMs'] for u in utterances) != body['speechMs']
+                or max(u['speechMs'] for u in utterances) != body['longestMs']):
+            raise ValueError('分段与统计不一致。')
+        utterances = [{k: u[k] for k in ('startAt', 'endAt', 'speechMs', 'text')} for u in utterances]
+    return {key: body[key] for key in ('id', 'revision', 'startAt', 'endAt', 'speechMs', 'segments', 'longestMs', 'level')} | {'utterances': utterances}
 
 
 class SelfStudyFeature:
@@ -98,6 +131,13 @@ class SelfStudyFeature:
         self.s, self.app, self.connections = service, app, connections
         self.db = app[service.STORE_KEY]
         self.db.db.executescript(SCHEMA)
+        columns = {row['name'] for row in self.db.all('PRAGMA table_info(self_study_events)')}
+        if 'confirmations' not in columns:
+            self.db.run('ALTER TABLE self_study_events ADD COLUMN confirmations INTEGER NOT NULL DEFAULT 0')
+        if 'last_confirmation_at' not in columns:
+            self.db.run('ALTER TABLE self_study_events ADD COLUMN last_confirmation_at INTEGER')
+        if 'expires_at' not in columns:
+            self.db.run('ALTER TABLE self_study_events ADD COLUMN expires_at INTEGER')
         self.locks = {}
         self.client = None
         self.prune_at = 0
@@ -134,6 +174,9 @@ class SelfStudyFeature:
             return
         self.prune_at = now + 60000
         with self.db.transaction():
+            self.db.run("""UPDATE self_study_events SET status='resolved',resolution='evidence_expired',ended_at=?
+                WHERE status='warning' AND ended_at IS NULL
+                AND COALESCE(expires_at,COALESCE(warned_at,started_at)+?)<=?""", (now, WARNING_TTL, now))
             self.db.run("UPDATE self_study_events SET photo=NULL,photo_status='expired' WHERE photo IS NOT NULL AND photo_at<=?", (now - PHOTO_TTL,))
             self.db.run("UPDATE self_study_events SET photo_status='failed' WHERE photo_status IN ('pending','capturing') AND reported_at<=?", (now - 120000,))
             self.db.run('DELETE FROM self_study_events WHERE started_at<?', (now - EVENT_TTL,))
@@ -142,7 +185,7 @@ class SelfStudyFeature:
 
     def settings(self, cid):
         row = self.db.one('SELECT revision,config FROM self_study_settings WHERE class_id=?', (cid,))
-        return (json.loads(row['config']), row['revision']) if row else (dict(DEFAULT), 0)
+        return ({**DEFAULT, **json.loads(row['config'])}, row['revision']) if row else (dict(DEFAULT), 0)
 
     def usage(self, cid):
         return self.db.one('SELECT calls,tokens,estimated,last_call_at FROM self_study_usage WHERE class_id=? AND day=?',
@@ -190,7 +233,7 @@ class SelfStudyFeature:
 
     def teacher(self, request, cid=None):
         if self.s.is_classroom_request(request):
-            return self.s.json_response({'error': '请在教师端查看晚自习管理。'}, 403)
+            return self.s.json_response({'error': '请在教师端查看自习管理。'}, 403)
         user = self.s.require_user(request)
         if isinstance(user, web.Response):
             return user
@@ -233,8 +276,8 @@ class SelfStudyFeature:
         user = self.teacher(request, cid)
         return user if isinstance(user, web.Response) else self.s.json_response(self.payload(cid))
 
-    @teacher_action('self-study.update', '修改晚自习管理', target='class', head_only=True,
-                    fields='config revision', impact='将修改本班晚自习监测、照片设置与每日 AI 用量上限。')
+    @teacher_action('self-study.update', '修改自习管理', target='class', head_only=True,
+                    fields='config revision', impact='将修改本班识别规则、照片设置与每日 AI 用量上限。')
     async def save_settings(self, request):
         cid = request.match_info['class_id']
         user = self.teacher(request, cid)
@@ -247,7 +290,7 @@ class SelfStudyFeature:
             if type(revision) is not int:
                 raise ValueError('版本格式不正确。')
         except (ValueError, KeyError, TypeError):
-            return self.s.json_response({'error': '请检查告知授权和 AI 上限。'}, 400)
+            return self.s.json_response({'error': '请检查授权、识别规则和 AI 上限。'}, 400)
         with self.db.transaction():
             _, current = self.settings(cid)
             if revision != current:
@@ -274,7 +317,7 @@ class SelfStudyFeature:
         try:
             body = await request.json()
             state, detail = body['state'], body.get('detail', '')
-            if state not in {'inactive', 'observing', 'teaching', 'warning', 'reported', 'budget', 'error', 'paused'}:
+            if state not in {'inactive', 'listening', 'observing', 'analyzing', 'teaching', 'warning', 'reported', 'budget', 'ai_paused', 'error', 'paused'}:
                 raise ValueError()
             if not isinstance(detail, str) or len(detail) > 160:
                 raise ValueError()
@@ -342,14 +385,31 @@ class SelfStudyFeature:
                 return self.s.json_response(result)
             self.prune()
             now = self.s.now_ms()
+            if abs(observation['endAt'] - now) > 30000:
+                return self.s.json_response({'error': '观察窗口已过期，请重新观察。'}, 400)
+            if observation['utterances'] is None:
+                return self.record(device, observation['id'], {'action': 'observe', 'cooldownSeconds': 300,
+                    'detail': '教室端缺少独立语句证据，请升级教室端后继续监测。'})
             event = self.db.one("SELECT * FROM self_study_events WHERE class_id=? AND session_key=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1", (cid, session['key']))
+            if event and not event['reported_at'] and now >= (event['expires_at'] or
+                    (event['warned_at'] or event['started_at']) + WARNING_TTL):
+                self.db.run("UPDATE self_study_events SET status='resolved',resolution='evidence_expired',ended_at=? WHERE id=?", (now, event['id']))
+                event = None
+            if LEARNING_CUES.search(' '.join(u['text'] for u in observation['utterances'])):
+                if event and not event['reported_at'] and event['device_id'] == device['id']:
+                    self.db.run("UPDATE self_study_events SET status='resolved',resolution='not_chat',last_seen_at=?,ended_at=? WHERE id=?", (now, now, event['id']))
+                return self.record(device, observation['id'], {'action': 'observe', 'classification': 'study',
+                    'cooldownSeconds': 180, 'detail': '片段含学习线索，继续观察，不提醒。'})
             if event and (event['reported_at'] or event['device_id'] != device['id']):
                 return self.record(device, observation['id'], {'action': 'observe', 'cooldownSeconds': 300})
             if event and not event['warned_at']:
                 return self.record(device, observation['id'], {'action': 'remind', 'eventId': event['id']})
-            if event and (observation['startAt'] < event['warned_at'] or now - event['warned_at'] < REVIEW_INTERVAL):
-                return self.record(device, observation['id'], {'action': 'observe', 'cooldownSeconds': 90})
-            if observation['segments'] < 3 or observation['speechMs'] < 6000 or not observation['text'].strip():
+            if event and (observation['startAt'] < max(event['warned_at'], event['last_confirmation_at'] or 0)
+                          or now - event['warned_at'] < cfg['reminderWaitSeconds'] * 1000):
+                remaining = max(90, math.ceil((event['warned_at'] + cfg['reminderWaitSeconds'] * 1000 - now) / 1000))
+                return self.record(device, observation['id'], {'action': 'observe', 'cooldownSeconds': remaining})
+            if (observation['segments'] < 3 or observation['speechMs'] < 6000
+                    or observation['endAt'] - observation['startAt'] < cfg['observationSeconds'] * 1000):
                 return self.record(device, observation['id'], {'action': 'observe'})
             if now - self.usage(cid)['last_call_at'] < REVIEW_INTERVAL:
                 return self.record(device, observation['id'], {'action': 'observe', 'cooldownSeconds': 90})
@@ -384,22 +444,36 @@ class SelfStudyFeature:
                         or not self.active(cid, latest_cfg) or self.session(cid)['key'] != session['key']
                         or event and (not latest_event or latest_event['ended_at'] is not None)):
                     result = {'action': 'inactive'}
-                elif decision.get('kind') != 'chat' or decision.get('confidence', 0) < .85:
-                    result = {'action': 'observe', 'classification': decision.get('kind', 'unknown'),
+                elif event and self.s.now_ms() >= (event['expires_at'] or event['warned_at'] + WARNING_TTL):
+                    self.db.run("UPDATE self_study_events SET status='resolved',resolution='evidence_expired',ended_at=? WHERE id=?", (self.s.now_ms(), event['id']))
+                    result = {'action': 'observe', 'classification': 'unknown', 'detail': '原提醒已过期，重新观察。'}
+                elif not has_chat_evidence(decision, observation):
+                    result = {'action': 'observe', 'classification': decision.get('kind') if decision.get('kind') in {'teaching', 'study'} else 'unknown',
                               'cooldownSeconds': 180 if decision.get('kind') in {'teaching', 'study'} else 90}
                     if event:
                         self.db.run("UPDATE self_study_events SET status='resolved',resolution='not_chat',last_seen_at=?,ended_at=? WHERE id=? AND ended_at IS NULL", (now, now, event['id']))
                 elif event:
-                    updated = self.db.run("UPDATE self_study_events SET status='reported',reported_at=?,last_seen_at=?,photo_status=? WHERE id=? AND ended_at IS NULL AND status='warning'",
-                        (now, now, 'pending' if cfg['photoEnabled'] else 'none', event['id']))
-                    result = ({'action': 'report', 'eventId': event['id'], 'captureRequested': cfg['photoEnabled']}
-                              if updated.rowcount == 1 else {'action': 'inactive'})
+                    confirmations = event['confirmations'] + 1
+                    reported = confirmations >= cfg['confirmationsAfterReminder']
+                    updated = self.db.run("""UPDATE self_study_events SET confirmations=?,last_confirmation_at=?,
+                        last_seen_at=?,status=?,reported_at=?,photo_status=?
+                        WHERE id=? AND ended_at IS NULL AND status='warning'""",
+                        (confirmations, observation['endAt'], now, 'reported' if reported else 'warning',
+                         now if reported else None, 'pending' if reported and cfg['photoEnabled'] else 'none', event['id']))
+                    if updated.rowcount != 1:
+                        result = {'action': 'inactive'}
+                    elif reported:
+                        result = {'action': 'report', 'eventId': event['id'], 'captureRequested': cfg['photoEnabled']}
+                    else:
+                        result = {'action': 'observe', 'classification': 'chat', 'eventId': event['id'],
+                                  'confirmations': confirmations, 'cooldownSeconds': 90,
+                                  'detail': f"提醒后已确认 {confirmations}/{cfg['confirmationsAfterReminder']} 次，继续观察。"}
                 else:
                     eid = str(uuid.uuid4())
                     self.db.run("""INSERT INTO self_study_events
                         (id,class_id,device_id,started_at,last_seen_at,status,revision,session_key) VALUES(?,?,?,?,?,'warning',?,?)""",
                                 (eid, cid, device['id'], now, now, revision, session['key']))
-                    result = {'action': 'remind', 'eventId': eid}
+                    result = {'action': 'remind', 'eventId': eid, 'cooldownSeconds': cfg['reminderWaitSeconds']}
             except (ValueError, TypeError, KeyError, ClientError, TimeoutError):
                 pass
             self.db.run('UPDATE self_study_decisions SET response=? WHERE class_id=? AND observation_id=?',
@@ -426,9 +500,15 @@ class SelfStudyFeature:
                            (request.match_info['event_id'], device['class_id'], device['id']))
         if not event:
             return self.s.json_response({'error': '提醒事件已变化。'}, 404)
+        if event['ended_at'] is not None or self.s.now_ms() >= (event['expires_at'] or
+                (event['warned_at'] or event['started_at']) + WARNING_TTL):
+            return self.s.json_response({'error': '提醒已过期，请重新观察。'}, 409)
         if body['shown']:
-            self.db.run('UPDATE self_study_events SET warned_at=COALESCE(warned_at,?),last_seen_at=? WHERE id=?',
-                        (self.s.now_ms(), self.s.now_ms(), event['id']))
+            now = self.s.now_ms()
+            ttl = max(WARNING_TTL, cfg['reminderWaitSeconds'] * 1000 +
+                      (cfg['confirmationsAfterReminder'] - 1) * REVIEW_INTERVAL + 60000)
+            self.db.run('UPDATE self_study_events SET warned_at=COALESCE(warned_at,?),last_seen_at=?,expires_at=COALESCE(expires_at,?) WHERE id=?',
+                        (now, now, now + ttl, event['id']))
         return self.s.json_response({'ok': True})
 
     def capture_event(self, request, device, *, claimed=False):

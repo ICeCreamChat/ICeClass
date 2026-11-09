@@ -26,9 +26,17 @@ internal static class HomeworkReview
         if (selfStudy)
         {
             island = new ClassroomIslandService(_ => Task.CompletedTask, () => home.Show());
+            island.HomeStateChanged += home.SetIslandState;
             island.SetBinding(config);
+            island.SetConnection(new ReceiverConnectionState(true, "已连接本地验收"));
+            // Make the real secondary window discoverable during explicit local acceptance.
+            var islandWindow = (ClassroomIslandWindow)typeof(ClassroomIslandService)
+                .GetField("_window", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(island)!;
+            islandWindow.ShowInTaskbar = true;
             monitor = new SelfStudyMonitor(token => island.ShowSelfStudyWarningAsync(token), () => home.IsBusy,
                 () => island.CancelSelfStudyWarning());
+            monitor.FeedbackChanged += island.UpdateSelfStudyFeedback;
+            monitor.SoundLevelChanged += island.UpdateSelfStudyLevel;
             monitor.SetBinding(config);
             home.Closed += (_, _) => { monitor.Dispose(); island.Dispose(); };
         }

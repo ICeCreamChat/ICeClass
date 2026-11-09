@@ -9,6 +9,22 @@ if (args is ["--self-study-checks"])
     return;
 }
 if (args is ["--self-study-review", var selfStudyBinding]) { HomeworkReview.Run(selfStudyBinding, selfStudy: true); return; }
+if (args is ["--self-study-camera-checks", var cameraOutput]) { SelfStudyCameraChecks.Run(cameraOutput); return; }
+if (args is ["--self-study-feedback-checks", var feedbackOutput]) { NativeSelfStudyFeedbackChecks.Run(feedbackOutput); return; }
+if (args is ["--self-study-microphone-checks", var microphoneOutput]) { await SelfStudyMicrophoneChecks.Run(microphoneOutput); return; }
+if (args is ["--self-study-microphone-checks", var microphoneDiagnosticOutput, var microphoneSeconds]) { await SelfStudyMicrophoneChecks.Run(microphoneDiagnosticOutput, int.Parse(microphoneSeconds)); return; }
+if (args is ["--self-study-audio-checks", var selfStudyAudioOutput])
+{
+    try { SelfStudyAudioChecks.Run(selfStudyAudioOutput); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--self-study-scenario-checks", var selfStudyScenarioOutput])
+{
+    try { SelfStudyScenarioChecks.Run(selfStudyScenarioOutput); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
 
 if (args is ["--homework-review", var homeworkBinding]) { HomeworkReview.Run(homeworkBinding); return; }
 if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
@@ -189,6 +205,8 @@ if (args is ["--island-shout"]) { NativeShoutChecks.Run(); return; }
 if (args is ["--island-arm-review", var reviewOutput]) { NativeHoldingArmReview.Run(reviewOutput); return; }
 if (args is ["--island-layout-review", var layoutOutput]) { NativeIslandLayoutReview.Run(layoutOutput); return; }
 if (args is ["--island-material-review"]) { NativeIslandLayoutReview.PreviewMaterial(); return; }
+if (args is ["--self-study-island-checks", var noticeOutput]) { NativeSelfStudyNoticeChecks.Run(noticeOutput); return; }
+if (args is ["--self-study-island-review", var noticeReviewOutput]) { NativeSelfStudyNoticeChecks.Run(noticeReviewOutput, preview: true); return; }
 if (args is ["--island-glass-bounds"]) { NativeIslandGlassChecks.Run(); return; }
 if (args is ["--island-refraction-probe"]) { NativeIslandRefractionProbe.Run(); return; }
 if (args is ["--island-refraction-checks", var refractionOutput]) { NativeIslandRefractionChecks.Run(refractionOutput); return; }

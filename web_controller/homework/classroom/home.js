@@ -14,6 +14,7 @@
     document.body.dataset.material=preference.material;
     document.body.classList.toggle('reduce-transparency',preference.reduceTransparency);
     document.querySelectorAll('button[data-material]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.material===preference.material)));
+    window.dispatchEvent(new Event('iceclass-appearance-change'));
   }
   function saveAppearance() {applyAppearance();try{localStorage.setItem('iceclass.classroom.appearance',JSON.stringify(preference));}catch{notify('外观已应用，暂时无法记住此设置。');}}
   function request(action,value={}) {
@@ -65,8 +66,8 @@
       }
     }
     const lessonsChanged=!previous||value.scheduleKnown!==previous.scheduleKnown||value.lessons.length!==previous.lessons.length
-      ||value.lessons.some((lesson,index)=>{const old=previous.lessons[index];return lesson.name!==old.name||lesson.start!==old.start||lesson.current!==old.current;});
-    if(lessonsChanged)$('lesson-list').innerHTML=value.lessons.length?value.lessons.map(l=>`<div class="lesson${l.current?' is-current':''}"${l.current?' aria-label="'+esc(l.name)+'，正在进行"':''}><strong>${esc(l.name)}</strong><small>${esc(l.start)}</small></div>`).join(''):`<p class="schedule-empty">${value.scheduleKnown?'今天没有课程':'课表同步后显示全天课程'}</p>`;
+      ||value.lessons.some((lesson,index)=>{const old=previous.lessons[index];return lesson.name!==old.name||lesson.start!==old.start||lesson.end!==old.end||lesson.current!==old.current;});
+    if(lessonsChanged)$('lesson-list').innerHTML=value.lessons.length?value.lessons.map(l=>`<div class="lesson${l.current?' is-current':''}"${l.current?' aria-current="true"':''}><div class="lesson-heading"><strong title="${esc(l.name)}">${esc(l.name)}</strong>${l.current?'<span class="lesson-state">进行中</span>':''}</div><small>${esc(l.start)}${l.end?' - '+esc(l.end):''}</small></div>`).join(''):`<p class="schedule-empty">${value.scheduleKnown?'今天没有课程':'课表同步后显示全天课程'}</p>`;
     const notice=value.notice;
     if(!previous||Boolean(previous.notice)!==Boolean(notice)){$('daily-course').hidden=Boolean(notice);$('shout-course').hidden=!notice;}
     if(notice){

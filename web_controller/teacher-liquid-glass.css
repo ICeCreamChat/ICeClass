@@ -1,25 +1,41 @@
-/* The approved teacher sample, applied to the real business surfaces.
-   Shared optics paint only ::before; children, form values and focus remain intact. */
+/* Ice-blue glass and solid white share geometry and readable content.
+   Only outer surfaces blur the wallpaper; nested content stays on that plane. */
 .teacher-liquid {
-  --bg: #dfedf7;
-  --surface: #f4fbff69;
-  --surface-solid: #edf7fc;
+  --bg: #e5f0f8;
+  --surface: #f1f9ff66;
+  --surface-solid: #f8fcffdb;
   --text: #193c59;
   --muted: #3e5b72;
-  --line: #7199b52e;
+  --line: #7199b538;
   --blue: #0064d7;
   --blue-text: #075cad;
-  --blue-soft: #e3f3ff8a;
+  --blue-soft: #e8f3ff;
   --green: #24654e;
   --red: #943e3b;
-  --red-soft: #fbe6e175;
+  --red-soft: #fff0ed;
   --orange: #825617;
-  --orange-soft: #fff0dba1;
-  --radius: 13px;
+  --orange-soft: #fff3df;
+  --radius: 10px;
   --control-height: 44px;
   --shadow: 0 12px 26px #28577514, 0 2px 5px #2857750a;
   --teacher-pane: linear-gradient(120deg, #ffffff97, #f4fbff63 48%, #c9e6f84d);
-  --teacher-control: linear-gradient(120deg, #ffffffba, #edf8ff8c);
+  --teacher-control: #f6fbff70;
+  --teacher-control-hover: #ffffffa3;
+  --teacher-control-line: #6f9ab66b;
+  --teacher-control-shadow: inset 0 1px #ffffffb3, 0 2px 5px #28577508;
+  --teacher-primary: linear-gradient(145deg, #0866cbf5, #0057bcf5);
+  --teacher-primary-hover: linear-gradient(145deg, #005bbcf5, #004faaf5);
+  --teacher-surface-highlight: linear-gradient(125deg, #ffffff38, #ffffff08 55%, #b5dcf018);
+  --teacher-surface-edge: #ffffffa3;
+  --teacher-surface-shadow: 0 10px 24px #264f6d0e, inset 0 1px #ffffffb3;
+  --teacher-surface-filter: blur(12px) saturate(1.1);
+  --teacher-table-head: #edf7ff85;
+  --teacher-row-hover: #ffffff59;
+  --teacher-segment: #edf7ff59;
+  --teacher-sticky: #edf7fff0;
+  --teacher-overlay: #eef8ffd9;
+  --teacher-inset: 24px;
+  --teacher-nav-width: 222px;
   font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
   font-synthesis: none;
   font-size: 16px;
@@ -40,15 +56,15 @@
   inset: 0;
   z-index: -2;
   pointer-events: none;
-  background: radial-gradient(ellipse 114% 88% at 23% 107%, transparent 64%, #ffffff9c 64.15%, #ffffff9c 64.8%, transparent 65%),
-    radial-gradient(ellipse 72% 110% at 108% -23%, transparent 63%, #edfaff80 63.2%, #edfaff80 75%, transparent 75.3%),
-    radial-gradient(ellipse 86% 70% at -8% 9%, transparent 67%, #ffffff7a 67.2%, #ffffff7a 68.1%, transparent 68.4%);
+  background: radial-gradient(ellipse 114% 88% at 23% 107%, transparent 64%, #ffffff59 64.15%, #ffffff59 64.8%, transparent 65%),
+    radial-gradient(ellipse 72% 110% at 108% -23%, transparent 63%, #edfaff40 63.2%, #edfaff40 75%, transparent 75.3%),
+    radial-gradient(ellipse 86% 70% at -8% 9%, transparent 67%, #ffffff42 67.2%, #ffffff42 68.1%, transparent 68.4%);
 }
 .teacher-liquid * { scrollbar-width: thin; scrollbar-color: #7099b58a transparent; }
 .teacher-liquid ::selection { background: #aed4f5; color: #143a58; }
 .teacher-liquid :is(button, input, textarea, select) { font-family: inherit; }
-.teacher-liquid h1 { font-size: 30px; line-height: 1.4; letter-spacing: -.02em; font-weight: 700; text-wrap: balance; }
-.teacher-liquid h2 { font-size: 22px; line-height: 1.5; font-weight: 700; }
+.teacher-liquid h1 { font-size: 28px; line-height: 1.4; letter-spacing: -.02em; font-weight: 700; text-wrap: balance; }
+.teacher-liquid h2 { font-size: 20px; line-height: 1.5; font-weight: 600; }
 .teacher-liquid h3 { font-size: 18px; line-height: 1.5; font-weight: 600; }
 .teacher-liquid :is(.muted, .hint, .reading-note, .hw-note, .hw-note p) { color: var(--muted); }
 .teacher-liquid :is(.hint, .reading-note, .hw-note, .form-error) { font-size: 14px; line-height: 1.75; }
@@ -71,7 +87,7 @@
   backdrop-filter: var(--lg-filter, blur(10px) saturate(1.12));
   -webkit-backdrop-filter: var(--lg-filter, blur(10px) saturate(1.12));
 }
-.teacher-liquid .shell { grid-template-columns: 222px minmax(0, 1fr); grid-template-rows: 64px minmax(0, 1fr); max-width: 1900px; margin: auto; }
+.teacher-liquid .shell { grid-template-columns: var(--teacher-nav-width) minmax(0, 1fr); grid-template-rows: 64px minmax(0, 1fr); max-width: 1900px; margin: auto; }
 .teacher-liquid .sidebar { color: var(--text); padding: 28px 14px 20px 18px; border: 0; border-right: 1px solid #ffffff66; background: #f4fbff29; }
 .teacher-liquid .sidebar .brand-lockup { margin: 0 0 20px; gap: 10px; }
 .teacher-liquid .sidebar .brand-lockup strong { color: var(--text); font-size: 18px; font-weight: 700; letter-spacing: 0; white-space: nowrap; }
@@ -86,46 +102,47 @@
 .teacher-liquid .user-avatar { color: var(--blue-text); background: #f7fcff8c; border-color: #ffffffaa; }
 .teacher-liquid .user-meta strong { font-size: 14px; }
 .teacher-liquid .user-meta span { font-size: 13px; }
-.teacher-liquid main { padding: 31px 34px 40px 24px; }
-.teacher-liquid .view { max-width: 1600px; }
-.teacher-liquid .view-head { margin-bottom: 26px; gap: 20px; }
+.teacher-liquid main { padding: 24px 32px 40px 24px; }
+.teacher-liquid .view, .teacher-liquid #view-island { max-width: 1480px; }
+.teacher-liquid .ideas-admin { max-width: none; }
+.teacher-liquid :is(.view-head, .hw-heading, .ideas-heading, .ss-heading, .island-top) { margin-bottom: 24px; gap: 16px; }
+.teacher-liquid :is(.hw-heading, .ss-heading, .island-top) { align-items: center; }
+.teacher-liquid :is(.hw-heading, .ideas-heading, .island-top) h1 { font-size: 28px; line-height: 1.4; letter-spacing: -.02em; }
+.teacher-liquid .view > .view-head { min-height: 44px; }
 .teacher-liquid .view-head p { font-size: 15px; max-width: 70ch; }
 
 /* Common controls also cover dynamic editors, operation cards and deep dialogs. */
 .teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup) {
   min-height: 44px;
   padding: 10px 18px;
-  border: 1px solid #ffffffb8;
-  border-radius: 13px;
+  border: 1px solid var(--teacher-control-line);
+  border-radius: var(--radius);
   color: #234f73;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
   background: var(--teacher-control);
-  box-shadow: 0 4px 10px #2857750e, inset 0 1px #ffffffed;
+  box-shadow: var(--teacher-control-shadow);
   transition: background-color .16s, box-shadow .16s, color .16s;
 }
-.teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):hover { color: #174e79; background: linear-gradient(120deg, #ffffffed, #e3f4ffc2); border-color: #ffffffd9; }
+.teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):hover { color: #174e79; background: var(--teacher-control-hover); border-color: #7fa4c0; }
 .teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):active { transform: none; box-shadow: inset 0 2px 5px #28577522; }
-.teacher-liquid :is(.btn.primary, .btn.send, .bb-send) { color: #075cad; border-color: #a9d6f8b3; background: linear-gradient(125deg, #e6f6ffb5, #a5d5fa91); }
-.teacher-liquid :is(.btn.primary, .btn.send, .bb-send):hover { background: linear-gradient(125deg, #effaffde, #9bcbf5b3); border-color: #8bbce2; }
-.teacher-liquid :is(.btn, .bb-send, .bb-tool).lg-pane { --teacher-pane: var(--teacher-control); box-shadow: 0 4px 10px #2857750e, inset 0 1px #ffffffed; }
-.teacher-liquid :is(.btn.primary, .btn.send, .bb-send).lg-pane { --teacher-pane: linear-gradient(125deg, #e6f6ffb5, #a5d5fa91); border-color: #a9d6f8b3 !important; color: #075cad; }
-.teacher-liquid :is(.btn, .bb-send, .bb-tool).lg-pane:hover { --teacher-pane: linear-gradient(120deg, #ffffffed, #e3f4ffc2); }
-.teacher-liquid :is(.btn.primary, .btn.send, .bb-send).lg-pane:hover { --teacher-pane: linear-gradient(125deg, #effaffde, #9bcbf5b3); }
-.teacher-liquid :is(.btn.danger, .btn.send.is-urgent, .bb-danger) { color: var(--red); border-color: #d6a8a38c; --teacher-pane: linear-gradient(125deg, #fff8f4c9, #f5d9d17a); }
-.teacher-liquid :is(.btn.send.is-warning) { color: #715223; --teacher-pane: linear-gradient(125deg, #fff9e8c9, #f7dfb57a); }
+.teacher-liquid :is(.btn.primary, .btn.send, .bb-send) { color: #ffffff; border-color: #005dbf; background: var(--teacher-primary); box-shadow: inset 0 1px #ffffff47, 0 3px 7px #075ba91c; }
+.teacher-liquid :is(.btn.primary, .btn.send, .bb-send):hover { color: #ffffff; background: var(--teacher-primary-hover); border-color: #0056ae; }
+.teacher-liquid :is(.btn.danger, .bb-danger) { color: var(--red); border-color: #e2b9b4; background: #fff6f4; }
+.teacher-liquid .btn.send.is-urgent { color: #ffffff; border-color: var(--red); background: var(--red); }
+.teacher-liquid .btn.send.is-warning { color: #ffffff; border-color: var(--orange); background: var(--orange); }
 .teacher-liquid .btn.block { font-size: 16px; }
-.teacher-liquid .btn.icon { width: 40px; min-height: 40px; padding: 8px; border-radius: 50%; font-size: 22px; flex: none; }
+.teacher-liquid .btn.icon { width: 44px; min-height: 44px; padding: 8px; border-radius: 50%; font-size: 22px; flex: none; }
 .teacher-liquid :is(.dialog-head, .ideas-detail-header) .btn.icon { box-shadow: none; border-color: transparent; background: #f8fdff6b; }
 .teacher-liquid :is(input:where(:not([type=checkbox], [type=radio], [type=range], [type=hidden])), textarea, select) {
-  border-radius: 12px;
-  background: linear-gradient(120deg, #ffffffb8, #f1faff80);
-  border-color: #92b4cc8c;
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  border-color: var(--teacher-control-line);
   color: var(--text);
   min-height: 44px;
   font-size: 16px;
-  box-shadow: inset 0 1px 2px #28577506, 0 1px #ffffff80;
+  box-shadow: inset 0 1px 2px #28577507, 0 1px #ffffff85;
 }
 .teacher-liquid :is(input, textarea)::placeholder { color: #46637a; opacity: 1; }
 .teacher-liquid .bb-settings #bbProvider { line-height: 1.5; }
@@ -145,27 +162,89 @@
 }
 
 /* Data and editing surfaces. Long tables keep their own scroll region. */
-.teacher-liquid :is(.reading-filter, .metric, .reading-panel, .reading-settings, .daily-details, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .island-main, .island-day-panel, .island-delivery-panel, .ideas-list-panel, .ideas-detail, .hw-scope, .hw-section, #acknowledgementsPanel, .client-diagnostic-detail) { border-radius: 25px; }
-.teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section) { padding: 24px 26px; }
+.teacher-liquid :is(.reading-filter, .metric, .reading-panel, .reading-settings, .daily-details, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .island-main, .island-day-panel, .island-delivery-panel, .ideas-list-panel, .ideas-detail, .hw-scope, .hw-section, .users-panel, :where(#acknowledgementsPanel), .client-diagnostic-detail, .ss-settings, .ss-runtime, .ss-events, .table-wrap, .hw-table-wrap, .client-diagnostic-table, .bb-panel) {
+  border: 1px solid var(--teacher-surface-edge);
+  border-radius: 16px;
+  background: var(--teacher-surface-highlight), var(--surface);
+  box-shadow: var(--teacher-surface-shadow);
+  backdrop-filter: var(--teacher-surface-filter);
+  -webkit-backdrop-filter: var(--teacher-surface-filter);
+}
+/* A table scrolls inside its parent glass, never inside a second blur layer. */
+.teacher-liquid :is(.reading-panel, .reading-settings, .daily-details, .plain-section, .island-main, .ideas-detail, .hw-section, .users-panel, .client-diagnostic-detail) :is(.table-wrap, .hw-table-wrap, .client-diagnostic-table) {
+  background: transparent; box-shadow: none; border: 0; border-radius: 0;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.teacher-liquid .reading-panel .table-wrap { border-top: 1px solid var(--line); }
+.teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section) { padding: var(--teacher-inset); }
 .teacher-liquid :is(.metric strong, .metric strong small, .metric-heading, th, #readingRanking td:nth-child(8)) { color: var(--text); }
-.teacher-liquid .metric { padding: 22px 25px; }
+.teacher-liquid .metric { padding: 20px 24px; }
 .teacher-liquid .metric strong { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
 .teacher-liquid .metric strong small { color: var(--muted); }
-.teacher-liquid .panel-heading { padding: 23px 27px 20px; gap: 18px; flex-wrap: wrap; }
-.teacher-liquid :is(.panel-heading h2, .compose h2, .plain-section h2) { font-size: 22px; }
-.teacher-liquid :is(.table-wrap, .hw-table-wrap, .client-diagnostic-table) { min-width: 0; max-width: 100%; background: #f5fbff30; border-color: var(--line); }
+.teacher-liquid .panel-heading { padding: 20px 24px; gap: 16px; flex-wrap: wrap; }
+.teacher-liquid :is(.panel-heading h2, .compose h2, .plain-section h2) { font-size: 20px; }
+.teacher-liquid :is(.table-wrap, .hw-table-wrap, .client-diagnostic-table) { min-width: 0; max-width: 100%; }
 .teacher-liquid table { font-size: 15px; font-variant-numeric: tabular-nums; }
-.teacher-liquid th { color: var(--muted); font-size: 14px; font-weight: 600; background: #f4fbff63; border-color: var(--line); }
+.teacher-liquid :is(#historyContainer, #classesContainer, #devicesContainer) table { min-width: 820px; }
+.teacher-liquid #classesContainer td:first-child { min-width: 144px; }
+/* Class rows share column centers, including the actual button group.
+   A bounded table scrolls on narrow screens instead of wrapping actions. */
+.teacher-liquid #classesContainer .classes-table { table-layout: fixed; min-width: 1040px; }
+.teacher-liquid .classes-table :is(th, td) { text-align: center; vertical-align: middle; }
+.teacher-liquid .classes-table th:nth-child(1) { width: 20%; }
+.teacher-liquid .classes-table th:nth-child(2) { width: 11%; }
+.teacher-liquid .classes-table th:nth-child(3) { width: 9%; }
+.teacher-liquid .classes-table th:nth-child(4) { width: 18%; }
+.teacher-liquid .classes-table th:nth-child(5) { width: 42%; }
+.teacher-liquid .classes-table .grade-divider td { text-align: left; }
+.teacher-liquid .row-actions { align-items: center; justify-content: center; gap: 8px; }
+.teacher-liquid .row-actions .btn { min-height: 44px; padding: 10px 12px; font-size: 14px; white-space: nowrap; }
+.teacher-liquid .classes-table .row-actions { flex-wrap: nowrap; }
+/* Descriptive identities remain easy to scan; compact states and actions
+   use the same center in their header and body. */
+.teacher-liquid .devices-table :is(th, td):nth-child(n+4),
+.teacher-liquid .control-device-table :is(th, td):nth-child(n+2),
+.teacher-liquid .users-table :is(th, td):is(:nth-child(2), :nth-child(n+4)) { text-align: center; vertical-align: middle; }
+.teacher-liquid .control-device-table td:nth-child(2) .device-detail { min-width: 0; align-items: center; }
+.teacher-liquid .control-device-table td:last-child .btn { padding-inline: 12px; }
+.teacher-liquid .devices-table td:nth-child(3) { min-width: 128px; }
+.teacher-liquid .devices-table :is(th, td):nth-child(5) { white-space: nowrap; }
+.teacher-liquid .users-table .user-role-badges { justify-content: center; }
+.teacher-liquid .users-table td:nth-child(4) { padding-inline: 12px; }
+.teacher-liquid .users-table td:last-child { padding-inline: 8px; }
+.teacher-liquid .user-row-actions { justify-content: center; }
+.teacher-liquid .user-row-actions .btn { padding-inline: 12px; }
+/* Compact report columns share a center. Names, work and notification
+   content retain a readable left edge, even when they span several lines. */
+.teacher-liquid #rankingTable :is(th, td):is(:first-child, :nth-child(n+3)),
+.teacher-liquid #readingDaily :is(th, td):is(:first-child, :nth-child(n+3)),
+.teacher-liquid .hw-table[data-group=assignments] :is(th, td):is(:first-child, :nth-child(3), :nth-child(n+5):nth-child(-n+8)),
+.teacher-liquid .hw-table[data-group=students] :is(th, td):nth-child(n+3),
+.teacher-liquid #historyContainer :is(th, td):is(:first-child, :nth-child(4), :nth-child(5), :nth-child(n+7)),
+.teacher-liquid .client-diagnostic-table :is(th, td):not(:nth-child(2)),
+.teacher-liquid #classRolloverRows :is(th, td):nth-child(-n+2),
+.teacher-liquid .island-slots :is(th, td):last-child { text-align: center; vertical-align: middle; }
+.teacher-liquid #rankingTable .ranking-number { margin-inline: auto; }
+.teacher-liquid #rankingTable .mode-tag { margin-inline: 2px; }
+.teacher-liquid .hw-table :is(th, td) { vertical-align: middle; }
+.teacher-liquid .hw-table[data-group=assignments] { min-width: 1100px; }
+.teacher-liquid .hw-table[data-group=assignments] :is(th, td):nth-child(2) { min-width: 160px; }
+.teacher-liquid .hw-table[data-group=assignments] tbody th { min-width: 200px; }
+.teacher-liquid .hw-table[data-group=assignments] :is(th, td):is(:nth-child(3), :nth-child(n+5):nth-child(-n+8)) { white-space: nowrap; }
+.teacher-liquid #historyContainer :is(th, td):first-child,
+.teacher-liquid #historyContainer td:last-child .btn { white-space: nowrap; }
+.teacher-liquid th { color: var(--muted); font-size: 14px; font-weight: 600; background: var(--teacher-table-head); border-color: var(--line); }
 .teacher-liquid td { border-color: #7199b524; }
-.teacher-liquid tbody tr:hover:not(.grade-divider) { background: #ffffff40; }
+.teacher-liquid tbody tr:hover:not(.grade-divider) { background: var(--teacher-row-hover); }
 .teacher-liquid :is(.report-note, .calendar-help, .ranking-chart-caption) { color: var(--muted); background: #eff8ff36; border-color: var(--line); }
 .teacher-liquid :is(.empty, .hw-empty, .island-empty) { background: #f4fbff38; border-color: #90b9d252; color: var(--muted); font-size: 15px; border-radius: 18px; }
 .teacher-liquid :is(.quiet-status, .reading-rule-status, .island-notice, .hw-feedback, .presence, .confirm-summary, .code-box) { color: #345c7a; background: #e9f6ff61; border-color: #90b9d252; border-radius: 13px; }
 .teacher-liquid :is(.quiet-status.active, .quiet-warning) { color: #715223; background: #fff2d65c; border-color: #d5bb7f47; }
 .teacher-liquid :is(.island-error, .hw-feedback.hw-error) { color: var(--red); background: #fbe6e180; }
 .teacher-liquid :is(.form-error, .danger-text, .hw-error, .hw-missing) { color: var(--red); }
-.teacher-liquid :is(.period-shortcuts, .ranking-switch, .mode-picker, .hw-tabs, .hw-group, .island-tabs, .island-duty-mode, .island-preview-scenes, .ideas-admin-tabs) { padding: 5px; gap: 4px; height: auto; min-height: 44px; background: #f4fbff47; border: 1px solid #ffffffa3; border-radius: 16px; }
-.teacher-liquid :is(.period-shortcuts .btn, .ranking-switch button, .mode-button, .island-tabs button, .island-preview-scenes button, .hw-tabs .btn, .hw-group .btn) { color: #3e5b72; font-size: 15px; font-weight: 400; min-height: 40px; line-height: 1.5; border-radius: 12px; box-shadow: none; border: 1px solid transparent; padding: 8px 14px; background: transparent; }
+.teacher-liquid :is(.period-shortcuts, .ranking-switch, .mode-picker, .hw-tabs, .hw-group, .island-tabs, .island-duty-mode, .island-preview-scenes, .ideas-admin-tabs) { padding: 3px; gap: 4px; min-height: 44px; background: var(--teacher-segment); border: 1px solid var(--line); border-radius: 12px; }
+.teacher-liquid :is(.period-shortcuts .btn, .ranking-switch button, .mode-button, .island-tabs button, .island-preview-scenes button, .hw-tabs .btn, .hw-group .btn) { color: #3e5b72; font-size: 15px; font-weight: 400; min-height: 36px; line-height: 1.5; border-radius: 8px; box-shadow: none; border: 1px solid transparent; padding: 6px 12px; background: transparent; }
+.teacher-liquid .period-shortcuts { height: 44px; }
 .teacher-liquid :is(.period-shortcuts .btn.active, .ranking-switch button[aria-pressed=true], .mode-button.selected, .island-tabs button.active, .island-preview-scenes button[aria-pressed=true], .hw-tabs .btn[aria-pressed=true], .hw-group .btn[aria-pressed=true], .island-duty-mode .btn[aria-pressed=true]) { color: #005dbf; background: #f8fdffb8; border-color: #ffffffc2; font-weight: 600; box-shadow: 0 3px 8px #2857750c, inset 0 1px #fff; }
 .teacher-liquid :is(.check-item, .weekday-picker label, .reading-days label, .reading-grade-options button) { color: #345c7a; background: #f5fbff63; border-color: #90b9d252; border-radius: 11px; min-height: 40px; }
 .teacher-liquid :is(.check-item:has(input:checked), .reading-grade-options button[aria-pressed=true]) { color: #075cad; background: #e6f6ffb5; border-color: #90bde09c; }
@@ -187,16 +266,16 @@
 
 /* Island configuration and its deep editors share the surrounding material. */
 .teacher-liquid .island-main { overflow: visible; }
-.teacher-liquid .island-workspace-head { border-radius: 25px 25px 0 0; background: #f6fcff38; }
-.teacher-liquid .island-savebar { padding: 23px 25px; }
-.teacher-liquid .island-tabs { margin: 0 23px 22px; }
-.teacher-liquid #islandTabContent { min-width: 0; padding: 0 25px 25px; }
-.teacher-liquid :is(.island-day-panel, .island-delivery-panel) { padding: 23px 24px; }
+.teacher-liquid .island-workspace-head { border-radius: 16px 16px 0 0; background: var(--teacher-sticky); }
+.teacher-liquid .island-savebar { padding: 20px 24px; }
+.teacher-liquid .island-tabs { margin: 0 24px 24px; }
+.teacher-liquid #islandTabContent { min-width: 0; padding: 0 24px 24px; }
+.teacher-liquid :is(.island-day-panel, .island-delivery-panel) { padding: 24px; }
 .teacher-liquid :is(.island-settings-card, .island-component-card, .island-component-toolbar, .island-duty-choices, .island-component-sample) { background: #f6fcff4d; border-color: var(--line); border-radius: 16px; }
 .teacher-liquid :is(.island-week, .island-duty-grid) :is(th, td) { background: #f4fbff38; border-color: var(--line); }
 .teacher-liquid :is(.island-week, .island-duty-grid) .island-cell { background: #f7fcff59; color: var(--text); border-color: #c1d9e64d; border-radius: 10px; font-size: 14px; }
 .teacher-liquid :is(.island-week, .island-duty-grid) .island-cell:hover { background: #ffffffb8; border-color: #8ab8d8; }
-.teacher-liquid #islandTabContent .island-duty-grid thead th { background: #e6f3fbe8; }
+.teacher-liquid #islandTabContent .island-duty-grid thead th { background: var(--teacher-sticky); }
 .teacher-liquid :is(.island-preview-time-panel, .action-menu-content) { padding: 9px; border-radius: 17px; color: var(--text); --teacher-pane: linear-gradient(125deg, #f5fcffe8, #dcefffd4); }
 .teacher-liquid .action-menu-content .btn { min-height: 42px; font-size: 15px; font-weight: 400; background: transparent; box-shadow: none; border-color: transparent; justify-content: flex-start; }
 .teacher-liquid .action-menu-content .btn:hover { background: #ffffffa6; }
@@ -205,16 +284,16 @@
 .teacher-liquid .island-component-index { background: #f8fdff9c; color: var(--blue-text); }
 
 /* Every native <dialog>, including ones constructed after page load. */
-.teacher-liquid dialog { border-radius: 28px; border-color: #ffffffc2; max-height: calc(100dvh - 40px); max-width: calc(100vw - 32px); box-shadow: 0 25px 65px #153a5a35, 0 5px 15px #153a5a14; color: var(--text); background: #edf8ffe6; --teacher-pane: linear-gradient(125deg, #f3fbffd9, #d9efffc2); }
+.teacher-liquid dialog { border-radius: 20px; border: 1px solid var(--teacher-surface-edge); max-height: calc(100dvh - 40px); max-width: calc(100vw - 32px); box-shadow: 0 25px 65px #153a5a35, inset 0 1px #ffffffb3; color: var(--text); background: var(--teacher-surface-highlight), var(--teacher-overlay); backdrop-filter: var(--teacher-surface-filter); -webkit-backdrop-filter: var(--teacher-surface-filter); }
 .teacher-liquid dialog::backdrop { background: #23486240; backdrop-filter: blur(6px); }
 .teacher-liquid dialog[open]:has(> .dialog-body), .teacher-liquid dialog[open]:has(> form > .dialog-body) { display: flex; flex-direction: column; overflow: hidden; }
 .teacher-liquid dialog > form:has(> .dialog-body) { display: flex; flex-direction: column; min-height: 0; max-height: inherit; overflow: hidden; }
 .teacher-liquid dialog .dialog-body { flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; scroll-padding: 12px; }
 .teacher-liquid dialog :is(.dialog-head, .dialog-actions) { flex: none; position: relative; }
-.teacher-liquid .dialog-head { padding: 23px 28px 19px; gap: 20px; background: #edf8ffe8; border-color: var(--line); }
+.teacher-liquid .dialog-head { padding: 24px; gap: 20px; background: transparent; border-color: var(--line); }
 .teacher-liquid .dialog-head h2 { font-size: 25px; font-weight: 700; color: var(--text); }
-.teacher-liquid .dialog-body { padding: 17px 28px 25px; min-width: 0; }
-.teacher-liquid .dialog-actions { padding: 18px 28px; gap: 10px; background: #eaf7fff0; border-color: var(--line); flex-wrap: wrap; }
+.teacher-liquid .dialog-body { padding: 20px 24px 24px; min-width: 0; }
+.teacher-liquid .dialog-actions { padding: 16px 24px; gap: 10px; background: var(--teacher-table-head); border-color: var(--line); flex-wrap: wrap; }
 .teacher-liquid .dialog-body > :last-child { margin-bottom: 0; }
 .teacher-liquid .hw-confirm { padding: 28px; }
 .teacher-liquid .hw-confirm h2 { font-size: 25px; }
@@ -225,26 +304,26 @@
 .teacher-liquid :is(.toast, .calendar-tooltip) { background: #eaf7fff2; color: #1d527b; border: 1px solid #ffffffde; border-radius: 17px; box-shadow: 0 12px 30px #193c5933; font-size: 15px; }
 
 /* Creative reviews, roster editors and acknowledgement maintenance. */
-.teacher-liquid .users-panel { border-radius: 25px; }
+.teacher-liquid .users-panel { border-radius: 16px; }
 .teacher-liquid .user-actions-popover { padding: 9px; border-radius: 17px; color: var(--text); --teacher-pane: linear-gradient(125deg, #f5fcffe8, #dcefffd4); }
 .teacher-liquid .user-actions-popover .btn { min-height: 44px; font-size: 15px; background: transparent; box-shadow: none; }
 .teacher-liquid .user-actions-popover .btn:hover { background: #ffffffa6; }
 .teacher-liquid :is(.user-meta span, .user-tab-count, .users-resultbar, .user-pending-link, .user-identity small, .user-scope small, .user-role-badge, .users-table .status, .users-pagination, .user-permission-guide, .user-menu-title, .staff-class-grade h3) { font-size: 14px; }
 .teacher-liquid :is(.user-identity small, .user-scope small, .user-menu-title) { color: var(--muted); }
-.teacher-liquid .users-table th { color: var(--muted); font-size: 14px; font-weight: 600; background: #f4fbff63; }
+.teacher-liquid .users-table th { color: var(--muted); font-size: 14px; font-weight: 600; background: var(--teacher-table-head); }
 .teacher-liquid .user-identity strong { color: var(--text); font-size: 16px; }
 .teacher-liquid :is(.user-row-actions .btn, .users-pagination .btn) { min-height: 44px; font-size: 15px; }
 .teacher-liquid .staff-class-picker .check-item { font-size: 14px; min-height: 40px; }
 .teacher-liquid .ideas-admin { font-size: 16px; }
-.teacher-liquid .ideas-admin h1 { font-size: 30px; }
-.teacher-liquid .ideas-admin h2 { font-size: 22px; }
+.teacher-liquid .ideas-admin h1 { font-size: 28px; }
+.teacher-liquid .ideas-admin h2 { font-size: 20px; }
 .teacher-liquid .ideas-admin h3 { font-size: 18px; }
 .teacher-liquid .ideas-field > label { color: #34546c; font-size: 15px; }
 .teacher-liquid .ideas-admin .ideas-field :is(input, select, textarea) { font-size: 16px; border-radius: 12px; border-color: #92b4cc8c; }
 .teacher-liquid .ideas-entry-top > strong { font-size: 16px; }
 .teacher-liquid :is(.ideas-subtle, .ideas-counts, .ideas-digest, .ideas-entry-meta, .ideas-entry-preview, .ideas-entry-media, .ideas-page-info, .ideas-latest-review, .ideas-feedback, .ideas-state), .teacher-liquid .ideas-admin .ideas-dates { color: var(--muted); font-size: 14px; }
-.teacher-liquid .ideas-detail-header { border-radius: 25px 25px 0 0; }
-.teacher-liquid .ideas-review-actions { border-radius: 0 0 25px 25px; }
+.teacher-liquid .ideas-detail-header { border-radius: 16px 16px 0 0; }
+.teacher-liquid .ideas-review-actions { border-radius: 0 0 16px 16px; }
 .teacher-liquid :is(.ideas-entry, .ideas-detail-header, .ideas-review-actions) { background: #f4fbff40; border-color: var(--line); }
 .teacher-liquid .ideas-entry:hover { background: #ffffff63; }
 .teacher-liquid .ideas-entry[aria-current=true] { background: #f8fdff9c; border-color: #91bfdf8c; }
@@ -252,11 +331,11 @@
 .teacher-liquid :is(.ideas-status-adopted, .ideas-status-launched) { color: var(--green); background: #d9f0e585; }
 .teacher-liquid .ideas-status-implementing { color: #715223; background: #fff0dba1; }
 .teacher-liquid .ideas-photo { background: #e9f4fa66; }
-.teacher-liquid .hw-table thead th { background: #f4fbff63; }
+.teacher-liquid .hw-table thead th { background: var(--teacher-table-head); }
 .teacher-liquid :is(.hw-tabs, .hw-group) { width: fit-content; }
-.teacher-liquid .hw-section h2 { font-size: 22px; }
+.teacher-liquid .hw-section h2 { font-size: 20px; }
 .teacher-liquid :is(.hw-students, .hw-items, .hw-term-name) input { font-size: 16px; }
-.teacher-liquid #acknowledgementsPanel { padding: 24px 26px; }
+.teacher-liquid #acknowledgementsPanel { padding: 24px; }
 .teacher-liquid .acknowledgements-heading { font-size: 22px; font-weight: 700; }
 .teacher-liquid :is(.acknowledgements-group, .acknowledgements-preview) { border-color: var(--line); }
 .teacher-liquid .acknowledgements-group legend { font-size: 18px; }
@@ -266,7 +345,7 @@
 
 /* Banban: launcher, conversation, settings, history, operations and nested prompts. */
 .teacher-liquid .banban-root { --bb-ink: #193c59; --bb-blue: #075cad; font-family: inherit; font-size: 16px; }
-.teacher-liquid .bb-panel { border-radius: 25px; --teacher-pane: linear-gradient(125deg, #f3fbffd9, #d9efffc2); }
+.teacher-liquid .bb-panel { border-radius: 20px; }
 .teacher-liquid :is(.bb-header, .bb-scope-bar, .bb-compose, .bb-settings-footer) { background: #f4fbff47; border-color: var(--line); }
 .teacher-liquid :is(.bb-scroll, .bb-welcome, .bb-settings-body, .bb-history-list) { background: transparent; color: var(--text); }
 .teacher-liquid :is(.bb-heading strong, .bb-welcome h2, .bb-settings h2) { color: var(--text); font-size: 22px; font-weight: 700; }
@@ -294,10 +373,10 @@
 .teacher-liquid :is(.bb-settings label, .bb-scope-editor label) { font-size: 15px; font-weight: 600; color: #34546c; }
 .teacher-liquid :is(.bb-input-box, .bb-operation-field input) { background: #f7fcff80; border: 1px solid #92b4cc8c; border-radius: 15px; }
 .teacher-liquid .bb-input-box textarea { font-size: 16px; color: var(--text); background: transparent; box-shadow: none; border: 0; }
-.teacher-liquid :is(.bb-scope-editor, .bb-options, .bb-settings, .bb-session-popover, .bb-task-panel, .bb-confirm-dialog, .bb-history, .bb-history-delete-dialog) { border-radius: 22px; color: var(--text); --teacher-pane: linear-gradient(125deg, #f3fbffef, #d9efffe0); }
+.teacher-liquid :is(.bb-scope-editor, .bb-options, .bb-settings, .bb-session-popover, .bb-task-panel, .bb-confirm-dialog, .bb-history, .bb-history-delete-dialog) { border-radius: 20px; color: var(--text); background: var(--teacher-overlay); --teacher-pane: linear-gradient(125deg, #f3fbffef, #d9efffe0); }
 .teacher-liquid :is(.bb-session-row, .bb-thread-row):hover { background: #ffffff91; }
 .teacher-liquid :is(.bb-settings-actions .bb-tool, .bb-history-delete-actions .bb-tool) { background: var(--teacher-control); color: #234f73; }
-.teacher-liquid :is(.bb-settings-actions .bb-send, .bb-history-delete-actions .bb-send) { background: linear-gradient(125deg, #e6f6ffb5, #a5d5fa91); color: #075cad; }
+.teacher-liquid :is(.bb-settings-actions .bb-send, .bb-history-delete-actions .bb-send) { background: var(--teacher-primary); color: #ffffff; }
 .teacher-liquid .bb-launcher-name { background: #f7fcffb8; color: #234f73; border-color: #ffffffc2; }
 .teacher-liquid .bb-history-scrim { background: #23486226; backdrop-filter: blur(4px); }
 .teacher-liquid .bb-grade-picks button { color: var(--muted); background: #f7fcff59; font-size: 14px; }
@@ -316,18 +395,74 @@
 .teacher-liquid .auth-card .btn.block { font-size: 17px; min-height: 48px; }
 .teacher-liquid .auth-features { font-size: 15px; }
 
+/* Local appearance choices use native radios and keep their keyboard behavior. */
+.teacher-liquid .teacher-appearance { margin-bottom: 24px; }
+.teacher-liquid .appearance-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 20px; }
+.teacher-liquid .appearance-heading h2 { margin: 0; }
+.teacher-liquid .appearance-options { display: flex; flex-wrap: wrap; gap: 16px; padding: 0; margin: 0; border: 0; min-width: 0; }
+.teacher-liquid .appearance-choice { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; align-items: center; width: 224px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; font-size: 15px; font-weight: 600; }
+.teacher-liquid .appearance-choice input { width: 18px; height: 18px; grid-row: 2; }
+.teacher-liquid .appearance-choice > span:last-child { grid-row: 2; grid-column: 2; }
+.teacher-liquid .appearance-choice:has(input:checked) { border-color: #0065cb; background: #f1f7ff; }
+.teacher-liquid .appearance-choice:hover { border-color: #8cadcc; }
+.teacher-liquid .appearance-choice:focus-within { outline: 2px solid var(--focus, #4e87b2); outline-offset: 3px; }
+.teacher-liquid .appearance-swatch { display: flex; align-items: stretch; gap: 8px; grid-row: 1; grid-column: 1 / -1; height: 70px; padding: 10px; border: 1px solid #cbdce9; border-radius: 8px; }
+.teacher-liquid .appearance-swatch-glass { background: linear-gradient(135deg, #e4f4ff, #b4d7f0); }
+.teacher-liquid .appearance-swatch-white { background: #f3f5f8; }
+.teacher-liquid .appearance-swatch i:first-child { width: 23%; border-radius: 4px; background: #ffffff80; }
+.teacher-liquid .appearance-swatch i:last-child { flex: 1; border-radius: 4px; background: #ffffff; }
+.teacher-liquid .appearance-swatch-glass i:last-child { background: linear-gradient(125deg, #ffffff80, #f1f9ff33); border: 1px solid #ffffffb3; }
+.teacher-liquid .appearance-swatch-white i:first-child { background: #e5ebf2; }
+.teacher-liquid .appearance-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 24px; margin-top: 16px; }
+.teacher-liquid .appearance-reduce { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; font-size: 14px; cursor: pointer; }
+.teacher-liquid .appearance-reduce:has(input:disabled) { color: var(--muted); cursor: default; }
+.teacher-liquid .appearance-footer p:empty { display: none; }
+
+/* The white appearance is a real material choice, including navigation,
+   menus and pickers. The optics controller also frees the underlying maps. */
+:root[data-teacher-material="white"] { background: #f5f6f8; }
+/* Solid materials replace the same tokens, including every nested control. */
+[data-teacher-material="white"] .teacher-liquid,
+[data-teacher-transparency="reduced"] .teacher-liquid {
+  --surface: #ffffff; --surface-solid: #ffffff;
+  --line: #dce3eb;
+  --teacher-control: #f7fafc; --teacher-control-hover: #edf4fb;
+  --teacher-control-line: #b5c8d8; --teacher-control-shadow: none;
+  --teacher-primary: #0065cb; --teacher-primary-hover: #0056ae;
+  --teacher-surface-highlight: linear-gradient(transparent, transparent);
+  --teacher-surface-edge: #dce3eb; --teacher-surface-shadow: none;
+  --teacher-surface-filter: none;
+  --teacher-table-head: #f4f8fc; --teacher-row-hover: #f4f8fc;
+  --teacher-segment: #eff4f9; --teacher-sticky: #ffffff; --teacher-overlay: #ffffff;
+}
+[data-teacher-material="white"] .teacher-liquid { --bg: #f5f6f8; --text: #24364b; --muted: #526477; background: var(--bg); }
+[data-teacher-material="white"] .teacher-liquid::before { display: none; }
+[data-teacher-transparency="reduced"] .teacher-liquid::before { display: none; }
+[data-teacher-material="white"] .teacher-liquid .sidebar { background: #f5f6f8; border-color: var(--line); }
+[data-teacher-material="white"] .teacher-liquid .nav button:hover { background: #eaf0f6; }
+[data-teacher-material="white"] .teacher-liquid .nav button.active { background: #e5effc; border-color: transparent; box-shadow: none; }
+[data-teacher-material="white"] .teacher-liquid .lg-pane,
+[data-teacher-transparency="reduced"] .teacher-liquid .lg-pane { background: #ffffff !important; border-color: var(--line) !important; box-shadow: 0 6px 20px #234b7010; }
+[data-teacher-material="white"] .teacher-liquid .lg-pseudo::before,
+[data-teacher-transparency="reduced"] .teacher-liquid .lg-pseudo::before { display: none; }
+[data-teacher-material="white"] .teacher-liquid select::picker(select),
+[data-teacher-transparency="reduced"] .teacher-liquid select::picker(select) { background: #ffffff; border-color: var(--line); backdrop-filter: none; }
+[data-teacher-material="white"] .teacher-liquid dialog::backdrop,
+[data-teacher-transparency="reduced"] .teacher-liquid dialog::backdrop,
+[data-teacher-material="white"] .teacher-liquid :is(.nav-backdrop.open, .bb-history-scrim),
+[data-teacher-transparency="reduced"] .teacher-liquid :is(.nav-backdrop.open, .bb-history-scrim) { backdrop-filter: none; }
+
 @media (min-width: 1700px) {
-  .teacher-liquid main { padding: 38px 50px 40px 35px; }
   .teacher-liquid .sidebar { padding-left: 25px; }
 }
 @media (max-width: 1250px) and (min-width: 881px) {
-  .teacher-liquid .shell { grid-template-columns: 200px minmax(0, 1fr); }
+  .teacher-liquid { --teacher-nav-width: 200px; }
   .teacher-liquid .sidebar { padding-left: 10px; padding-right: 10px; }
   .teacher-liquid .nav button { font-size: 15px; padding-inline: 12px; gap: 10px; }
   .teacher-liquid .sidebar .brand-lockup { margin-inline: 4px; gap: 8px; }
   .teacher-liquid .sidebar .brand-lockup img { width: 36px; height: 36px; }
   .teacher-liquid .sidebar .brand-lockup strong { font-size: 16px; }
-  .teacher-liquid main { padding: 27px 24px 32px 20px; }
+  .teacher-liquid main { padding: 24px 24px 32px; }
 }
 @media (max-width: 1150px) {
   .teacher-liquid .reading-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
@@ -338,6 +473,10 @@
 }
 @media (max-width: 480px) {
   .teacher-liquid .reading-filter .field { grid-column: 1 / -1; }
+  .teacher-liquid .users-filterbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+  .teacher-liquid .users-filterbar .user-search { grid-column: 1 / -1; max-width: none; }
+  .teacher-liquid .users-filterbar select { width: 100%; min-width: 0; white-space: nowrap; }
+  .teacher-liquid .users-filterbar > .btn { grid-column: 1 / -1; justify-self: end; margin: 0; }
 }
 @media (max-width: 880px) {
   .teacher-liquid .shell { display: block; }
@@ -350,13 +489,13 @@
   .teacher-liquid .auth-story { padding: 25px; }
 }
 @media (max-width: 760px) {
-  .teacher-liquid h1 { font-size: 27px; }
-  .teacher-liquid .ideas-admin h1 { font-size: 27px; }
+  .teacher-liquid :is(h1, .ideas-admin h1, .hw-heading h1, .island-top h1) { font-size: 26px; }
+  .teacher-liquid { --teacher-inset: 20px; }
   .teacher-liquid h2 { font-size: 20px; }
   .teacher-liquid main { padding: 22px 17px 30px; }
   .teacher-liquid :is(.btn, .bb-send) { font-size: 15px; padding: 10px 15px; }
-  .teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section) { padding: 21px 19px; border-radius: 21px; }
-  .teacher-liquid .metric { padding: 20px; border-radius: 21px; }
+  .teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section) { padding: var(--teacher-inset); }
+  .teacher-liquid .metric { padding: 20px; }
   .teacher-liquid .panel-heading { padding: 20px; }
   .teacher-liquid :is(.panel-heading h2, .compose h2, .plain-section h2) { font-size: 20px; }
   .teacher-liquid .view-head { gap: 15px; }
@@ -364,11 +503,11 @@
   .teacher-liquid .topbar { gap: 10px; }
   .teacher-liquid .breadcrumb { font-size: 13px; gap: 8px; }
   .teacher-liquid .topbar-date { display: none; }
-  .teacher-liquid :is(.period-shortcuts .btn, .ranking-switch button, .mode-button, .island-tabs button, .island-preview-scenes button) { font-size: 14px; padding: 8px 11px; }
+  .teacher-liquid :is(.period-shortcuts .btn, .ranking-switch button, .mode-button, .island-tabs button, .island-preview-scenes button) { font-size: 14px; padding: 6px 11px; }
   .teacher-liquid .island-tabs { margin-inline: 17px; }
   .teacher-liquid #islandTabContent { padding: 0 17px 21px; }
   .teacher-liquid .island-savebar { padding: 20px 17px; }
-  .teacher-liquid dialog { max-height: calc(100dvh - 24px); max-width: calc(100vw - 24px); border-radius: 24px; }
+  .teacher-liquid dialog { max-height: calc(100dvh - 24px); max-width: calc(100vw - 24px); border-radius: 20px; }
   .teacher-liquid .dialog-head { padding: 21px 22px 17px; }
   .teacher-liquid .dialog-head h2 { font-size: 23px; }
   .teacher-liquid .dialog-body { padding: 16px 22px 23px; }
@@ -376,7 +515,7 @@
   .teacher-liquid .dialog-actions .btn { font-size: 14px; padding: 10px 13px; }
   .teacher-liquid .hw-confirm { padding: 23px; }
   .teacher-liquid .island-dialog { padding: 23px; }
-  .teacher-liquid #acknowledgementsPanel { padding: 21px 19px; }
+  .teacher-liquid #acknowledgementsPanel { padding: 20px; }
   .teacher-liquid .auth-layout { display: block; max-width: 480px; }
   .teacher-liquid .auth-story { display: none; }
   .teacher-liquid .auth-card { padding: 29px 24px; --auth-card-padding: 24px; }
@@ -385,15 +524,27 @@
   .teacher-liquid *, .teacher-liquid *::before, .teacher-liquid *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; scroll-behavior: auto !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .teacher-liquid .lg-pane { background: #edf7fc !important; border-color: #b7cddd !important; }
+  .teacher-liquid {
+    --surface: #ffffff; --surface-solid: #ffffff;
+    --teacher-control: #f7fafc; --teacher-control-hover: #edf4fb;
+    --teacher-control-shadow: none;
+    --teacher-primary: #0065cb; --teacher-primary-hover: #0056ae;
+    --teacher-surface-highlight: linear-gradient(transparent, transparent);
+    --teacher-surface-edge: #dce3eb; --teacher-surface-shadow: none;
+    --teacher-surface-filter: none;
+    --teacher-table-head: #f4f8fc; --teacher-row-hover: #f4f8fc;
+    --teacher-segment: #eff4f9; --teacher-sticky: #ffffff; --teacher-overlay: #ffffff;
+  }
+  .teacher-liquid .lg-pane { background: #ffffff !important; border-color: #b7cddd !important; }
   .teacher-liquid .lg-pseudo::before, .teacher-liquid::before { display: none; }
-  .teacher-liquid select::picker(select) { background: #edf7fc; backdrop-filter: none; }
+  .teacher-liquid select::picker(select) { background: #ffffff; backdrop-filter: none; }
 }
 @media (forced-colors: active) {
-  .teacher-liquid { background: Canvas; color: CanvasText; }
+  :root .teacher-liquid { --surface: Canvas; --surface-solid: Canvas; --teacher-overlay: Canvas; --teacher-surface-highlight: none; --teacher-surface-filter: none; --teacher-surface-edge: CanvasText; --teacher-surface-shadow: none; --teacher-table-head: Canvas; --teacher-sticky: Canvas; --teacher-row-hover: Canvas; background: Canvas; color: CanvasText; }
   .teacher-liquid::before, .teacher-liquid .lg-pseudo::before { display: none !important; }
-  .teacher-liquid .lg-pane, .teacher-liquid :is(input, textarea, select, .btn) { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText !important; box-shadow: none; }
+  :root .teacher-liquid .lg-pane, :root .teacher-liquid :is(input, textarea, select, .btn) { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText !important; box-shadow: none; }
   .teacher-liquid .nav button.active { outline: 1px solid Highlight; }
+  .teacher-liquid .appearance-choice:has(input:checked) { outline: 2px solid Highlight; outline-offset: 2px; }
   .teacher-liquid select option:is(:checked, :hover, :focus) { background: Highlight; color: HighlightText; box-shadow: none; }
   .teacher-liquid select option:focus-visible { outline: 1px solid HighlightText; outline-offset: -2px; }
 }

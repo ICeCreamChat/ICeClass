@@ -42,9 +42,9 @@ internal sealed class ClassroomIslandState(TimeProvider? timeProvider = null)
 
     public void DismissNotice() => _notice = null;
 
-    public void LocalNotice(string title, string text, int seconds)
+    public void LocalNotice(string title, string text, int seconds, string category = "教室提醒")
     {
-        _notice = new(title, text, "info", "教室提醒", ++_noticeSequence);
+        _notice = new(title, text, "info", category, ++_noticeSequence);
         _receivedAt = _clock.GetTimestamp();
         _noticeDuration = TimeSpan.FromSeconds(Math.Clamp(seconds, 3, 60));
     }

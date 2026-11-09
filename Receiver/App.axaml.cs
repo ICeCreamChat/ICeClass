@@ -60,6 +60,8 @@ public sealed partial class App : Application
             () => _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
                 _creativeIdeasWindow?.IsVisible == true || ReadingExperience.IsOpen || _speech?.IsBusy == true,
             () => _island.CancelSelfStudyWarning());
+        _selfStudy.FeedbackChanged += _island.UpdateSelfStudyFeedback;
+        _selfStudy.SoundLevelChanged += _island.UpdateSelfStudyLevel;
         _receiver.SelfStudyChanged += () => Dispatcher.UIThread.Post(() => _selfStudy?.Invalidate());
         _receiver.NotificationPresenter = _island;
         _island.ShoutPreviewRequested += PreviewShout;

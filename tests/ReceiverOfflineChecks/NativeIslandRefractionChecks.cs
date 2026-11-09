@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -55,7 +56,9 @@ internal static class NativeIslandRefractionChecks
             var member = glass.GetType().GetField("_lens", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert(member is not null, "real island contains the refraction renderer");
             var lens = (IslandGlassLens)member!.GetValue(glass)!;
+            var startup = Stopwatch.StartNew();
             await WaitFor(() => Active(lens) && Field<IslandGlassCapture.Source>(lens, "_candidate").Window == source.TryGetPlatformHandle()!.Handle);
+            Console.WriteLine($"Initial settled-source first frame: {startup.Elapsed.TotalMilliseconds:F1}ms");
             var selected = Field<IslandGlassCapture.Source>(lens, "_candidate");
             Assert(selected.Window == source.TryGetPlatformHandle()!.Handle, "capture selects the synthetic background window");
             SKColor GlassCenter(string name)
@@ -74,10 +77,32 @@ internal static class NativeIslandRefractionChecks
             await Task.Delay(800);
             var pink = GlassCenter("pink");
             Assert(pink.Red > pink.Blue + 35, "live background changes reach the glass without retaining old pixels");
+            var capture = Field<IslandGlassCapture>(lens, "_capture");
+            var movedAt = Stopwatch.StartNew();
+            source.Background = Brush.Parse("#26944F");
             appearance.OffsetX = 70; appearance.Width = 790;
             island.ApplyProfile(appearance, profile, IslandRibbonChecks.At(10, 40), "", "本机验收", false);
-            await WaitFor(() => Active(lens));
-            Assert(GlassCenter("moved").Red > 100, "moving and resizing starts a fresh correctly sized capture");
+            await WaitFor(() => Active(lens)
+                && Field<IslandGlassCapture.Source>(lens, "_candidate").Area.Width > selected.Area.Width + 50
+                && Field<SKBitmap>(lens, "_pixels").Width == Field<IslandGlassCapture.Source>(lens, "_candidate").Area.Width);
+            var moved = GlassCenter("moved");
+            Assert(moved.Green > moved.Red + 25, "moving and resizing samples the new geometry and live green background instead of stale pink pixels");
+            Console.WriteLine($"Moved/resized first frame: {movedAt.Elapsed.TotalMilliseconds:F1}ms");
+            Assert(ReferenceEquals(capture, Field<IslandGlassCapture>(lens, "_capture")),
+                "moving and resizing reuses the capture worker instead of restarting its graphics device");
+            obstruction = new Window { Title = "液态玻璃切换背景验收", Width = source.Width, Height = source.Height,
+                Position = source.Position, WindowStartupLocation = WindowStartupLocation.Manual,
+                SystemDecorations = SystemDecorations.None, ShowInTaskbar = false, ShowActivated = false, Topmost = true,
+                Background = Brush.Parse("#D9AF15") };
+            obstruction.Show();
+            SetWindowPos(island.TryGetPlatformHandle()!.Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
+            Field<IslandGlassBlurWindow>(glass, "_blur").PlaceBelow(island);
+            await WaitFor(() => Active(lens) && Field<IslandGlassCapture.Source>(lens, "_candidate").Window == obstruction.TryGetPlatformHandle()!.Handle);
+            var yellow = GlassCenter("replacement");
+            Assert(yellow.Red > 180 && yellow.Green > 150 && yellow.Blue < 150, "switching the background window replaces old pixels with the new source");
+            Assert(ReferenceEquals(capture, Field<IslandGlassCapture>(lens, "_capture")), "switching a fully covering background also reuses the capture worker");
+            obstruction.Close(); obstruction = null;
+            await WaitFor(() => Active(lens) && Field<IslandGlassCapture.Source>(lens, "_candidate").Window == source.TryGetPlatformHandle()!.Handle);
             appearance.Material = "solid";
             island.ApplyProfile(appearance, profile, IslandRibbonChecks.At(10, 40), "", "本机验收", false);
             await WaitFor(() => !Active(lens));

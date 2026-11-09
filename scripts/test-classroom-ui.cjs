@@ -50,7 +50,8 @@ async function open(t, routePath, { native = false, width = 1280, height = 850 }
         if(message.action==='self-study'&&message.operation==='pause')selfStudyPaused=true;
         const value=message.action==='self-study'?{
           state:selfStudyPaused?'paused':'observing',detail:selfStudyPaused?'本节已暂停，下次晚自习自动恢复':'正在观察，先提醒再上报',
-          inPeriod:true,paused:selfStudyPaused,config:{dailyCalls:4},usage:{calls:1},
+          inPeriod:true,paused:selfStudyPaused,config:{dailyCalls:4,sensitivity:'high',voiceTriggerMs:1200,
+            observationSeconds:30,reminderWaitSeconds:180,confirmationsAfterReminder:2},usage:{calls:1},
           serverTime:1794226200000,schedule:[{startAt:1794225600000,endAt:1794231000000}]
         }:message.action==='homework'?data:null;
         if (message.id) queueMicrotask(() => window.__emitHome({type:'response',id:message.id,value}));
@@ -65,15 +66,18 @@ for(const width of [1280,720])test('Self-study entry and session pause work at '
   const {page}=await open(t,'/homework/classroom/index.html',{native:true,width});
   await presentHome(page);
   await page.locator('[data-action="management"]').click();
-  await page.getByRole('button',{name:'查看晚自习',exact:true}).click();
+  await page.getByRole('button',{name:'自习管理',exact:true}).click();
   await page.locator('#classroom-ss-state').filter({hasText:'正在观察'}).waitFor();
   assert.equal(await page.locator('#classroom-self-study-title').evaluate(e=>e.getBoundingClientRect().height<60),true,'Dialog title stays on a single line');
+  await page.getByText('已同步规则',{exact:true}).click();
+  assert.match(await page.locator('#classroom-ss-rules').textContent(),/较高灵敏度.*1.2 秒.*30 秒.*180 秒.*2 次/);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   if(process.env.ICECLASS_REVIEW_DIR)await page.screenshot({path:path.join(process.env.ICECLASS_REVIEW_DIR,'classroom-'+width+'.png'),fullPage:true});
   await page.getByRole('button',{name:'暂停本节',exact:true}).click();
   await page.locator('#classroom-ss-state').filter({hasText:'本节已暂停'}).waitFor();
   assert.equal(await page.getByRole('button',{name:'暂停本节',exact:true}).isDisabled(),true);
   await page.keyboard.press('Escape');
-  assert.equal(await page.getByRole('button',{name:'查看晚自习',exact:true}).evaluate(e=>e===document.activeElement),true);
+  assert.equal(await page.getByRole('button',{name:'自习管理',exact:true}).evaluate(e=>e===document.activeElement),true);
 });
 
 async function presentHome(page) {
@@ -85,6 +89,33 @@ async function presentHome(page) {
   });
   await page.locator('#home-view:not([hidden])').waitFor();
 }
+
+for(const width of [1280,390])test('Home: compact course ribbon keeps time ranges, keyboard access and both materials at '+width+'px',async t=>{
+  const {page}=await open(t,'/homework/classroom/index.html',{native:true,width});await presentHome(page);
+  await page.evaluate(()=>window.__emitHome({type:'island-state',state:{...window.__homeIsland,notice:null}}));
+  assert.match(await page.locator('#lesson-list').innerText(),/08:00 - 08:40/);
+  assert.equal(await page.locator('.lesson[aria-current="true"] .lesson-state').textContent(),'进行中');
+  if(width===1280)assert.ok(await page.locator('.timetable-capsule').evaluate(e=>e.getBoundingClientRect().width<650),'Two lessons do not stretch over the whole screen');
+  await page.locator('#lesson-list').focus();await page.keyboard.press('Tab');
+  assert.equal(await page.getByRole('button',{name:'查看全天课表',exact:true}).evaluate(e=>e===document.activeElement),true);
+  await page.keyboard.press('Enter');await page.locator('#detail-dialog[open]').waitFor();
+  assert.match(await page.locator('#detail-body').innerText(),/08:00.*08:40/);await page.keyboard.press('Escape');
+  await page.evaluate(()=>window.__emitHome({type:'island-state',state:{...window.__homeIsland,notice:null,lessons:[{name:'自主学习与长课程名称的完整显示检查',start:'20:00',end:'21:30',current:true},...Array.from({length:10},(_,i)=>({name:'课程'+i,start:'08:00',end:'08:40',current:false}))]}}));
+  assert.ok(await page.locator('#lesson-list').evaluate(e=>e.scrollWidth>e.clientWidth),'A full timetable scrolls internally');
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  assert.ok(await page.locator('.lesson[aria-current="true"] .lesson-state').evaluate(e=>{const a=e.getBoundingClientRect(),b=e.closest('.lesson').getBoundingClientRect();return a.right<=b.right&&a.left>=b.left;}),'Long course names do not push the current state outside its segment');
+  if(process.env.ICECLASS_REVIEW_DIR)await page.screenshot({path:path.join(process.env.ICECLASS_REVIEW_DIR,`classroom-ribbon-${width}-glass.png`)});
+  await page.getByRole('button',{name:'教室设置',exact:true}).click();
+  await page.getByRole('button',{name:'原版白色',exact:true}).click();await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.querySelectorAll('.classroom-filter-definitions filter').length===0);
+  if(process.env.ICECLASS_REVIEW_DIR)await page.screenshot({path:path.join(process.env.ICECLASS_REVIEW_DIR,`classroom-ribbon-${width}-white.png`)});
+});
+
+test('Home: changing only a course end time updates the ribbon',async t=>{
+  const {page}=await open(t,'/homework/classroom/index.html',{native:true});await presentHome(page);
+  await page.evaluate(()=>window.__emitHome({type:'island-state',state:{...window.__homeIsland,notice:null,lessons:window.__homeIsland.lessons.map((lesson,i)=>({...lesson,end:i===0?'08:45':lesson.end}))}}));
+  assert.match(await page.locator('#lesson-list').innerText(),/08:00 - 08:45/);
+});
 
 test('Home: an existing academic year label uses the short hyphen on home and management', async t => {
   const {page} = await open(t, '/homework/classroom/index.html', {native:true});

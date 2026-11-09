@@ -72,7 +72,7 @@ internal static class NativeIslandLayoutReview
         }))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
-    private sealed class SampleWallpaper : Control
+    internal sealed class SampleWallpaper : Control
     {
         private static readonly Geometry Blue = Geometry.Parse("M-180 610 C-40 110 310 75 610 300 S1000 480 1300 -130");
         private static readonly Geometry Light = Geometry.Parse("M-150 590 C-10 120 320 70 615 290 S1030 420 1270 -155");

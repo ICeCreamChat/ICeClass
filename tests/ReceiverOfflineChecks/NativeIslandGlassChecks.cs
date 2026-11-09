@@ -35,6 +35,37 @@ internal static class NativeIslandGlassChecks
             var profile = IslandRibbonChecks.Fixture(); profile.Reminders.Enabled = false;
             island = new ClassroomIslandWindow(() => Task.CompletedTask, () => { }, () => { }, () => { }, () => { });
             var ribbon = Field<ClassroomIslandRibbon>(island, "_ribbon"); ribbon.Animate = false;
+            var lesson = new IslandProfile {
+                Slots = [new() { Id = "study", Start = 1200, End = 1290 }],
+                Lessons = [new() { SlotId = "study", Weekday = 1, Subject = "自主学习" }],
+                Reminders = new() { Enabled = false }
+            };
+            var lessonRibbon = new ClassroomIslandRibbon { Light = true, Glass = true, Animate = false };
+            try
+            {
+                var feedback = new SelfStudyFeedback("listening", "真实声音的本地显示", true);
+                lessonRibbon.SetSelfStudyFeedback(feedback);
+                lessonRibbon.Present(IslandRibbonPresentation.Build(lesson,
+                    new DateTimeOffset(2026, 11, 9, 20, 5, 0, TimeSpan.FromHours(8)), IslandRibbonChecks.View(), selfStudy: feedback));
+                lessonRibbon.SetSelfStudyLevel(.5);
+                foreach (var width in new[] { 380, 760, 1000 })
+                {
+                    lessonRibbon.Measure(new Size(width, 48)); lessonRibbon.Arrange(new Rect(0, 0, width, 48));
+                    using var renderedLesson = new RenderTargetBitmap(new PixelSize(width, 48), new Vector(96, 96));
+                    renderedLesson.Render(lessonRibbon);
+                    using var data = new MemoryStream(); renderedLesson.Save(data); data.Position = 0;
+                    using var pixels = SKBitmap.Decode(data);
+                    var paleOverlay = 0;
+                    for (var y = 8; y < 38; y++)
+                    for (var x = 0; x < width; x++)
+                    {
+                        var pixel = pixels.GetPixel(x, y);
+                        if (pixel.Alpha > 64 && pixel.Red > 180 && pixel.Green > 180 && pixel.Blue > 180) paleOverlay++;
+                    }
+                    Assert(paleOverlay == 0, width + ": active glass lesson has no opaque pale plate behind its text");
+                }
+            }
+            finally { lessonRibbon.Dispose(); }
             var companion = Field<IslandShoutCompanion>(island, "_companion"); companion.ReviewSeconds = 2.5;
             Field<IslandBanbanMascot>(island, "_mascot").Animate = false;
             var sequence = 0L;
@@ -66,14 +97,19 @@ internal static class NativeIslandGlassChecks
                 if (appearance.Theme == "light")
                 {
                     var glass = Field<IslandGlassBackdrop>(island, "_glass");
+                    // Inspect the real interim material before a captured frame arrives.
+                    // The painted tint must stay below 25% opacity in pane interiors.
+                    Field<IslandGlassLens>(glass, "_lens").Stop();
                     using var rendered = new RenderTargetBitmap(new PixelSize((int)glass.Bounds.Width, (int)glass.Bounds.Height), new Vector(96, 96));
                     rendered.Render(glass);
                     using var image = new MemoryStream(); rendered.Save(image); image.Position = 0;
                     using var pixels = SKBitmap.Decode(image);
                     var center = pixels.GetPixel((int)(pixels.Width * .8), pixels.Height / 2);
-                    var captured = glass.Children.OfType<IslandGlassLens>().Single().IsActive;
-                    Assert(captured ? center.Alpha == 255 : center.Alpha is > 32 and < 141,
-                        state + $": glass uses sampled background pixels or the sample's translucent tint (alpha {center.Alpha})");
+                    Assert(center.Alpha is > 10 and <= 64,
+                        state + $": interim light tint stays below 25% opacity (alpha {center.Alpha})");
+                    var pane = Field<IslandGlassBackdrop>(island, "_glass").Children.OfType<Border>().Last(p => p.IsVisible);
+                    var edge = pixels.GetPixel((int)(pane.Bounds.X + pane.Bounds.Width * .8), (int)pane.Bounds.Y);
+                    Assert(edge.Alpha <= 128, state + $": upper glass rim stays translucent instead of a white outline (alpha {edge.Alpha})");
                 }
                 var panes = Field<IslandGlassBackdrop>(island, "_glass").Children.OfType<Border>()
                     .Where(p => p.IsVisible).Select(p => new Rect(p.TranslatePoint(default, island)!.Value, p.Bounds.Size)).ToArray();

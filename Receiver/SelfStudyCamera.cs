@@ -8,8 +8,11 @@ namespace ICeClass.Receiver;
 /// <summary>A single, server-claimed photograph. No preview; OS camera indicators remain intact.</summary>
 internal static class SelfStudyCamera
 {
-    private const string Origin = "https://selfstudy.iceclass.local/capture";
-    internal static async Task<string> CaptureAsync(CancellationToken token)
+    private const string Origin = "https://selfstudy.iceclass.local";
+    private const string CapturePage = Origin + "/capture";
+    internal static bool IsCaptureOrigin(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.GetLeftPart(UriPartial.Authority) == Origin;
+    internal static async Task<string> CaptureAsync(CancellationToken token, Action<string>? diagnostic = null)
     {
         token.ThrowIfCancellationRequested();
         var parent = CreateWindowEx(0, "STATIC", "", 0x80000000, 0, 0, 1, 1,
@@ -30,37 +33,44 @@ internal static class SelfStudyCamera
             core.Settings.AreDevToolsEnabled = false; core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.NewWindowRequested += (_, e) => e.Handled = true;
-            core.NavigationStarting += (_, e) => { if (e.Uri != Origin || token.IsCancellationRequested) e.Cancel = true; };
+            core.NavigationStarting += (_, e) => { if (e.Uri != CapturePage || token.IsCancellationRequested) e.Cancel = true; };
             core.PermissionRequested += (_, e) =>
             {
                 e.SavesInProfile = false;
-                e.State = !token.IsCancellationRequested && e.Uri.StartsWith(Origin, StringComparison.Ordinal) &&
+                e.State = !token.IsCancellationRequested && IsCaptureOrigin(e.Uri) &&
                     e.PermissionKind == CoreWebView2PermissionKind.Camera
                     ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
+                diagnostic?.Invoke($"Camera permission: {e.PermissionKind}, {e.Uri}, {e.State}");
             };
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += (_, e) =>
             {
                 e.Response = environment.CreateWebResourceResponse(
-                    new MemoryStream(Encoding.UTF8.GetBytes(e.Request.Uri == Origin ? Html : "")),
-                    e.Request.Uri == Origin ? 200 : 403, "OK",
+                    new MemoryStream(Encoding.UTF8.GetBytes(e.Request.Uri == CapturePage ? Html : "")),
+                    e.Request.Uri == CapturePage ? 200 : 403, "OK",
                     "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; media-src blob:; connect-src 'none'");
             };
             core.WebMessageReceived += (_, e) =>
             {
-                if (e.Source != Origin || token.IsCancellationRequested) return;
+                if (e.Source != CapturePage || token.IsCancellationRequested) return;
                 try
                 {
                     using var json = JsonDocument.Parse(e.WebMessageAsJson);
                     var root = json.RootElement;
-                    if (!root.GetProperty("ok").GetBoolean()) throw new InvalidOperationException("教室摄像头不可用。");
+                    if (!root.GetProperty("ok").GetBoolean())
+                    {
+                        var detail = root.TryGetProperty("error", out var error) ? error.GetString() : null;
+                        result.TrySetException(new InvalidOperationException("教室摄像头不可用" +
+                            (string.IsNullOrWhiteSpace(detail) ? "。" : "（" + detail[..Math.Min(detail.Length, 160)] + "）。")));
+                        return;
+                    }
                     var image = root.GetProperty("image").GetString() ?? "";
                     if (image.Length == 0 || image.Length > 426668) throw new InvalidDataException();
                     result.TrySetResult(image);
                 }
-                catch { result.TrySetException(new InvalidOperationException("本次拍摄未完成。")); }
+                catch (Exception error) { result.TrySetException(new InvalidOperationException("本次拍摄未完成。", error)); }
             };
-            core.Navigate(Origin);
+            core.Navigate(CapturePage);
             return await result.Task.WaitAsync(TimeSpan.FromSeconds(18), token);
         }
         finally
@@ -92,7 +102,7 @@ internal static class SelfStudyCamera
             if(image.length>426668)image=canvas.toDataURL('image/jpeg',.4).split(',')[1];
             if(image.length>426668)throw new Error('size');
             window.chrome.webview.postMessage({ok:true,image});
-          } catch {window.chrome.webview.postMessage({ok:false})}
+          } catch(error) {window.chrome.webview.postMessage({ok:false,error:(error.name+': '+error.message).slice(0,160)})}
           finally {if(stream)stream.getTracks().forEach(track=>track.stop())}
         })();
         </script>

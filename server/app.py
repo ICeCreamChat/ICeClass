@@ -1763,7 +1763,7 @@ async def static_file(request: web.Request) -> web.Response:
     response = web.Response(body=body, content_type=content_type)
     response.headers.update(SECURITY_HEADERS)
     response.headers["Content-Security-Policy"] = (
-        f"default-src 'self'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; img-src 'self' data:; "
+        f"default-src 'self'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; img-src 'self' data: blob:; "
         "media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
     if relative == "ideas/index.html":

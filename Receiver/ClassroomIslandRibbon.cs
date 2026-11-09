@@ -10,7 +10,7 @@ namespace ICeClass.Receiver;
 
 // The desktop ribbon keeps a constant height. Transitions are painted inside a
 // rounded clip, so notifications never measure or expand the controls panel.
-internal sealed class ClassroomIslandRibbon : Control, IDisposable
+internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
 {
     internal const double RibbonHeight = 48;
     private IslandRibbonFrame? _frame, _previous;
@@ -42,6 +42,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
             if (frame.Accent && _frame?.Key != frame.Key && Animate && IsEffectivelyVisible) Attention?.Invoke(Light && frame.Color == "#14FFFA" ? "#65B2ED" : frame.Color);
         }
         _frame = frame; _presentedAt=Stopwatch.GetTimestamp();
+        UpdateSelfStudyPresentation(frame.SelfStudy);
         AutomationProperties.SetName(this, frame.AccessibleText);
         ToolTip.SetTip(this, frame.AccessibleText + (frame.Shout is null ? " · 点击查看操作，Esc 收起" : " · 点击展开全文，Esc 收起喊话"));
         InvalidateVisual(); MaterialGeometryChanged?.Invoke(); QueueFrame();
@@ -51,7 +52,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
     private void QueueFrame()
     {
         var liveProgress=Animate && IsEffectivelyVisible && _frame is {Accent:false,Progress:>0,ProgressPerSecond:>0};
-        if (_queued || _disposed || ReviewPhase.HasValue || Phase >= 1 && !liveProgress || TopLevel.GetTopLevel(this) is not { } top) return;
+        if (_queued || _disposed || ReviewPhase.HasValue || Phase >= 1 && !liveProgress && !SelfStudyAnimating || TopLevel.GetTopLevel(this) is not { } top) return;
         _queued = true;
         var transitioning = Phase < 1;
         top.RequestAnimationFrame(_ =>
@@ -185,7 +186,12 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
                 var rect = new Rect(x, 0, width, area.Height);
                 if (item.Current)
                 {
-                    context.DrawRectangle(Brush(Glass ? Light ? "#8CF2FAFF" : "#24B2DBFF" : Light ? "#EAF4FF" : "#242B38"), null, new Rect(x,layout.Stacked?3:6,width,layout.Stacked?42:36),14,14);
+                    if (frame.SelfStudy is { } feedback)
+                    {
+                        PaintSelfStudy(context, item, feedback, rect);
+                        x += width; continue;
+                    }
+                    if (!Glass) context.DrawRectangle(Brush(Light ? "#EAF4FF" : "#242B38"), null, new Rect(x,layout.Stacked?3:6,width,layout.Stacked?42:36),14,14);
                     var size=layout.Stacked?18:compact?18:20;
                     var timeSize=layout.Stacked?12:compact?13:14;
                     if(layout.Stacked)
@@ -308,6 +314,8 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
         var gaps=Math.Max(0,visible.Count-1);
         var dividers=visible.Skip(1).Count(i=>i.SeparatorBefore);
         var stacked=false;
+        if (frame.SelfStudy is not null && item is not null)
+            activeWidth=Math.Min(available,Math.Max(192,available-inactive*cell-gaps*itemGap-dividers*(separator+itemGap)));
         double FreeCells()=>available-(item is null?0:activeWidth)-gaps*itemGap-dividers*(separator+itemGap);
         double Used()=>(item is null?0:activeWidth)+inactive*cell+gaps*itemGap+dividers*(separator+itemGap);
         void FitCells()=>cell=inactive==0?cell:Math.Clamp(FreeCells()/inactive,subjectSize+2,compact?26:30);
@@ -320,6 +328,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
             stacked=true;
             activeWidth=Math.Min(available,Math.Max(GetText(item.Subject,rect,18,"#F3F5F8").Width+16,
                 GetText(item.Time,rect,12,"#F3F5F8").Width+16));
+            if (frame.SelfStudy is not null) activeWidth=Math.Min(available,Math.Max(192,activeWidth));
             FitCells();
         }
         if(Used()>available)
@@ -417,6 +426,7 @@ internal sealed class ClassroomIslandRibbon : Control, IDisposable
             icons=XDocument.Load(stream).Root!.Elements().Select(shape=>shape.Name.LocalName switch {
                 "path" => (Geometry)StreamGeometry.Parse(shape.Attribute("d")!.Value),
                 "circle" => new EllipseGeometry(new Rect(Number(shape,"cx")-Number(shape,"r"),Number(shape,"cy")-Number(shape,"r"),Number(shape,"r")*2,Number(shape,"r")*2)),
+                "line" => StreamGeometry.Parse(FormattableString.Invariant($"M{Number(shape,"x1")} {Number(shape,"y1")} L{Number(shape,"x2")} {Number(shape,"y2")}")),
                 _ => null
             }).Where(g=>g is not null).Cast<Geometry>().ToArray();
             _icons[name]=icons;

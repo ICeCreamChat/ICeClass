@@ -1,0 +1,46 @@
+/* A compact course ribbon. Short timetables keep their natural width;
+   a full school day scrolls inside the ribbon instead of widening the page. */
+.course-area { margin-bottom: 28px; }
+.daily-course { display: flex; align-items: stretch; gap: 12px; min-height: 84px; }
+.date-capsule { flex: none; width: 125px; --radius: 22px; }
+.date-capsule .glass-content { display: flex; align-items: center; justify-content: center; flex-direction: column; height: 100%; padding: 12px; gap: 4px; }
+.date-capsule strong { font-size: 26px; line-height: 1.2; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.date-capsule strong span { font-size: 15px; margin-inline: 3px; font-weight: 500; }
+.date-capsule small { font-size: 15px; line-height: 1.5; color: #3d6281; }
+.timetable-capsule { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 137px); --radius: 22px; }
+.timetable-content { display: flex; align-items: center; height: 100%; padding: 8px; gap: 8px; }
+.lesson-list { display: flex; align-items: stretch; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; scrollbar-color: #7199b580 transparent; border-radius: 14px; }
+.lesson { display: flex; flex: 0 0 192px; flex-direction: column; justify-content: center; gap: 4px; width: 192px; min-width: 0; padding: 10px 20px; border-radius: 14px; position: relative; }
+.lesson + .lesson::before { content: ""; position: absolute; top: 14px; bottom: 14px; left: 0; width: 1px; background: #7199b535; }
+.lesson.is-current::before, .lesson.is-current + .lesson::before { display: none; }
+.lesson-heading { display: flex; align-items: center; gap: 12px; }
+.lesson strong { display: block; max-width: 13em; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 17px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.lesson small { font-size: 15px; line-height: 1.5; color: #476c8a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lesson.is-current { background: #f3faffc9; box-shadow: inset 0 1px #ffffffd9; }
+.lesson.is-current strong { color: #005dbf; }
+.lesson-state { flex: none; display: inline-flex; align-items: center; gap: 5px; color: #075cad; font-size: 12px; white-space: nowrap; }
+.lesson-state::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.schedule-more { width: 44px; height: 44px; margin: 0 4px 0 0; border-radius: 14px; color: #315c7e; background: #ffffff85; }
+.schedule-more svg { width: 20px; height: 20px; }
+.schedule-more:hover { background: #ffffff; }
+.schedule-empty { min-width: 180px; max-width: 28ch; padding: 12px 20px; margin: 0; color: #476c8a; font-size: 15px; line-height: 1.6; }
+body[data-material="white"] .lesson.is-current { background: #eaf3ff; box-shadow: none; }
+@media (max-width: 560px) {
+  .course-area { margin-bottom: 20px; }
+  .daily-course { gap: 8px; min-height: 78px; }
+  .date-capsule { width: 94px; min-width: 94px; --radius: 18px; }
+  .date-capsule .glass-content { padding: 10px 6px; }
+  .date-capsule strong { font-size: 22px; }
+  .date-capsule strong span, .date-capsule small { font-size: 13px; }
+  .timetable-capsule { max-width: calc(100% - 102px); --radius: 18px; }
+  .timetable-content { padding: 6px; gap: 4px; }
+  .lesson { flex-basis: 164px; width: 164px; padding: 8px 12px; border-radius: 12px; }
+  .lesson strong { font-size: 16px; }
+  .lesson small { font-size: 14px; }
+  .lesson-heading { gap: 8px; }
+  .schedule-more { margin-right: 0; width: 44px; }
+}
+@media (forced-colors: active) {
+  .lesson.is-current { outline: 1px solid Highlight; outline-offset: -2px; }
+  .lesson-state, .lesson.is-current strong { color: CanvasText; }
+}

@@ -280,6 +280,13 @@ class ICeClassServerTest(ServerTestCase):
         policy = response.headers.get("Content-Security-Policy", "")
         self.assertIn("media-src 'self' blob:", policy)
 
+    async def test_static_page_allows_private_photo_blob_preview(self) -> None:
+        response = await self.client.get("/")
+        self.assertEqual(response.status, 200)
+        policy = response.headers.get("Content-Security-Policy", "")
+        images = next(part.strip().split()[1:] for part in policy.split(';') if part.strip().startswith('img-src '))
+        self.assertEqual(set(images), {"'self'", 'data:', 'blob:'})
+
     async def test_existing_database_is_upgraded_without_losing_history(self) -> None:
         legacy_path = Path(self.temp.name) / "legacy.db"
         connection = sqlite3.connect(legacy_path)

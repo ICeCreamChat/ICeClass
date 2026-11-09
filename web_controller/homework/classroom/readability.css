@@ -2,9 +2,8 @@
 body{font-size:17px}
 .brand small,.class-heading p,.connection,.card-top p,.card-footnote,.entry-text p,.entry-meta,.management-hint,.app-footer,.view-toolbar>span{font-size:16px;line-height:1.65}
 .button,.text-button,.nav-content button{font-size:17px}
-.duration-label,.coming-soon,.app-footer .text-button,.shout-copy small,.back-button,.empty-roster,.toast,.detail-content .demo-note,.activity-list button,.settings-row,.settings-row small,.date-capsule small,.date-capsule strong span,.lesson small{font-size:16px;line-height:1.65}
+.duration-label,.coming-soon,.app-footer .text-button,.shout-copy small,.back-button,.empty-roster,.toast,.detail-content .demo-note,.activity-list button,.settings-row,.settings-row small{font-size:16px;line-height:1.65}
 .shout-content .button,.nav-content button{font-size:17px}
-.lesson strong{font-size:17px}.date-capsule strong{font-size:26px}.date-capsule{min-width:125px}
 .module-card .card-top h2{font-size:23px}.module-card .card-top p{font-size:16px;line-height:1.65;margin-top:6px;text-wrap:pretty}
 .module-heading{min-height:32px}.module-heading .coming-soon{line-height:1.5;padding:3px 9px}
 .module-footer .card-footnote svg{width:16px;height:16px}.module-footer>.button{font-size:17px;min-height:48px}.module-card .button{flex-shrink:0}.homework-entry-content .button{font-size:17px;min-height:46px}

@@ -140,6 +140,8 @@
   }
   function table(report) {
     const wrap = node('div', undefined, 'table-wrap'); wrap.id = 'rankingTable';
+    wrap.tabIndex = 0; wrap.setAttribute('role', 'region');
+    wrap.setAttribute('aria-label', '早读排行数据，可左右滚动');
     const t = node('table'), head = t.createTHead().insertRow();
     ['名次', '班级', '使用次数 / 天数', '运行时长', '有效发声', '达标占比', '模式', '完成量', '同步'].forEach(label => {
       const th = node('th', label); th.scope = 'col'; head.append(th);

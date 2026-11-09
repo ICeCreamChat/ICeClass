@@ -26,7 +26,8 @@ internal sealed class BanbanSpeechRecognizer : IDisposable
     public void Dispose() => _recognizer.Dispose();
 }
 
-internal sealed record BanbanSpeechAudio(float[] Samples, bool Final, bool TooLong = false, bool DuringPlayback = false);
+internal sealed record BanbanSpeechAudio(float[] Samples, bool Final, bool TooLong = false, bool DuringPlayback = false,
+    int SpeechSamples = 0, int CapturedSamples = 0, long EndedAtTicks = 0);
 internal sealed record BanbanSpeechJob(BanbanSpeechAudio Audio, int Generation, bool ControlsOnly);
 
 /// <summary>Serial inference, bounded backlog, and cancellation checks both before and after decoding.</summary>
@@ -101,16 +102,27 @@ internal sealed class BanbanSpeechSegmenter : IDisposable
     // cutoff splits quiet English words away from the surrounding instruction.
     private const int TrailingSilenceSamples = 16000;
     private const int PreviewSpeechSamples = 11200;
-    private readonly BanbanVoiceActivity _activity = new();
+    private BanbanVoiceActivity? _activity;
+    private readonly Func<float[], bool>? _detectSpeech;
+    private readonly int _maximumSamples;
+    private readonly bool _continuous;
     private readonly Queue<(float[] Samples, bool DuringPlayback)> _preRoll = new();
     private readonly List<float> _samples = new(64000);
     private int _preRollCount, _silence, _speech;
     private bool _active, _previewed, _discarding, _duringPlayback;
     internal bool SpeechDetected { get; private set; }
 
+    internal BanbanSpeechSegmenter(int maximumSamples = MaximumSamples, bool continuous = false,
+        Func<float[], bool>? detectSpeech = null)
+    {
+        if (maximumSamples < 16000 || maximumSamples > MaximumSamples) throw new ArgumentOutOfRangeException(nameof(maximumSamples));
+        _maximumSamples = maximumSamples; _continuous = continuous; _detectSpeech = detectSpeech;
+        if (detectSpeech is null) _activity = new();
+    }
+
     internal BanbanSpeechAudio? Accept(float[] samples, bool preview = false, bool duringPlayback = false)
     {
-        SpeechDetected = _activity.Accept(samples);
+        SpeechDetected = _detectSpeech?.Invoke(samples) ?? (_activity ??= new()).Accept(samples);
         _silence = SpeechDetected ? 0 : Math.Min(TrailingSilenceSamples, _silence + samples.Length);
         if (_discarding)
         {
@@ -130,8 +142,17 @@ internal sealed class BanbanSpeechSegmenter : IDisposable
         if (SpeechDetected) _speech += samples.Length;
 
         // Never turn the beginning of an overlong arrangement into an executable task.
-        if (_samples.Count >= MaximumSamples)
+        if (_samples.Count >= _maximumSamples)
         {
+            if (_continuous)
+            {
+                var chunk = new BanbanSpeechAudio(_samples.ToArray(), true, DuringPlayback: _duringPlayback,
+                    SpeechSamples: _speech, CapturedSamples: _samples.Count);
+                // Keep the VAD's state across bounded chunks of uninterrupted speech.
+                _samples.Clear(); _preRoll.Clear(); _preRollCount = _silence = _speech = 0;
+                _active = _previewed = _duringPlayback = false;
+                return chunk;
+            }
             _samples.Clear(); _discarding = true;
             return new([], true, TooLong: true, DuringPlayback: _duringPlayback);
         }
@@ -141,24 +162,26 @@ internal sealed class BanbanSpeechSegmenter : IDisposable
             // another quarter-second of real microphone silence.
             var complete = new float[Math.Min(MaximumSamples, _samples.Count + 4000)];
             _samples.CopyTo(complete);
-            var capturedDuringPlayback = _duringPlayback; Reset();
-            return new(complete, true, DuringPlayback: capturedDuringPlayback);
+            var result = new BanbanSpeechAudio(complete, true, DuringPlayback: _duringPlayback,
+                SpeechSamples: _speech, CapturedSamples: _samples.Count);
+            Reset(); return result;
         }
         // At most one preview during playback, used only for interruption.
         // Ordinary requests always wait for the complete utterance.
         if (preview && !_previewed && _speech >= PreviewSpeechSamples)
         {
             _previewed = true;
-            return new(_samples.ToArray(), false, DuringPlayback: _duringPlayback);
+            return new(_samples.ToArray(), false, DuringPlayback: _duringPlayback,
+                SpeechSamples: _speech, CapturedSamples: _samples.Count);
         }
         return null;
     }
 
     internal void Reset()
     {
-        _activity.Reset(); _preRoll.Clear(); _samples.Clear();
+        _activity?.Reset(); _preRoll.Clear(); _samples.Clear();
         _preRollCount = _silence = _speech = 0; _active = _previewed = _discarding = _duringPlayback = SpeechDetected = false;
     }
 
-    public void Dispose() => _activity.Dispose();
+    public void Dispose() => _activity?.Dispose();
 }

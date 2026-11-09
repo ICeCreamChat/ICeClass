@@ -246,17 +246,26 @@ internal sealed class ClassroomIslandWindow : Window
         _ribbon.Light = light;
         if (_view is not null)
         {
-            var frame = IslandRibbonPresentation.Build(profile, now, _view, component);
+            var frame = IslandRibbonPresentation.Build(profile, now, _view, component, _selfStudyFeedback);
             _ribbon.Present(progressRunning ? frame : frame with { ProgressPerSecond = 0 });
+            UpdateExpandName();
         }
         DockToPrimaryScreen(); UpdateOpacity();
     }
     private string? _lessonSignature;
+    private SelfStudyFeedback? _selfStudyFeedback;
+    internal void UpdateSelfStudyFeedback(SelfStudyFeedback? feedback)
+    {
+        _selfStudyFeedback = feedback;
+        _ribbon.SetSelfStudyFeedback(feedback);
+        UpdateExpandName();
+    }
+    internal void UpdateSelfStudyLevel(double level) => _ribbon.SetSelfStudyLevel(level);
     public void Update(ClassroomIslandView view, bool dimmed, bool animationsEnabled = true)
     {
         _view = view;
         var motionChanged = _animationsEnabled != animationsEnabled;
-        _animationsEnabled = _mascot.Animate = _ribbon.Animate = animationsEnabled;
+        _animationsEnabled = _mascot.Animate = _ribbon.Animate = animationsEnabled && DesktopStyle.AnimationsEnabled();
         if (!animationsEnabled) _pulse?.Stop();
         if (motionChanged)
         {
@@ -339,7 +348,9 @@ internal sealed class ClassroomIslandWindow : Window
 
     private void UpdateExpandName() => AutomationProperties.SetName(_expand, _shoutShown
         ? _shoutExpanded ? "收起喊话全文，Esc 结束喊话" : "展开喊话全文，Esc 结束喊话"
-        : (_view is { } view ? view.ClassName + "，" + view.Date + "，" + view.Status + "，" : "") + (_expanded ? "收起悬浮岛操作" : "展开悬浮岛操作"));
+        : (_view is { } view ? view.ClassName + "，" + view.Date + "，" + view.Status + "，" : "")
+            + ((_ribbon.Frame?.SelfStudy ?? _selfStudyFeedback) is { } feedback ? feedback.AccessibleText + "，" : "")
+            + (_expanded ? "收起悬浮岛操作" : "展开悬浮岛操作"));
 
     private void UpdateImportantBody()
     {
@@ -378,7 +389,7 @@ internal sealed class ClassroomIslandWindow : Window
 
     private void UpdateOpacity()
     {
-        var reading = _shoutShown || _expanded || IsPointerOver || IsKeyboardFocusWithin;
+        var reading = _hasNotice || _expanded || IsPointerOver || IsKeyboardFocusWithin;
         _surface.Opacity = reading ? 1 : _appearance.Opacity / 100.0 * (_dimmed && !_hasNotice ? .45 : 1);
         _glass.RefreshBlur();
     }

@@ -8,13 +8,13 @@
   top: 16px;
   z-index: 40;
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) auto;
+  grid-template-columns: calc(var(--teacher-nav-width) - 30px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 28px;
+  gap: 24px;
   height: 88px;
   min-width: 0;
   margin: 16px 16px 12px;
-  padding: 14px 20px 14px 14px;
+  padding: 14px 16px 14px 14px;
   border: 1px solid #ffffffb8;
   border-radius: 22px;
   background: #f4fbff70;
@@ -77,12 +77,13 @@
 .teacher-clear-header [hidden] { display: none !important; }
 .teacher-clear-header .sidebar { grid-row: 2; top: var(--header-space); height: calc(100dvh - var(--header-space)); padding-top: 16px; }
 .teacher-clear-header main { padding-top: 24px; scroll-margin-top: var(--header-space); }
+.teacher-clear-header .island-workspace-head { top: calc(var(--header-space) - 4px); }
 html:has(.teacher-clear-header) { scroll-padding-top: 132px; }
 @media (min-width: 1600px) {
   .teacher-clear-header .topbar-date { display: block; }
 }
 @media (max-width: 1250px) {
-  .teacher-clear-header .topbar { grid-template-columns: 194px minmax(0, 1fr) auto; gap: 18px; padding-right: 14px; }
+  .teacher-clear-header .topbar { padding-right: 14px; }
   .teacher-clear-header .header-brand strong { font-size: 17px; }
   .teacher-clear-header .header-brand img { width: 40px; height: 40px; }
   .teacher-clear-header .header-account .user-meta strong { max-width: 7em; }

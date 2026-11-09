@@ -19,6 +19,8 @@
   function node(tag, text, cls) { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; }
   function table(headers, rows) {
     const wrap = node('div', undefined, 'table-wrap'), t = document.createElement('table');
+    wrap.tabIndex = 0; wrap.setAttribute('role', 'region');
+    wrap.setAttribute('aria-label', '统计明细，可左右滚动');
     const head = t.createTHead().insertRow(); headers.forEach(h => { const th = node('th', h); th.scope = 'col'; head.append(th); });
     const body = t.createTBody(); rows.forEach(values => { const row = body.insertRow(); values.forEach(v => row.insertCell().append(v instanceof Node ? v : document.createTextNode(v ?? '—'))); });
     wrap.append(t); return wrap;

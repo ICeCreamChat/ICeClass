@@ -28,16 +28,9 @@
     '.bb-native-voice-page .bb-confirm-dialog', '.bb-native-voice-page .bb-task-panel'
   ].join(',');
   const teacherSelectors = [
-    '.topbar', '.teacher-header-menu', '.auth-card', '.reading-filter', '.metric', '.reading-panel',
-    '.reading-settings', '.daily-details', '.control-actions', '.compose', '.plain-section',
-    '.classroom-voice-item', '.schedule-item', '.island-main', '.island-day-panel',
-    '.island-delivery-panel', '.island-preview-time-panel', '.action-menu-content',
-    '.ideas-list-panel', '.ideas-detail', '.hw-scope', '.hw-section',
-    '.users-panel', '.user-actions-popover',
-    '#acknowledgementsPanel', '#acknowledgementsPreview', 'dialog', '.toast', '.btn',
-    '.bb-panel', '.bb-settings', '.bb-options', '.bb-scope-editor',
-    '.bb-session-popover', '.bb-task-panel', '.bb-confirm-dialog', '.bb-history',
-    '.bb-history-delete-dialog', '.bb-send'
+    '.topbar', '.teacher-header-menu', '.auth-card',
+    '.island-preview-time-panel', '.action-menu-content', '.user-actions-popover',
+    '.toast', '.bb-options', '.bb-session-popover'
   ].map(selector => `.teacher-liquid ${selector}`).join(',');
   const selectors = teacher ? teacherSelectors : classroomSelectors;
   const entries = new Map();
@@ -47,6 +40,14 @@
   const defs = document.createElementNS(ns, 'defs'); svg.append(defs);
   document.body.append(svg);
   let sequence = 0;
+  const reducedTransparency = matchMedia('(prefers-reduced-transparency: reduce)');
+  const forcedColors = matchMedia('(forced-colors: active)');
+  function opticsEnabled() {
+    if (document.hidden || reducedTransparency.matches || forcedColors.matches) return false;
+    return teacher
+      ? document.documentElement.dataset.teacherMaterial !== 'white' && document.documentElement.dataset.teacherTransparency !== 'reduced'
+      : document.body.dataset.material !== 'white' && !document.body.classList.contains('reduce-transparency');
+  }
   // A teacher workbench keeps many pages in the DOM. Only visible surfaces own
   // displacement maps; leaving the viewport releases them. No animation loop.
   const visibility = teacher ? new IntersectionObserver(changes => {
@@ -68,8 +69,6 @@
   });
   function attach(element) {
     if (entries.has(element) || element.closest('.classroom-filter-definitions')) return;
-    if (teacher && element.matches('.btn') && element.closest(
-      '.period-shortcuts,.ranking-switch,.mode-picker,.hw-tabs,.hw-group,.island-tabs,.island-duty-mode,.action-menu-content,.dialog-head,.island-duty-weeks')) return;
     const existing = element.querySelector(':scope > .glass-lens');
     const lens = teacher ? null : existing || document.createElement('span');
     if (!existing || teacher) {
@@ -114,7 +113,7 @@
     const entry = entries.get(element);
     if (!entry) return;
     // A hidden page has no optical surface. Recreate its map when it is shown.
-    if (!entry.visible || width < 1 || height < 1) { if (entry.filter) release(entry, element); return; }
+    if (!opticsEnabled() || !entry.visible || width < 1 || height < 1) { if (entry.filter) release(entry, element); return; }
     if (Math.abs(entry.width-width)<1 && Math.abs(entry.height-height)<1) return;
     if (!entry.filter) allocate(entry, element);
     entry.width = width; entry.height = height;
@@ -145,6 +144,18 @@
   }
   scan(document);
   document.addEventListener('DOMContentLoaded', () => scan(document), {once:true});
+  function refreshOptics() {
+    if (!opticsEnabled()) {
+      for (const [element, entry] of entries) if (entry.filter) release(entry, element);
+      return;
+    }
+    const sizes = [...entries].filter(([,entry]) => entry.visible).map(([element]) => [element,element.getBoundingClientRect()]);
+    for (const [element,rect] of sizes) update(element,rect.width,rect.height);
+  }
+  window.addEventListener('iceclass-appearance-change', refreshOptics);
+  document.addEventListener('visibilitychange', refreshOptics);
+  reducedTransparency.addEventListener('change', refreshOptics);
+  forcedColors.addEventListener('change', refreshOptics);
   new MutationObserver(changes => {
     for (const change of changes) {
       // Action labels are replaced with textContent during pause, resume and retry.

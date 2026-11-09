@@ -38,7 +38,10 @@ internal sealed class IslandGlassLens : Control, IDisposable
     {
         if (_blocked) return;
         _owner = owner; _blur = blur;
-        if (!_regions.SequenceEqual(regions)) { ResetCapture(); _regions = regions; _candidate = default; }
+        if (!_regions.SequenceEqual(regions))
+        {
+            ClearFrame(); _regions = regions; _changedAt = Stopwatch.GetTimestamp();
+        }
         _timer.Start();
     }
 
@@ -53,10 +56,16 @@ internal sealed class IslandGlassLens : Control, IDisposable
         var capture = _capture; _capture = null;
         // Closing WGC waits for its worker. Keep that wait off the input thread.
         if (capture is not null) _ = Task.Run(capture.Dispose);
+        ClearFrame();
+        _samples = 0; _cost = 0; CaptureMilliseconds = 0;
+    }
+
+    private void ClearFrame()
+    {
         _pixels?.Dispose(); _pixels = null;
         _frame?.Release(); _frame = null;
         _optics?.Release(); _optics = null;
-        _version = 0; _samples = 0; _cost = 0;
+        _version = 0;
         InvalidateVisual();
     }
 
@@ -74,17 +83,25 @@ internal sealed class IslandGlassLens : Control, IDisposable
             ? IslandGlassCapture.FindSource(owner, area, _blur) : default;
         if (wanted != _candidate)
         {
-            ResetCapture(); _candidate = wanted; _changedAt = Stopwatch.GetTimestamp(); return;
+            // A newly available background can start immediately. Debounce only
+            // geometry changes on the same source during a move/reveal animation.
+            _changedAt = wanted.Window == _candidate.Window ? Stopwatch.GetTimestamp() : 0;
+            ClearFrame(); _candidate = wanted;
         }
-        // During the pull/reveal animation the lightweight glass keeps moving.
-        // Start sampling only once the geometry and source have settled.
-        if (wanted.Window == IntPtr.Zero || Stopwatch.GetElapsedTime(_changedAt).TotalMilliseconds < 120) return;
+        if (wanted.Window == IntPtr.Zero) { if (_capture is not null) ResetCapture(); return; }
         try
         {
             if (_capture is null)
             {
+                // Warm the graphics device during geometry settling, then reuse
+                // its worker when the island moves or changes shape.
                 _capture = IslandGlassCapture.Create();
                 if (_capture.IsInvalid) { Disable("background capture unavailable"); return; }
+            }
+            // Avoid resampling every frame of the pull/reveal animation.
+            if (_changedAt != 0 && Stopwatch.GetElapsedTime(_changedAt).TotalMilliseconds < 120) return;
+            if (_pixels is null)
+            {
                 _capture.Update(wanted);
                 _pixels = new SKBitmap(new SKImageInfo(area.Width, area.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
                 _optics = new Optics(_regions, owner.RenderScaling);

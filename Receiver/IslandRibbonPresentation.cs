@@ -5,9 +5,9 @@ namespace ICeClass.Receiver;
 internal sealed record IslandRibbonItem(string Id, string Subject, string Time, bool Current, bool Past, double Progress = 0, bool SeparatorBefore = false);
 internal sealed record IslandRibbonShout(string Sender, string Text, string Level, string ContentType, double AgeSeconds, long Sequence);
 internal sealed record IslandRibbonFrame(string Key, string Date, IReadOnlyList<IslandRibbonItem> Items,
-    string Text = "", string Detail = "", double Progress = 0, bool Accent = false, string Color = "#14FFFA", double ProgressPerSecond = 0, string Announcement = "", IslandRibbonShout? Shout = null)
+    string Text = "", string Detail = "", double Progress = 0, bool Accent = false, string Color = "#14FFFA", double ProgressPerSecond = 0, string Announcement = "", IslandRibbonShout? Shout = null, SelfStudyFeedback? SelfStudy = null)
 {
-    public string AccessibleText => string.Join("，", new[] { Date, Text, Detail, Announcement,
+    public string AccessibleText => string.Join("，", new[] { Date, Text, Detail, Announcement, SelfStudy?.AccessibleText ?? "",
         string.Join("，", Items.Select(i => i.Subject + " " + i.Time)) }.Where(s => s.Length > 0));
 }
 
@@ -15,7 +15,7 @@ internal sealed record IslandRibbonFrame(string Key, string Date, IReadOnlyList<
 // timetable and accepted notices, and never dispatches an action or changes a profile.
 internal static class IslandRibbonPresentation
 {
-    public static IslandRibbonFrame Build(IslandProfile? profile, DateTimeOffset now, ClassroomIslandView view, string component = "")
+    public static IslandRibbonFrame Build(IslandProfile? profile, DateTimeOffset now, ClassroomIslandView view, string component = "", SelfStudyFeedback? selfStudy = null)
     {
         now = now.ToOffset(TimeSpan.FromHours(8));
         var day = DateOnly.FromDateTime(now.DateTime);
@@ -63,6 +63,8 @@ internal static class IslandRibbonPresentation
         var preparing = profile?.Reminders is { Enabled: true, Prepare: true } reminders && remaining > 0 && remaining <= reminders.PrepareMinutes * 60;
         if (view.Notice is { } notice)
         {
+            if (notice.Category == "晚自习通知" && selfStudy is not null && items.Any(i => i.Current))
+                return new("timetable", date, items, SelfStudy: selfStudy with { Reminder = notice.Sender == "晚自习提醒" });
             if (notice.Category == "班级通知")
             {
                 var label = notice.Level switch { "urgent" => "紧急喊话", "warning" => "重要喊话", _ => "班级喊话" };
@@ -98,9 +100,9 @@ internal static class IslandRibbonPresentation
                     remaining / (profile.Reminders.PrepareMinutes * 60),ProgressPerSecond:1.0/(profile.Reminders.PrepareMinutes*60));
         }
         if (items.Count == 0) return new("idle", date, items, component.Length > 0 ? component : view.Status);
-        if (component.Length > 0 && now.ToUnixTimeSeconds() / Math.Max(3, profile!.RotationSeconds) % 4 == 3)
+        if (selfStudy is null && component.Length > 0 && now.ToUnixTimeSeconds() / Math.Max(3, profile!.RotationSeconds) % 4 == 3)
             return new("component:" + component, date, items, component);
-        return new("timetable", date, items);
+        return new("timetable", date, items, SelfStudy: selfStudy);
     }
 
     internal static string Time(int minute) => $"{minute / 60:00}:{minute % 60:00}";

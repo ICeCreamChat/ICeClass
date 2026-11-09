@@ -23,7 +23,7 @@ internal sealed class SelfStudyNoticeWindow : Window
         _description.TextWrapping = TextWrapping.Wrap; _description.LineHeight = 25;
         AutomationProperties.SetLiveSetting(_description, AutomationLiveSetting.Polite);
         var later = Dialogs.Button("稍后查看"); later.Click += (_, _) => Close();
-        var view = Dialogs.Button("查看晚自习", true); view.Click += (_, _) => { Close(); open(); };
+        var view = Dialogs.Button("查看记录", true); view.Click += (_, _) => { Close(); open(); };
         Content = new Border { Classes = { "native-flyout-surface" }, Margin = new Thickness(16),
             Child = ClassroomGlassHost.Wrap(new Border { Padding = new Thickness(22), Child = new StackPanel {
                 Spacing = 14, Children = { DesktopStyle.Text("晚自习需要留意", 18, true), _description,
@@ -39,7 +39,7 @@ internal sealed class SelfStudyNoticeWindow : Window
     {
         if (_inbox.Pending.Count == 0) { if (IsVisible) Close(); return; }
         var names = string.Join("、", _inbox.Pending.Select(e => e.ClassName).Distinct().Take(3));
-        _description.Text = $"{names}在提醒后仍有疑似交谈，共 {_inbox.Pending.Count} 条记录待核实。";
+        _description.Text = $"{names}在提醒后仍有疑似闲聊，共 {_inbox.Pending.Count} 条记录待核实。";
     }
     private void Place()
     {
