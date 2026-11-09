@@ -8,7 +8,7 @@
 
 ## 当前版本
 
-当前源码版本为 **2.5.10**，包含班级作业统计、晚自习管理、教室端与教师端液态玻璃、教师统一顶栏和可维护的致谢名单，保留课表浮岛、班班、批量设置、诊断、轻量安装和增量更新功能。
+当前源码版本为 **2.5.11**，包含自习声音与阶段可视化、可调识别和提醒规则、教师液态玻璃工作台及自习管理新布局，保留班级作业统计、课表浮岛、班班、批量设置、诊断、轻量安装和增量更新功能。
 
 近期源码改进：
 
@@ -252,7 +252,7 @@ sudo bash server/install-ubuntu.sh YOUR_DOMAIN YOUR_RANDOM_BOOTSTRAP_TOKEN
 已有安装使用与目标版本配套的服务器 ZIP 更新，例如：
 
 ```bash
-sudo bash scripts/update-ubuntu.sh /path/to/ICeClass-2.5.10-server.zip 2.5.10
+sudo bash scripts/update-ubuntu.sh /path/to/ICeClass-2.5.11-server.zip 2.5.11
 sudo systemctl status iceclass
 sudo journalctl -u iceclass --no-pager -n 80
 ```
