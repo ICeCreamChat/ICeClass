@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -8,8 +7,8 @@ using Avalonia.Threading;
 using ICeClass.Receiver;
 using SkiaSharp;
 
-// Read the real Windows blur region: an offscreen bitmap cannot reveal a
-// system backdrop leaking into transparent space around the island.
+// Exercise the real island, its lightweight panes and the split-capsule gap.
+// Render only the island control; no desktop pixels are captured.
 internal static class NativeIslandGlassChecks
 {
     internal static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
@@ -85,79 +84,49 @@ internal static class NativeIslandGlassChecks
                 island.SetShoutExpanded(state == "full");
                 island.Show(); island.UpdateLayout(); await Task.Delay(350); island.UpdateLayout();
 
-                var blurWindows = desktop.Windows.Where(w => w.IsVisible && (w.ActualTransparencyLevel == WindowTransparencyLevel.AcrylicBlur
-                    || w.ActualTransparencyLevel == WindowTransparencyLevel.Blur)).ToArray();
+                Assert(!desktop.Windows.Any(w => w.ActualTransparencyLevel == WindowTransparencyLevel.AcrylicBlur
+                    || w.ActualTransparencyLevel == WindowTransparencyLevel.Blur), state + ": no system blur window is allocated");
+                Assert(desktop.Windows.Count == 1, state + ": the island owns only one native window");
+                var glass = Field<IslandGlassBackdrop>(island, "_glass");
                 if (state == "solid")
                 {
-                    Assert(blurWindows.Length == 0, "original material leaves no native blur surface visible");
+                    Assert(!glass.IsVisible, "original white material hides the tinted panes");
                     continue;
                 }
-                Assert(blurWindows.Length > 0, state + ": desktop blur remains enabled inside glass");
-                Assert(blurWindows.All(w => w.Opacity <= .25), state + ": clear glass does not replace the backdrop with a full-opacity acrylic veil");
-                if (appearance.Theme == "light")
+                Assert(glass.IsVisible, state + ": lightweight glass stays visible");
+                using var rendered = new RenderTargetBitmap(new PixelSize((int)glass.Bounds.Width, (int)glass.Bounds.Height), new Vector(96, 96));
+                rendered.Render(glass);
+                using var image = new MemoryStream(); rendered.Save(image); image.Position = 0;
+                using var pixels = SKBitmap.Decode(image);
+                var panes = glass.Children.OfType<Border>().Where(p => p.IsVisible).Select(p => p.Bounds).ToArray();
+                Assert(panes.Length == (shout || state == "details" ? 1 : 2), state + ": capsules retain their original geometry");
+                foreach (var pane in panes)
                 {
-                    var glass = Field<IslandGlassBackdrop>(island, "_glass");
-                    // Inspect the real interim material before a captured frame arrives.
-                    // The painted tint must stay below 25% opacity in pane interiors.
-                    Field<IslandGlassLens>(glass, "_lens").Stop();
-                    using var rendered = new RenderTargetBitmap(new PixelSize((int)glass.Bounds.Width, (int)glass.Bounds.Height), new Vector(96, 96));
-                    rendered.Render(glass);
-                    using var image = new MemoryStream(); rendered.Save(image); image.Position = 0;
-                    using var pixels = SKBitmap.Decode(image);
-                    var center = pixels.GetPixel((int)(pixels.Width * .8), pixels.Height / 2);
-                    Assert(center.Alpha is > 10 and <= 64,
-                        state + $": interim light tint stays below 25% opacity (alpha {center.Alpha})");
-                    var pane = Field<IslandGlassBackdrop>(island, "_glass").Children.OfType<Border>().Last(p => p.IsVisible);
-                    var edge = pixels.GetPixel((int)(pane.Bounds.X + pane.Bounds.Width * .8), (int)pane.Bounds.Y);
-                    Assert(edge.Alpha <= 128, state + $": upper glass rim stays translucent instead of a white outline (alpha {edge.Alpha})");
+                    var center = pixels.GetPixel((int)pane.Center.X, (int)pane.Center.Y);
+                    Assert(center.Alpha is >= 180 and < 255, state + ": translucent tint keeps the text area legible");
+                    if (appearance.Theme == "light") Assert(center.Blue >= center.Red && center.Red > 180, state + ": light material keeps its blue-white palette");
+                    else Assert(center.Blue > center.Red && center.Red < 70, state + ": dark material keeps its readable dark-blue tint");
+                    Assert(pixels.GetPixel((int)pane.X + 1, (int)pane.Y + 1).Alpha < 80,
+                        state + ": rounded corners remain transparent");
                 }
-                var panes = Field<IslandGlassBackdrop>(island, "_glass").Children.OfType<Border>()
-                    .Where(p => p.IsVisible).Select(p => new Rect(p.TranslatePoint(default, island)!.Value, p.Bounds.Size)).ToArray();
-                foreach (var blur in blurWindows)
+                if (panes.Length == 2)
                 {
-                    Assert(blur.Position == island.Position && blur.Bounds.Size == island.Bounds.Size,
-                        state + ": native blur follows island position and size");
-                    Assert(GetWindow(blur.TryGetPlatformHandle()!.Handle, 3) == island.TryGetPlatformHandle()!.Handle,
-                        state + ": native blur stays behind text and controls");
-                    var region = CreateRectRgn(0, 0, 0, 0);
-                    try
-                    {
-                        Assert(GetWindowRgn(blur.TryGetPlatformHandle()!.Handle, region) > 0,
-                            state + ": native blur has a shape instead of covering its rectangular window");
-                        bool Blurred(Point point)
-                        {
-                            var screen = island.PointToScreen(point);
-                            return PtInRegion(region, screen.X - blur.Position.X, screen.Y - blur.Position.Y);
-                        }
-                        foreach (var pane in panes)
-                        {
-                            Assert(Blurred(pane.Center), state + ": capsule center keeps desktop blur");
-                            Assert(!Blurred(pane.TopLeft + new Vector(1, 1)), state + ": rounded corner stays transparent");
-                        }
-                        Assert(!Blurred(new Point(2, island.Bounds.Height - 2)), state + ": outer padding has no tinted rectangle");
-                        if (shout) Assert(!Blurred(new Point(28, island.Bounds.Height - 10)), state + ": space below Banban has no blur");
-                        if (panes.Length == 2) Assert(!Blurred(new Point((panes[0].Right + panes[1].Left) / 2, panes[0].Center.Y)),
-                            state + ": gap between daily capsules stays transparent");
-                    }
-                    finally { DeleteObject(region); }
+                    var gap = pixels.GetPixel((int)((panes[0].Right + panes[1].Left) / 2), (int)panes[0].Center.Y);
+                    Assert(gap.Alpha < 80, state + ": daily capsule gap has no rectangular tint");
                 }
                 Assert(island.ActualTransparencyLevel == WindowTransparencyLevel.Transparent,
-                    state + ": text and Banban remain on a fully transparent window");
+                    state + ": text and Banban remain on a transparent window");
                 island.Hide(); await Task.Delay(30);
-                Assert(!desktop.Windows.Any(w => w.IsVisible && (w.ActualTransparencyLevel == WindowTransparencyLevel.AcrylicBlur
-                    || w.ActualTransparencyLevel == WindowTransparencyLevel.Blur)), state + ": hiding island also hides blur");
+                Assert(!desktop.Windows.Any(w => w.IsVisible), state + ": hiding leaves no companion backdrop window");
             }
+            Assert(typeof(ClassroomIslandWindow).Assembly.GetType("ICeClass.Receiver.IslandGlassLens") is null,
+                "the production client no longer ships a continuously sampling lens");
             island.DisposeWindow(); island = null;
-            Assert(desktop.Windows.Count == 0, "closing island releases its native backdrop window");
+            Assert(desktop.Windows.Count == 0, "closing island releases its only native window");
             Console.WriteLine($"{checks} native glass boundary checks passed.");
         }
         catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
         finally { island?.DisposeWindow(); desktop.Shutdown(Environment.ExitCode); }
     }
 
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
-    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
-    [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hwnd, IntPtr region);
-    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
-    [DllImport("gdi32.dll")] private static extern bool PtInRegion(IntPtr region, int x, int y);
 }

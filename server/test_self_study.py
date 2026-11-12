@@ -65,14 +65,14 @@ class SelfStudyConfigTests(unittest.TestCase):
 
 class SelfStudyApiTests(ServerTestCase):
     async def asyncSetUp(self):
-        await super().asyncSetUp()
-        self.device = await self.enroll_test_device()
-        self.cid = self.device['classId']
-        self.f = self.app[FEATURE_KEY]
         self.now = int(datetime(2026, 11, 9, 20, 5, tzinfo=SHANGHAI).timestamp() * 1000)
         self.clock_patch = patch.object(service, 'now_ms', side_effect=lambda: self.now)
         self.clock_patch.start()
         self.addCleanup(self.clock_patch.stop)
+        await super().asyncSetUp()
+        self.device = await self.enroll_test_device()
+        self.cid = self.device['classId']
+        self.f = self.app[FEATURE_KEY]
         self.device_headers = {'Authorization': 'Bearer ' + self.device['deviceToken'],
                                'X-ICeClass-Device': self.device['deviceId']}
         self.profile = island_defaults('高一')

@@ -10,8 +10,8 @@ using SkiaSharp;
 namespace ICeClass.Receiver;
 
 /// <summary>
-/// A shared static window backdrop with refracted panes. Only the background picture
-/// is filtered; Avalonia renders the actual controls and text above it as usual.
+/// A shared cached static window backdrop. Avalonia renders controls and text
+/// above the tint without background capture, blur or displacement filters.
 /// Geometry changes rebuild the picture, never a timer or a desktop capture.
 /// </summary>
 internal sealed class ClassroomGlassHost : Grid
@@ -95,15 +95,6 @@ internal sealed class ClassroomGlassHost : Grid
             var radius = (float)Math.Min(pane.Radius, Math.Min(rect.Width, rect.Height) / 2);
             canvas.Save(); canvas.Translate((float)pane.Bounds.X, (float)pane.Bounds.Y);
             canvas.ClipRoundRect(new SKRoundRect(rect, radius), SKClipOperation.Intersect, true);
-            if (!opaque)
-            {
-                using var filter = LiquidGlassOptics.CreateFilter(new Rect(pane.Bounds.Size), 1, radius, bounded: true);
-                using var optics = new SKPaint { ImageFilter = filter, IsAntialias = true };
-                canvas.SaveLayer(optics);
-                canvas.Translate((float)-pane.Bounds.X, (float)-pane.Bounds.Y);
-                DrawScene(canvas, _size, false);
-                canvas.Restore();
-            }
             using var tint = new SKPaint { IsAntialias = true, Shader = SKShader.CreateLinearGradient(
                 new SKPoint(0, 0), new SKPoint(rect.Width, rect.Height),
                 opaque ? new SKColor[] { SKColors.White, SKColors.White } : pane.Primary

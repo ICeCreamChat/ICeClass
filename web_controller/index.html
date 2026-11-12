@@ -9,7 +9,7 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=18">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=19">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=7">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=30">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
@@ -18,7 +18,7 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ideas-admin.css?v=2">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/homework-admin.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/self-study-admin.css?v=3">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/acknowledgements.css?v=1">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-quota.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=12">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=35">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-voice.css?v=2">
@@ -27,6 +27,7 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/classroom-banban-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=12">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-header.css?v=2">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/account-settings.css?v=3">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=1">
   <script nonce="__CSP_NONCE__" defer src="/assets/classroom-glass.js?v=5"></script>
   <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261101.1"></script>
@@ -127,6 +128,7 @@
       </nav>
     </aside>
     <main id="mainContent" tabindex="-1">
+      <p id="previewNotice" class="preview-notice hidden">本地验收 · 当前展示演示数据。</p>
       <section id="view-homework" class="view hidden" aria-label="作业统计"><div id="homeworkAdminRoot"></div></section>
       <section id="view-self-study" class="view hidden" aria-label="自习管理"><div id="selfStudyRoot"></div></section>
       <section id="view-ideas" class="view hidden" aria-label="创意计划评审">
@@ -241,7 +243,11 @@
             <span id="readingGradeScope" class="sr-only" role="status" aria-live="polite">全部年级</span>
           </div>
         </div>
-        <div id="readingOverview" class="reading-overview" aria-label="早读成绩概览"><div class="metric">正在读取成绩…</div></div>
+        <div id="readingOverview" class="reading-overview" aria-label="早读成绩概览" aria-busy="true">
+          <div class="metric"><div class="metric-heading"><span>有效发声总时长</span><span class="metric-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h2l3-7 4 14 3-7h2"/></svg></span></div><strong>—</strong></div>
+          <div class="metric"><div class="metric-heading"><span>使用班级 / 总班级</span><span class="metric-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span></div><strong>—</strong></div>
+          <div class="metric"><div class="metric-heading"><span>使用次数</span><span class="metric-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14l12-7z"/></svg></span></div><strong>—</strong></div>
+        </div>
         <p id="readingRuleStatus" data-admin class="reading-rule-status hidden" role="status">正在读取统计规则…</p>
         <section class="reading-panel ranking-panel" aria-labelledby="rankingTitle">
           <div class="panel-heading ranking-heading"><div><h2 id="rankingTitle">班级排行榜</h2><p>按有效发声时长排名 · 同时长并列</p></div><div class="ranking-heading-end"><div class="ranking-switch" role="group" aria-label="排行榜显示方式"><button type="button" id="rankingChartView" aria-pressed="true" aria-controls="rankingChart">成绩图</button><button type="button" id="rankingTableView" aria-pressed="false" aria-controls="rankingTable">数据表</button></div><span id="readingReportStatus" role="status">正在读取…</span></div></div>
@@ -367,71 +373,103 @@
         <div id="userActionsPopover" class="user-actions-popover" popover="auto" aria-label="用户操作"></div>
       </section>
 
-      <section id="view-settings" class="view hidden">
+      <section id="view-settings" class="view account-settings hidden">
         <div class="view-head"><h1>账号设置</h1></div>
-        <section id="teacherAppearance" class="plain-section teacher-appearance" aria-labelledby="teacherAppearanceTitle">
-          <div class="appearance-heading"><h2 id="teacherAppearanceTitle">工作台外观</h2><p class="hint">仅在此设备生效。</p></div>
-          <fieldset class="appearance-options"><legend class="sr-only">选择外观</legend>
-            <label class="appearance-choice"><input type="radio" name="teacherMaterial" value="glass" checked><span class="appearance-swatch appearance-swatch-glass" aria-hidden="true"><i></i><i></i></span><span>液态玻璃</span></label>
-            <label class="appearance-choice"><input type="radio" name="teacherMaterial" value="white"><span class="appearance-swatch appearance-swatch-white" aria-hidden="true"><i></i><i></i></span><span>原版白色</span></label>
-          </fieldset>
-          <div class="appearance-footer"><label class="appearance-reduce"><input id="teacherReduceTransparency" name="teacherReduceTransparency" type="checkbox">降低透明度</label><p id="teacherAppearanceStatus" class="hint" role="status"></p></div>
-        </section>
-        <div class="console-layout">
-          <form id="ownPasswordForm" class="compose">
-            <h2>修改密码</h2>
-            <div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password" required maxlength="128"></div>
-            <div class="field"><label for="ownNewPassword">新密码</label><input id="ownNewPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128"><p class="hint">至少 10 位，同时包含字母和数字。</p></div>
-            <div class="field"><label for="ownNewPasswordConfirm">再次输入新密码</label><input id="ownNewPasswordConfirm" type="password" autocomplete="new-password" required maxlength="128"></div>
+  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="settings-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+    <symbol id="settings-i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18h1a2 2 0 0 0 1.4-3.4 1.2 1.2 0 0 1 .9-2.1H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3Z"/><path d="M7.5 10h.01M10 6.8h.01M14 6.8h.01M17 10h.01" stroke-width="3"/></symbol>
+    <symbol id="settings-i-spark" viewBox="0 0 24 24"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z"/></symbol>
+    <symbol id="settings-i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4M7 8h10"/></symbol>
+    <symbol id="settings-i-heart" viewBox="0 0 24 24"><path d="M20.5 5.5a5.2 5.2 0 0 0-7.4 0L12 6.6l-1.1-1.1a5.2 5.2 0 0 0-7.4 7.4L12 21l8.5-8.1a5.2 5.2 0 0 0 0-7.4Z"/></symbol>
+    <symbol id="settings-i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z"/><path d="M14 3v6h6M8 13h8m-8 4h5"/></symbol>
+    <symbol id="settings-i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="settings-i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="settings-i-chevron" viewBox="0 0 24 24"><path d="m8 5 7 7-7 7"/></symbol>
+    <symbol id="settings-i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="settings-i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5m2-10-3-3"/></symbol>
+    <symbol id="settings-i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="settings-i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+    <symbol id="settings-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="settings-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="settings-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/></symbol>
+    <symbol id="settings-i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-11 4h4"/></symbol>
+    <symbol id="settings-i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="settings-i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+  </svg>
+    <div class="settings-navigation">
+      <nav class="section-nav" aria-label="账号设置分区">
+        <a href="#settings/account" data-section="account" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#settings-i-user"/></svg>账号与安全</a>
+        <a href="#settings/appearance" data-section="appearance"><svg class="icon" aria-hidden="true"><use href="#settings-i-palette"/></svg>工作台外观</a>
+        <span class="nav-divider" aria-hidden="true"></span>
+        <a href="#settings/quota" data-section="quota"><svg class="icon" aria-hidden="true"><use href="#settings-i-spark"/></svg>班班次数</a>
+        <a href="#settings/devices" data-section="devices"><svg class="icon" aria-hidden="true"><use href="#settings-i-monitor"/></svg>教室电脑</a>
+        <a href="#settings/thanks" data-section="thanks"><svg class="icon" aria-hidden="true"><use href="#settings-i-heart"/></svg>应用致谢</a>
+        <a href="#settings/logs" data-section="logs"><svg class="icon" aria-hidden="true"><use href="#settings-i-file"/></svg>客户端日志</a>
+      </nav>
+      <label class="mobile-navigation" for="sectionSelect"><span class="sr-only">设置分区</span><select id="sectionSelect"><optgroup label="个人设置"><option value="account">账号与安全</option><option value="appearance">工作台外观</option></optgroup><optgroup label="管理设置"><option value="quota">班班次数</option><option value="devices">教室电脑</option><option value="thanks">应用致谢</option><option value="logs">客户端日志</option></optgroup></select></label>
+    </div>
+    <div id="settingsContent" class="surface" tabindex="-1">
+      <section id="settingsAccountSection" class="settings-section" aria-labelledby="accountTitle">
+        <div class="section-heading"><h2 id="accountTitle">账号与安全</h2><span class="scope">个人设置</span></div>
+        <div class="identity-strip"><span id="settingsAvatar" class="avatar" aria-hidden="true"></span><div><strong id="settingsAccount" class="identity-name"></strong><span id="settingsUsername" class="muted"></span></div><span id="settingsRole" class="badge"></span></div>
+        <div class="security-layout">
+          <form id="ownPasswordForm" class="password-form" novalidate>
+            <h3>修改密码</h3>
+            <div class="field"><label for="currentPassword">当前密码</label><div class="password-field"><input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" maxlength="128" required><button class="icon-button" type="button" data-eye="currentPassword" aria-label="显示当前密码" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#settings-i-eye"/></svg></button></div></div>
+            <div class="field"><label for="ownNewPassword">新密码</label><div class="password-field"><input id="ownNewPassword" name="ownNewPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" aria-describedby="passwordHint" required><button class="icon-button" type="button" data-eye="ownNewPassword" aria-label="显示新密码" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#settings-i-eye"/></svg></button></div><p id="passwordHint" class="field-hint">至少 10 位，同时包含字母和数字</p></div>
+            <div class="field"><label for="ownNewPasswordConfirm">确认新密码</label><div class="password-field"><input id="ownNewPasswordConfirm" name="ownNewPasswordConfirm" type="password" autocomplete="new-password" maxlength="128" required><button class="icon-button" type="button" data-eye="ownNewPasswordConfirm" aria-label="显示确认密码" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#settings-i-eye"/></svg></button></div></div>
             <p id="ownPasswordError" class="form-error" role="alert"></p>
-            <button class="btn primary" type="submit">修改密码</button>
+            <div class="form-actions"><button class="button primary" type="submit">更新密码</button><span id="passwordStatus" class="feedback" role="status"></span></div>
           </form>
-          <section class="plain-section"><h2>当前账号</h2><p id="settingsAccount"></p><p class="hint">修改密码后，网页和教师端均需使用新密码重新登录。</p></section>
+          <aside class="security-note"><svg class="icon" aria-hidden="true"><use href="#settings-i-shield"/></svg><h3>保护你的账号</h3><p>更新后，网页和教师端需用新密码登录。</p></aside>
         </div>
-        <section id="deviceSection" class="settings-device-section" data-manager>
-          <div class="view-head"><div><h2>教室电脑</h2><p>停用后，设备将无法接收通知。</p></div><button id="refreshDevices" class="btn" type="button">刷新设备</button></div>
-          <div id="devicesContainer"></div>
-        </section>
-        <section id="acknowledgementsSection" class="settings-device-section hidden" aria-label="应用致谢名单">
-          <details id="acknowledgementsPanel">
-            <summary class="acknowledgements-heading">致谢名单</summary>
-            <p class="acknowledgements-note">修改分组标题和正文，换行即分行。保存后，所有新版教室端和教师端下次打开“关于”时更新。</p>
-            <form id="acknowledgementsForm">
-              <div class="acknowledgements-layout">
-                <div id="acknowledgementsFields" aria-label="编辑致谢分组"></div>
-                <aside class="acknowledgements-preview" aria-labelledby="acknowledgementsPreviewTitle">
-                  <h3 id="acknowledgementsPreviewTitle">显示预览</h3>
-                  <div id="acknowledgementsPreview"></div>
-                </aside>
-              </div>
-              <div class="acknowledgements-actions">
-                <button id="acknowledgementsAdd" type="button" class="btn" disabled>添加分组</button>
-                <button id="acknowledgementsReload" type="button" class="btn">重新载入</button>
-                <button id="acknowledgementsSave" type="submit" class="btn primary" disabled>保存并同步</button>
-                <p id="acknowledgementsStatus" role="status" aria-live="polite"></p>
-              </div>
-            </form>
-          </details>
-        </section>
-        <section id="clientDiagnosticsSection" class="settings-device-section hidden" aria-label="客户端日志">
-          <details id="clientDiagnosticsPanel">
-            <summary class="client-diagnostic-heading">客户端日志</summary>
-            <p class="hint">两端自动上报错误，也可在“关于”中提交近期诊断。每周一凌晨清理超过 7 天的记录。</p>
-            <form id="clientDiagnosticFilters" class="client-diagnostic-filters">
-              <div class="field"><label for="diagnosticEdition">客户端</label><select id="diagnosticEdition" name="edition"><option value="">全部</option><option value="classroom">教室端</option><option value="teacher">教师端</option></select></div>
-              <div class="field"><label for="diagnosticKind">记录类型</label><select id="diagnosticKind" name="kind"><option value="">全部</option><option value="error">自动错误</option><option value="manual">手动诊断</option></select></div>
-              <div class="field"><label for="diagnosticVersion">程序版本</label><input id="diagnosticVersion" name="version" maxlength="40" placeholder="例如 2.5.6"></div>
-              <div class="field"><label for="diagnosticSince">起始日期</label><input id="diagnosticSince" name="since" type="date"></div>
-              <div class="field"><label for="diagnosticUntil">结束日期</label><input id="diagnosticUntil" name="until" type="date"></div>
-              <div class="field"><label for="diagnosticQuery">班级、账号或电脑</label><input id="diagnosticQuery" name="q" maxlength="100" type="search" placeholder="搜索班级、账号或电脑"></div>
-              <div class="client-diagnostic-actions"><button type="submit" class="btn primary">筛选日志</button><button id="diagnosticReset" type="button" class="btn">重置</button><button id="diagnosticRefresh" type="button" class="btn">刷新日志</button></div>
-            </form>
-            <p id="clientDiagnosticStatus" class="hint" role="status" aria-live="polite"></p>
-            <div class="client-diagnostic-table" tabindex="0" role="region" aria-label="客户端日志列表"><table><thead><tr><th scope="col">收到时间</th><th scope="col">客户端与设备</th><th scope="col">记录</th><th scope="col">版本</th><th scope="col">操作</th></tr></thead><tbody id="clientDiagnosticRows"></tbody></table></div>
-            <div class="client-diagnostic-pager"><span id="diagnosticPage" class="hint"></span><div class="client-diagnostic-actions"><button id="diagnosticPrevious" type="button" class="btn">上一页</button><button id="diagnosticNext" type="button" class="btn">下一页</button></div></div>
-            <section id="clientDiagnosticDetail" class="client-diagnostic-detail" hidden aria-labelledby="diagnosticDetailTitle"><div class="view-head"><h3 id="diagnosticDetailTitle" tabindex="-1">诊断详情</h3><button id="diagnosticCopy" type="button" class="btn">复制日志</button></div><p id="diagnosticDetailMeta" class="hint"></p><pre id="diagnosticReport" tabindex="0" aria-label="诊断日志正文"></pre></section>
-          </details>
-        </section>
+      </section>
+
+      <section id="teacherAppearance" class="settings-section" aria-labelledby="appearanceTitle" hidden>
+        <div class="section-heading"><h2 id="appearanceTitle">工作台外观</h2><span class="scope">仅此设备</span></div>
+        <fieldset class="appearance-options"><legend>选择外观</legend>
+          <label class="appearance-choice"><input type="radio" name="teacherMaterial" value="glass" checked><span class="appearance-preview glass-preview" aria-hidden="true"><i class="preview-header"></i><i class="preview-sidebar"></i><i class="preview-content"><b></b><b></b><b></b></i></span><span class="appearance-caption">液态玻璃<svg class="icon selected-check" aria-hidden="true"><use href="#settings-i-check"/></svg></span></label>
+          <label class="appearance-choice"><input type="radio" name="teacherMaterial" value="white"><span class="appearance-preview white-preview" aria-hidden="true"><i class="preview-header"></i><i class="preview-sidebar"></i><i class="preview-content"><b></b><b></b><b></b></i></span><span class="appearance-caption">原版白色<svg class="icon selected-check" aria-hidden="true"><use href="#settings-i-check"/></svg></span></label>
+        </fieldset>
+        <div class="preference-row"><div><label for="teacherReduceTransparency">降低透明度</label><p>让面板更实，内容更清晰</p></div><input id="teacherReduceTransparency" type="checkbox"></div>
+        <p id="teacherAppearanceStatus" class="feedback section-feedback" role="status">选择后可直接预览</p>
+      </section>
+
+      <section id="banbanQuotaSection" class="settings-section quota-section" aria-labelledby="quotaTitle" hidden>
+        <div class="section-heading"><div><h2 id="quotaTitle">班班次数</h2><p class="muted">每月 1 日 00:00 按北京时间恢复</p></div><span class="month"><svg class="icon" aria-hidden="true"><use href="#settings-i-calendar"/></svg><span id="banbanQuotaMonth"></span></span></div>
+        <fieldset id="quotaWorkspace" class="settings-fields" disabled><legend class="sr-only">次数规则与用量</legend><div class="quota-tabs" role="tablist" aria-label="次数管理对象"><button id="tab-device" type="button" role="tab" aria-selected="true" aria-controls="quotaPanel" data-kind="device"><svg class="icon" aria-hidden="true"><use href="#settings-i-monitor"/></svg>教室设备<span id="quotaDeviceCount"></span></button><button id="tab-account" type="button" role="tab" aria-selected="false" aria-controls="quotaPanel" tabindex="-1" data-kind="account"><svg class="icon" aria-hidden="true"><use href="#settings-i-user"/></svg>教师账号<span id="quotaAccountCount"></span></button></div>
+        <div id="quotaPanel" role="tabpanel" aria-labelledby="tab-device">
+          <div class="default-rule"><div><h3 id="defaultLabel">每台设备默认</h3><p class="muted">单独设置的对象不受影响</p></div><div class="default-value"><strong id="defaultValue">-</strong><span id="defaultUnit">次 / 月</span><span id="defaultDirty" class="draft-label" hidden>待保存</span></div><button id="editDefault" class="button" type="button" aria-expanded="false" aria-controls="defaultEditor">调整默认</button></div>
+          <div id="defaultEditor" class="inline-editor default-editor" hidden></div>
+          <div class="list-toolbar"><h3>本月用量 <span id="quotaCount" class="count"></span></h3><div class="filters"><label class="search-field"><svg class="icon" aria-hidden="true"><use href="#settings-i-search"/></svg><span class="sr-only">搜索设备或账号</span><input id="quotaSearch" name="quotaSearch" type="search" placeholder="搜索班级或设备" autocomplete="off" maxlength="100"></label><label><span class="sr-only">月度规则筛选</span><select id="quotaFilter" name="quotaRule"><option value="all">全部规则</option><option value="default">沿用默认</option><option value="custom">单独设置</option><option value="exhausted">已用完</option></select></label></div></div>
+          <div class="quota-table-head" aria-hidden="true"><span id="quotaIdentityHeading">教室设备</span><span>本月已用</span><span>剩余次数</span><span>月度规则</span><span>操作</span></div>
+          <ul id="quotaRows" class="quota-list" aria-label="教室设备本月用量"></ul>
+          <div id="quotaEmpty" class="empty-state" hidden><svg class="icon" aria-hidden="true"><use href="#settings-i-search"/></svg><h3>没有匹配的结果</h3><p>试试其他名称，或清除筛选</p><button id="clearQuotaSearch" class="button" type="button">清除筛选</button></div>
+          <div class="list-footer"><details class="counting-help"><summary><svg class="icon" aria-hidden="true"><use href="#settings-i-info"/></svg>次数如何计算</summary><p>对话或单独操作开始处理时计 1 次，后续确认不重复计次。调整上限保留本月已用次数。</p></details><div class="pagination"><span id="quotaPage"></span><button id="quotaPrevious" class="icon-button" type="button" aria-label="上一页"><svg class="icon reversed" aria-hidden="true"><use href="#settings-i-chevron"/></svg></button><button id="quotaNext" class="icon-button" type="button" aria-label="下一页"><svg class="icon" aria-hidden="true"><use href="#settings-i-chevron"/></svg></button></div></div>
+        </div>
+        </fieldset><div class="save-strip"><div class="save-feedback"><span id="quotaStatus" class="feedback" role="status"></span><button id="quotaResume" class="button quiet" type="button" hidden>继续调整</button></div><div class="action-group"><button id="quotaReload" class="button quiet" type="button">重新载入</button><button id="quotaRevert" class="button quiet" type="button" hidden>撤销更改</button><button id="quotaSave" class="button primary" type="button" disabled>保存更改</button></div></div>
+      </section>
+
+      <section id="deviceSection" class="settings-section" aria-labelledby="devicesTitle" hidden>
+        <div class="section-heading"><div><h2 id="devicesTitle">教室电脑</h2><p class="muted">管理绑定、连接与设备状态</p></div><button id="refreshDevices" class="button" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg>刷新</button></div>
+        <div class="list-toolbar device-toolbar"><span id="deviceCount" class="muted"></span><div class="filters"><label class="search-field"><svg class="icon" aria-hidden="true"><use href="#settings-i-search"/></svg><span class="sr-only">搜索班级或电脑</span><input id="deviceSearch" name="deviceSearch" type="search" placeholder="搜索班级或电脑" autocomplete="off"></label><label><span class="sr-only">连接状态</span><select id="deviceFilter" name="deviceStatus"><option value="all">全部状态</option><option value="online">在线</option><option value="offline">离线</option><option value="disabled">已停用</option></select></label></div></div>
+        <div class="device-table-head" aria-hidden="true"><span>班级与电脑</span><span>连接状态</span><span>最近连接</span><span>操作</span></div>
+        <ul id="devicesContainer" class="device-list" aria-label="已绑定教室电脑"></ul>
+        <p id="deviceStatus" class="feedback section-feedback" role="status"></p>
+      </section>
+
+      <section id="acknowledgementsSection" class="settings-section" aria-labelledby="thanksTitle" hidden>
+        <div class="section-heading"><div><h2 id="thanksTitle">应用致谢</h2><p class="muted">保存后，两端下次打开“关于”时更新</p></div><span class="scope">全校管理</span></div>
+        <p id="acknowledgementsLoadStatus" class="feedback" role="status"></p><div class="thanks-layout"><form id="acknowledgementsForm"><div id="acknowledgementsFields"></div><button id="acknowledgementsAdd" disabled class="button quiet add-group" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-plus"/></svg>添加分组</button><div class="form-actions"><button id="acknowledgementsReload" class="button quiet" type="button">重新载入</button><button id="acknowledgementsSave" class="button primary" type="submit" disabled>保存并同步</button><span id="acknowledgementsStatus" class="feedback" role="status"></span></div></form><aside class="thanks-preview"><h3>显示预览</h3><div class="about-preview"><img src="/assets/app-icon.png" width="56" height="56" alt=""><strong>ICeClass 班伴</strong><span>致谢名单</span><div id="acknowledgementsPreview"></div></div></aside></div>
+      </section>
+
+      <section id="clientDiagnosticsSection" class="settings-section" aria-labelledby="logsTitle" hidden>
+        <div class="section-heading"><div><h2 id="logsTitle">客户端日志</h2><p class="muted">每周清理超过 7 天的记录</p></div><button id="diagnosticRefresh" class="button" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg>刷新</button></div>
+        <form id="clientDiagnosticFilters" class="log-filters"><div class="filters"><label class="search-field"><svg class="icon" aria-hidden="true"><use href="#settings-i-search"/></svg><span class="sr-only">搜索班级、账号或电脑</span><input id="diagnosticQuery" name="q" type="search" placeholder="搜索班级、账号或电脑" autocomplete="off"></label><label><span class="sr-only">客户端</span><select id="diagnosticEdition" name="edition"><option value="">全部客户端</option><option value="classroom">教室端</option><option value="teacher">教师端</option></select></label><label><span class="sr-only">记录类型</span><select id="diagnosticKind" name="kind"><option value="">全部类型</option><option value="error">自动错误</option><option value="manual">手动诊断</option></select></label><button class="button" type="submit">筛选</button></div><details class="advanced-filters"><summary>更多筛选<svg class="icon" aria-hidden="true"><use href="#settings-i-down"/></svg></summary><div class="advanced-fields"><div class="field"><label for="diagnosticVersion">程序版本</label><input id="diagnosticVersion" name="version" placeholder="输入版本号" maxlength="40"></div><div class="field"><label for="diagnosticSince">起始日期</label><input id="diagnosticSince" name="since" type="date"></div><div class="field"><label for="diagnosticUntil">结束日期</label><input id="diagnosticUntil" name="until" type="date"></div><button id="diagnosticReset" class="button quiet" type="button">清除筛选</button></div></details></form>
+        <div class="log-table-head" aria-hidden="true"><span>客户端与设备</span><span>记录</span><span>收到时间</span><span>操作</span></div><ul id="clientDiagnosticRows" class="log-list" aria-label="客户端日志记录"></ul><p id="clientDiagnosticStatus" class="feedback section-feedback" role="status"></p>
+        <div class="pagination log-pagination"><span id="diagnosticPage"></span><button id="diagnosticPrevious" type="button" class="icon-button" aria-label="上一页日志"><svg class="icon reversed" aria-hidden="true"><use href="#settings-i-chevron"/></svg></button><button id="diagnosticNext" type="button" class="icon-button" aria-label="下一页日志"><svg class="icon" aria-hidden="true"><use href="#settings-i-chevron"/></svg></button></div><section id="clientDiagnosticDetail" class="log-detail" aria-labelledby="diagnosticDetailTitle" hidden><div class="section-heading"><div><h3 id="diagnosticDetailTitle" tabindex="-1">诊断详情</h3><p id="diagnosticDetailMeta" class="muted"></p></div><div class="action-group"><button id="diagnosticCopy" class="button" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-copy"/></svg>复制日志</button><button id="closeLog" class="icon-button" type="button" aria-label="关闭日志详情"><svg class="icon" aria-hidden="true"><use href="#settings-i-close"/></svg></button></div></div><pre id="diagnosticReport" tabindex="0" aria-label="日志正文"></pre></section>
+      </section>
+    </div>
       </section>
     </main>
   </div>
@@ -522,6 +560,8 @@
   <script nonce="__CSP_NONCE__">
     (() => {
       "use strict";
+      const scriptNonce = document.currentScript.nonce;
+      let islandEditor;
       const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
       const nativeClassroom = window.ICeClassVoiceHost?.classroomAccount === true && Boolean(window.chrome?.webview);
@@ -745,22 +785,45 @@
         const headers = new Headers(options.headers || {});
         if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
         if (state.csrf && (nativeClassroom && path !== "/api/session" || !["GET", "HEAD"].includes(options.method || "GET"))) headers.set("X-CSRF-Token", state.csrf);
-        const response = await fetch(path, { credentials: "same-origin", ...options, headers });
-        if (path === "/api/session") state.preview = response.headers.get("X-ICeClass-Preview") === "1";
-        const type = response.headers.get("Content-Type") || "";
-        const data = type.includes("application/json") ? await response.json() : await response.text();
-        if (response.status === 401 && !["/api/session", "/api/auth/login"].includes(path)) {
-          if (nativeClassroom) window.chrome.webview.postMessage({type: "banban-voice", kind: "logout"});
-          location.reload();
-          throw new Error(nativeClassroom ? "班级关联已变化，正在重新连接。" : "登录已过期，请重新登录。");
-        }
-        if (!response.ok) {
-          const error = new Error(data?.error || `请求失败 (${response.status})`);
-          error.data = data;
-          error.status = response.status;
+        const controller = ["GET", "HEAD"].includes(options.method || "GET") ? new AbortController() : null;
+        const signal = controller ? (options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal) : options.signal;
+        const timeout = controller && setTimeout(() => controller.abort(), 15000);
+        try {
+          const response = await fetch(path, { credentials: "same-origin", ...options, headers, signal });
+          if (path === "/api/session") state.preview = response.headers.get("X-ICeClass-Preview") === "1";
+          const type = response.headers.get("Content-Type") || "";
+          const data = type.includes("application/json") ? await response.json() : await response.text();
+          if (response.status === 401 && !["/api/session", "/api/auth/login", "/api/auth/logout"].includes(path)) {
+            if (nativeClassroom) window.chrome.webview.postMessage({type: "banban-voice", kind: "logout"});
+            location.reload();
+            throw new Error(nativeClassroom ? "班级关联已变化，正在重新连接。" : "登录已过期，请重新登录。");
+          }
+          if (!response.ok) {
+            const error = new Error(data?.error || `请求失败 (${response.status})`);
+            error.data = data;
+            error.status = response.status;
+            throw error;
+          }
+          return data;
+        } catch (error) {
+          if (controller?.signal.aborted && !options.signal?.aborted) throw new Error("读取超时，请检查连接后重试。");
           throw error;
-        }
-        return data;
+        } finally { if (timeout) clearTimeout(timeout); }
+      }
+
+      function loadIslandEditor() {
+        if (!islandEditor) islandEditor = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "/island-admin.js?v=34";
+          script.nonce = scriptNonce;
+          script.onload = () => resolve();
+          script.onerror = () => {
+            script.remove(); islandEditor = null;
+            reject(new Error("浮岛管理未能载入，请重新进入本页重试。"));
+          };
+          document.head.append(script);
+        });
+        return islandEditor;
       }
 
       async function start() {
@@ -818,22 +881,22 @@
         state.csrf = user.csrfToken;
         $("loading").classList.add("hidden");
         $("authPage").classList.add("hidden");
-        $("appShell").classList.remove("hidden");
         $("userDisplayName").textContent = user.displayName;
         $("userRole").textContent = roleLabels[user.role] || "教师";
+        $("settingsAccount").textContent = `${user.displayName}（${user.username}）`;
         document.querySelectorAll("[data-admin]").forEach(node => node.classList.toggle("hidden", !isSchoolAdmin()));
         document.querySelectorAll("[data-manager]").forEach(node => node.classList.toggle("hidden", !isManager()));
         document.querySelectorAll("[data-ideas-admin]").forEach(node => node.classList.toggle("hidden", !canReviewIdeas()));
         document.querySelector('[data-view="classroom-voice"]').classList.toggle('hidden', !user.permissions.receiveClassroomVoice);
         document.querySelector('[data-view="homework"]').classList.toggle('hidden', nativeClassroom);
+        document.querySelector('[data-view="self-study"]').classList.toggle('hidden', user.role === 'subject_teacher' || nativeClassroom);
+        $("previewNotice").classList.toggle("hidden", !state.preview);
         configureStaffOptions();
+        $("appShell").classList.remove("hidden");
         try { await loadClasses(); }
         catch (error) { toast("班级载入失败，请刷新工作台后重试：" + error.message); }
         prepareIdeasAdmin();
         window.dispatchEvent(new Event("iceclass-ready"));
-        const loaded = await Promise.allSettled([loadHistory(), loadRecent(), loadClassroomVoice(), loadQuietHours(), ...(isManager() ? [loadTeachers(), loadDevices()] : [])]);
-        for (const result of loaded) if (result.status === "rejected") toast(result.reason.message || "部分内容未能载入，请刷新后重试。");
-        $("settingsAccount").textContent = `${user.displayName}（${user.username}）`;
         updatePresence();
         clearInterval(state.presenceTimer);
         state.presenceTimer = setInterval(() => { if (viewVisible('console')) void updatePresence(); }, 15000);
@@ -844,6 +907,8 @@
           if (viewVisible('classroom-voice') && !classroomVoiceInUse()) void loadClassroomVoice({background: true}).catch(() => {});
         }, 15000);
         watchClassroomIdentity();
+        for (const load of [loadHistory, loadRecent, loadClassroomVoice, loadQuietHours, ...(isManager() ? [loadTeachers, loadDevices] : [])])
+          void load().catch(error => toast(error.message || "部分内容未能载入，请刷新后重试。"));
       }
 
       async function loadClasses() {
@@ -1217,28 +1282,8 @@
       }
 
       function renderDevices() {
-        const container = $("devicesContainer");
-        if (!container || !isManager()) return;
-        if (!state.devices.length) return renderEmpty(container, "尚未绑定教室电脑");
-        const table = createTable(["班级 / 核实", "设备 / 电脑", "局域网地址", "连接状态", "最近连接", "操作"]);
-        table.classList.add('devices-table');
-        for (const device of state.devices) {
-          const row = table.tBodies[0].insertRow();
-          const scope = el('div','device-detail'); scope.append(el('strong','',device.class_name));
-          if (device.class_device_count > 1) scope.append(statusBadge('warning',`同班 ${device.class_device_count} 台 · 请核对`));
-          scope.append(statusBadge(device.verified_at ? 'enabled' : 'offline',device.verified_at ? '已核实' : '待核实')); row.insertCell().append(scope);
-          const identity = el('div','device-detail'); identity.append(el('strong','',device.name),el('span','',device.computer_name || '等待新版教室端上报电脑名称'));
-          const code = el('span','device-code',device.device_code); code.title = device.id; identity.append(code);
-          if(device.binding_note) identity.append(el('span','',device.binding_note)); row.insertCell().append(identity);
-          addCell(row,(device.local_addresses || []).join('、') || '尚未上报');
-          row.insertCell().append(statusBadge(Number(device.enabled) !== 1 ? 'disabled' : device.online ? 'enabled' : 'offline',Number(device.enabled) !== 1 ? '已停用' : device.online ? '在线' : '离线'));
-          addCell(row, device.last_seen_at ? formatTime(device.last_seen_at) : "从未连接");
-          const actions = el("div", "row-actions");
-          actions.append(actionButton('核实 / 改绑', () => window.ICeClassAdmin.openDevice(device)), actionButton(Number(device.enabled) === 1 ? "停用设备" : "重新启用", () => toggleDevice(device)));
-          const remove = actionButton("删除设备", () => window.ICeClassAdmin.openDelete("device", device.id, device.name)); remove.classList.add("danger"); actions.append(remove);
-          row.insertCell().append(actions);
-        }
-        container.replaceChildren(wrapTable(table, '教室设备，可左右滚动'));
+        if (!isManager()) return;
+        window.ICeClassSettings?.renderDevices(state.devices);
       }
 
       async function updatePresence() {
@@ -1459,15 +1504,6 @@
         } catch (error) { toast(error.message); }
       }
 
-      async function toggleDevice(device) {
-        const enabling = Number(device.enabled) !== 1;
-        if (!enabling && !confirm(`确定停用 ${device.class_name} 的设备“${device.name}”吗？它会立即断开。`)) return;
-        try {
-          await api(`/api/devices/${encodeURIComponent(device.id)}`, { method: "PATCH", body: JSON.stringify({ enabled: enabling }) });
-          await loadDevices(); toast(enabling ? "设备已重新启用" : "设备已停用并断开");
-        } catch (error) { toast(error.message); }
-      }
-
       function bindEvents() {
         $("loginForm").addEventListener("submit", async event => {
           event.preventDefault(); $("loginError").textContent = "";
@@ -1489,19 +1525,39 @@
             $("bootstrapForm").classList.add("hidden"); $("loginForm").classList.remove("hidden"); $("loginUsername").value = "ICe"; toast("初始化完成，请登录");
           } catch (error) { $("bootstrapError").textContent = error.message; }
         });
-        $("logoutButton").addEventListener("click", async () => {
+        $("logoutButton").addEventListener("click", async event => {
+          const button = event.currentTarget;
+          if (button.disabled) return;
+          if (window.ICeClassReadingAdmin?.canLeave(() => $("logoutButton").click()) === false) return;
           if (window.ICeClassIdeasAdmin?.canLogout() === false) return;
           if (window.ICeClassHomeworkAdmin?.canLeave(() => $("logoutButton").click()) === false) return;
           if (window.ICeClassSelfStudy?.canLeave(() => $("logoutButton").click()) === false) return;
           if (window.ICeClassAcknowledgements?.canLogout() === false) return;
+          if (window.ICeClassBanbanQuota?.canLogout() === false) return;
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
           try { await api("/api/auth/logout", { method: "POST" }); }
-          finally { window.ICeClassIdeasAdmin?.destroy(); window.ICeClassHomeworkAdmin?.destroy(); window.ICeClassSelfStudy?.destroy(); location.reload(); }
+          catch (error) {
+            let signedOut = false;
+            try { signedOut = (await api("/api/session", {cache: "no-store"})).authenticated === false; } catch {}
+            if (!signedOut) { toast("退出未完成，请重试：" + error.message); return; }
+          } finally { button.disabled = false; button.removeAttribute("aria-busy"); }
+          window.ICeClassAcknowledgements?.discardChanges();
+          window.ICeClassBanbanQuota?.discardChanges();
+          window.ICeClassIdeasAdmin?.destroy();
+          window.ICeClassHomeworkAdmin?.destroy();
+          window.ICeClassSelfStudy?.destroy();
+          window.dispatchEvent(new Event("iceclass-logout"));
+          location.reload();
         });
         $("mainNav").addEventListener("click", event => {
           const button = event.target.closest("button[data-view]"); if (!button) return;
           if (button.classList.contains("hidden") || button.dataset.view === "ideas" && !canReviewIdeas()) return;
           if (button.dataset.view === "homework" && viewVisible("homework")) return;
           if (button.dataset.view === "self-study" && viewVisible("self-study")) return;
+          if (button.dataset.view !== "reading" && viewVisible("reading") && window.ICeClassReadingAdmin?.canLeave(() => button.click()) === false) {
+            event.stopImmediatePropagation(); return;
+          }
           if (button.dataset.view !== "self-study" && viewVisible("self-study") && window.ICeClassSelfStudy?.canLeave(() => button.click()) === false) {
             event.stopImmediatePropagation(); return;
           }
@@ -1512,6 +1568,7 @@
             event.stopImmediatePropagation(); return;
           }
           if (button.dataset.view !== "ideas") window.ICeClassIdeasAdmin?.suspend();
+          if (button.dataset.view !== 'settings' && location.hash.startsWith('#settings/')) history.replaceState(null,'',location.pathname + location.search);
           document.querySelectorAll(".nav button").forEach(node => node.classList.toggle("active", node === button));
           document.querySelectorAll("main > .view").forEach(node => node.classList.add("hidden"));
           $(`view-${button.dataset.view}`).classList.remove("hidden");
@@ -1523,6 +1580,8 @@
           if (button.dataset.view === "ideas") { prepareIdeasAdmin(); window.ICeClassIdeasAdmin?.load().catch(error => toast(error.message)); }
           if (button.dataset.view === "homework") window.ICeClassHomeworkAdmin?.load().catch(error => toast(error.message));
           if (button.dataset.view === "self-study") window.ICeClassSelfStudy?.load().catch(error => toast(error.message));
+          if (button.dataset.view === "settings") window.ICeClassSettings?.activate();
+          if (button.dataset.view === "island") void loadIslandEditor().catch(error => toast(error.message));
         });
         $("targetClass").addEventListener("change", () => { updatePresence(); loadRecent().catch(error => toast(error.message)); });
         $("classGradeFilter").addEventListener("click", event => {
@@ -1657,13 +1716,6 @@
           try { await api(`/api/teachers/${encodeURIComponent($("passwordTeacherId").value)}/password`, { method: "PUT", body: JSON.stringify({ password: $("newTeacherPassword").value }) }); $("passwordDialog").close(); toast("密码已重置，原登录会话已退出"); }
           catch (error) { $("passwordError").textContent = error.message; }
         });
-        $("ownPasswordForm").addEventListener("submit", async event => {
-          event.preventDefault(); $("ownPasswordError").textContent = "";
-          if ($("ownNewPassword").value !== $("ownNewPasswordConfirm").value) return $("ownPasswordError").textContent = "两次输入的新密码不一致。";
-          try { await api("/api/auth/password", { method: "PUT", body: JSON.stringify({ currentPassword: $("currentPassword").value, newPassword: $("ownNewPassword").value }) }); location.reload(); }
-          catch (error) { $("ownPasswordError").textContent = error.message; }
-        });
-        $("refreshDevices").addEventListener("click", () => loadDevices().catch(error => toast(error.message)));
         document.addEventListener("click", event => { const close = event.target.closest("[data-close]"); if (close) close.closest("dialog")?.close(); });
       }
 
@@ -1692,35 +1744,37 @@
         toastTimers.set(node, setTimeout(() => { toastTimers.delete(node); node.remove(); }, 3500));
       }
 
-      window.ICeClass = { state, api, toast, classGrade, refreshManagement: async () => {
+      window.ICeClass = { state, api, toast, classGrade, loadDevices, refreshManagement: async () => {
         await Promise.all([loadClasses(), loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
         window.dispatchEvent(new Event('iceclass-classes-changed'));
       }};
       window.addEventListener("iceclass-users-ready", renderTeachers);
+      window.addEventListener("iceclass-settings-ready", renderDevices);
       bindEvents();
       updateLevelPresentation(true);
       start();
     })();
   </script>
-  <script nonce="__CSP_NONCE__" src="/ui.js?v=9" defer></script>
-  <script nonce="__CSP_NONCE__" src="/teacher-header.js?v=1" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ui.js?v=11" defer></script>
+  <script nonce="__CSP_NONCE__" src="/teacher-header.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/homework-admin.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/self-study-admin.js?v=3" defer></script>
-  <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=1" defer></script>
-  <script nonce="__CSP_NONCE__" src="/acknowledgements.js?v=1" defer></script>
+  <script nonce="__CSP_NONCE__" src="/self-study-admin.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=3" defer></script>
+  <script nonce="__CSP_NONCE__" src="/acknowledgements.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-quota.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=11" defer></script>
+  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=13" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=11" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=5" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-admin.js?v=33" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=1" defer></script>
+  <script nonce="__CSP_NONCE__" src="/account-settings.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=9" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=10" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-voice.js?v=7" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban.js?v=48" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban.js?v=52" defer></script>
 </body>
 </html>

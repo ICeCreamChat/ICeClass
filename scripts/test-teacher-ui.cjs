@@ -74,7 +74,21 @@ async function navigate(page, view) {
   await page.locator(`#mainNav [data-view="${view}"]`).click();
   await page.locator(`#view-${view}:not(.hidden)`).waitFor();
 }
-module.exports = {open,navigate,fixture,historyItem};
+async function settingsSection(page, section) {
+  if (!await page.locator('#view-settings').isVisible()) await navigate(page, 'settings');
+  const link = page.locator(`#view-settings [data-section="${section}"]`);
+  if (await link.isVisible()) await link.click();
+  else await page.locator('#sectionSelect').selectOption(section);
+}
+async function moveBanbanAside(page) {
+  // Keep the floating assistant active; drag it away from the settings controls.
+  const box = await page.locator('#bbLauncher').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(12 + box.width / 2, box.y + box.height / 2, {steps:8});
+  await page.mouse.up();
+}
+module.exports = {open,navigate,settingsSection,moveBanbanAside,fixture,historyItem};
 
 if (require.main === module) {
   let browser;

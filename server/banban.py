@@ -15,6 +15,7 @@ from reading import SHANGHAI
 from banban_policy import IDENTITY_RULES, ANSWER_RULES, SCHOOL_ANALYSIS_ROLES, class_mentions, detail_requested, local_reply, protect_sentence
 from banban_connections import (AccountConnections, DEFAULT_BASE_URL, DEFAULT_MODEL, public_config,
                                 validate_config, completion_url, provider_options, upstream_connector)
+from banban_quota import BanbanQuota, QuotaExceeded
 
 SYSTEM = '''你是“班班”，ICeClass 班伴平台的校园数据助手。用清楚、温和的中文回答教师和管理人员。
 你的性格温和、聪明、有分寸。用自然简洁的口语，不刻意卖萌、奉承，不反复自我介绍。
@@ -36,6 +37,7 @@ SYSTEM += '\n' + IDENTITY_RULES + '\n' + ANSWER_RULES
 
 def install_banban(app, service):
     feature = Banban(app, service)
+    feature.quotas.install()
     app.router.add_get('/api/banban/context', feature.context)
     app.router.add_get('/api/banban/settings', feature.settings)
     app.router.add_put('/api/banban/settings', feature.save_settings)
@@ -56,6 +58,7 @@ class Banban:
         self.path = Path(self.db.one('PRAGMA database_list')['file']).parent / 'banban-settings.json'
         self.busy = set()
         self.connections = AccountConnections(self.db, self.config)
+        self.quotas = BanbanQuota(self)
         # Preserve aggregate counts beyond the existing audio's short lifetime.
         fresh = not self.db.one("SELECT name FROM sqlite_master WHERE type='table' AND name='classroom_voice_totals'")
         self.db.db.executescript('''
@@ -217,7 +220,8 @@ class Banban:
             return user
         try:
             return self.s.json_response({'snapshot': self.snapshot(request.query, user), 'connection': self.public_config(user),
-                                         'classes': self.roster(user), 'schoolAnalysis': user['role'] in SCHOOL_ANALYSIS_ROLES})
+                                         'classes': self.roster(user), 'schoolAnalysis': user['role'] in SCHOOL_ANALYSIS_ROLES,
+                                         'quota': self.quotas.status(user)})
         except ValueError as error:
             return self.s.json_response({'error': str(error)}, 400)
         except PermissionError:
@@ -279,6 +283,8 @@ class Banban:
         if isinstance(user, web.Response):
             return user
         body = await self.s.read_json(request) or {}
+        if not isinstance(body, dict):
+            return self.s.json_response({'error': '问题格式不正确。'}, 400)
         message, history, scope = body.get('message'), body.get('history', []), body.get('scope', {})
         if not isinstance(message, str) or not 1 <= len(message.strip()) <= 2000:
             return self.s.json_response({'error': '请输入问题，最多 2000 字。'}, 400)
@@ -295,12 +301,16 @@ class Banban:
             return self.s.json_response({'error': str(error)}, 400)
         except PermissionError:
             return self.s.json_response({'error': '没有查看该班级的权限。'}, 403)
+        try:
+            quota = self.quotas.consume(request, user)
+        except QuotaExceeded as error:
+            return error.response(self.s)
         cfg = self.config(user)
         reply = local_reply(message, user['role'], model_available=bool(cfg['enabled'] and cfg['apiKey']))
         if reply:
-            return self.s.json_response({'mode': 'local', 'answer': reply, 'snapshot': snapshot})
+            return self.s.json_response({'mode': 'local', 'answer': reply, 'snapshot': snapshot, 'quota': quota})
         if not cfg['enabled'] or not cfg['apiKey']:
-            return self.s.json_response({'mode': 'overview', 'answer': self.overview(snapshot, message), 'snapshot': snapshot})
+            return self.s.json_response({'mode': 'overview', 'answer': self.overview(snapshot, message), 'snapshot': snapshot, 'quota': quota})
         cfg = {**cfg, 'answerTokens': 1800 if detail_requested(message) else 700}
         # History is contextual language only. Recompute fresh, permission-filtered data on every turn.
         # Never send credentials, user/device identities, voice paths, receipts or audio bytes.
@@ -315,7 +325,7 @@ class Banban:
             messages.extend({'role': h['role'], 'content': h['content']} for h in history)
             messages.append({'role': 'user', 'content': message.strip()})
             answer = await self.complete(cfg, messages)
-            return self.s.json_response({'mode': 'deepseek', 'answer': answer, 'snapshot': snapshot})
+            return self.s.json_response({'mode': 'deepseek', 'answer': answer, 'snapshot': snapshot, 'quota': quota})
         except (asyncio.TimeoutError, ClientError):
             return self.s.json_response({'error': '连接较慢，本次未收到回答。您的问题还在，可以稍后重试。'}, 504)
         except ValueError as error:

@@ -54,7 +54,7 @@ internal sealed class ClassroomIslandWindow : Window
         $"浮岛动画：{(_animationsEnabled ? "开启" : "关闭")}\n" +
         $"通知动画：人物={_mascot.Animate}；通知条={_ribbon.Animate}；帧回调={_mascot.AnimationFrames}；重绘={_mascot.RenderedFrames}\n" +
         $"通知布局：拉开 {_companion.Expansion:0.#} DIP；窗口 {ClientSize.Width:0}×{ClientSize.Height:0} DIP；缩放 {RenderScaling * 100:0}%\n" +
-        $"图层：素材已载入={_mascot.AssetsLoaded}；透明模式={ActualTransparencyLevel}\n";
+        $"图层：素材已载入={_mascot.AssetsLoaded}；透明模式={ActualTransparencyLevel}\n" + _glass.DiagnosticState;
 
     public ClassroomIslandWindow(Func<Task> openReading, Action openHome, Action toggleDim, Action hide, Action dismissNotice)
         : this(openReading, openHome, toggleDim, hide, dismissNotice, null) { }
@@ -177,8 +177,6 @@ internal sealed class ClassroomIslandWindow : Window
         Content = new Border { Padding = new Thickness(6, 0, 6, 6), Child = _companion, VerticalAlignment = VerticalAlignment.Top };
         KeyDown += (_, args) => { if (args.Key == Key.Escape) { if (_shoutShown) (dismissWithoutAcknowledging ?? dismissNotice)(); else SetExpanded(false); args.Handled = true; } };
         PointerEntered += (_, _) => UpdateOpacity(); PointerExited += (_, _) => UpdateOpacity();
-        PointerMoved += (_, args) => _glass.SetHighlight(args.GetPosition(_glass));
-        PointerExited += (_, _) => _glass.SetHighlight(null);
         GotFocus += (_, _) => UpdateOpacity(); LostFocus += (_, _) => UpdateOpacity();
         Deactivated += (_, _) => { if (!_shoutShown) SetExpanded(false); };
         Opened += (_, _) => { DockToPrimaryScreen(); _companion.ResumeAnimation(); _mascot.ResumeAnimation(); IslandPlatform.SetClickThrough(this, _appearance.ClickThrough && !_interactiveOverride && !_shoutShown); };
@@ -391,7 +389,6 @@ internal sealed class ClassroomIslandWindow : Window
     {
         var reading = _hasNotice || _expanded || IsPointerOver || IsKeyboardFocusWithin;
         _surface.Opacity = reading ? 1 : _appearance.Opacity / 100.0 * (_dimmed && !_hasNotice ? .45 : 1);
-        _glass.RefreshBlur();
     }
 
     private void UpdateReadingAction()

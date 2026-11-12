@@ -1,5 +1,5 @@
 /* Ice-blue glass and solid white share geometry and readable content.
-   Only outer surfaces blur the wallpaper; nested content stays on that plane. */
+   Static tint and highlights keep the wallpaper visible without backdrop processing. */
 .teacher-liquid {
   --bg: #e5f0f8;
   --surface: #f1f9ff66;
@@ -28,7 +28,6 @@
   --teacher-surface-highlight: linear-gradient(125deg, #ffffff38, #ffffff08 55%, #b5dcf018);
   --teacher-surface-edge: #ffffffa3;
   --teacher-surface-shadow: 0 10px 24px #264f6d0e, inset 0 1px #ffffffb3;
-  --teacher-surface-filter: blur(12px) saturate(1.1);
   --teacher-table-head: #edf7ff85;
   --teacher-row-hover: #ffffff59;
   --teacher-segment: #edf7ff59;
@@ -72,7 +71,7 @@
 .teacher-liquid a { text-underline-offset: 4px; }
 .teacher-liquid .page-kicker { display: none; }
 
-/* Shared glass host: a separate optical plane never includes readable content. */
+/* Shared static material keeps readable content on its own plane. */
 .teacher-liquid .lg-pane { border-color: #ffffffb8 !important; box-shadow: var(--shadow), inset 0 1px #ffffffed, inset 0 -1px #719db32b; }
 .teacher-liquid .lg-pseudo::before {
   content: "";
@@ -84,8 +83,8 @@
   pointer-events: none;
   background: var(--teacher-pane);
   box-shadow: inset 1px 1px 1px #ffffffed, inset -1px -1px 1px #5b91b324;
-  backdrop-filter: var(--lg-filter, blur(10px) saturate(1.12));
-  -webkit-backdrop-filter: var(--lg-filter, blur(10px) saturate(1.12));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .teacher-liquid .shell { grid-template-columns: var(--teacher-nav-width) minmax(0, 1fr); grid-template-rows: 64px minmax(0, 1fr); max-width: 1900px; margin: auto; }
 .teacher-liquid .sidebar { color: var(--text); padding: 28px 14px 20px 18px; border: 0; border-right: 1px solid #ffffff66; background: #f4fbff29; }
@@ -153,7 +152,7 @@
   .teacher-liquid select:not([multiple]):not([size]), .teacher-liquid select:not([multiple]):not([size])::picker(select) { appearance: base-select; }
   .teacher-liquid select:not([multiple]):not([size]):not([hidden]),
   .teacher-liquid .bb-settings #bbProvider:not([multiple]):not([size]):not([hidden]) { display: inline-flex; align-items: center; gap: 12px; }
-  .teacher-liquid select::picker(select) { margin-block: 7px; padding: 7px; max-height: min(400px, 65dvh); border: 1px solid #ffffffd9; border-radius: 16px; color: var(--text); background: linear-gradient(125deg, #f5fcffe8, #dcefffd4); box-shadow: 0 15px 38px #193c592c, inset 0 1px #fff; backdrop-filter: blur(16px) saturate(1.16); }
+  .teacher-liquid select::picker(select) { margin-block: 7px; padding: 7px; max-height: min(400px, 65dvh); border: 1px solid #ffffffd9; border-radius: 16px; color: var(--text); background: linear-gradient(125deg, #f5fcffe8, #dcefffd4); box-shadow: 0 15px 38px #193c592c, inset 0 1px #fff; backdrop-filter: none; }
   .teacher-liquid select::picker-icon { color: var(--muted); margin-left: auto; }
   .teacher-liquid select option { min-height: 40px; padding: 9px 12px; border-radius: 9px; font-size: 15px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; white-space: normal; }
   .teacher-liquid select option:checked { background: var(--blue-soft); color: var(--blue-text); font-weight: 600; box-shadow: inset 0 0 0 1px #a9d6f8b3; }
@@ -167,10 +166,10 @@
   border-radius: 16px;
   background: var(--teacher-surface-highlight), var(--surface);
   box-shadow: var(--teacher-surface-shadow);
-  backdrop-filter: var(--teacher-surface-filter);
-  -webkit-backdrop-filter: var(--teacher-surface-filter);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
-/* A table scrolls inside its parent glass, never inside a second blur layer. */
+/* A table scrolls inside its parent glass, without another material layer. */
 .teacher-liquid :is(.reading-panel, .reading-settings, .daily-details, .plain-section, .island-main, .ideas-detail, .hw-section, .users-panel, .client-diagnostic-detail) :is(.table-wrap, .hw-table-wrap, .client-diagnostic-table) {
   background: transparent; box-shadow: none; border: 0; border-radius: 0;
   backdrop-filter: none; -webkit-backdrop-filter: none;
@@ -284,8 +283,8 @@
 .teacher-liquid .island-component-index { background: #f8fdff9c; color: var(--blue-text); }
 
 /* Every native <dialog>, including ones constructed after page load. */
-.teacher-liquid dialog { border-radius: 20px; border: 1px solid var(--teacher-surface-edge); max-height: calc(100dvh - 40px); max-width: calc(100vw - 32px); box-shadow: 0 25px 65px #153a5a35, inset 0 1px #ffffffb3; color: var(--text); background: var(--teacher-surface-highlight), var(--teacher-overlay); backdrop-filter: var(--teacher-surface-filter); -webkit-backdrop-filter: var(--teacher-surface-filter); }
-.teacher-liquid dialog::backdrop { background: #23486240; backdrop-filter: blur(6px); }
+.teacher-liquid dialog { border-radius: 20px; border: 1px solid var(--teacher-surface-edge); max-height: calc(100dvh - 40px); max-width: calc(100vw - 32px); box-shadow: 0 25px 65px #153a5a35, inset 0 1px #ffffffb3; color: var(--text); background: var(--teacher-surface-highlight), var(--teacher-overlay); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.teacher-liquid dialog::backdrop { background: #23486240; backdrop-filter: none; }
 .teacher-liquid dialog[open]:has(> .dialog-body), .teacher-liquid dialog[open]:has(> form > .dialog-body) { display: flex; flex-direction: column; overflow: hidden; }
 .teacher-liquid dialog > form:has(> .dialog-body) { display: flex; flex-direction: column; min-height: 0; max-height: inherit; overflow: hidden; }
 .teacher-liquid dialog .dialog-body { flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; scroll-padding: 12px; }
@@ -378,7 +377,7 @@
 .teacher-liquid :is(.bb-settings-actions .bb-tool, .bb-history-delete-actions .bb-tool) { background: var(--teacher-control); color: #234f73; }
 .teacher-liquid :is(.bb-settings-actions .bb-send, .bb-history-delete-actions .bb-send) { background: var(--teacher-primary); color: #ffffff; }
 .teacher-liquid .bb-launcher-name { background: #f7fcffb8; color: #234f73; border-color: #ffffffc2; }
-.teacher-liquid .bb-history-scrim { background: #23486226; backdrop-filter: blur(4px); }
+.teacher-liquid .bb-history-scrim { background: #23486226; backdrop-filter: none; }
 .teacher-liquid .bb-grade-picks button { color: var(--muted); background: #f7fcff59; font-size: 14px; }
 .teacher-liquid .bb-grade-picks button[aria-pressed=true] { color: #075cad; background: #e6f6ffb5; border-color: #90bde09c; }
 
@@ -431,7 +430,6 @@
   --teacher-primary: #0065cb; --teacher-primary-hover: #0056ae;
   --teacher-surface-highlight: linear-gradient(transparent, transparent);
   --teacher-surface-edge: #dce3eb; --teacher-surface-shadow: none;
-  --teacher-surface-filter: none;
   --teacher-table-head: #f4f8fc; --teacher-row-hover: #f4f8fc;
   --teacher-segment: #eff4f9; --teacher-sticky: #ffffff; --teacher-overlay: #ffffff;
 }
@@ -482,7 +480,7 @@
   .teacher-liquid .shell { display: block; }
   .teacher-liquid .topbar { min-height: 64px; padding-inline: 18px; }
   .teacher-liquid .sidebar { background: #e8f7fff2; border: 1px solid #ffffffc2; border-radius: 23px; padding: 24px 15px; }
-  .teacher-liquid .nav-backdrop.open { background: #23486240; backdrop-filter: blur(4px); }
+  .teacher-liquid .nav-backdrop.open { background: #23486240; backdrop-filter: none; }
   .teacher-liquid main { padding: 25px 22px 32px; }
   .teacher-liquid .view-head { align-items: flex-start; flex-wrap: wrap; }
   .teacher-liquid .auth-layout { gap: 15px; }
@@ -531,7 +529,6 @@
     --teacher-primary: #0065cb; --teacher-primary-hover: #0056ae;
     --teacher-surface-highlight: linear-gradient(transparent, transparent);
     --teacher-surface-edge: #dce3eb; --teacher-surface-shadow: none;
-    --teacher-surface-filter: none;
     --teacher-table-head: #f4f8fc; --teacher-row-hover: #f4f8fc;
     --teacher-segment: #eff4f9; --teacher-sticky: #ffffff; --teacher-overlay: #ffffff;
   }
@@ -540,7 +537,7 @@
   .teacher-liquid select::picker(select) { background: #ffffff; backdrop-filter: none; }
 }
 @media (forced-colors: active) {
-  :root .teacher-liquid { --surface: Canvas; --surface-solid: Canvas; --teacher-overlay: Canvas; --teacher-surface-highlight: none; --teacher-surface-filter: none; --teacher-surface-edge: CanvasText; --teacher-surface-shadow: none; --teacher-table-head: Canvas; --teacher-sticky: Canvas; --teacher-row-hover: Canvas; background: Canvas; color: CanvasText; }
+  :root .teacher-liquid { --surface: Canvas; --surface-solid: Canvas; --teacher-overlay: Canvas; --teacher-surface-highlight: none; --teacher-surface-edge: CanvasText; --teacher-surface-shadow: none; --teacher-table-head: Canvas; --teacher-sticky: Canvas; --teacher-row-hover: Canvas; background: Canvas; color: CanvasText; }
   .teacher-liquid::before, .teacher-liquid .lg-pseudo::before { display: none !important; }
   :root .teacher-liquid .lg-pane, :root .teacher-liquid :is(input, textarea, select, .btn) { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText !important; box-shadow: none; }
   .teacher-liquid .nav button.active { outline: 1px solid Highlight; }

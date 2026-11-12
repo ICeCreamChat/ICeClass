@@ -2,9 +2,33 @@
   'use strict';
   const $ = id => document.getElementById(id);
   let initialized = false, config = null, report = null, settingsDirty = false, boundClasses = new Set(), reportGeneration = 0;
+  let saving = false, leaveAction;
   let reportRequest = null, controlsRequest = null, controlsSignature = '';
   const visible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
   const selectedGrades = new Set();
+  const leave = document.createElement('dialog');
+  leave.id = 'reading-leave';
+  leave.setAttribute('aria-labelledby', 'reading-leave-title');
+  leave.setAttribute('aria-describedby', 'reading-leave-description');
+  leave.innerHTML = '<div class="dialog-head"><h2 id="reading-leave-title">早读规则尚未保存</h2></div><div class="dialog-body"><p id="reading-leave-description">保存规则后继续，或放弃本次修改。</p><p id="reading-leave-error" class="form-error" role="alert"></p></div><div class="dialog-actions"><button type="button" class="btn" data-reading-keep autofocus>继续编辑</button><button type="button" class="btn" data-reading-discard>放弃修改</button><button type="button" class="btn primary" data-reading-save>保存并继续</button></div>';
+  document.body.append(leave);
+  leave.querySelector('[data-reading-keep]').onclick = () => { leaveAction = undefined; leave.close(); };
+  leave.addEventListener('cancel', event => { if (saving) event.preventDefault(); else leaveAction = undefined; });
+  leave.querySelector('[data-reading-discard]').onclick = () => {
+    const next = leaveAction; leaveAction = undefined; settingsDirty = false;
+    if (config) renderSettings(true);
+    leave.close(); next?.();
+  };
+  leave.querySelector('[data-reading-save]').onclick = async () => {
+    if (!await saveSettings()) return;
+    const next = leaveAction; leaveAction = undefined; leave.close(); next?.();
+  };
+  function canLeave(next) {
+    if (saving) { window.ICeClass.toast('正在保存早读规则，请稍候。'); return false; }
+    if (!settingsDirty) return true;
+    if (!leave.open) { leaveAction = next; $('reading-leave-error').textContent = ''; leave.showModal(); }
+    return false;
+  }
   const gradeOf = name => {
     const match = String(name || '').normalize('NFKC').replace(/\s/g, '').match(/^高([一二三123])(?=[^0-9]|$)/);
     return match ? '高' + ({1: '一', 2: '二', 3: '三'}[match[1]] || match[1]) : '其他';
@@ -47,6 +71,9 @@
   async function loadSettings(refreshEditor = false) {
     if (!['superadmin', 'principal'].includes(window.ICeClass.state.user.role)) return;
     const data = await api('/api/reading/settings'); config = data.config;
+    renderSettings(refreshEditor);
+  }
+  function renderSettings(refreshEditor) {
     $('readingRuleStatus').textContent = config.enabled ? `已启用统计 · 声量门槛 ${config.threshold} · ${config.periods.length} 个时段 · 北京时间 · 晨读提醒${config.reminderEnabled !== false ? '已开启' : '已关闭'}` : '尚未启用统计。管理员保存统计时段后，各班活动自动计入。';
     $('readingRuleStatus').dataset.enabled = String(config.enabled);
     if (!refreshEditor || settingsDirty) return;
@@ -54,15 +81,26 @@
     $('readingReminderEnabled').checked = config.reminderEnabled !== false;
   }
   async function saveSettings(event) {
-    event.preventDefault(); $('readingSettingsError').textContent = '';
+    event?.preventDefault();
+    if (saving) return false;
+    const form = $('readingSettingsForm');
+    if (!form.checkValidity()) {
+      leaveAction = undefined; leave.close(); form.closest('details').open = true; form.reportValidity(); return false;
+    }
+    $('readingSettingsError').textContent = ''; $('reading-leave-error').textContent = '';
     const num = id => Number($(id).value);
     const value = { enabled: $('readingEnabled').checked, reminderEnabled: $('readingReminderEnabled').checked, threshold: num('readingThreshold'), periods: [...$('readingPeriods').children].map(row => {
       const times = row.querySelectorAll('input[type=time]'); return { weekdays: [...row.querySelectorAll('input[type=checkbox]:checked')].map(n => Number(n.value)), start: minute(times[0].value), end: minute(times[1].value) || 1440 };
     }) };
-    const button = event.submitter; if (button) button.disabled = true;
-    try { await api('/api/reading/settings', { method: 'PUT', body: JSON.stringify(value) }); settingsDirty = false; await loadSettings(true); window.ICeClass.toast('早读规则已保存，教室端将在 15 秒内同步。'); }
-    catch (e) { $('readingSettingsError').textContent = e.message; }
-    finally { if (button) button.disabled = false; }
+    const controls = [...form.elements, ...leave.querySelectorAll('button')].map(control => [control, control.disabled]);
+    saving = true; controls.forEach(([control]) => { control.disabled = true; });
+    try {
+      const data = await api('/api/reading/settings', { method: 'PUT', body: JSON.stringify(value) });
+      config = data.config; settingsDirty = false; renderSettings(true);
+      window.ICeClass.toast('早读规则已保存，教室端将在 15 秒内同步。'); return true;
+    } catch (e) {
+      $('readingSettingsError').textContent = e.message; $('reading-leave-error').textContent = e.message; return false;
+    } finally { saving = false; controls.forEach(([control, disabled]) => { control.disabled = disabled; }); }
   }
   async function loadReport() {
     const key = query().toString();
@@ -74,11 +112,13 @@
   }
   async function fetchReport(key) {
     const request = ++reportGeneration;
+    $('readingOverview').setAttribute('aria-busy', 'true');
     $('readingRanking').setAttribute('aria-busy', 'true');
     let data;
     try { data = await api('/api/reading/report?' + key); }
     catch (e) {
       if (request === reportGeneration) {
+        $('readingOverview').setAttribute('aria-busy', 'false');
         $('readingRanking').setAttribute('aria-busy', 'false');
         $('readingReportStatus').textContent = report ? '刷新失败，当前为上次查询的记录。请重试。' : '暂时无法读取成绩，请点击“查询”重试。';
         if (!report) $('readingRanking').replaceChildren(node('div', '成绩暂时无法读取，请重新查询。', 'empty'));
@@ -86,6 +126,7 @@
       throw e;
     }
     if (request !== reportGeneration) return;
+    $('readingOverview').setAttribute('aria-busy', 'false');
     const unchanged = report && JSON.stringify(report) === JSON.stringify(data);
     report = data;
     const scope = report.grades?.join('、') || '全部年级';
@@ -240,6 +281,8 @@
     });
   }
   window.addEventListener('iceclass-ready', initialize);
+  window.ICeClassReadingAdmin = {canLeave};
+  window.addEventListener('beforeunload', event => { if (settingsDirty || saving) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('iceclass-classes-changed', () => {syncClasses();void loadReport().catch(error);void loadControls().catch(error);});
   initialize();
 })();

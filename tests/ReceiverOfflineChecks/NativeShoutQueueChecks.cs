@@ -140,7 +140,7 @@ internal static class NativeShoutQueueChecks
         var connecting = client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cancel.Token);
         var context = await listener.GetContextAsync(); using var server = (await context.AcceptWebSocketAsync(null)).WebSocket; await connecting;
         var config = new ReceiverConfig { Endpoint = $"http://127.0.0.1:{port}", DeviceId = "isolated-receive-test", DeviceToken = "local-test-only" };
-        var receive = (Task)typeof(CloudReceiverService).GetMethod("ReceiveAsync", Flags)!.Invoke(receiver, [client, sendLock, config, cancel.Token])!;
+        var receive = (Task)typeof(CloudReceiverService).GetMethod("ReceiveAsync", Flags)!.Invoke(receiver, [client, sendLock, config, null, cancel.Token])!;
         var frames = new List<JsonElement>();
         async Task Send(string id, string level)
         {

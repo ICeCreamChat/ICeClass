@@ -197,10 +197,11 @@ public sealed partial class App : Application
         if (_aboutWindow is null)
         {
             ReceiverConfig.TryLoad(out var diagnosticBinding);
-            _aboutWindow = new AboutWindow(token => ReceiverDiagnostics.CollectAsync(
+            _aboutWindow = new AboutWindow(async token => await ReceiverDiagnostics.CollectAsync(
                 $"连接状态：{_lastConnectionState.Text}\n语音资源：{_voicePreparation?.Current.Message ?? "未初始化"}\n" +
                 $"客户端更新：检查或下载中={_updateInProgress != 0}；待安装={_readyUpdateVersion ?? "无"}\n" +
                 $"早读：已打开={ReadingExperience.IsOpen}；全屏={ReadingExperience.IsFullscreen}\n" +
+                (_studentVoiceWindow is { } home ? await home.CollectDiagnosticStateAsync(token) : "教室首页尚未初始化。\n") +
                 (_island?.DiagnosticState ?? "通知窗口尚未初始化。"), token),
                 (report, token) => SubmitClientDiagnosticsAsync("manual", report, token, diagnosticBinding),
                 acknowledgementsEndpoint: string.IsNullOrEmpty(diagnosticBinding.Endpoint) ? ReceiverConfig.TryLoadDefaultEndpoint() : diagnosticBinding.Endpoint);

@@ -237,8 +237,8 @@ tbody tr:hover:not(.grade-divider) { background: #fafcff; }
 .level-option.warning.selected { border-color: #d8b791; background: var(--orange-soft); }
 .level-option.urgent.selected { border-color: #d8aaa0; background: var(--red-soft); }
 .level-icon { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: #0071e3; color: #fff; font-size: 14px; }
-.warning .level-icon { background: #c38d58; }
-.urgent .level-icon { background: #bd7b70; }
+.warning .level-icon { background: var(--orange); }
+.urgent .level-icon { background: var(--red); }
 .level-option strong { display: block; font-size: 14px; }
 .level-option small { color: var(--muted); font-size: 14px; display: block; margin-top: 4px; line-height: 1.6; }
 .level-option.disabled { opacity: .45; cursor: not-allowed; }
@@ -377,7 +377,7 @@ tbody tr:hover:not(.grade-divider) { background: #fafcff; }
 .settings-device-section .view-head { padding-top: 22px; border-top: 1px solid var(--line); }
 .load-more { margin-top: 16px; }
 dialog { padding: 0; width: min(580px,calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; color: var(--text); background: var(--surface); border: 1px solid #e5e5ea; border-radius: 16px; box-shadow: 0 24px 90px #00000020; }
-dialog::backdrop { background: #00000040; backdrop-filter: blur(3px); }
+dialog::backdrop { background: #00000040; backdrop-filter: none; }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 8px 23px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 1; background: var(--surface); }
 .dialog-head .btn.icon { width: var(--control-height); min-height: var(--control-height); }
 .dialog-head h2 { font-size: 17px; margin: 0; }
@@ -416,6 +416,7 @@ dialog::backdrop { background: #00000040; backdrop-filter: blur(3px); }
   .level-picker { grid-template-columns: repeat(3,1fr); }
 }
 @media(max-width:620px) {
+  .reading-rule-status { min-height: calc(2lh + 26px); }
   .topbar { padding: 0 13px; }
   .user-meta { display: none; }
   .user-avatar { width: 34px; height: 34px; font-size: 13px; }
@@ -474,7 +475,7 @@ dialog::backdrop { background: #00000040; backdrop-filter: blur(3px); }
 table { font-size: 15px; line-height: 1.65; }
 .metric-heading { font-size: 14px; }
 .view-head h1 { font-weight: 650; }
-.topbar { backdrop-filter: blur(20px); }
+.topbar { backdrop-filter: none; }
 .sidebar .brand-lockup small { color: var(--muted); opacity: 1; letter-spacing: .4px; }
 
 /* Readable Chinese typography at both desktop and whiteboard sizes. */

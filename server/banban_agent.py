@@ -19,6 +19,7 @@ from banban_connections import completion_url, provider_options, required_tool_c
 from banban_operations import Operations, operation_tools, COMPUTER_READS, CLIENT_KEY, teacher_client
 from banban_speech import SpokenAnswer, VOICE_RULES, social_reply, quick_computer_action, quick_computer_reply
 from banban_vision import image_message
+from banban_quota import CHARGED_KEY, QuotaExceeded
 
 TOPICS = {'reading': '晨读记录', 'notifications': '通知回执', 'voice': '教室来音', **TITLES}
 # RequestKey was added after aiohttp 3.13; retain the project's supported floor.
@@ -582,7 +583,8 @@ class BanbanAgent:
         cfg = {**cfg, 'answerTokens': 1800 if detail else 450 if voice is not None else 700}
         cfg['_tools'] = TOOLS + operation_tools(self.f.app, user, request.get(CLIENT_KEY))
         mode = 'local' if direct else 'deepseek' if cfg['enabled'] and cfg['apiKey'] else 'overview'
-        await emit({'type': 'meta', 'mode': mode, 'scope': scope, 'detailRequested': detail, 'conversationId': memory['id']})
+        await emit({'type': 'meta', 'mode': mode, 'scope': scope, 'detailRequested': detail, 'conversationId': memory['id'],
+                    'quota': request.get(CHARGED_KEY)})
         if direct:
             answer = direct
             await emit({'type': 'delta', 'text': answer})
@@ -921,8 +923,11 @@ class BanbanAgent:
         try:
             memory = self.history.context(user, cid)
             snapshot = self.f.snapshot(self.f.question_scope(scope or memory['scope'], message, user), user)
+            self.f.quotas.consume(request, user)
             if memory['id'] is None:
                 memory = self.history.create(user)
+        except QuotaExceeded as error:
+            return error.response(self.s)
         except ValueError as error:
             return self.s.json_response({'error': str(error)}, 400)
         except PermissionError:

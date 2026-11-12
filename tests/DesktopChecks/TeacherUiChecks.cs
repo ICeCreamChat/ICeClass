@@ -76,6 +76,8 @@ public sealed class TeacherUiCheckApp : Application
         try
         {
             Directory.CreateDirectory(TeacherUiChecks.Output);
+            Assert(typeof(DesktopWindow).Assembly.GetType("ICeClass.Receiver.LiquidGlassOptics") is null,
+                "Native teacher windows do not ship background displacement or blur filters");
             using var port=new TcpListener(IPAddress.Loopback,0);port.Start();
             var endpoint="http://127.0.0.1:"+((IPEndPoint)port.LocalEndpoint).Port;port.Stop();
             listener.Prefixes.Add(endpoint+"/");listener.Start();
@@ -96,6 +98,31 @@ public sealed class TeacherUiCheckApp : Application
             typeof(App).Assembly.GetType("ICeClass.Desktop.Program")!.GetProperty("Options",BindingFlags.Static|BindingFlags.NonPublic)!
                 .SetValue(null,LaunchOptions.Parse(["--server",endpoint,"--data-dir",Path.Combine(TeacherUiChecks.Output,"profile")]));
             var main=new DesktopWindow(_product,endpoint,false);
+            using var pollLifetime=new CancellationTokenSource();
+            var slowVoice=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var inboxHttp=new HttpClient(new InboxHandler(async (request,token)=>{
+                if(request.RequestUri!.AbsolutePath=="/api/classroom-voice")
+                {
+                    await slowVoice.Task.WaitAsync(token);
+                    return new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent("{\"messages\":[]}",Encoding.UTF8,"application/json")};
+                }
+                return new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent("""{"events":[{"id":"poll-review","class_name":"测试班","status":"reported","handled_at":null}]}""",Encoding.UTF8,"application/json")};
+            }));
+            using var voiceInbox=new ClassroomVoiceInbox(endpoint,()=>Task.FromResult<string?>("isolated-poll"),inboxHttp);
+            using var studyInbox=new SelfStudyInbox(endpoint,()=>Task.FromResult<string?>("isolated-poll"),inboxHttp);
+            typeof(DesktopWindow).GetField("_voiceInbox",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(main,voiceInbox);
+            typeof(DesktopWindow).GetField("_selfStudyInbox",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(main,studyInbox);
+            var polling=(Task)typeof(DesktopWindow).GetMethod("WatchClassroomVoiceAsync",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[pollLifetime.Token])!;
+            try
+            {
+                for(var i=0;i<20 && studyInbox.Pending.Count==0;i++)await Task.Delay(25);
+                Assert(studyInbox.Pending.Count==1,"A stalled voice request cannot postpone self-study notification polling");
+            }
+            finally
+            {
+                pollLifetime.Cancel();slowVoice.TrySetResult();
+                await polling.WaitAsync(TimeSpan.FromSeconds(2));
+            }
             var browser=Field<ReadingBrowser>(main,"_browser");
             Assert(!browser.IsVisible,"Native WebView begins hidden behind the loading message");
             await Render(main,"workspace-loading",800,560);
@@ -139,5 +166,10 @@ public sealed class TeacherUiCheckApp : Application
             Console.WriteLine($"{checks.Count} native teacher UI checks passed; {failures.Count} failed.");
             Environment.ExitCode=failures.Count==0?0:1;((IClassicDesktopStyleApplicationLifetime)ApplicationLifetime!).Shutdown(Environment.ExitCode);
         }
+    }
+
+    private sealed class InboxHandler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponseMessage>> send) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)=>send(request,token);
     }
 }

@@ -16,6 +16,7 @@ from teacher_capabilities import actions, reads
 from aiohttp import web
 from multidict import CIMultiDict, MultiDict
 from banban_vision import VISUAL_ACTIONS, VISUAL_KEYS, extract_frame
+from banban_quota import QuotaExceeded
 
 
 KEY = web.AppKey('banban_operations', object)
@@ -572,6 +573,19 @@ class Operations:
                                      for cid in parameters.pop(key) if isinstance(cid, str)]
         if row['kind'] == 'platform' and 'classId' in parameters:
             parameters['targetClassName'] = (self.db.one('SELECT name FROM classes WHERE id=?', (parameters.pop('classId'),)) or {}).get('name', '班级不存在')
+        if business and business.id == 'banban.quotas.update':
+            limits = parameters.get('overrides')
+            if isinstance(limits, list) and all(isinstance(item, dict) and
+                    isinstance(item.get('kind'), str) and isinstance(item.get('id'), str) for item in limits):
+                targets = {(item['kind'], item['id']): item for item in self.f.quotas.targets()}
+                parameters.pop('overrides')
+                parameters['individualLimits'] = [
+                    {'name': (targets.get((item['kind'], item['id'])) or {}).get('name', '设备或账号不存在'),
+                     'monthlyLimit': item.get('limit') if item.get('limit') is not None else '不限次'} for item in limits
+                ] or '全部沿用默认'
+            for key in ('deviceLimit', 'accountLimit'):
+                if key in parameters and parameters[key] is None:
+                    parameters[key] = '不限次'
         return {'id': row['id'], 'kind': row['kind'], 'action': args.get('operation') or args.get('action'),
                 **({'clientId': args['clientId']} if row['kind'] == 'teacher' else {}),
                 **({'input': 'island-import'} if business and business.workflow == 'island-import' else {}),
@@ -676,6 +690,8 @@ class Operations:
         oid, now = str(uuid.uuid4()), self.s.now_ms()
         needs_file = kind == 'platform' and self.business[operation].workflow == 'island-import'
         status = 'awaiting_input' if needs_file else 'awaiting_confirmation' if confirm else 'prepared'
+        if not (kind == 'computer' and prepared['action'] == 'stop'):
+            self.f.quotas.consume(request, user)
         self.db.run('INSERT INTO banban_operations(id,actor_id,conversation_id,kind,title,args,target,device_id,class_id,status,created_at,updated_at,expires_at,request_key,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     (oid, user['id'], conversation_id, kind, title, json.dumps(prepared, ensure_ascii=False), target,
                      did, cid, status, now, now, now + 300000, request_key, fingerprint))
@@ -914,6 +930,8 @@ class Operations:
             return user
         try:
             return self.s.json_response(await work(user))
+        except QuotaExceeded as error:
+            return error.response(self.s)
         except (ValueError, TypeError, OverflowError) as error:
             return self.s.json_response({'error': str(error) or '操作参数不正确。'}, 400)
         except PermissionError as error:

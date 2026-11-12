@@ -44,6 +44,14 @@ async function measure() {
         const dom=await page.evaluate(()=>({
           ...window.__renderLab,filters:document.querySelectorAll('.classroom-filter-definitions filter').length,
           hosts:document.querySelectorAll('.lg-pane').length,nodes:document.querySelectorAll('*').length,
+          backdropFilters:[...document.querySelectorAll('*')].flatMap(element=>{
+            if(!element.getClientRects().length)return [];
+            return [null,'::before','::after',...(element.matches('dialog[open]')?['::backdrop']:[])].flatMap(pseudo=>{
+              const style=getComputedStyle(element,pseudo);
+              if(pseudo&&style.content==='none'&&pseudo!=='::backdrop')return [];
+              return style.display!=='none'&&style.backdropFilter!=='none'?[{tag:element.tagName,classes:element.className,pseudo,filter:style.backdropFilter}]:[];
+            });
+          }),
           paints:performance.getEntriesByType('paint').map(x=>({name:x.name,ms:x.startTime})),
           resources:performance.getEntriesByType('resource').length,
           opticalBytes:[...document.querySelectorAll('.classroom-filter-definitions feImage')].reduce((n,e)=>n+(e.getAttribute('href')?.length||0),0)

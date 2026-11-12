@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 
 namespace ICeClass.Receiver;
 
@@ -14,9 +15,9 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
 {
     internal const double RibbonHeight = 48;
     private IslandRibbonFrame? _frame, _previous;
-    private long _started, _presentedAt;
+    private long _started, _presentedAt, _paintedAt;
     private bool _queued, _disposed;
-    private readonly Dictionary<(string, double, string, int), FormattedText> _text = new();
+    private readonly Dictionary<(string, double, string, double), TextLayout> _text = new();
     private readonly Dictionary<string, Geometry[]> _icons = new();
     private string _shoutText = "";
     private int _shoutWidth;
@@ -36,6 +37,8 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
     public void Present(IslandRibbonFrame frame)
     {
         if (_disposed) return;
+        // Evict between presentations, never while a paint is using a layout.
+        if (_text.Count > 256) ClearTextCache();
         if (_frame?.Key != frame.Key)
         {
             _previous = _frame; _started = Stopwatch.GetTimestamp();
@@ -51,7 +54,8 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
     private double Phase => ReviewPhase ?? (!Animate || _previous is null ? 1 : Math.Clamp(Stopwatch.GetElapsedTime(_started).TotalSeconds / .55, 0, 1));
     private void QueueFrame()
     {
-        var liveProgress=Animate && IsEffectivelyVisible && _frame is {Accent:false,Progress:>0,ProgressPerSecond:>0};
+        var liveProgress=Animate && IsEffectivelyVisible && _frame is {Accent:false,Progress:>0,ProgressPerSecond:>0} live
+            && live.Progress-Stopwatch.GetElapsedTime(_presentedAt).TotalSeconds*live.ProgressPerSecond>0;
         if (_queued || _disposed || ReviewPhase.HasValue || Phase >= 1 && !liveProgress && !SelfStudyAnimating || TopLevel.GetTopLevel(this) is not { } top) return;
         _queued = true;
         var transitioning = Phase < 1;
@@ -59,7 +63,13 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
         {
             _queued = false;
             if (_disposed) return;
-            InvalidateVisual();
+            // A preparation track moves only a few pixels per second. Paint it
+            // after half a physical pixel of motion, at least every 100 ms.
+            // Text transitions, notification pages and self-study keep rAF cadence.
+            var interval = _frame is { Shout:null, ProgressPerSecond:>0 } current
+                ? Math.Min(.1, .5 / Math.Max(1, Bounds.Width * current.ProgressPerSecond * top.RenderScaling)) : 0;
+            if (Phase < 1 || SelfStudyAnimating || Stopwatch.GetElapsedTime(_paintedAt).TotalSeconds >= interval)
+                InvalidateVisual();
             if (transitioning) MaterialGeometryChanged?.Invoke();
             QueueFrame();
         });
@@ -68,6 +78,7 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
     public override void Render(DrawingContext context)
     {
         base.Render(context);
+        _paintedAt=Stopwatch.GetTimestamp();
         if (_frame is null || Bounds.Width <= 0) return;
         var phase = Phase;
         var targetWidth=FrameWidth(_frame,Bounds.Width);
@@ -285,7 +296,7 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
     private void LabelLeft(DrawingContext context, string value, Rect area, double size, string color)
     {
         var text = GetText(value, area, size, color);
-        context.DrawText(text, new Point(area.X, area.Y + (area.Height - text.Height) / 2));
+        text.Draw(context, new Point(area.X, area.Y + (area.Height - text.Height) / 2));
     }
 
     private sealed record RibbonLayout(double Width, double DateWidth, double Gap, double ItemGap, double SeparatorWidth,
@@ -365,7 +376,7 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
     {
         if (area.Width <= 0) return;
         var text=GetText(value,area,size,color);
-        context.DrawText(text, new Point(area.X + Math.Max(0, (area.Width - text.Width) / 2), area.Y + (area.Height - text.Height) / 2));
+        text.Draw(context, new Point(area.X + Math.Max(0, (area.Width - text.Width) / 2), area.Y + (area.Height - text.Height) / 2));
     }
 
     private static (string Text,double Size)[] PrimaryRuns(string text,double size,double emphasis)
@@ -401,22 +412,27 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
         var baseline=area.Y+(area.Height-texts.Max(text=>text.Height))/2+texts.Max(text=>text.Baseline);
         foreach(var text in texts)
         {
-            context.DrawText(text,new Point(x,baseline-text.Baseline));
+            text.Draw(context,new Point(x,baseline-text.Baseline));
             x+=text.WidthIncludingTrailingWhitespace;
         }
     }
-    private FormattedText GetText(string value,Rect area,double size,string color)
+    private TextLayout GetText(string value,Rect area,double size,string color)
     {
-        var key = (value, size, color, (int)area.Width);
+        var key = (value, size, color, area.Width);
         if (!_text.TryGetValue(key, out var text))
         {
-            if (_text.Count > 256) _text.Clear();
-            text = new FormattedText(value, CultureInfo.GetCultureInfo("zh-CN"), FlowDirection.LeftToRight,
-                new Typeface(ClassroomStyle.Font, FontStyle.Normal, FontWeight.Bold), size, Brush(color))
-            { MaxTextWidth = area.Width, MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis };
+            // FormattedText retains metrics but reshapes text when DrawText is
+            // called. Keep the shaped glyph runs for unchanged animation frames.
+            text = new TextLayout(value, new Typeface(ClassroomStyle.Font, FontStyle.Normal, FontWeight.Bold), size, Brush(color),
+                textWrapping: TextWrapping.NoWrap, textTrimming: TextTrimming.CharacterEllipsis, maxWidth: area.Width, maxLines: 1);
             _text[key] = text;
         }
         return text;
+    }
+    private void ClearTextCache()
+    {
+        foreach (var text in _text.Values) text.Dispose();
+        _text.Clear();
     }
     private void Icon(DrawingContext context,string name,double x,double y,string color)
     {
@@ -459,5 +475,5 @@ internal sealed partial class ClassroomIslandRibbon : Control, IDisposable
         }
         return geometry;
     }
-    public void Dispose() { _disposed = true; _text.Clear(); _icons.Clear(); }
+    public void Dispose() { _disposed = true; ClearTextCache(); _icons.Clear(); }
 }

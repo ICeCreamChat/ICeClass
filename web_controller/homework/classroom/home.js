@@ -8,15 +8,26 @@
   let sequence=0, initialized=false, view='management', className='', termLabel='', home, island, voice={recording:false,sending:false}, voicePanel=false;
   const native = Boolean(window.ICeClassNativeHome);
   document.body.classList.toggle('native-home',native);
-  let preference={material:'glass',reduceTransparency:false};
-  try {const saved=JSON.parse(localStorage.getItem('iceclass.classroom.appearance')||'null');if(saved)preference={material:saved.material==='white'?'white':'glass',reduceTransparency:Boolean(saved.reduceTransparency)};} catch {}
+  const systemTransparency=matchMedia('(prefers-reduced-transparency: reduce)');
+  const forcedColors=matchMedia('(forced-colors: active)');
+  let appearanceChosen=false,preference={material:'glass',reduceTransparency:false};
+  try {const saved=JSON.parse(localStorage.getItem('iceclass.classroom.appearance')||'null');if(saved&&typeof saved==='object'){appearanceChosen=true;preference={material:saved.material==='white'?'white':'glass',reduceTransparency:Boolean(saved.reduceTransparency)};}} catch {}
+  const reducedTransparency=()=>preference.reduceTransparency||(!appearanceChosen&&systemTransparency.matches);
   function applyAppearance() {
+    const reduced=reducedTransparency();
     document.body.dataset.material=preference.material;
-    document.body.classList.toggle('reduce-transparency',preference.reduceTransparency);
+    document.body.dataset.classroomTransparency=appearanceChosen?(preference.reduceTransparency?'reduced':'full'):'auto';
+    document.body.classList.toggle('reduce-transparency',reduced);
     document.querySelectorAll('button[data-material]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.material===preference.material)));
+    if($('clear-setting'))$('clear-setting').checked=reduced;
     window.dispatchEvent(new Event('iceclass-appearance-change'));
+    if(native)window.chrome.webview.postMessage({type:'classroom-appearance',state:{material:preference.material,
+      effective:forcedColors.matches?'contrast':preference.material==='white'?'white':reduced?'reduced':'glass',
+      source:appearanceChosen?'classroom':'system',systemReducedTransparency:systemTransparency.matches,forcedColors:forcedColors.matches}});
   }
-  function saveAppearance() {applyAppearance();try{localStorage.setItem('iceclass.classroom.appearance',JSON.stringify(preference));}catch{notify('外观已应用，暂时无法记住此设置。');}}
+  function saveAppearance() {appearanceChosen=true;applyAppearance();try{localStorage.setItem('iceclass.classroom.appearance',JSON.stringify(preference));}catch{notify('外观已应用，暂时无法记住此设置。');}}
+  systemTransparency.addEventListener('change',applyAppearance);
+  forcedColors.addEventListener('change',applyAppearance);
   function request(action,value={}) {
     if(!native)return Promise.reject(new Error('请从教室客户端打开此功能。'));
     const id=++sequence;
@@ -26,7 +37,7 @@
       window.chrome.webview.postMessage({id,action,...value});
     });
   }
-  window.ICeClassHost={request};
+  window.ICeClassHost={request,get date(){return island?.date;}};
   let toastTimer;
   function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').classList.add('visible');toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4000);}
   function heading(){
@@ -36,7 +47,9 @@
   function showView(next){
     view=next;document.body.dataset.view=next;
     $('home-view').hidden=next!=='home';$('management-view').hidden=next!=='management';heading();
+    window.scrollTo(0,0);
     if(next==='management')document.querySelector('[data-action="homework"]').focus({preventScroll:true});
+    window.dispatchEvent(new CustomEvent('classroom-view-change',{detail:next}));
   }
   function showDetail(title,content){voicePanel=false;$('detail-title').textContent=title;$('detail-body').innerHTML=content;$('detail-dialog').showModal();}
   function renderVoice(){
@@ -54,6 +67,21 @@
     $('voice-panel-status').classList.toggle('success',Boolean(voice.success));
     document.querySelector('.detail-voice').classList.toggle('voice-recording',voice.recording);
   }
+  function renderLessons(value){
+    const periods=[['morning','上午'],['noon','中午'],['afternoon','下午'],['evening','晚上']].map(([key,label])=>({key,label,lessons:[]}));
+    for(const lesson of value.lessons){
+      const period=lesson.start<'12:00'?0:lesson.start<'14:00'?1:lesson.start<'18:00'?2:3;
+      periods[period].lessons.push(lesson);
+    }
+    const groups=periods.filter(period=>period.lessons.length),list=$('lesson-list');
+    list.innerHTML=groups.length?groups.map(period=>{
+      const lessons=period.lessons.map(lesson=>{
+        const name=esc(lesson.name),start=esc(lesson.start),end=esc(lesson.end),date=esc(value.date);
+        return `<li class="day-lesson${lesson.current?' is-current':''}"${lesson.next?' data-next':''}${lesson.current?` aria-current="true" aria-label="${name}，正在上课，${start}-${end}"`:''}><div class="lesson-subject"><strong>${name}</strong></div><small><time datetime="${date}T${start}:00+08:00">${start}</time>-<time datetime="${date}T${end}:00+08:00">${end}</time></small></li>`;
+      }).join('');
+      return `<section class="period-block" aria-labelledby="period-${period.key}"><header class="period-header"><h2 id="period-${period.key}"><span class="module-icon blue period-icon"><img src="./icons/${period.key}.webp" alt="${period.label}" title="${period.label}" width="144" height="192" decoding="async"></span></h2></header><ol class="period-lessons" style="--lesson-columns:${Math.ceil(period.lessons.length/2)}">${lessons}</ol></section>`;
+    }).join(''):`<p class="schedule-empty" role="status">${value.scheduleKnown?'今天没有课程':'课表同步后显示全天课程'}</p>`;
+  }
   function renderIsland(value){
     if(!value)return;
     const previous=island;island=value;
@@ -61,13 +89,15 @@
       const date=new Date(value.date+'T12:00:00+08:00');
       if(!Number.isNaN(date.getTime())){
         const [,month,day]=value.date.split('-');
+        $('calendar-day').dateTime=value.date;$('calendar-day').hidden=false;
         $('calendar-date').innerHTML=`${Number(month)}<span>月</span>${Number(day)}<span>日</span>`;
         setText($('calendar-weekday'),new Intl.DateTimeFormat('zh-CN',{weekday:'long',timeZone:'Asia/Shanghai'}).format(date));
       }
+      window.dispatchEvent(new Event('classroom-day-change'));
     }
-    const lessonsChanged=!previous||value.scheduleKnown!==previous.scheduleKnown||value.lessons.length!==previous.lessons.length
-      ||value.lessons.some((lesson,index)=>{const old=previous.lessons[index];return lesson.name!==old.name||lesson.start!==old.start||lesson.end!==old.end||lesson.current!==old.current;});
-    if(lessonsChanged)$('lesson-list').innerHTML=value.lessons.length?value.lessons.map(l=>`<div class="lesson${l.current?' is-current':''}"${l.current?' aria-current="true"':''}><div class="lesson-heading"><strong title="${esc(l.name)}">${esc(l.name)}</strong>${l.current?'<span class="lesson-state">进行中</span>':''}</div><small>${esc(l.start)}${l.end?' - '+esc(l.end):''}</small></div>`).join(''):`<p class="schedule-empty">${value.scheduleKnown?'今天没有课程':'课表同步后显示全天课程'}</p>`;
+    const lessonsChanged=!previous||value.date!==previous.date||value.scheduleKnown!==previous.scheduleKnown||value.lessons.length!==previous.lessons.length
+      ||value.lessons.some((lesson,index)=>{const old=previous.lessons[index];return lesson.name!==old.name||lesson.start!==old.start||lesson.end!==old.end||lesson.current!==old.current||lesson.next!==old.next;});
+    if(lessonsChanged)renderLessons(value);
     const notice=value.notice;
     if(!previous||Boolean(previous.notice)!==Boolean(notice)){$('daily-course').hidden=Boolean(notice);$('shout-course').hidden=!notice;}
     if(notice){
@@ -105,14 +135,14 @@
   document.addEventListener('click',async event=>{
     const control=event.target.closest('[data-action],button[data-material]');if(!control||control.disabled)return;
     if(control.tagName==='A')event.preventDefault();
-    if(control.dataset.material){preference.material=control.dataset.material;saveAppearance();return;}
+    if(control.dataset.material){preference.material=control.dataset.material;if(preference.material==='glass')preference.reduceTransparency=false;saveAppearance();return;}
     const action=control.dataset.action;
     try{
       if(action==='home'){if(native)showView('home');else window.chrome?.webview?.postMessage('close');}
       else if(action==='management')showView('management');
       else if(action==='close-detail')$('detail-dialog').close();
       else if(action==='workshop')showDetail('创意工坊','<p>收集各学科的创意与互动作品，供课堂交流使用。</p><p>工坊正在筹备，敬请期待。</p>');
-      else if(action==='settings')showDetail('教室设置',`<div class="settings-row"><span>教室外观</span><div class="material-switch" role="group" aria-label="教室外观"><button data-material="glass" aria-pressed="${preference.material==='glass'}">液态玻璃</button><button data-material="white" aria-pressed="${preference.material==='white'}">原版白色</button></div></div><label class="settings-row"><span>降低透明度<small>使用更实的底色，让文字更清晰。</small></span><input type="checkbox" id="clear-setting" name="reduce-transparency"${preference.reduceTransparency?' checked':''}></label><div class="settings-actions"><button class="button soft" data-action="binding">教室绑定与连接</button><button class="button soft" data-action="island">教室浮岛</button></div>`);
+      else if(action==='settings')showDetail('教室设置',`<div class="settings-row"><span>教室外观</span><div class="material-switch" role="group" aria-label="教室外观"><button data-material="glass" aria-pressed="${preference.material==='glass'}">液态玻璃</button><button data-material="white" aria-pressed="${preference.material==='white'}">原版白色</button></div></div><label class="settings-row"><span>降低透明度<small>使用更实的底色，让文字更清晰。</small></span><input type="checkbox" id="clear-setting" name="reduce-transparency"${reducedTransparency()?' checked':''}></label><div class="settings-actions"><button class="button soft" data-action="binding">教室绑定与连接</button><button class="button soft" data-action="island">教室浮岛</button></div>`);
       else if(action==='voice'){
         showDetail('语音留言',`<div class="voice-message">
           <div class="detail-voice">${icon('mic')}</div>
@@ -124,7 +154,6 @@
         </div>`);
         voicePanel=true;renderVoice();
       }else if(action==='voice-toggle'){await request('voice');}
-      else if(action==='schedule')showDetail('全天课表',island?.lessons.length?`<div class="detail-timetable">${island.lessons.map(l=>`<div><strong>${esc(l.name)}</strong><small>${esc(l.start)}-${esc(l.end)}</small></div>`).join('')}</div>`:'<p>今天暂无课程，课表会在同步后显示。</p>');
       else if(action==='acknowledge')await request('acknowledge',{sequence:island?.notice?.sequence});
       else if(['reading','plan','banban','binding','island','about'].includes(action)){
         if(action==='reading')control.disabled=true;

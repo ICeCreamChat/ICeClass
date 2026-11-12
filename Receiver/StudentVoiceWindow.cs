@@ -52,6 +52,40 @@ public sealed class StudentVoiceWindow : Window
     private DateTimeOffset _startedAt;
     private bool _recording, _sending, _voiceSuccess;
     private string _voiceStatus = "", _duration = "最长 30 秒";
+    private string _appearanceDiagnostic = "教室首页外观：尚未载入。";
+    internal string DiagnosticState => _appearanceDiagnostic + "\n";
+    internal async Task<string> CollectDiagnosticStateAsync(CancellationToken token)
+    {
+        var text = new StringBuilder(DiagnosticState);
+        var core = _browser.Core;
+        if (core is null) return text.AppendLine("教室 WebView2：尚未初始化。").ToString();
+        try
+        {
+            text.AppendLine("教室 WebView2：" + core.Environment.BrowserVersionString);
+            if (!_loaded || !AllowedPage(core.Source)) return text.AppendLine("教室玻璃快照：页面尚未就绪。").ToString();
+            var result = await core.ExecuteScriptAsync("""
+                (() => {
+                  const body = document.body;
+                  const panes = [...document.querySelectorAll('.glass')];
+                  const visible = panes.filter(e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0);
+                  const lens = visible.map(e => e.querySelector(':scope > .glass-lens')).find(Boolean);
+                  const style = lens ? getComputedStyle(lens) : null;
+                  return [
+                    '教室玻璃快照：渲染=轻量静态；材料=' + body.dataset.material + '；透明度=' + body.dataset.classroomTransparency + '；降低透明度类=' + body.classList.contains('reduce-transparency'),
+                    '页面滤镜：定义=' + document.querySelectorAll('.classroom-filter-definitions filter').length + '；可见玻璃面=' + visible.length + '；镜片=' + (lens ? '有' : '无') + '；实际 backdrop-filter=' + (style?.backdropFilter || style?.webkitBackdropFilter || 'none'),
+                    '页面能力：背景模糊=' + CSS.supports('backdrop-filter', 'blur(1px)') + '；SVG 滤镜语法=' + CSS.supports('backdrop-filter', 'url(#diagnostic-filter)') + '；减少透明度=' + matchMedia('(prefers-reduced-transparency: reduce)').matches + '；减少动态=' + matchMedia('(prefers-reduced-motion: reduce)').matches + '；强制颜色=' + matchMedia('(forced-colors: active)').matches,
+                    '页面视口：' + innerWidth + '×' + innerHeight + '；像素比=' + devicePixelRatio + '；可见性=' + document.visibilityState
+                  ].join('\n');
+                })()
+                """).WaitAsync(TimeSpan.FromSeconds(2), token);
+            var snapshot = JsonSerializer.Deserialize<string>(result);
+            text.AppendLine(snapshot is { Length: <= 4096 } ? snapshot : "教室玻璃快照：返回结果无效。");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        { text.AppendLine("教室玻璃快照：读取未完成（" + error.GetType().Name + "）。"); }
+        return text.ToString();
+    }
     internal bool IsBusy => _recording || _sending || _homeworkBusy;
     internal bool HasHomeworkActivity => _homeworkBusy;
 
@@ -202,6 +236,14 @@ public sealed class StudentVoiceWindow : Window
                         _ready?.TrySetResult(true); break;
                     case "homework-activity": _homeworkBusy = message.GetProperty("busy").GetBoolean(); break;
                     case "homework-leave": _leaveResponse?.TrySetResult(message.GetProperty("safe").GetBoolean()); break;
+                    case "classroom-appearance":
+                        var appearance = message.GetProperty("state");
+                        var effective = appearance.GetProperty("effective").GetString() switch {
+                            "glass" => "液态玻璃", "white" => "原版白色", "reduced" => "降低透明度", "contrast" => "系统高对比度", _ => "未知" };
+                        var description = $"教室首页外观：实际={effective}；选择来源={appearance.GetProperty("source").GetString() switch { "classroom" => "教室设置", _ => "系统默认" }}；" +
+                            $"系统降低透明度={appearance.GetProperty("systemReducedTransparency").GetBoolean()}；强制颜色={appearance.GetProperty("forcedColors").GetBoolean()}";
+                        if (_appearanceDiagnostic != description) { _appearanceDiagnostic = description; AppLog.Info(description); }
+                        break;
                 }
                 return;
             }
@@ -367,7 +409,7 @@ public sealed class StudentVoiceWindow : Window
     }
 }
 
-internal sealed record ClassroomHomeLesson(string Name,string Start,string End,bool Current);
+internal sealed record ClassroomHomeLesson(string Name,string Start,string End,bool Current,bool Next);
 internal sealed record ClassroomHomeSnapshot(string Date,bool ScheduleKnown,List<ClassroomHomeLesson> Lessons,ClassroomIslandNotice? Notice)
 {
     internal static ClassroomHomeSnapshot Empty() => new(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd"),false,[],null);

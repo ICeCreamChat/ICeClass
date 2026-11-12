@@ -5,6 +5,9 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let data, selectedSubject = '', selectedItem = '', missing = new Set(), draftStatus = 'submitted';
   let search = '', onlyMissing = false, busy = false, pendingConfirm, feedbackTimer;
+  let refreshPending = false;
+  const dayFormat = new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
+  const today = () => window.ICeClassNativeHome ? window.ICeClassHost.date || data?.serverDate : dayFormat.format(new Date());
   const term = () => data?.value.terms.find(t => t.id === data.value.activeTermId);
   const subject = () => term()?.subjects.find(s => s.id === selectedSubject);
   const items = s => s?.items.filter(i => i.active) || [];
@@ -38,7 +41,7 @@
     return value;
   }
   function lock() {
-    modal.querySelectorAll('button,input').forEach(control => { control.disabled = busy; });
+    modal.querySelectorAll('button,input,select').forEach(control => { control.disabled = busy; });
     document.querySelectorAll('[data-action="homework"],[data-action="reload"]').forEach(control => {control.disabled = busy;});
     const unavailable = !item() || !roster().length;
     document.querySelector('[data-action="save-homework"]').disabled = busy || unavailable || (!dirty() && Boolean(record()));
@@ -46,6 +49,8 @@
     document.querySelector('[data-action="select-all"]').disabled = busy || unavailable || draftStatus === 'no_homework';
     $('no-homework').disabled = busy || unavailable;
     $('homework-date').disabled = busy || !data;
+    $('homework-subject').disabled = busy || !term()?.subjects.length;
+    $('homework-item').disabled = busy || !items(subject()).length;
     activity();
   }
   function ask(title, description, action = '放弃修改') {
@@ -60,7 +65,8 @@
     return !dirty() || await ask('有尚未保存的修改', '放弃本次修改并继续？已保存的记录会保留。');
   }
   async function load(selectedDate, guard = true) {
-    if (busy || guard && !await canLeave()) return false;
+    if (busy) return false;
+    if (guard && !await canLeave() || busy) return false;
     busy = true; lock(); feedback();
     try {
       const fresh = await api(selectedDate ? '?date=' + encodeURIComponent(selectedDate) : '');
@@ -70,15 +76,27 @@
       feedback(error.name === 'TimeoutError' ? '连接超时，请检查网络后重新载入。' : error.message);
       if (data) $('homework-date').value = data.date;
       return false;
-    } finally { busy = false; if (modal.open && data) updateCount(); lock(); }
+    } finally { busy = false; if (modal.open && data) updateCount(); lock(); resumeRefresh(); }
+  }
+  function resumeRefresh() {
+    if (refreshPending && !busy && !modal.open && !pendingConfirm && !dirty() && !document.hidden)
+      queueMicrotask(() => {void refreshToday();});
+  }
+  async function refreshToday(force = false) {
+    if (!force && !refreshPending && data?.date === today()) return true;
+    refreshPending = true;
+    if (busy || modal.open || pendingConfirm || dirty() || document.hidden) return false;
+    refreshPending = false;
+    return load(undefined, false);
   }
   function renderPage() {
     const count = data.records.filter(r => r.status === 'submitted').length;
-    $('class-context').textContent = `${data.className} · ${data.value.students.length} 人`;
+    $('class-context').textContent = `${data.value.students.length} 位同学`;
     $('student-count').textContent = `${data.value.students.length} 位同学`;
-    $('subject-count').textContent = `${term().subjects.length} 个学科`;
-    $('record-summary').textContent = data.records.length ? `已登记 ${count} 项 · 无作业 ${data.records.length-count} 项` : '今日尚未登记';
-    $('homework-description').textContent = `${data.className} · ${roster().length} 人 · 默认全部已交，取消勾选未交同学`;
+    $('subject-count').textContent = `${term().subjects.length} 科`;
+    const noHomework = data.records.length - count;
+    $('record-summary').textContent = data.records.length ? [count ? `已登记 ${count} 项` : '', noHomework ? `无作业 ${noHomework} 项` : ''].filter(Boolean).join(' · ') : '待登记';
+    $('record-summary').parentElement.classList.toggle('is-saved', data.records.length > 0);
     const label = term().label.replace(/(\d{4})\s*[–—－]\s*(\d{4})(?=\s*学年)/g,'$1-$2');
     window.dispatchEvent(new CustomEvent('homework-context',{detail:{className:data.className,term:label}}));
   }
@@ -90,14 +108,14 @@
     draftStatus = saved?.status || 'submitted'; search = ''; onlyMissing = false;
   }
   function renderSubjects() {
-    $('subject-navigation').innerHTML = (term()?.subjects || []).map(s => `<button class="subject-button" data-subject="${esc(s.id)}" aria-pressed="${s.id === selectedSubject}"><span class="subject-letter" aria-hidden="true">${esc(s.name[0])}</span>${esc(s.name)}</button>`).join('');
+    $('homework-subject').innerHTML = (term()?.subjects || []).map(s => `<option value="${esc(s.id)}"${s.id === selectedSubject ? ' selected' : ''}>${esc(s.name)}</option>`).join('') || '<option value="">暂无学科</option>';
   }
   function renderItems() {
-    $('assignment-title').textContent = subject() ? `${subject().name}作业` : '选择学科';
-    $('assignment-tabs').innerHTML = items(subject()).map(i => {
-      const saved = record(i.id), current = i.id === selectedItem;
-      return `<button class="assignment-tab${saved ? ' has-saved' : ''}" data-item="${esc(i.id)}" aria-pressed="${current}"${saved?.status === 'no_homework' ? ' title="已登记本次无作业"' : ''}>${esc(i.name)}${current && dirty() ? '<span class="sr-only">，尚未保存</span>' : ''}</button>`;
-    }).join('');
+    $('homework-item').innerHTML = items(subject()).map(i => {
+      const saved = record(i.id);
+      const status = saved?.status === 'no_homework' ? ' · 无作业' : saved ? ' · 已登记' : '';
+      return `<option value="${esc(i.id)}"${i.id === selectedItem ? ' selected' : ''}>${esc(i.name)}${status}</option>`;
+    }).join('') || '<option value="">暂无作业项目</option>';
   }
   function renderRoster() {
     const none = draftStatus === 'no_homework', students = roster();
@@ -124,11 +142,12 @@
     lock();
   }
   function render() {
+    $('homework-title').textContent = data.date === data.serverDate ? '登记今日作业' : '登记作业';
     $('homework-date').value = data.date; $('homework-date').max = data.serverDate;
     $('student-search').value = search; $('missing-filter').setAttribute('aria-pressed', String(onlyMissing));
     renderSubjects(); renderItems(); renderRoster();
     const historical = record() && JSON.stringify(record().students) !== JSON.stringify(data.value.students);
-    $('homework-description').textContent = `${data.className} · ${roster().length} 人 · ${historical ? '沿用首次登记名单，补交请按此核对' : '默认全部已交，取消勾选未交同学'}`;
+    $('homework-description').textContent = historical ? `沿用首次登记的 ${roster().length} 位同学，补交请按此核对。` : `${roster().length} 位同学，默认全部已交，取消勾选未交同学。`;
   }
   async function save(status = draftStatus) {
     if (busy || !item() || !roster().length) return;
@@ -141,23 +160,17 @@
       prepare(selectedSubject, selectedItem); renderPage(); render(); feedback('登记已保存，教师端可查看。', true);
     } catch (error) {
       feedback(['TimeoutError','TypeError'].includes(error.name) ? '保存结果尚未确认。当前选择已保留，请联网后重新载入核对。' : error.message);
-    } finally { busy = false; updateCount(); }
+    } finally { busy = false; updateCount(); resumeRefresh(); }
   }
-  async function close() { if (await canLeave()) {prepare('', ''); modal.close(); activity();} }
+  async function close() { if (await canLeave()) {prepare('', ''); modal.close(); activity(); await refreshToday();} }
   document.addEventListener('click', async event => {
     const button = event.target.closest('button'); if (!button || button.disabled) return;
     try {
       const action = button.dataset.action;
-      if (button.dataset.subject || button.dataset.item) {
-        if (!await canLeave()) return;
-        const key = button.dataset.subject ? 'subject' : 'item', value = button.dataset[key];
-        prepare(button.dataset.subject || selectedSubject, button.dataset.item || ''); feedback(); render();
-        [...modal.querySelectorAll(`[data-${key}]`)].find(b => b.dataset[key] === value)?.focus({preventScroll:true});
-        document.querySelector('.roster-scroll').scrollTop = 0;
-      } else if (action === 'homework') {
+      if (action === 'homework') {
         if (await load(undefined, false)) {render(); modal.showModal(); feedback(); $('homework-title').focus(); activity();}
       } else if (action === 'close-homework') await close();
-      else if (action === 'reload') await load(data?.date);
+      else if (action === 'reload') await (modal.open ? load(data?.date) : refreshToday(true));
       else if (action === 'save-homework') await save();
       else if (action === 'no-homework') {
         if (draftStatus === 'no_homework') {draftStatus='submitted';missing.clear();feedback();render();}
@@ -165,6 +178,19 @@
       } else if (action === 'restore-assignment') {draftStatus='submitted';missing.clear();feedback();render();}
       else if (action === 'select-all') {missing.clear();if ($('entry-feedback').classList.contains('success')) feedback();renderItems();renderRoster();}
     } catch (error) {feedback(error.message);}
+  });
+  modal.addEventListener('change', async event => {
+    const control = event.target;
+    if (!['homework-subject', 'homework-item'].includes(control.id)) return;
+    const isSubject = control.id === 'homework-subject', value = control.value;
+    const previous = isSubject ? selectedSubject : selectedItem;
+    if (value === previous) return;
+    try {
+      if (!await canLeave()) {control.value = previous; control.focus({preventScroll:true}); return;}
+      prepare(isSubject ? value : selectedSubject, isSubject ? '' : value);
+      feedback(); render(); control.focus({preventScroll:true});
+      modal.querySelector('.roster-scroll').scrollTop = 0;
+    } catch (error) {control.value = previous; feedback(error.message);}
   });
   $('homework-date').addEventListener('change', async event => {if (event.target.value) await load(event.target.value);if (data) event.target.value=data.date;});
   $('student-search').addEventListener('input', event => {search=event.target.value.trim();renderRoster();});
@@ -181,6 +207,11 @@
   modal.addEventListener('cancel',event=>{event.preventDefault();void close();});
   modal.addEventListener('click',event=>{if(event.target!==modal)return;const r=modal.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)void close();});
   window.addEventListener('beforeunload',event=>{if(dirty()||busy){event.preventDefault();event.returnValue='';}});
-  window.ICeClassHomework={prepareToLeave:canLeave,reload:()=>load(undefined,false)};
+  window.addEventListener('classroom-day-change',()=>{void refreshToday();});
+  window.addEventListener('classroom-view-change',event=>{if(event.detail==='management')void refreshToday();});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshToday();});
+  // Standalone embedded pages do not receive native island date events.
+  if (!window.ICeClassNativeHome) setInterval(()=>{if(!document.hidden)void refreshToday();},60000);
+  window.ICeClassHomework={prepareToLeave:canLeave,reload:()=>refreshToday(true)};
   load(undefined,false);
 })();

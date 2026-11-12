@@ -24,7 +24,8 @@ def create_archives(root: Path, output: Path):
     core = entries['ICeClass.exe']
     classroom_manifest = json.loads((receiver / 'manifest.json').read_text('utf-8-sig'))
     teacher_manifest = json.loads((teacher / 'manifest.json').read_text('utf-8-sig')) if teacher.exists() else None
-    if classroom_manifest['version'] != plan['version'] or (teacher_manifest is not None and teacher_manifest['version'] != plan['version']):
+    teacher_plan = json.loads((teacher / 'update-plan.json').read_text('utf-8-sig')) if teacher_manifest is not None else None
+    if classroom_manifest['version'] != plan['version'] or (teacher_manifest is not None and teacher_manifest['version'] != teacher_plan['version']):
         raise ValueError('Client release versions do not match')
     manifests = [core, classroom_manifest]
     if teacher_manifest is not None:
@@ -73,8 +74,9 @@ def create_archives(root: Path, output: Path):
                         ]}, ensure_ascii=False))
                 preparation = ('已包含本客户端所需的全部离线语音资源。' if offline else
                     '这是轻量安装包。语音资源会在课间空闲时自动下载，也可在程序内点击“下载语音资源”。')
+                client_version = plan['version'] if classroom else teacher_manifest['version']
                 archive.writestr(prefix + '一步使用说明.txt', '\ufeff' + '\r\n'.join([
-                    'ICeClass 班伴 ' + plan['version'], preparation,
+                    'ICeClass 班伴 ' + client_version, preparation,
                     '完整解压后运行安装脚本；直接运行 EXE 也请保留同目录文件。',
                     '资源未就绪时仍可使用文字和原声录音等功能；语音准备页面显示进度，可暂停、重试和续传。',
                     '已有程序先从托盘退出再安装，绑定、账号资料和设置会保留。',

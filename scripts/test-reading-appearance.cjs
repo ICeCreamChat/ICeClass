@@ -130,20 +130,17 @@ test('carving: pinned meter continues following input after the top toolbar hide
   await page.waitForFunction(() => Number(document.querySelector('#reading-speed-editor [data-carving-volume-value]').textContent) <= 15, undefined, { timeout: 2000 });
 });
 
-test('glass resources follow hidden pages and are restored on reopening', async t => {
+test('lightweight reading material stays filter-free across hidden pages and reopening', async t => {
   const { page } = await open(t);
-  const retained = () => page.evaluate(() => [...document.querySelectorAll('.lg-pane')].filter(element => {
-    const box = element.getBoundingClientRect();
-    return (!box.width || !box.height) && element.querySelector(':scope > .lg-lens')?.style.backdropFilter.includes('url(');
-  }).length);
   for (let round = 0; round < 2; ++round) {
     await startMode(page, 'carving');
-    await page.waitForFunction(() => document.querySelector('.carving-sidebar > .lg-lens')?.style.backdropFilter.includes('url('));
+    await page.locator('#carving-controls.lg-pane').waitFor();
+    assert.equal(await page.locator('.classroom-filter-definitions filter,.lg-lens').count(), 0);
+    assert.equal(await page.locator('#carving-controls').evaluate(e => getComputedStyle(e).backdropFilter), 'none');
     await page.mouse.move(800, 2);
     await page.locator('#choose-mode').click();
     await page.locator('#home-view').waitFor();
-    await page.waitForTimeout(150);
-    assert.equal(await retained(), 0, 'Hidden page surfaces release their optical textures and filters');
+    assert.equal(await page.locator('.classroom-filter-definitions filter,.lg-lens').count(), 0);
   }
 });
 
@@ -176,26 +173,25 @@ for (const offline of [false, true]) {
 }
 
 for (const teacher of [false, true]) {
-  test(`${teacher ? 'teacher' : 'classroom'} shared glass: hide, restore and label replacement keep one valid lens`, async t => {
+  test(`${teacher ? 'teacher' : 'classroom'} shared glass: hide, restore and label replacement preserve the material`, async t => {
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
-    await page.setContent(`<html class="${teacher ? '' : 'bb-native-voice-page'}"><body class="${teacher ? 'teacher-liquid' : ''}"><div id="surface" class="${teacher ? 'metric' : 'bb-header'}" style="width:320px;height:140px;border-radius:20px">操作内容</div></body></html>`);
+    await page.setContent(`<html class="${teacher ? '' : 'bb-native-voice-page'}"><body class="${teacher ? 'teacher-liquid' : ''}"><div id="surface" class="${teacher ? 'topbar' : 'bb-header'}" style="width:320px;height:140px;border-radius:20px">操作内容</div></body></html>`);
     if (!teacher) await page.evaluate(() => { window.ICeClassVoiceHost = { classroomAccount: true }; });
     await page.addStyleTag({ path: path.join(root, 'assets', 'classroom-glass.css') });
     await page.addScriptTag({ path: path.join(root, 'assets', 'classroom-glass.js') });
     const filters = () => page.locator('.classroom-filter-definitions filter').count();
-    await page.waitForFunction(() => document.querySelectorAll('.classroom-filter-definitions filter').length === 1);
+    const count = 0;
+    await page.waitForFunction(n => document.querySelectorAll('.classroom-filter-definitions filter').length === n, count);
     await page.locator('#surface').evaluate(element => { element.style.display = 'none'; });
     await page.waitForFunction(() => document.querySelectorAll('.classroom-filter-definitions filter').length === 0);
     await page.locator('#surface').evaluate(element => { element.style.display = ''; });
-    await page.waitForFunction(() => document.querySelectorAll('.classroom-filter-definitions filter').length === 1);
+    await page.waitForFunction(n => document.querySelectorAll('.classroom-filter-definitions filter').length === n, count);
     await page.locator('#surface').evaluate(element => { element.textContent = '操作已更新'; });
-    if (!teacher) {
-      await page.locator('#surface > .lg-lens').waitFor({ state: 'attached' });
-      assert.equal(await page.locator('#surface > .lg-lens').count(), 1);
-    }
-    assert.equal(await filters(), 1);
+    assert.equal(await page.locator('#surface > .lg-lens').count(), 0, 'Static panes need no extra lens layer');
+    assert.equal(await page.locator('#surface').evaluate(e => getComputedStyle(e).backdropFilter), 'none');
+    assert.equal(await filters(), count);
   });
 }
 

@@ -32,6 +32,7 @@ class ClientArchiveTests(unittest.TestCase):
                 (folder / 'manifest.json').write_text(json.dumps({'version': '2.5.5', 'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()}))
                 for script in ['install.ps1', '安装或升级.cmd', '安装到本机.cmd', 'install-voice-resources.ps1']:
                     (folder / script).write_text('fixture installer')
+            (teacher / 'update-plan.json').write_text(json.dumps({'version': '2.5.5', 'files': []}))
             output = root / 'downloads'
             module.create_archives(root, output)
             with zipfile.ZipFile(output / 'ICeClass-classroom.zip') as archive:
@@ -49,6 +50,23 @@ class ClientArchiveTests(unittest.TestCase):
                 self.assertEqual(archive.read('Windows教师端/VoiceResources/Asr/model.int8.onnx'), b'model')
                 metadata = json.loads(archive.read('Windows教师端/voice-resources.json'))
                 self.assertEqual([f['path'] for f in metadata['files']], [f['path'] for f in files[1:]])
+            teacher_manifest = json.loads((teacher / 'manifest.json').read_text())
+            teacher_manifest['version'] = '2.5.4'
+            (teacher / 'manifest.json').write_text(json.dumps(teacher_manifest))
+            (teacher / 'update-plan.json').write_text(json.dumps({'version': '2.5.4', 'files': []}))
+            independent = root / 'independent-downloads'
+            module.create_archives(root, independent)
+            for kind in ('teacher', 'teacher-offline'):
+                with zipfile.ZipFile(independent / f'ICeClass-{kind}.zip') as archive:
+                    instructions = archive.read('Windows教师端/一步使用说明.txt').decode('utf-8-sig')
+                    self.assertIn('ICeClass 班伴 2.5.4', instructions)
+                    self.assertNotIn('2.5.5', instructions)
+            with zipfile.ZipFile(independent / 'ICeClass-classroom.zip') as archive:
+                self.assertIn('ICeClass 班伴 2.5.5', archive.read(prefix + '一步使用说明.txt').decode('utf-8-sig'))
+            (teacher / 'update-plan.json').write_text(json.dumps({'version': '2.5.3', 'files': []}))
+            with self.assertRaises(ValueError):
+                module.create_archives(root, root / 'mismatched-downloads')
+            (teacher / 'update-plan.json').write_text(json.dumps({'version': '2.5.4', 'files': []}))
             (receiver / 'payloads' / files[1]['sha256']).write_bytes(b'wrong')
             with self.assertRaises(ValueError):
                 module.create_archives(root, root / 'invalid-downloads')

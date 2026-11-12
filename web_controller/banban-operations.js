@@ -12,7 +12,8 @@
     rotationSeconds:'轮播秒数', automation:'自动化', trigger:'触发时机', value:'设置值', minute:'时间', label:'名称', subject:'课程',
     teacher:'教师', room:'地点', weekday:'星期', weekType:'单双周', cancelled:'取消', bindingNote:'绑定备注', verified:'已核实', changes:'班级更名',
     url:'网站', page:'页码', query:'课件名称', find:'查找文字', application:'应用', file:'课件', control:'控件', note:'绑定备注', classNames:'授权班级',
-    targetClassName:'改绑到班级', slotId:'作息时段', week:'单双周'};
+    targetClassName:'改绑到班级', slotId:'作息时段', week:'单双周', deviceLimit:'每台教室设备 / 月',
+    accountLimit:'每个教师账号 / 月', individualLimits:'单独上限', monthlyLimit:'每月次数'};
   const values = {teacher:'班主任', subject_teacher:'任课老师', grade_leader:'年级部', director:'主任', principal:'校长', info:'普通', warning:'重要', urgent:'紧急',
     reading:'晨读', history:'通知', voice:'来音', all:'每周', odd:'单周', even:'双周', light:'浅色', dark:'深色', system:'跟随系统'};
   let root = null, timer = 0, epoch = 0, navigatingPage = false, documentClientId;

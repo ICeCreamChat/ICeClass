@@ -406,10 +406,11 @@ internal sealed class ClassroomIslandService : IDisposable, IShoutPresenter
         var localNow = now.ToOffset(TimeSpan.FromHours(8));
         var lessons = profile is not null ? IslandSchedule.On(profile, DateOnly.FromDateTime(localNow.DateTime)) : [];
         var current = lessons.FirstOrDefault(l => l.At(l.Slot.Start) <= now && now < l.At(l.Slot.End));
+        var nextLesson = lessons.FirstOrDefault(l => l.At(l.Slot.Start) > now);
         HomeState = new ClassroomHomeSnapshot(localNow.ToString("yyyy-MM-dd"), ScheduleKnown,
             lessons.Select(l => new ClassroomHomeLesson(l.Lesson.Subject,
                 $"{l.Slot.Start / 60:00}:{l.Slot.Start % 60:00}", $"{l.Slot.End / 60:00}:{l.Slot.End % 60:00}",
-                l == current)).ToList(), view.Notice);
+                l == current, l == nextLesson)).ToList(), view.Notice);
         HomeStateChanged?.Invoke(HomeState);
         var lessonHidden = profile is not null && IslandSchedule.HiddenDuringLesson(profile, now);
         if (profile?.Visibility is null && _local.Appearance?.HideDuringLessons == true && current is not null) lessonHidden = true;

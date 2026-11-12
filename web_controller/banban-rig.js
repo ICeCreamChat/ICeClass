@@ -260,6 +260,7 @@
     const canvas=document.createElement('canvas');canvas.className='bb-canvas';canvas.setAttribute('aria-hidden','true');
     let disposed=false, ready=false, failed=false, paused=false, reduced=false, current=null, paint=null, raf=0, last=0, lastDraw=0;
     let resizeObserver=null, mutationObserver=null, rect=null, drawn=0;
+    let continuous=false, wakeUntil=0, lookX=0, lookY=0;
     const visible=slot=>slot.isConnected && !slot.closest('[hidden]') && slot.getBoundingClientRect().width>0;
     function size() {
       if(!current)return;
@@ -275,9 +276,11 @@
       if(!last)last=now;
       const dt=(now-last)/1000;
       if(!lastDraw||now-lastDraw>=32){const p=model.step(dt);last=now;lastDraw=now;paint(p);canvas.dataset.frame=String(++drawn);}
-      raf=requestAnimationFrame(tick);
+      if(continuous||now<wakeUntil)raf=requestAnimationFrame(tick);
+      else {last=0;lastDraw=0;}
     }
     function resume(){if(!disposed&&ready&&!paused&&!reduced&&current&&!document.hidden&&!raf)raf=requestAnimationFrame(tick);}
+    function wake(){wakeUntil=performance.now()+700;resume();}
     function refresh(){
       if(disposed)return;
       const next=slots.find(visible)||null;
@@ -285,14 +288,15 @@
         stop();current?.classList.remove('bb-rig-mounted');resizeObserver?.disconnect();current=next;
         if(current&&ready){current.append(canvas);current.classList.add('bb-rig-mounted');resizeObserver?.observe(current);size();drawStatic();}
       }
-      if(!current||document.hidden||paused||reduced)stop();else resume();
+      if(!current||document.hidden||paused||reduced)stop();else wake();
     }
     function update(state){
       if(disposed)return;
       const wasReduced=reduced;reduced=!!state.reduced;paused=!!state.paused;
+      continuous=!!state.gesture||['thinking','waiting','answering','dragging'].includes(state.state);
       model.update(state);refresh();
       if(reduced&&!wasReduced){stop();drawStatic();}else if(reduced)drawStatic();
-      else if(!paused)resume();
+      else if(!paused)wake();
     }
     textures().then(images=>{
       if(disposed)return;
@@ -306,7 +310,9 @@
     }).catch(()=>{failed=true;root.dataset.bbRenderer='portrait';});
     document.addEventListener('visibilitychange',refresh);
     return {
-      update, refresh, look(x,y){model.look(x,y);}, drag(value){model.drag(value);}, pet(){model.pet();}, text(){model.text();},
+      update, refresh,
+      look(x,y){if(x===lookX&&y===lookY)return;lookX=x;lookY=y;model.look(x,y);wake();},
+      drag(value){model.drag(value);wake();}, pet(){model.pet();wake();}, text(){model.text();wake();},
       dispose(){disposed=true;stop();resizeObserver?.disconnect();mutationObserver?.disconnect();document.removeEventListener('visibilitychange',refresh);current?.classList.remove('bb-rig-mounted');canvas.remove();},
       // Read-only inspection aids local acceptance; never includes conversation data.
       status:()=>({ready,failed,frames:drawn,animating:!!raf,slot:current?.parentElement?.id||'',pose:model.snapshot()})

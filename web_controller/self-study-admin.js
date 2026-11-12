@@ -256,7 +256,7 @@
     clearInterval(timer);timer=undefined;root.replaceChildren();
   }
   function ready() {
-    const nav=document.querySelector('[data-view="self-study"]');nav.classList.toggle('hidden',!allowed());
+    const nav=document.querySelector('[data-view="self-study"]');
     if(!allowed()){destroy();return;}
     if(owner!==app().state.user.id)destroy();
     owner=app().state.user.id;clearInterval(timer);timer=setInterval(poll,20000);void poll();

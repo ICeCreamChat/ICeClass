@@ -8,10 +8,11 @@
 
 ## 当前版本
 
-当前源码版本为 **2.5.11**，包含自习声音与阶段可视化、可调识别和提醒规则、教师液态玻璃工作台及自习管理新布局，保留班级作业统计、课表浮岛、班班、批量设置、诊断、轻量安装和增量更新功能。
+当前教师端源码版本为 **2.5.15**，教室端为 **2.5.16**，使用轻量静态蓝白材质，取消网页和原生窗口的折射贴图、背景模糊、浮岛背景采集及额外模糊窗口。保留声波、阶段渐变、通知、白色外观和无障碍选项，并合并教室课表、班级管理与作业登记新版界面，以及两端连接、数据刷新和退出登录的稳定性修复。服务端业务版本仍为 **2.5.11**。
 
 近期源码改进：
 
+- **班班月度次数与账号设置**：超级管理员可设置教室设备、教师账号的默认月度上限及单独上限，每月按北京时间自动切换额度；账号设置按分区展示，保留已有权限、绑定和设置。见[班班功能接入](docs/班班功能接入.md)。
 - **作业统计**：教室端按学科和作业登记已交、未交及无作业状态；教师端维护名单与学期预设，按作业或学生查询并导出 CSV。补交保留原名单快照，版本冲突不会覆盖他人修改。见[作业统计](docs/作业统计.md)。
 - **晚自习管理**：复用浮岛课表的第二节晚自习，本地筛选疑似交谈，少量文字由现有 AI 限额复核；先提醒，持续异常再上报班主任。默认关闭，启用需完成告知授权。见[晚自习管理](docs/晚自习管理.md)。
 - **教室端液态玻璃**：首页、班级管理、创意计划、早读、设置和关于使用统一材料，文字与控件保持清晰；浮岛可切回原版白色外观。见[教室端液态玻璃](docs/教室端液态玻璃.md)和[内页改造](docs/教室端内页液态玻璃.md)。
@@ -193,7 +194,7 @@ Windows 教师端的“反馈”支持问题描述、可选联系方式、诊断
 
 按修改范围选择验证命令，完整回归入口如下：
 
-Windows 教室端源码构建需要 .NET 8 SDK、Visual Studio C++ x64 Build Tools 和 Windows SDK（含 C++/WinRT 头文件）。`Receiver` 构建会自动编译背景取样 DLL，并随单文件 EXE 打包；教室电脑无需安装这些开发工具。液态玻璃最多以 25 帧/秒取样，无法确认完整背景或持续绘制开销超出预算时保留轻量玻璃。
+Windows 教室端源码构建使用 .NET 8 SDK；教室电脑无需安装开发工具。两端使用静态蓝白材质，保留透明度和外观偏好，不编译背景取样 DLL，也不持续采集背景或执行折射、模糊处理。
 
 ```powershell
 python -m pip install -r server/requirements.txt
@@ -204,17 +205,23 @@ npm run typecheck
 npm test
 node scripts/test-auth-mascot.cjs
 node scripts/test-banban-voice.cjs
+node --test scripts/test-banban-quota.cjs
 
 python -m unittest discover -s tests -p "test_*.py" -v
 powershell.exe -NoProfile -File tests/test_classroom_installer_defaults.ps1 -OutputDirectory output/installer-defaults-check
 
 dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile
+dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile -- --connection-checks
+dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile -- --ribbon-rendering-checks
+node --test scripts/test-classroom-resilience.cjs
 dotnet run --project tests/DesktopChecks/DesktopChecks.csproj -c Release --no-launch-profile
 dotnet run --project tests/UpdateChecks/UpdateChecks.csproj -c Release --no-launch-profile
 powershell.exe -NoProfile -File scripts/test-desktop-update.ps1
 ```
 
 本地验收服务、媒体和模拟设备用于验证相应路径，不能代替真实白板触摸、远场语音和学校网络验收。历史报告中的检查数量只代表对应轮次。
+
+教室连接检查使用本地隔离 WebSocket，覆盖应用心跳失联、正常空闲、重连、改绑和退出，按实际 20 秒心跳与 60 秒回复超时运行，约需 90 秒。绘制检查验证准备倒计时的重复绘制成本；网页回归覆盖跨天摘要、历史登记、未保存选择及请求失败后的恢复。
 
 ## 构建与打包
 

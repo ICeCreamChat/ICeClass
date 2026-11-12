@@ -92,7 +92,7 @@ test('Clearing a search restores the roster and a miss displays feedback', async
   assert.equal(await page.locator('#empty-roster').isVisible(), true);
   await search.fill('   ');
   assert.deepEqual(await names(page), ['张三', '张思远', '李四', '单乐', '吕小明']);
-  await page.locator('[data-action="close-homework"]').click();
+  await page.getByRole('button', {name:'关闭作业登记',exact:true}).click();
   assert.equal(await page.locator('#confirm-dialog').isVisible(), false, 'Searching does not create a submission draft');
 });
 

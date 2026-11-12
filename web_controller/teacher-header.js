@@ -82,7 +82,8 @@
     const settings = $('mainNav').querySelector('[data-view="settings"]');
     settings.click();
     if (!settings.classList.contains('active')) return;
-    (button.dataset.headerAccount === 'password' ? $('currentPassword') : $('mainContent')).focus({preventScroll: false});
+    if (button.dataset.headerAccount === 'password') window.ICeClassSettings?.select('account');
+    (button.dataset.headerAccount === 'password' ? $('currentPassword') : $('mainContent')).focus({preventScroll:false});
   }));
   $('logoutButton').addEventListener('click', () => closeMenus(true));
   $('menuToggle').addEventListener('click', () => closeMenus());

@@ -43,7 +43,7 @@
     });
   });
   document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
     document.querySelectorAll('.action-menu[open]').forEach(menu => {
       event.preventDefault(); menu.open = false; menu.querySelector('summary').focus();
     });
@@ -67,7 +67,7 @@
     }
   });
   document.addEventListener('keydown', event => {
-    if (!mobile.matches || !document.body.classList.contains('nav-open')) return;
+    if (!mobile.matches || !document.body.classList.contains('nav-open') || document.querySelector('dialog[open]')) return;
     if (event.key === 'Escape') { event.preventDefault(); closeNav(true); }
     if (event.key !== 'Tab') return;
     const items = [...$('appSidebar').querySelectorAll('button, a')].filter(n => n.getClientRects().length && !n.disabled);
@@ -111,11 +111,6 @@
     $('userAvatar').textContent = avatarLabel(user);
     $('userAvatar').title = user.displayName + '（' + user.username + '）';
     syncNavigation();
-    if (window.ICeClass.state.preview && !document.getElementById('previewNotice')) {
-      const notice = document.createElement('p'); notice.id = 'previewNotice'; notice.className = 'preview-notice';
-      notice.textContent = '本地验收 · 当前展示演示数据。';
-      $('mainContent').prepend(notice);
-    }
   });
   syncNavigation();
 })();

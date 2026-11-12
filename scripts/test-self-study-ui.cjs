@@ -4,7 +4,7 @@ const path = require('node:path');
 const fixturePhoto = require('node:fs').readFileSync(path.join(__dirname,'..','branding','banban','thinking.jpg'));
 const {test,before,after} = require('node:test');
 const {chromium} = require('playwright');
-const {open,navigate} = require('./test-teacher-ui.cjs');
+const {open,navigate,settingsSection} = require('./test-teacher-ui.cjs');
 let browser;
 before(async()=>{browser=await chromium.launch({channel:'msedge',headless:true});});
 after(async()=>{await browser?.close();});
@@ -277,7 +277,7 @@ test('The approved layout aligns its controls and stays inside glass and white v
   const {page}=await setup(t,{width:1440,photo:true});
   for(const material of ['液态玻璃','原版白色']){
     if(material==='原版白色'){
-      await navigate(page,'settings');await page.getByRole('radio',{name:material,exact:true}).check();await navigate(page,'self-study');
+      await settingsSection(page,'appearance');await page.getByRole('radio',{name:material,exact:true}).check();await navigate(page,'self-study');
       await page.locator('#ss-trigger').waitFor();
     }
     for(const width of [1440,1280,1024,768,390,320]){

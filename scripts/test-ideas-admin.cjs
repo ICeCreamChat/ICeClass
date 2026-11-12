@@ -18,6 +18,7 @@ class Events {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
     this.listeners.get(type).push(callback);
   }
+  dispatchEvent(event) { return !this.emit(event.type, event).defaultPrevented; }
   emit(type, values = {}) {
     const event = {
       type, target: this, defaultPrevented: false, stopped: false,
@@ -198,16 +199,20 @@ function deferred() {
 
 function logoutHandler(h) {
   const html = fs.readFileSync(path.join(__dirname, '../web_controller/index.html'), 'utf8');
-  const handler = html.match(/\$\("logoutButton"\)\.addEventListener\("click", async \(\) => \{([\s\S]*?)\r?\n        \}\);/);
+  const handler = html.match(/\$\("logoutButton"\)\.addEventListener\("click", async event => \{([\s\S]*?)\r?\n        \}\);/);
   assert.ok(handler, 'Exercise the actual logout handler from index.html');
   const requests = [];
   let reloads = 0;
-  const click = vm.runInNewContext(`(async () => {${handler[1]}\n})`, {
+  const button = new Element('button');
+  const handlerFunction = vm.runInNewContext(`(async event => {${handler[1]}\n})`, {
     window: h.window,
+    $: () => button,
+    Event,
+    toast: message => { throw new Error(message); },
     api: async (url, options) => { requests.push({ url, ...options }); return {}; },
     location: { reload() { reloads++; } }
   });
-  return { click, requests, reloads: () => reloads };
+  return { click: () => handlerFunction({currentTarget: button}), requests, reloads: () => reloads };
 }
 
 test('global app integration renders private text safely, counts, labels, and pagination', async () => {

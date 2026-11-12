@@ -11,7 +11,7 @@
 .island-ribbon[data-theme=light] .ir-weekday { color: #455d7b; }
 .island-ribbon[data-material=glass] { --ir-surface: rgb(20 39 59 / 72%); --ir-active: rgb(178 219 255 / 14%); --ir-cue: rgb(24 66 82 / 72%); --ir-cue-ink: #effcff; }
 .island-ribbon[data-material=glass][data-theme=light] { --ir-surface: rgb(226 243 255 / 50%); --ir-active: rgb(242 250 255 / 55%); --ir-cue: rgb(209 237 255 / 68%); --ir-cue-ink: #1c517f; }
-.island-ribbon[data-material=glass] :is(.ir-date, .ir-courses, .ir-message) { backdrop-filter: blur(18px) saturate(1.3); background-image: linear-gradient(160deg, #ffffff38, #ffffff05 48%, #a3d8ff16); box-shadow: inset 0 1px 1px #ffffffb3, inset 0 -1px 1px #40688940; }
+.island-ribbon[data-material=glass] :is(.ir-date, .ir-courses, .ir-message) { backdrop-filter: none; background-image: linear-gradient(160deg, #ffffff38, #ffffff05 48%, #a3d8ff16); box-shadow: inset 0 1px 1px #ffffffb3, inset 0 -1px 1px #40688940; }
 .ir-layer { position: absolute; inset: 0; display: flex; gap: 12px; align-items: stretch; overflow: hidden; border-radius: 24px; }
 .ir-layer { right: auto; width: 100%; }
 .ir-divider { position: relative; flex: 0 0 var(--ir-divider-size, 12px); height: 36px; }

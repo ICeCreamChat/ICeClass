@@ -2,6 +2,9 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args is ["--connection-checks"]) { CloudConnectionChecks.Run(); return; }
+if (args is ["--ribbon-rendering-checks"]) { RibbonRenderingChecks.Run(); return; }
+
 if (args is ["--self-study-checks"])
 {
     try { SelfStudyChecks.Run(); }
@@ -208,15 +211,7 @@ if (args is ["--island-material-review"]) { NativeIslandLayoutReview.PreviewMate
 if (args is ["--self-study-island-checks", var noticeOutput]) { NativeSelfStudyNoticeChecks.Run(noticeOutput); return; }
 if (args is ["--self-study-island-review", var noticeReviewOutput]) { NativeSelfStudyNoticeChecks.Run(noticeReviewOutput, preview: true); return; }
 if (args is ["--island-glass-bounds"]) { NativeIslandGlassChecks.Run(); return; }
-if (args is ["--island-refraction-probe"]) { NativeIslandRefractionProbe.Run(); return; }
-if (args is ["--island-refraction-checks", var refractionOutput]) { NativeIslandRefractionChecks.Run(refractionOutput); return; }
-if (args is ["--island-refraction-performance", var refractionPerformance]) { NativeIslandRefractionChecks.Run(refractionPerformance, true); return; }
-if (args is ["--island-refraction-shader"])
-{
-    try { IslandRefractionShaderChecks.Run(); }
-    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
-    return;
-}
+if (args is ["--island-material-performance", var materialPerformance]) { IslandMaterialPerformance.Run(materialPerformance); return; }
 if (args is ["--island-settings-review", var settingsOutput]) { NativeIslandSettingsReview.Run(settingsOutput); return; }
 if (args is ["--computer-control-review", var computerOutput]) { NativeComputerControlReview.Run(computerOutput); return; }
 if (args is ["--general-computer-review", var generalOutput]) { GeneralComputerControlReview.Run(generalOutput); return; }

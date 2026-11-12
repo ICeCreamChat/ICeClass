@@ -1,16 +1,12 @@
 /* Keep the approved layout and font family; make small operational text readable. */
 body{font-size:17px}
-.brand small,.class-heading p,.connection,.card-top p,.card-footnote,.entry-text p,.entry-meta,.management-hint,.app-footer,.view-toolbar>span{font-size:16px;line-height:1.65}
+.brand small,.class-heading p,.connection,.card-top p,.card-footnote,.app-footer,.view-toolbar>span{font-size:16px;line-height:1.65}
 .button,.text-button,.nav-content button{font-size:17px}
-.duration-label,.coming-soon,.app-footer .text-button,.shout-copy small,.back-button,.empty-roster,.toast,.detail-content .demo-note,.activity-list button,.settings-row,.settings-row small{font-size:16px;line-height:1.65}
+.duration-label,.coming-soon,.app-footer .text-button,.shout-copy small,.back-button,.toast,.detail-content .demo-note,.activity-list button,.settings-row,.settings-row small{font-size:16px;line-height:1.65}
 .shout-content .button,.nav-content button{font-size:17px}
 .module-card .card-top h2{font-size:23px}.module-card .card-top p{font-size:16px;line-height:1.65;margin-top:6px;text-wrap:pretty}
 .module-heading{min-height:32px}.module-heading .coming-soon{line-height:1.5;padding:3px 9px}
-.module-footer .card-footnote svg{width:16px;height:16px}.module-footer>.button{font-size:17px;min-height:48px}.module-card .button{flex-shrink:0}.homework-entry-content .button{font-size:17px;min-height:46px}
-.dialog-header p,.field-label,.assignment-tab,.subject-button,.search-field input,.filter-button,.roster-toolbar .text-button,.date-input-label input,.homework-bottom-actions>.text-button,.submission-count small,.detail-timetable>div,.detail-timetable small,.none-message p,.detail-content p{font-size:16px}
-.student-tile{font-size:17px;min-height:49px}.student-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
-.assignment-tab,.subject-button,.filter-button{min-height:43px}.assignment-tabs{gap:8px}.date-input-label input{width:130px}
-.search-field{min-height:43px}.save-button{font-size:17px;min-height:46px}.submission-count>span{font-size:16px}
+.module-footer .card-footnote svg{width:16px;height:16px}.module-footer>.button{font-size:17px;min-height:48px}.module-card .button{flex-shrink:0}.detail-content p{font-size:16px}
 .detail-content{font-size:17px;line-height:1.75}.dialog-toast{font-size:16px}
 /* Voice messages use one invitation, a quiet duration and a single privacy note. */
 .voice-message .detail-voice{height:auto;margin:32px 0 20px}
@@ -25,9 +21,9 @@ body{font-size:17px}
 .voice-access{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .voice-access>svg{width:16px;height:16px}
 .voice-retention{margin-left:auto;text-align:right;white-space:nowrap}
-@media(max-width:1150px){.student-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.homework-entry-content .button{margin-left:0}.homework-bottom{flex-wrap:wrap}}
-@media(max-width:800px){.student-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.button,.text-button,.nav-content button{font-size:17px}.nav-content button{min-width:44px;min-height:44px}.nav-content button svg{width:20px;height:20px}.module-footer>.button{width:100%}.module-footer .card-footnote{flex-basis:100%}}
-@media(max-width:560px){.brand small,.class-heading p,.connection,.card-top p,.card-footnote,.entry-text p,.entry-meta,.management-hint,.app-footer,.view-toolbar>span{font-size:15px}.app-header{height:auto;min-height:104px;padding-block:16px}.module-footer>.button{width:auto}.module-footer .card-footnote{flex-basis:200px}.module-card .card-content{padding:23px}.card-top h2{font-size:23px}.student-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.student-tile{font-size:16px;min-height:48px}.subject-button,.assignment-tab,.filter-button,.roster-toolbar .text-button,.search-field input,.dialog-header p,.field-label,.submission-count small,.homework-bottom-actions>.text-button{font-size:15px}.subject-button{min-height:44px}.subject-navigation{padding:10px}.assignment-header{flex-wrap:wrap;gap:12px}.homework-main{padding:16px 14px 0}.homework-bottom{gap:13px;padding:14px 16px}.homework-bottom-actions{width:100%;justify-content:flex-end}.date-input-label input{font-size:15px;width:119px}.dialog-header h2{font-size:24px}.homework-entry-content .button{width:auto;font-size:17px;margin:0}.entry-text p{max-width:none}}
+
+@media(max-width:800px){.button,.text-button,.nav-content button{font-size:17px}.nav-content button{min-width:44px;min-height:44px}.nav-content button svg{width:20px;height:20px}.module-footer>.button{width:100%}.module-footer .card-footnote{flex-basis:100%}}
+@media(max-width:560px){.brand small,.class-heading p,.connection,.card-top p,.card-footnote,.app-footer,.view-toolbar>span{font-size:15px}.app-header{height:auto;min-height:104px;padding-block:16px}.module-footer>.button{width:auto}.module-footer .card-footnote{flex-basis:200px}.module-card .card-content{padding:23px}.card-top h2{font-size:23px}}
 
 /* Approved B artwork stays in the crisp foreground, above the glass lens. */
 .module-card{min-height:278px}

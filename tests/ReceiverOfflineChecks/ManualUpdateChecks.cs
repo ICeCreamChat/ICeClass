@@ -112,6 +112,15 @@ internal static class ManualUpdateChecks
                 Check(File.Exists(receipt) && File.ReadAllText(receipt) == "99.1.0" &&
                     !File.Exists(Path.Combine(root, ".updates/applying.json")) && !File.Exists(Path.Combine(root, ".updates/last-error.txt")),
                     $"manual {mode} installs and automatically opens the new version from an updater-launched session");
+                // The startup receipt is written before the fixture exits. Wait for
+                // that process before reopening or replacing its executable.
+                try
+                {
+                    using var updated = Process.GetProcessById(int.Parse(await File.ReadAllTextAsync(Path.Combine(root, "new-version.pid"))));
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await updated.WaitForExitAsync(timeout.Token);
+                }
+                catch (ArgumentException) { /* The fixture already exited. */ }
                 Check(File.ReadAllText(Path.Combine(root, "config.json")) == "existing classroom binding" &&
                     File.ReadAllText(Path.Combine(root, "island-settings.json")) == "existing local preferences" &&
                     File.ReadAllText(Path.Combine(root, "VoiceResources/unchanged.model")) == "existing offline model",
@@ -141,11 +150,13 @@ internal static class ManualUpdateChecks
 
     private const string Fixture = """
         using System;
+        using System.Diagnostics;
         using System.IO;
         using System.Linq;
         internal static class Fixture {
             private static void Main(string[] args) {
                 var root = AppDomain.CurrentDomain.BaseDirectory;
+                File.WriteAllText(Path.Combine(root, "new-version.pid"), Process.GetCurrentProcess().Id.ToString());
                 File.WriteAllText(Path.Combine(root, "new-version.txt"), "99.1.0");
                 if (args.Contains("--incremental-update-started"))
                     File.WriteAllText(Path.Combine(root, ".updates/incremental-started.ok"), "started");

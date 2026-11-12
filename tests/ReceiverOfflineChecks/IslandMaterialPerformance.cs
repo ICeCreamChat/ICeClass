@@ -4,17 +4,48 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using Avalonia.Threading;
 using ICeClass.Receiver;
 
-internal static class IslandRefractionPerformance
+internal static class IslandMaterialPerformance
 {
-    internal static async Task Measure(Window source, IslandGlassBackdrop glass, IslandGlassLens lens, string output)
+    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(output)))
+        .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+
+    private static T Field<T>(object target, string name) => (T)target.GetType()
+        .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target)!;
+
+    private static async Task Check(string output)
     {
-        var blocked = typeof(IslandGlassLens).GetField("_blocked", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var drawCost = typeof(IslandGlassLens).GetField("_drawMilliseconds", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var version = typeof(IslandGlassLens).GetField("_version", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var desktop = (IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!;
+        ClassroomIslandWindow? island = null; Window? source = null;
+        try
+        {
+            Directory.CreateDirectory(output);
+            island = new ClassroomIslandWindow(() => Task.CompletedTask, () => { }, () => { }, () => { }, () => { });
+            var work = island.Screens.Primary!.WorkingArea; var scale = island.Screens.Primary.Scaling;
+            source = new Window { Title = "轻量材质性能检查", Width = work.Width / scale, Height = work.Height / scale,
+                Position = work.Position, WindowStartupLocation = WindowStartupLocation.Manual,
+                SystemDecorations = SystemDecorations.None, ShowInTaskbar = false, ShowActivated = false, Topmost = true };
+            Field<ClassroomIslandRibbon>(island, "_ribbon").Animate = false;
+            Field<IslandBanbanMascot>(island, "_mascot").Animate = false;
+            var profile = IslandRibbonChecks.Fixture(); profile.Reminders.Enabled = false;
+            island.Update(IslandRibbonChecks.View(), false);
+            island.ApplyProfile(new IslandAppearance { Width = 790, OffsetX = 70, OffsetY = 160, HideFullscreen = false, Theme = "light" },
+                profile, IslandRibbonChecks.At(10, 40), "", "隔离性能测试", false);
+            source.Show(); island.Show(); island.UpdateLayout(); source.Activate();
+            SetWindowPos(island.TryGetPlatformHandle()!.Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
+            await Measure(source, output);
+        }
+        catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+        finally { island?.DisposeWindow(); source?.Close(); desktop.Shutdown(Environment.ExitCode); }
+    }
+
+    private static async Task Measure(Window source, string output)
+    {
         using var app = Process.GetCurrentProcess(); using var dwm = Process.GetProcessesByName("dwm").First();
         using var gpu = new GpuCounters(app.Id, dwm.Id);
         var pattern = new MotionPattern(); source.Background = Brushes.Transparent; source.Content = pattern;
@@ -23,28 +54,21 @@ internal static class IslandRefractionPerformance
         var records = new List<object>();
         try
         {
-            foreach (var stage in new[] { "static-light", "static-refraction", "moving-light", "moving-refraction", "moving-light-repeat" })
+            foreach (var stage in new[] { "static-light", "moving-light", "moving-light-repeat" })
             {
-                var enabled = stage.Contains("refraction");
-                blocked.SetValue(lens, !enabled); lens.Stop(); glass.RefreshBlur();
                 if (stage.StartsWith("moving")) timer.Start(); else timer.Stop();
                 await Task.Delay(1800);
-                if (enabled && !lens.IsActive) throw new InvalidOperationException("Refraction did not remain enabled for " + stage);
                 gpu.Sample(); app.Refresh();
                 var appCpu = app.TotalProcessorTime;
-                var startVersion = (ulong)version.GetValue(lens)!;
                 var ticks = pattern.Ticks; var renders = pattern.Renders;
                 var watch = Stopwatch.StartNew();
                 var gpuSamples = new List<(double App, double Dwm, double Copy, double DwmCpu)>();
-                var captureTimes = new List<double>(); var drawTimes = new List<double>();
                 while (watch.Elapsed.TotalSeconds < 6)
                 {
                     await Task.Delay(500); gpuSamples.Add(gpu.Sample());
-                    if (enabled) { captureTimes.Add(lens.CaptureMilliseconds); drawTimes.Add((double)drawCost.GetValue(lens)!); }
                 }
                 app.Refresh();
                 var elapsed = watch.Elapsed.TotalSeconds;
-                var endVersion = (ulong)version.GetValue(lens)!;
                 var record = new
                 {
                     stage, seconds = elapsed, logicalProcessors = Environment.ProcessorCount,
@@ -53,21 +77,17 @@ internal static class IslandRefractionPerformance
                     appGpu3DPercent = gpuSamples.Average(s => s.App), dwmGpu3DPercent = gpuSamples.Average(s => s.Dwm),
                     appGpuCopyPercent = gpuSamples.Average(s => s.Copy), gpuCountersAvailable = gpu.Available,
                     privateMiB = app.PrivateMemorySize64 / 1048576d, workingMiB = app.WorkingSet64 / 1048576d,
-                    backgroundUpdatesPerSecond = enabled ? (endVersion - startVersion) / elapsed : 0,
-                    sourceTicksPerSecond = (pattern.Ticks - ticks) / elapsed, sourceRendersPerSecond = (pattern.Renders - renders) / elapsed,
-                    captureMedianMs = Median(captureTimes), captureP95Ms = Percentile(captureTimes),
-                    drawMedianMs = Median(drawTimes), drawP95Ms = Percentile(drawTimes), active = lens.IsActive
+                    backgroundUpdatesPerSecond = 0,
+                    sourceTicksPerSecond = (pattern.Ticks - ticks) / elapsed, sourceRendersPerSecond = (pattern.Renders - renders) / elapsed
                 };
                 records.Add(record); Console.WriteLine(JsonSerializer.Serialize(record));
-                if (enabled && !lens.IsActive) throw new InvalidOperationException("Performance guard stopped refraction during " + stage);
             }
             File.WriteAllText(Path.Combine(output, "performance.json"), JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
         }
-        finally { timer.Stop(); blocked.SetValue(lens, false); glass.RefreshBlur(); }
+        finally { timer.Stop(); }
     }
 
-    private static double Median(List<double> values) => values.Count == 0 ? 0 : values.Order().ElementAt(values.Count / 2);
-    private static double Percentile(List<double> values) => values.Count == 0 ? 0 : values.Order().ElementAt((int)((values.Count - 1) * .95));
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
 
     private sealed class MotionPattern : Control
     {

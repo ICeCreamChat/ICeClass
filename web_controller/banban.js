@@ -11,6 +11,7 @@
   let conversationId = null, threads = [], threadCursor = null, threadLoading = false, threadRevision = 0;
   let olderCursor = null, olderLoading = false, historyPolicy = null, historyPolicyBusy = false, conversationLoaded = false;
   let accountGeneration = 0, navigationRevision = 0;
+  let quotaRevision = 0, quotaBusy = false;
   let voice = null;
   let deletingThread = null, deleteBusy = false;
   const drafts = new Map();
@@ -41,6 +42,27 @@
     const b = node('button', text, cls); b.type = 'button'; b.onclick = action; return b;
   }
   function icon(name) { return `/assets/banban/icons/${name}.svg`; }
+  function applyQuota(value) {
+    if (!value || disposed) return;
+    quotaRevision++;
+    $('bbQuota').textContent = value.limit === null ? `本月已用 ${value.used} 次 · 不限次` : `本月剩余 ${value.remaining} / ${value.limit} 次`;
+    $('bbQuota').dataset.exhausted = String(value.remaining === 0);
+    $('bbQuota').title = `${value.kind === 'device' ? '本教室设备' : '本账号'}的 ${value.month} 用量，每月 1 日按北京时间恢复`;
+    $('bbQuotaRefresh').hidden = value.remaining !== 0;
+  }
+  async function refreshQuota() {
+    if (disposed || quotaBusy) return;
+    const current = ++quotaRevision, generation = accountGeneration;
+    quotaBusy = true; $('bbQuotaRefresh').disabled = true;
+    try {
+      const value = await api('/api/banban/quota', {cache:'no-store'});
+      if (!disposed && generation === accountGeneration && current === quotaRevision) applyQuota(value);
+    } catch (error) {
+      if (!disposed && generation === accountGeneration) window.ICeClass.toast('次数未刷新：' + error.message);
+    } finally {
+      if (!disposed && generation === accountGeneration) { quotaBusy = false; $('bbQuotaRefresh').disabled = false; }
+    }
+  }
   function composeState() {
     const input = $('bbInput'), count = input.value.length;
     $('bbInputCount').textContent = `${count} / 2000`;
@@ -117,6 +139,7 @@
   }
   async function loadContext() {
     const rev = ++contextRevision;
+    const quotaRev = quotaRevision;
     $('bbModeNote').textContent = '读取中';
     $('bbModeNote').title = '正在读取当前范围的数据';
     $('bbModeNote').dataset.state = 'loading';
@@ -125,6 +148,7 @@
       const data = await api('/api/banban/context?' + new URLSearchParams(scope), {signal: controller.signal});
       if (rev !== contextRevision) return;
       snapshot = data.snapshot; connection = data.connection;
+      if (quotaRev === quotaRevision) applyQuota(data.quota);
       analysisClasses = data.classes || null; schoolAnalysis = Boolean(data.schoolAnalysis);
       syncScope(!$('bbScopeEditor').hidden); modeNote();
     } catch (e) {
@@ -597,7 +621,9 @@
       headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.ICeClass.state.csrf}, body: JSON.stringify({message: text, scope: {...scope}, page, conversationId, ...(teacherClient ? {teacherClient} : {}), ...(inputMode === 'voice' ? {voice: voice?.context() || {mode:'voice'}} : {})}), signal});
     if (!response.ok) {
       if (response.status === 401) location.reload();
-      const error = await response.json().catch(() => ({})); throw new Error(error.error || `请求失败 (${response.status})`);
+      const error = await response.json().catch(() => ({}));
+      const failure = new Error(error.error || `请求失败 (${response.status})`);
+      failure.code = error.code; failure.quota = error.quota; throw failure;
     }
     if (!response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) throw new Error('连接未返回完整回复，请刷新后重试。');
     const reader = response.body.getReader(), decoder = new TextDecoder();
@@ -707,6 +733,7 @@
         if (revision !== rev || controller.signal.aborted) return;
         if (inputMode === 'voice') voice?.event(event);
         if (event.type === 'meta') {
+          applyQuota(event.quota);
           conversationId = event.conversationId || conversationId;
           replyMode = event.mode;
           replyDetail = Boolean(event.detailRequested);
@@ -761,8 +788,9 @@
       }, inputMode);
     } catch (e) {
       if (revision !== rev) return;
+      applyQuota(e.quota);
       waiting.hidden = true;
-      $('bbHeaderStatus').textContent = controller.signal.aborted && controller.signal.reason !== 'timeout' ? '问题还在，随时可以继续' : '这次没连上，陪您再试一次';
+      $('bbHeaderStatus').textContent = e.code === 'banban_quota_exhausted' ? '本月班班次数已用完' : controller.signal.aborted && controller.signal.reason !== 'timeout' ? '问题还在，随时可以继续' : '这次没连上，陪您再试一次';
       if (!controller.signal.aborted || controller.signal.reason === 'timeout') character?.fail();
       else character?.reset();
       if (!completed) {
@@ -775,7 +803,8 @@
       }
       const error = node('div', controller.signal.aborted ? (controller.signal.reason === 'timeout' ? '等待时间较长，问题已保留，可以稍后重试。' : '已停止等待，问题已保留。') : e.message, 'bb-error');
       if (inputMode === 'voice' && !controller.signal.aborted) voice?.failed(e.message);
-      error.setAttribute('role', 'alert'); error.append(button('重试这个问题', 'bb-source', () => {
+      error.setAttribute('role', 'alert');
+      if (e.code !== 'banban_quota_exhausted') error.append(button('重试这个问题', 'bb-source', () => {
         if (pending) return;
         lastIncomplete = reply; ask(text, true);
       })); reply.querySelector('.bb-message-body').append(error);
@@ -995,6 +1024,7 @@
   function init() {
     if (initialized || !window.ICeClass?.state.user) return;
     initialized = true; disposed = false; accountGeneration++;
+    quotaRevision++; quotaBusy = false;
     deletingThread = null; deleteBusy = false;
     settingsTarget = 'account'; settingsConfig = null; settingsBusy = false;
     history = []; conversationId = null; threads = []; threadCursor = null; threadLoading = false;
@@ -1068,10 +1098,11 @@
             </div>
           </form>
         </div>
-        <form id="bbComposer" class="bb-compose"><div class="bb-input-box"><label for="bbInput" class="sr-only">向班班提问</label><textarea id="bbInput" name="message" autocomplete="off" placeholder="问问班班…" maxlength="2000" rows="1"></textarea><button id="bbSend" class="bb-send" type="submit" aria-label="发送问题" disabled><span id="bbSendLabel">发送</span></button></div><div class="bb-compose-footer"><span class="bb-privacy">按您的权限分析和操作</span><small id="bbInputCount" hidden>0 / 2000</small><span class="bb-key-hint">Enter 发送</span></div></form>
+        <form id="bbComposer" class="bb-compose"><div class="bb-input-box"><label for="bbInput" class="sr-only">向班班提问</label><textarea id="bbInput" name="message" autocomplete="off" placeholder="问问班班…" maxlength="2000" rows="1"></textarea><button id="bbSend" class="bb-send" type="submit" aria-label="发送问题" disabled><span id="bbSendLabel">发送</span></button></div><div class="bb-compose-footer"><span id="bbQuota" class="bb-privacy" role="status" aria-live="polite">按您的权限分析和操作</span><button id="bbQuotaRefresh" class="bb-tool" type="button" hidden>刷新次数</button><small id="bbInputCount" hidden>0 / 2000</small><span class="bb-key-hint">Enter 发送</span></div></form>
         </div></div>
       </section>`;
     document.body.append(root); $('bbLauncher').prepend(mascot()); $('bbSayHello').append(mascot()); $('bbHeaderMascot').append(mascot());
+    $('bbQuotaRefresh').onclick = () => void refreshQuota();
     window.ICeClassBanbanOperations?.mount(root);
     const pageNavigation = event => {
       if (!event.target.closest('button[data-view]')) return;
@@ -1232,11 +1263,12 @@
     };
     root.onkeydown = e => { if (e.key === 'Escape' && !$('bbPanel').hidden) { e.stopPropagation(); if (!$('bbHistory').hidden) { if (!$('bbHistoryDeleteEditor').hidden) { if (!deleteBusy) closeHistoryDelete(true); } else if (!$('bbHistoryPolicyEditor').hidden) showHistoryPolicy(false); else showHistory(false); } else if (!$('bbOptions').hidden) { options(false); $('bbMore').focus(); } else if (!$('bbScopeEditor').hidden) setScopeEditor(false); else close(); } };
     function dispose() { if (disposed) return; voice?.dispose(); voice = null; window.ICeClassBanbanOperations?.dispose(); disposed = true; initialized = false; accountGeneration++; revision++; contextRevision++; threadRevision++; pending?.abort(); clearTimeout(reminder); hideReminder(); motionPreference.removeEventListener('change', motion); window.removeEventListener('pagehide', dispose); window.removeEventListener('resize', syncHistoryInert); $('mainNav').removeEventListener('click', pageNavigation); document.removeEventListener('pointerdown', activity); document.removeEventListener('keydown', activity); document.removeEventListener('pointerdown', dismissOptions); character.dispose(); history = []; drafts.clear(); analysisClasses = null; schoolAnalysis = false; }
-    $('logoutButton').addEventListener('click', () => { dispose(); root.remove(); }, {once:true});
+    window.addEventListener('iceclass-logout', () => { dispose(); root.remove(); }, {once:true});
     window.addEventListener('pagehide', dispose, {once: true});
     composeState(); dragLauncher(); dragPanel(); fromPage(); conversationReady = restoreConversation();
   }
   window.addEventListener('iceclass-ready', init);
+  window.addEventListener('iceclass-banban-quota-changed', () => { if (initialized && !$('bbPanel').hidden) void refreshQuota(); });
   window.addEventListener('iceclass-classes-changed', () => { if (initialized) { if (!classesForAnalysis().some(c => c.id === scope.classId)) scope.classId = ''; syncScope(); loadContext(); } });
   if (window.ICeClass?.state.user) init();
 })();

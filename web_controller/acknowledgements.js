@@ -2,7 +2,6 @@
   'use strict';
   const byId = id => document.getElementById(id);
   const api = (...args) => window.ICeClass.api(...args);
-  const panel = byId('acknowledgementsPanel');
   const fields = byId('acknowledgementsFields');
   const preview = byId('acknowledgementsPreview');
   const save = byId('acknowledgementsSave');
@@ -19,6 +18,7 @@
     const result = document.createElement(tag); result.textContent = text; result.className = className; return result;
   }
   function controls() {
+    byId('acknowledgementsForm').setAttribute('aria-busy', String(busy));
     fields.querySelectorAll('input,textarea,button').forEach(input => { input.disabled = busy || !allowed(); });
     draft.forEach((_, index) => {
       const row = fields.children[index]; if (!row) return;
@@ -41,7 +41,7 @@
   function render() {
     fields.replaceChildren();
     draft.forEach((group, index) => {
-      const fieldset = node('fieldset', '', 'acknowledgements-group');
+      const fieldset = node('fieldset', '', 'thanks-group');
       fieldset.append(node('legend', `第 ${index + 1} 组`));
       for (const [key, label, tag, limit] of [['title', '分组标题', 'input', 80], ['body', '正文', 'textarea', 4000]]) {
         const field = node('div', '', 'field'), caption = node('label', label), input = document.createElement(tag);
@@ -53,9 +53,9 @@
         input.addEventListener('input', () => { group[key] = input.value; updatePreview(); status(conflict ? '内容已在其他页面修改，请重新载入后核对。' : '尚未保存。', conflict); });
         field.append(caption, input); fieldset.append(field);
       }
-      const actions = node('div', '', 'acknowledgements-group-actions');
+      const actions = node('div', '', 'group-tools');
       for (const [text, delta] of [['上移', -1], ['下移', 1]]) {
-        const button = node('button', text, 'btn'); button.type = 'button'; button.dataset.move = String(delta);
+        const button = node('button', text, 'button quiet'); button.type = 'button'; button.dataset.move = String(delta);
         button.setAttribute('aria-label', `${text}第 ${index + 1} 组`);
         button.addEventListener('click', () => {
           if (busy || !allowed()) return;
@@ -64,7 +64,7 @@
           fields.children[next].querySelector('input').focus(); status('顺序已调整，尚未保存。');
         }); actions.append(button);
       }
-      const remove = node('button', '移除分组', 'btn'); remove.type = 'button'; remove.dataset.remove = '';
+      const remove = node('button', '移除分组', 'button quiet danger'); remove.type = 'button'; remove.dataset.remove = '';
       remove.setAttribute('aria-label', `移除第 ${index + 1} 组`);
       remove.addEventListener('click', () => {
         if (busy || !allowed() || draft.length <= 1) return;
@@ -106,17 +106,19 @@
     if (dirty() && !window.confirm('重新载入会放弃当前尚未保存的致谢修改，继续吗？')) return;
     void load();
   });
-  panel.addEventListener('toggle', () => { if (panel.open && !saved) void load(); });
+  window.addEventListener('iceclass-settings-section', event => { if (event.detail === 'thanks' && !saved) void load(); });
   function init() {
     const account = identity(); byId('acknowledgementsSection').classList.toggle('hidden', !account);
     if (account !== owner) { generation++; owner = account; saved = null; draft = []; busy = conflict = false; render(); status(''); }
-    if (account && panel.open && !saved) void load();
+    if (account && window.ICeClassSettings?.visible && window.ICeClassSettings.section === 'thanks' && !saved) void load();
   }
-  window.ICeClassAcknowledgements = { canLogout() {
+  window.ICeClassAcknowledgements = { discardChanges() {
+    if (saved) { draft = structuredClone(saved.sections); render(); }
+  }, canLogout() {
     if (!allowed()) return true;
     if (busy) { window.ICeClass.toast('正在载入或保存致谢，请稍候。'); return false; }
     if (dirty() && !window.confirm('致谢修改尚未保存，放弃修改并退出登录吗？')) return false;
-    saved = null; return true;
+    return true;
   } };
   window.addEventListener('beforeunload', event => { if (allowed() && (dirty() || busy)) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('iceclass-ready', init); init();

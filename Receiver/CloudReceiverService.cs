@@ -10,6 +10,7 @@ namespace ICeClass.Receiver;
 
 public sealed class CloudReceiverService
 {
+    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(60);
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(45) };
     private readonly SpeechService _speech;
     private readonly AudioPlaybackService _audio = new();
@@ -162,18 +163,29 @@ public sealed class CloudReceiverService
                     Path = "/ws/device",
                     Query = $"deviceId={Uri.EscapeDataString(config.DeviceId)}",
                 }.Uri;
-                await socket.ConnectAsync(endpoint, token);
+                using (var connecting = CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    connecting.CancelAfter(TimeSpan.FromSeconds(30));
+                    await socket.ConnectAsync(endpoint, connecting.Token);
+                }
                 delaySeconds = 1;
                 AppLog.Info($"Connected for class {config.ClassName}");
                 SetState(true, $"已连接：{config.ClassName}");
-                using var connection = CancellationTokenSource.CreateLinkedTokenSource(token);
-                var receive = ReceiveAsync(socket, sendLock, config, connection.Token);
+                // A transport can stay open while the application stops responding.
+                // This deadline also cancels a blocked send or send-lock wait.
+                using var heartbeatDeadline = new CancellationTokenSource(HeartbeatTimeout);
+                using var connection = CancellationTokenSource.CreateLinkedTokenSource(token, heartbeatDeadline.Token);
+                var receive = ReceiveAsync(socket, sendLock, config, heartbeatDeadline, connection.Token);
                 var heartbeat = HeartbeatAsync(socket, sendLock, connection.Token);
                 await Task.WhenAny(receive, heartbeat);
                 connection.Cancel();
                 socket.Abort();
                 try { await Task.WhenAll(receive, heartbeat); }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                catch (Exception error) when (heartbeatDeadline.IsCancellationRequested && !token.IsCancellationRequested)
+                { throw new TimeoutException("云端心跳回复超时。", error); }
+                if (heartbeatDeadline.IsCancellationRequested && !token.IsCancellationRequested)
+                    throw new TimeoutException("云端心跳回复超时。");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (Exception exception)
@@ -251,7 +263,7 @@ public sealed class CloudReceiverService
         catch (Exception error) { AppLog.Error("Send computer operation result", error); }
     }
 
-    private async Task ReceiveAsync(ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationToken token)
+    private async Task ReceiveAsync(ClientWebSocket socket, SemaphoreSlim sendLock, ReceiverConfig config, CancellationTokenSource? heartbeatDeadline, CancellationToken token)
     {
         var buffer = new byte[8192];
         while (!token.IsCancellationRequested && socket.State == WebSocketState.Open)
@@ -269,6 +281,10 @@ public sealed class CloudReceiverService
             try
             {
                 using var command = JsonDocument.Parse(message.ToArray());
+                if (command.RootElement.ValueKind == JsonValueKind.Object &&
+                    command.RootElement.TryGetProperty("type", out var heartbeatKind) &&
+                    heartbeatKind.ValueKind == JsonValueKind.String && heartbeatKind.GetString() == "heartbeat_ack")
+                { heartbeatDeadline?.CancelAfter(HeartbeatTimeout); continue; }
                 if (command.RootElement.ValueKind == JsonValueKind.Object &&
                     command.RootElement.TryGetProperty("type", out var selfStudyKind) &&
                     selfStudyKind.GetString() == "self_study_config")

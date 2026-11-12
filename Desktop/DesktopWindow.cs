@@ -464,24 +464,25 @@ internal sealed partial class DesktopWindow : Window
 
     private async Task WatchClassroomVoiceAsync(CancellationToken token)
     {
-        try
+        await Task.WhenAll(Poll(_voiceInbox!.RefreshAsync), Poll(_selfStudyInbox!.RefreshAsync));
+
+        async Task Poll(Func<CancellationToken, Task> refresh)
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
-            do
+            try
             {
-                try { await _voiceInbox!.RefreshAsync(token); }
-                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
-                catch (Exception error) when (error is HttpRequestException or IOException or System.Text.Json.JsonException)
-                { /* Keep the current reminder through temporary connection failures. */ }
-                try { await _selfStudyInbox!.RefreshAsync(token); }
-                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
-                catch (Exception error) when (error is HttpRequestException or IOException or System.Text.Json.JsonException)
-                { /* The next bounded poll retries metadata, never model calls. */ }
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+                do
+                {
+                    try { await refresh(token); }
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                    catch (Exception error) when (error is HttpRequestException or IOException or System.Text.Json.JsonException)
+                    { /* Retry metadata independently, preserving reminders through temporary failures. */ }
+                }
+                while (await timer.WaitForNextTickAsync(token));
             }
-            while (await timer.WaitForNextTickAsync(token));
+            catch (OperationCanceledException) { }
+            catch (Exception error) { if (!_disposed) DesktopLog.Write(error); }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception error) { if (!_disposed) DesktopLog.Write(error); }
     }
 
     private void UpdateVoiceNotice()

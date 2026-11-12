@@ -1,0 +1,51 @@
+/* The daily overview shares the classroom's type, glass and module icons. */
+.course-area { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 12px; margin-bottom: 24px; }
+.date-capsule { min-height: 82px; }
+.schedule-date { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 100%; padding: 10px 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.schedule-date strong { font-size: 23px; font-weight: 600; line-height: 1.2; letter-spacing: -.4px; }
+.schedule-date strong span { font-size: 16px; margin-inline: 1px; font-weight: 400; }
+.schedule-date .date-weekday { color: #36566f; font-size: 16px; }
+.daily-course { --muted: #36566f; min-width: 0; }
+.timetable-capsule { min-width: 0; }
+.timetable-capsule > .glass-content { padding: 10px 12px 4px; }
+.course-area > .shout-capsule { height: auto; min-height: 82px; }
+.schedule-scroll { height: 68px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y pinch-zoom; border-radius: 8px; }
+.schedule-scroll::-webkit-scrollbar { display: none; }
+.schedule-scroll.is-scrollable { cursor: grab; user-select: none; }
+.schedule-scroll.is-dragging { cursor: grabbing; }
+.schedule-scroll:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 4px #005ed61c; }
+.period-groups { display: flex; gap: 12px; width: max-content; min-width: 100%; min-height: 62px; }
+.period-block { flex: 1 0 auto; position: relative; display: grid; grid-template-columns: 34px auto; align-items: center; gap: 8px; }
+.period-block + .period-block::before { content: ""; position: absolute; inset: 4px auto 4px -6px; width: 1px; background: #7199b52e; }
+.period-header { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.period-header h2 { display: flex; align-items: center; justify-content: center; height: 40px; font-size: 16px; font-weight: 600; line-height: 1.5; color: var(--muted); }
+.period-header .period-icon { width: 32px; height: 40px; border-radius: 9px; }
+.period-header img { display: block; width: 27px; height: 36px; object-fit: contain; filter: drop-shadow(0 1px 0 #fff8); }
+.period-lessons { display: grid; grid-template-columns: repeat(var(--lesson-columns, 1), max-content); justify-content: space-around; gap: 2px 8px; margin: 0; padding: 0; list-style: none; }
+.day-lesson { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 5px; border-radius: 8px; min-height: 30px; }
+.lesson-subject { flex: none; text-align: center; white-space: nowrap; }
+.lesson-subject strong { display: block; font-size: 17px; line-height: 1.5; font-weight: 600; }
+.day-lesson small { flex: none; color: var(--muted); font-size: 16px; line-height: 1.5; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.day-lesson.is-current { min-height: 36px; padding-inline: 46px 10px; border-image: url("./icons/current-lesson-banban-paper.webp") 0 44 0 148 fill / 0 13.2px 0 44.4px; }
+.day-lesson.is-current strong { color: #103753; }
+.day-lesson.is-current small { color: #20344a; }
+.schedule-empty { margin: auto 0; padding: 12px; color: var(--muted); font-size: 16px; line-height: 1.65; white-space: nowrap; }
+.app-footer { flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .course-area { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
+  .date-capsule, .timetable-capsule { --radius: 24px; }
+  .app-header { flex-wrap: wrap; gap: 12px; padding-block: 18px; height: auto; }
+  .top-navigation { margin-left: auto; }
+  .class-heading { flex-wrap: wrap; gap: 12px; }
+  .class-heading h1 { font-size: 27px; }
+  .app-footer > span + span { border: 0; padding: 0; }
+}
+@media (forced-colors: active) {
+  .course-area .glass { background: Canvas; color: CanvasText; outline: 1px solid CanvasText; outline-offset: -1px; box-shadow: none; }
+  .course-area .glass::before, .course-area .glass::after, .course-area .glass-lens { display: none; }
+  .schedule-scroll:focus-visible { outline: 2px solid Highlight; box-shadow: none; }
+  .period-icon { outline: 1px solid CanvasText; background: Canvas; }
+  body[data-material] .day-lesson.is-current { forced-color-adjust: none; outline: 1px solid Highlight; background: Highlight; border-image: none; box-shadow: none; }
+  .day-lesson.is-current :is(strong, small) { color: HighlightText; }
+  .day-lesson small { color: CanvasText; }
+}

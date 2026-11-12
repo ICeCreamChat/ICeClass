@@ -1,0 +1,5 @@
+.bb-compose-footer:has(#bbQuota) { flex-wrap: wrap; }
+#bbQuota { font-variant-numeric: tabular-nums; }
+#bbQuota[data-exhausted="true"] { color: var(--red, #943e3b); }
+#bbQuotaRefresh { margin-left: auto; }
+@media (forced-colors: active) { #bbQuota[data-exhausted="true"] { color: CanvasText; } }

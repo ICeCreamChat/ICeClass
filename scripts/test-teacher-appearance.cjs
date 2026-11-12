@@ -4,7 +4,7 @@ const path=require('node:path');
 const fs=require('node:fs');
 const {test,before,after}=require('node:test');
 const {chromium}=require('playwright');
-const {open,navigate,fixture}=require('./test-teacher-ui.cjs');
+const {open,navigate,settingsSection,fixture}=require('./test-teacher-ui.cjs');
 const {selfStudyFixture}=require('./measure-teacher-ui.cjs');
 let browser;
 before(async()=>{browser=await chromium.launch({channel:'msedge',headless:true});});
@@ -34,6 +34,19 @@ async function setup(t,{width=1280,initial,blockStorage=false,native=false,handl
 }
 const filters=page=>page.locator('.classroom-filter-definitions filter').count();
 async function waitForFilterCount(page,count){await page.waitForFunction(n=>document.querySelectorAll('.classroom-filter-definitions filter').length===n,count);}
+async function assertStaticMaterial(page){
+  assert.equal(await filters(page),0,'No SVG displacement filters');
+  assert.equal(await page.evaluate(()=>window.__mapCount),0,'No canvas material maps');
+  const active=await page.evaluate(()=>[...document.querySelectorAll('*')].flatMap(element=>{
+    if(!element.getClientRects().length)return [];
+    return [null,'::before','::after',...(element.matches('dialog[open]')?['::backdrop']:[])].flatMap(pseudo=>{
+      const style=getComputedStyle(element,pseudo);
+      if(pseudo&&style.content==='none'&&pseudo!=='::backdrop')return [];
+      return style.display!=='none'&&style.backdropFilter!=='none'?[element.tagName+'.'+element.className+':'+pseudo+'='+style.backdropFilter]:[];
+    });
+  }));
+  assert.deepEqual(active,[],'Visible surfaces and pseudo layers have no backdrop processing');
+}
 
 for(const material of ['glass','white'])test(`Rendered role groups and connection times stay aligned in ${material}`,async t=>{
   const handle=({url})=>{
@@ -69,22 +82,21 @@ for(const material of ['glass','white'])test(`Rendered role groups and connectio
     assert.deepEqual(roles.map(r=>r.count).sort(),[1,2],'Both single and multiple role groups are rendered');
     assert.ok(roles.every(r=>r.headerOffset<=1.5&&r.contentOffset<=1.5&&r.fits),`${width}px: actual role badges share the header center`);
     assert.ok(roles.every(r=>r.actionsFit),`${width}px: user action buttons remain inside their cells`);
-    await navigate(page,'settings');await page.locator('.devices-table').waitFor();
-    const connections=await page.locator('.devices-table tbody tr').evaluateAll(rows=>rows.map(row=>{
-      const cell=row.cells[4],range=document.createRange();range.selectNodeContents(cell);
+    await settingsSection(page,'devices');await page.locator('.device-seen').first().waitFor();
+    const connections=await page.locator('#devicesContainer .device-seen').evaluateAll(cells=>cells.map(cell=>{
+      const range=document.createRange();range.selectNodeContents(cell);
       const text=range.getBoundingClientRect(),box=cell.getBoundingClientRect();
-      return {text:cell.textContent,lines:range.getClientRects().length,
-        offset:Math.abs((text.left+text.right-box.left-box.right)/2),fits:text.left>=box.left&&text.right<=box.right};
+      return {text:cell.textContent,lines:range.getClientRects().length,fits:text.left>=box.left-1&&text.right<=box.right+1};
     }));
-    assert.equal(connections[0].text,'从未连接');assert.match(connections[1].text,/\d{2}:\d{2}:\d{2}/);
-    assert.ok(connections.every(c=>c.lines===1&&c.offset<=1.5&&c.fits),`${width}px: connection labels remain on one line inside their cells`);
+    assert.equal(connections[0].text,'从未连接');assert.match(connections[1].text,/\d{2}:\d{2}/);
+    assert.ok(connections.every(c=>c.lines===1&&c.fits),`${width}px: connection labels remain on one line inside their cells`);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Only the table region may scroll horizontally');
   }
   assert.equal(requests.every(r=>['GET','HEAD'].includes(r.method)),true);
 });
 
-test('Glass content is translucent on one outer plane without extra displacement maps',async t=>{
-  const {page}=await setup(t);await waitForFilterCount(page,1);
+test('Static glass preserves translucent surfaces and aligned controls without optical processing',async t=>{
+  const {page}=await setup(t);await assertStaticMaterial(page);
   assert.equal(await page.locator('.reading-filter,.reading-panel,.metric,.btn').evaluateAll(nodes=>nodes.some(e=>e.classList.contains('lg-pane'))),false);
   const materials=await page.locator('.reading-filter,.reading-panel,.metric').evaluateAll(nodes=>nodes.map(e=>{
     const s=getComputedStyle(e);return {color:s.backgroundColor,image:s.backgroundImage,filter:s.backdropFilter};
@@ -93,7 +105,7 @@ test('Glass content is translucent on one outer plane without extra displacement
     const alpha=Number(material.color.match(/, ([\d.]+)\)$/)?.[1]);
     assert.ok(alpha>=.25&&alpha<=.65,'Wallpaper remains visible through the content surface');
     assert.notEqual(material.image,'none','Subtle surface highlight');
-    assert.match(material.filter,/blur\(/,'Outer glass softens the wallpaper');
+    assert.equal(material.filter,'none','Static tint needs no backdrop blur');
   }
   const nested=await page.locator('.reading-panel .table-wrap').first().evaluate(e=>({color:getComputedStyle(e).backgroundColor,filter:getComputedStyle(e).backdropFilter}));
   assert.deepEqual(nested,{color:'rgba(0, 0, 0, 0)',filter:'none'},'A nested table never adds a second glass plane');
@@ -105,11 +117,11 @@ test('Glass content is translucent on one outer plane without extra displacement
   await page.locator('.ss-runtime').waitFor();
   assert.match(await page.locator('.ss-runtime').evaluate(e=>getComputedStyle(e).backgroundColor),/^rgba\(/);
   assert.equal(await page.locator('.ss-runtime').evaluate(e=>getComputedStyle(e).padding),'24px');
-  assert.equal(await filters(page),1,'Content glass creates no extra displacement map');
+  await assertStaticMaterial(page);
 });
 
 test('White appearance is keyboard operable and persists with zero optical work before first body paint',async t=>{
-  const {page}=await setup(t);await navigate(page,'settings');
+  const {page}=await setup(t);await settingsSection(page,'appearance');
   await page.getByRole('radio',{name:'液态玻璃',exact:true}).focus();await page.keyboard.press('ArrowRight');
   assert.equal(await page.getByRole('radio',{name:'原版白色',exact:true}).isChecked(),true);
   await waitForFilterCount(page,0);
@@ -128,26 +140,26 @@ test('White appearance is keyboard operable and persists with zero optical work 
   }
 });
 
-test('Reduced transparency, hidden documents and forced colors release filters and recover on return',async t=>{
-  const {page,context}=await setup(t);await waitForFilterCount(page,1);
-  await navigate(page,'settings');await page.locator('#teacherReduceTransparency').check();await waitForFilterCount(page,0);
-  assert.equal(await page.locator('#teacherAppearance').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)');
+test('Transparency and accessibility preferences remain usable without allocating optical resources',async t=>{
+  const {page,context}=await setup(t);await assertStaticMaterial(page);
+  await settingsSection(page,'appearance');await page.locator('#teacherReduceTransparency').check();await waitForFilterCount(page,0);
+  assert.equal(await page.locator('#settingsContent').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(237, 245, 252)');
   assert.equal(await page.locator('#teacherAppearance').evaluate(e=>getComputedStyle(e).backdropFilter),'none');
-  await page.locator('#teacherReduceTransparency').uncheck();await waitForFilterCount(page,1);
+  await page.locator('#teacherReduceTransparency').uncheck();await assertStaticMaterial(page);
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
   await waitForFilterCount(page,0);
-  await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});await waitForFilterCount(page,1);
+  await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});await assertStaticMaterial(page);
   const cdp=await context.newCDPSession(page);
   await cdp.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-transparency',value:'reduce'}]});await waitForFilterCount(page,0);
-  assert.equal(await page.locator('#teacherAppearance').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)');
+  assert.equal(await page.locator('#settingsContent').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(237, 245, 252)');
   assert.equal(await page.locator('#teacherAppearance').evaluate(e=>getComputedStyle(e).backdropFilter),'none');
-  await cdp.send('Emulation.setEmulatedMedia',{features:[]});await waitForFilterCount(page,1);
+  await cdp.send('Emulation.setEmulatedMedia',{features:[]});await assertStaticMaterial(page);
   await page.emulateMedia({forcedColors:'active'});await waitForFilterCount(page,0);
-  await page.emulateMedia({forcedColors:'none'});await waitForFilterCount(page,1);
+  await page.emulateMedia({forcedColors:'none'});await assertStaticMaterial(page);
 });
 
 test('A storage failure keeps the chosen appearance and gives an honest local feedback',async t=>{
-  const {page}=await setup(t,{blockStorage:true});await navigate(page,'settings');
+  const {page}=await setup(t,{blockStorage:true});await settingsSection(page,'appearance');
   await page.getByRole('radio',{name:'原版白色',exact:true}).check();await waitForFilterCount(page,0);
   assert.match(await page.locator('#teacherAppearanceStatus').textContent(),/暂时无法保存/);
   assert.equal(await page.getByRole('radio',{name:'原版白色',exact:true}).isChecked(),true);
@@ -155,7 +167,7 @@ test('A storage failure keeps the chosen appearance and gives an honest local fe
 
 test('Appearance changes synchronize between open teacher tabs',async t=>{
   const {page,context}=await setup(t);const second=await context.newPage();await second.goto('http://127.0.0.1/');await second.locator('#appShell:not(.hidden)').waitFor();
-  await navigate(page,'settings');await page.getByRole('radio',{name:'原版白色',exact:true}).check();
+  await settingsSection(page,'appearance');await page.getByRole('radio',{name:'原版白色',exact:true}).check();
   await second.waitForFunction(()=>document.documentElement.dataset.teacherMaterial==='white');await waitForFilterCount(second,0);
 });
 
@@ -167,6 +179,7 @@ for(const width of [1440,1024,880,390])test(`Native workbench header fits and it
   if(width>880)assert.ok(boxes[0].right<=boxes[1].left&&boxes[1].right<=boxes[2].left,'Desktop header columns never overlap');
   const toggle=page.locator('#headerToolsToggle');await toggle.click();
   await page.locator('#headerToolsMenu:popover-open').waitFor();
+  await assertStaticMaterial(page);
   assert.equal(await page.getByRole('menuitem',{name:'关于班伴',exact:true}).isVisible(),true);
   await page.keyboard.press('Escape');assert.equal(await toggle.evaluate(e=>e===document.activeElement),true);
 });
@@ -181,6 +194,7 @@ for(const width of [1440,880,390])for(const material of ['glass','white'])test(`
     lefts.push(metrics.left);
     assert.equal(metrics.size,width<760?'26px':'28px',view+' heading scale');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),view+' fits');
+    await assertStaticMaterial(page);
     if(view==='teachers'&&width===390){
       assert.deepEqual(await page.locator('#userGradeFilter,#userStatusFilter').evaluateAll(nodes=>nodes.map(e=>Math.round(e.getBoundingClientRect().height))),[44,44],'Narrow filter labels never add a second line');
     }
