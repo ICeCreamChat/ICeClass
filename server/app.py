@@ -32,6 +32,7 @@ from permissions import (GRADES, STAFF_ROLES, SCHOOL_ROLES, MANAGER_ROLES, scope
                          class_ids, can_manage_user, managed_roles, capabilities, class_grade, can_manage_grade)
 from management import install_management, check_school_code, record_computer_info, device_summary
 from banban import install_banban
+from banban_math_reviews import install_math_reviews
 from banban_history import HISTORY_KEY as BANBAN_HISTORY_KEY
 from desktop_release import install_desktop_updates
 from update_payloads import install_update_payloads, install_desktop_update_activity
@@ -1928,6 +1929,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_management(app, sys.modules[__name__])
     install_island(app, sys.modules[__name__])
     banban = install_banban(app, sys.modules[__name__])
+    install_math_reviews(app, banban)
     install_self_study(app, sys.modules[__name__], banban.connections)
     install_feedback(app, sys.modules[__name__])
     install_client_diagnostics(app, sys.modules[__name__])
