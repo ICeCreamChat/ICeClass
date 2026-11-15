@@ -340,6 +340,7 @@ class BanbanAgent:
         if not isinstance(body, dict) or body.get('classId') != device['class_id']:
             return self.s.json_response({'error': '教室绑定已变化，请重新连接。'}, 409)
         target = (device['id'], device['class_id'])
+        await self.f.math_reviews.stop_device(target)
         tasks = [task for task, devices in self.job_devices.items() if target in devices and not task.done()]
         for task in tasks:
             task.cancel()

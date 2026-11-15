@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.WebSockets;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -30,6 +31,8 @@ public sealed class CloudReceiverService
     public event EventHandler<ReceiverConnectionState>? ConnectionStateChanged;
     public event EventHandler<ReceiverConfig>? BindingChanged;
     internal event Action? SelfStudyChanged;
+    internal event Action? BindingInvalidated;
+    internal event Action? ComputerStopRequested;
     public event EventHandler<ShoutData>? NotificationDisplayed;
     public event EventHandler<ShoutData>? NotificationAcknowledged;
 
@@ -156,6 +159,7 @@ public sealed class CloudReceiverService
                 SetState(false, "正在连接云端");
                 using var socket = new ClientWebSocket();
                 using var sendLock = new SemaphoreSlim(1, 1);
+                socket.Options.CollectHttpResponseDetails = true;
                 socket.Options.SetRequestHeader("Authorization", $"Bearer {config.DeviceToken}");
                 var endpoint = new UriBuilder(config.Endpoint)
                 {
@@ -166,7 +170,13 @@ public sealed class CloudReceiverService
                 using (var connecting = CancellationTokenSource.CreateLinkedTokenSource(token))
                 {
                     connecting.CancelAfter(TimeSpan.FromSeconds(30));
-                    await socket.ConnectAsync(endpoint, connecting.Token);
+                    try { await socket.ConnectAsync(endpoint, connecting.Token); }
+                    catch (WebSocketException) when (!token.IsCancellationRequested &&
+                        socket.HttpStatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                    {
+                        BindingInvalidated?.Invoke();
+                        throw;
+                    }
                 }
                 delaySeconds = 1;
                 AppLog.Info($"Connected for class {config.ClassName}");
@@ -224,6 +234,8 @@ public sealed class CloudReceiverService
         var action = actionNode.GetString();
         if (action == "agent_control")
         {
+            if (command.TryGetProperty("parameters", out var parameters) && parameters.ValueKind == JsonValueKind.Object &&
+                parameters.TryGetProperty("action", out var requested) && requested.GetString() == "stop") ComputerStopRequested?.Invoke();
             // Do not await: the receive loop must remain able to receive stop,
             // binding changes, emergency notices and heartbeat acknowledgements.
             _ = HandleAgentCommandAsync(command.Clone(), socket, sendLock, config, token);
@@ -273,7 +285,11 @@ public sealed class CloudReceiverService
             do
             {
                 result = await socket.ReceiveAsync(buffer, token);
-                if (result.MessageType == WebSocketMessageType.Close) return;
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    if ((int?)socket.CloseStatus is 4001 or 4002) BindingInvalidated?.Invoke();
+                    return;
+                }
                 if (result.MessageType != WebSocketMessageType.Text || message.Length + result.Count > 256 * 1024) return;
                 message.Write(buffer, 0, result.Count);
             } while (!result.EndOfMessage);

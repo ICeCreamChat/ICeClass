@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup><Compile Include="../../Receiver/ClassroomPluginPackage.cs" Link="ClassroomPluginPackage.cs" /><Compile Include="../../Receiver/ClassroomPluginProtocol.cs" Link="ClassroomPluginProtocol.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../Receiver/ClassroomMathReviewInput.cs" Link="ClassroomMathReviewInput.cs" /></ItemGroup>
+</Project>

@@ -30,11 +30,17 @@ internal static class CloudConnectionChecks
         var handlers = new ConcurrentBag<Task>();
         var heartbeats = new ConcurrentDictionary<string, int>();
         var acknowledgements = new ConcurrentDictionary<string, int>();
+        var rejections = new ConcurrentDictionary<string, int>();
+        var rejectedRequests = new ConcurrentDictionary<string, int>();
         var server = Task.Run(async () => {
             try {
                 while (!lifetime.IsCancellationRequested) {
                     var context = await listener.GetContextAsync().WaitAsync(lifetime.Token);
                     var id = context.Request.QueryString["deviceId"]!;
+                    if (rejections.TryGetValue(id, out var status)) {
+                        rejectedRequests.AddOrUpdate(id, 1, (_, count) => count + 1);
+                        context.Response.StatusCode = status; context.Response.Close(); continue;
+                    }
                     var socket = (await context.AcceptWebSocketAsync(null)).WebSocket;
                     var number = counts.AddOrUpdate(id, 1, (_, count) => count + 1); sockets[id] = socket;
                     handlers.Add(Task.Run(async () => {
@@ -61,6 +67,14 @@ internal static class CloudConnectionChecks
         });
         using var speech = new SpeechService();
         var silent = new CloudReceiverService(speech); var healthy = new CloudReceiverService(speech);
+        var unauthorized = new CloudReceiverService(speech); var forbidden = new CloudReceiverService(speech);
+        var unavailable = new CloudReceiverService(speech);
+        var unauthorizedInvalidations = 0; var forbiddenInvalidations = 0; var unavailableInvalidations = 0;
+        var transportInvalidations = 0;
+        unauthorized.BindingInvalidated += () => Interlocked.Increment(ref unauthorizedInvalidations);
+        forbidden.BindingInvalidated += () => Interlocked.Increment(ref forbiddenInvalidations);
+        unavailable.BindingInvalidated += () => Interlocked.Increment(ref unavailableInvalidations);
+        silent.BindingInvalidated += () => Interlocked.Increment(ref transportInvalidations);
         var states = new ConcurrentQueue<ReceiverConnectionState>();
         silent.ConnectionStateChanged += (_, state) => states.Enqueue(state);
         ReceiverConfig Config(string id) => new() { Endpoint = endpoint, DeviceId = id, DeviceToken = "isolated-fixture", ClassId = "fixture", ClassName = "隔离心跳测试" };
@@ -69,6 +83,20 @@ internal static class CloudConnectionChecks
             while (!condition()) { if (elapsed.Elapsed.TotalSeconds > seconds) throw new TimeoutException("Fixture condition timed out"); await Task.Delay(50); }
         }
         try {
+            await unauthorized.StartAsync(Config("unauthorized")); await forbidden.StartAsync(Config("forbidden"));
+            await unavailable.StartAsync(Config("unavailable"));
+            await Wait(() => counts.GetValueOrDefault("unauthorized") == 1 && counts.GetValueOrDefault("forbidden") == 1 &&
+                counts.GetValueOrDefault("unavailable") == 1);
+            rejections["unauthorized"] = 401; rejections["forbidden"] = 403; rejections["unavailable"] = 503;
+            sockets["unauthorized"].Abort(); sockets["forbidden"].Abort(); sockets["unavailable"].Abort();
+            await Wait(() => rejectedRequests.GetValueOrDefault("unauthorized") >= 1 &&
+                rejectedRequests.GetValueOrDefault("forbidden") >= 1);
+            await Task.Delay(250);
+            Assert(unauthorizedInvalidations >= 1, "HTTP 401 on reconnect invalidates the rejected binding");
+            Assert(forbiddenInvalidations >= 1, "HTTP 403 on reconnect invalidates the rejected binding");
+            await Wait(() => rejectedRequests.GetValueOrDefault("unavailable") >= 2);
+            Assert(unavailableInvalidations == 0, "HTTP 503 keeps reconnecting without invalidating a binding");
+            await unauthorized.StopAsync(); await forbidden.StopAsync(); await unavailable.StopAsync();
             await silent.StartAsync(Config("silent")); await healthy.StartAsync(Config("healthy"));
             await Wait(() => counts.GetValueOrDefault("silent") == 1 && counts.GetValueOrDefault("healthy") == 1);
             await Wait(() => counts.GetValueOrDefault("silent") >= 2, 67);
@@ -78,6 +106,7 @@ internal static class CloudConnectionChecks
             Assert(counts["silent"] == 2, "A fresh connection has its own response deadline and accepts heartbeat replies");
             sockets["silent"].Abort(); await Wait(() => counts["silent"] >= 3);
             Assert(counts["silent"] >= 3, "Explicit transport close retains automatic recovery");
+            Assert(transportInvalidations == 0, "Heartbeat timeout and ordinary transport close do not invalidate a binding");
             await silent.RestartAsync(Config("rebound")); await Wait(() => counts.GetValueOrDefault("rebound") == 1);
             Assert(states.Last().Connected, "Restart connects the replacement binding without retaining an expired deadline");
             var stopped = Stopwatch.StartNew(); await silent.StopAsync(); await healthy.StopAsync();
@@ -87,7 +116,8 @@ internal static class CloudConnectionChecks
             Console.WriteLine($"{checks} cloud connection checks passed.");
         } catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
         finally {
-            await silent.StopAsync(); await healthy.StopAsync(); lifetime.Cancel();
+            await silent.StopAsync(); await healthy.StopAsync();
+            await unauthorized.StopAsync(); await forbidden.StopAsync(); await unavailable.StopAsync(); lifetime.Cancel();
             foreach (var socket in sockets.Values) socket.Abort(); listener.Close();
             await server; await Task.WhenAll(handlers);
             ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!).Shutdown(Environment.ExitCode);

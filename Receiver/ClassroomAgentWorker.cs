@@ -18,6 +18,9 @@ internal sealed class ClassroomAgentWorker
 
     internal Task<JsonObject> InspectAsync(IReadOnlyList<AgentApplication> apps, CancellationToken token) => Exchange("inspect", null, apps, token);
     internal Task<JsonObject> OperateAsync(string action, JsonElement args, IReadOnlyList<AgentApplication> apps, CancellationToken token) => Exchange(action, args, apps, token);
+    internal Task<JsonObject> MathWindowsAsync(IReadOnlyList<AgentApplication> apps, CancellationToken token) => Exchange("math_windows", null, apps, token);
+    internal Task<JsonObject> MathCaptureAsync(string targetId, IReadOnlyList<AgentApplication> apps, CancellationToken token)
+        => Exchange("math_capture", JsonSerializer.SerializeToElement(new { targetId }), apps, token);
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000",
         Justification = "An empty assembly location intentionally selects the current executable in a single-file build.")]
@@ -59,7 +62,7 @@ internal sealed class ClassroomAgentWorker
             await worker.StandardInput.WriteLineAsync(payload.AsMemory(), token);
             await worker.StandardInput.FlushAsync(token);
             var line = await worker.StandardOutput.ReadLineAsync(token);
-            if (line is null || line.Length > 768 * 1024) throw new InvalidOperationException("应用适配器连接中断，请重新查看窗口。");
+            if (line is null || line.Length > (action == "math_capture" ? 3 * 1024 * 1024 : 768 * 1024)) throw new InvalidOperationException("应用适配器连接中断，请重新查看窗口。");
             var reply = JsonNode.Parse(line)?.AsObject() ?? throw new InvalidOperationException("应用适配器结果无效。");
             if (reply["error"] is JsonValue error) throw new InvalidOperationException(error.GetValue<string>());
             return reply["result"]?.DeepClone().AsObject() ?? throw new InvalidOperationException("应用适配器没有返回结果。");
@@ -101,7 +104,9 @@ internal sealed class ClassroomAgentWorker
                 var action = ClassroomAgentService.Text(root, "action", 80);
                 var apps = root.GetProperty("applications").Deserialize<List<AgentApplication>>() ?? [];
                 using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(19));
-                var result = action == "recycle_file" ? ClassroomAgentFiles.Recycle(root.GetProperty("args"), apps, limit.Token) :
+                var result = action == "math_windows" ? adapter.MathWindowsAsync(apps, limit.Token).GetAwaiter().GetResult() :
+                    action == "math_capture" ? adapter.MathCaptureAsync(root.GetProperty("args").GetProperty("targetId").GetString()!, apps, limit.Token).GetAwaiter().GetResult() :
+                    action == "recycle_file" ? ClassroomAgentFiles.Recycle(root.GetProperty("args"), apps, limit.Token) :
                     action == "inspect" ? adapter.InspectAsync(apps, limit.Token).GetAwaiter().GetResult() :
                     adapter.OperateAsync(action, root.GetProperty("args"), apps, limit.Token).GetAwaiter().GetResult();
                 reply = new() { ["result"] = result };

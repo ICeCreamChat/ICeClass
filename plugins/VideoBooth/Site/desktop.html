@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#e5f0f8"><title>视频展台</title><link rel="stylesheet" href="/assets/styles.css"><link rel="stylesheet" href="/assets/control-focus.css"><script type="module" src="/assets/desktop.js"></script></head>
+<body class="workbench">
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+<symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+<symbol id="i-float" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="11" width="9" height="9" rx="2"/></symbol>
+<symbol id="i-restore" viewBox="0 0 24 24"><path d="M8 8V4h12v12h-4"/><rect x="3" y="9" width="12" height="12" rx="2"/></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8z"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+<symbol id="i-review" viewBox="0 0 24 24"><path d="M20 11v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7M9 11l3 3 9-10"/></symbol>
+<symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20 9a8 8 0 1 0 0 7M20 3v6h-6"/></symbol>
+<symbol id="i-mirror" viewBox="0 0 24 24"><path d="M12 3v18M3 18l5-12v12zM21 18 16 6v12z"/></symbol>
+</defs></svg>
+<main class="workspace">
+  <header class="topbar">
+    <div id="dragHandle" class="brand" title="拖动窗口"><svg aria-hidden="true"><use href="#i-camera"/></svg><h1>视频展台</h1></div>
+    <button id="sourceButton" class="source-button" type="button" aria-expanded="false" aria-controls="sourcePanel" title="选择画面来源"><span id="sourceName">选择来源</span><svg aria-hidden="true"><use href="#i-down"/></svg></button>
+    <div class="window-controls"><button id="floatWindow" class="icon-button" type="button" aria-label="切换置顶浮窗" title="切换置顶浮窗"><svg aria-hidden="true"><use href="#i-float"/></svg></button><button id="restoreWindow" class="icon-button" type="button" aria-label="返回工作台" title="返回工作台" hidden><svg aria-hidden="true"><use href="#i-restore"/></svg></button><button id="minimizeWindow" class="icon-button minimize" type="button" aria-label="最小化" title="最小化"><svg aria-hidden="true"><use href="#i-minus"/></svg></button><button id="closeWindow" class="icon-button close-window" type="button" aria-label="关闭视频展台" title="关闭视频展台"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+  </header>
+  <section id="stage" class="stage" aria-label="展示画面">
+    <video id="video" autoplay muted playsinline></video>
+    <img id="frozenFrame" class="frozen-frame" alt="已固定的本次作答" hidden>
+    <p id="status" class="stage-status" role="status" aria-live="polite">尚未开始展示</p>
+    <div id="empty" class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-camera"/></svg><h2 id="emptyTitle">选择画面来源</h2><div class="empty-actions"><button id="startCamera" type="button" class="primary"><svg aria-hidden="true"><use href="#i-camera"/></svg>打开摄像头</button><button id="choosePhone" type="button" class="stage-secondary"><svg aria-hidden="true"><use href="#i-phone"/></svg>连接手机</button></div></div>
+    <section id="reviewPanel" class="review-panel" aria-label="AI 点评" aria-live="polite" hidden><div class="review-copy"><h2 id="reviewTitle"></h2><p id="reviewMessage"></p><ul id="reviewKnowledge" class="knowledge"></ul></div><button id="reviewQuestion" type="button" class="secondary" disabled>本次题目</button></section>
+  </section>
+  <footer class="toolbar">
+    <div class="display-tools"><button id="pauseVideo" type="button" class="icon-button" aria-label="定格画面" title="定格画面" disabled><svg aria-hidden="true"><use href="#i-pause"/></svg></button><button id="moreButton" type="button" class="icon-button" aria-label="画面操作" title="画面操作" aria-expanded="false" aria-controls="morePanel"><svg aria-hidden="true"><use href="#i-more"/></svg></button><span id="frameLabel" class="frame-label">准备就绪</span></div>
+    <div class="primary-tools"><button id="requestReview" type="button" class="primary" disabled><svg aria-hidden="true"><use href="#i-review"/></svg><span>AI 点评</span></button><button id="resumeReview" type="button" class="primary" hidden><svg aria-hidden="true"><use href="#i-play"/></svg><span>继续展示</span></button><button id="stopVideo" type="button" class="secondary stop-button" disabled title="停止展示"><svg aria-hidden="true"><use href="#i-stop"/></svg><span>停止</span></button></div>
+  </footer>
+  <section id="sourcePanel" class="popover source-panel" aria-label="画面来源" hidden>
+    <div class="panel-heading"><h2>画面来源</h2><button id="closeSource" type="button" class="icon-button" aria-label="关闭来源选择" title="关闭来源选择"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="source-tabs" role="group" aria-label="来源类型"><button id="localSource" type="button" aria-pressed="true">电脑 / USB</button><button id="phoneSource" type="button" aria-pressed="false">手机</button></div>
+    <div id="localPanel"><label for="cameraSelect">摄像头</label><div class="device-row"><select id="cameraSelect"><option value="">默认摄像头</option></select><button id="refreshDevices" class="secondary" type="button">刷新</button></div><button id="connectCamera" class="primary wide" type="button">开始展示</button></div>
+    <div id="phonePanel" hidden><div class="qr-pair"><figure id="wifiFigure" hidden><img id="wifiQr" width="152" height="152" alt="连接展台 Wi-Fi 的二维码"><figcaption>连接 Wi-Fi</figcaption></figure><figure id="cameraFigure" hidden><img id="phoneQr" width="152" height="152" alt="连接手机摄像头的二维码"><figcaption>打开摄像头</figcaption></figure></div><p id="phoneStatus" class="panel-status" role="status">准备手机连接后扫码。</p><button id="preparePhone" class="primary wide" type="button">准备手机连接</button></div>
+  </section>
+  <section id="morePanel" class="popover more-panel" aria-label="画面操作" hidden><button id="rotateVideo" type="button" disabled><svg aria-hidden="true"><use href="#i-rotate"/></svg>旋转 90°</button><button id="mirrorVideo" type="button" aria-pressed="false" disabled><svg aria-hidden="true"><use href="#i-mirror"/></svg>镜像画面</button><button id="openWorkshop" type="button">打开创意工坊</button></section>
+</main></body></html>
