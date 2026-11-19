@@ -530,6 +530,19 @@ class IdeasTests(ServerTestCase):
         response, data = await self.review(item, status='declined', published=False)
         self.assertEqual(response.status, 200, data)
 
+    async def test_native_put_review_preserves_the_web_handler_permissions_and_revision(self):
+        _, data = await self.submit()
+        item = data['item']
+        path = '/api/ideas/admin/' + item['id']
+        payload = {'version': item['version'], 'status': 'adopted', 'reply': '手机评审'}
+        response = await self.client.put(path, json=payload, headers=self.headers())
+        self.assertEqual(response.status, 403)
+        authorized = self.admin_headers
+        response = await self.client.put(path, json=payload, headers=authorized)
+        self.assertEqual(response.status, 200, await response.text())
+        self.assertEqual((await response.json())['item']['reply'], '手机评审')
+        self.assertEqual((await self.client.put(path, json=payload, headers=authorized)).status, 409)
+
     async def test_showcase_exposes_only_explicit_public_projection(self):
         _, data = await self.submit(text='原始私密内容', name='学生真实姓名', images=(PNG,), audio=wav_bytes())
         response, review = await self.review(data['item'], status='adopted', reply='内部回复', published=True,

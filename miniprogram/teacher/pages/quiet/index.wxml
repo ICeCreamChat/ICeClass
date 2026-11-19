@@ -1,0 +1,50 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">学校禁言时间</text><text class="subtitle">全校共用，时间均为北京时间</text></view>
+  <view class="panel">
+    <text class="row-title">{{activeName ? '读取时处于：' + activeName : '读取时不在禁言时段'}}</text>
+    <text class="row-meta">读取于 {{checkedAt}} · {{timezone}}</text>
+    <text class="row-meta">禁言时段内发送通知需额外确认。</text>
+    <view class="button-row"><button class="secondary" bindtap="onRefresh" disabled="{{busy || loading}}" aria-label="刷新全校禁言时间表并保留草稿">刷新时间表</button></view>
+    <text wx:if="{{loading}}" class="status" aria-role="status">正在读取全校禁言时间表…</text>
+    <text wx:if="{{loaded && !canEdit}}" class="status">当前账号可查看；仅学校管理员可编辑全校禁言时间表。</text>
+  </view>
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+  <button wx:if="{{sessionExpired}}" class="primary recovery" bindtap="relogin" disabled="{{busy}}" aria-label="重新登录并保留禁言时间草稿">重新登录，保留草稿</button>
+  <text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
+  <block wx:if="{{loaded}}">
+    <view class="panel">
+      <text class="section-heading" aria-role="heading" aria-level="2">全校时间表</text>
+      <text wx:if="{{dirty}}" class="status" aria-role="status">有未保存草稿。新增、删除和修改时段在确认保存后才会全校生效。</text>
+      <text wx:if="{{uncertain}}" class="error" aria-role="alert">保存结果尚未确认，请先刷新核对。不会自动重试写入。</text>
+      <text wx:if="{{!periods.length}}" class="empty">{{dirty ? '草稿将清空全部禁言时段，确认保存后生效。' : '学校尚未设置禁言时段。'}}</text>
+      <view class="period" wx:for="{{periods}}" wx:key="key" wx:for-item="period" wx:for-index="periodIndex">
+        <block wx:if="{{canEdit}}">
+          <view class="field"><text class="label">时段名称</text><input class="input" value="{{period.name}}" maxlength="40" placeholder="例如：晚自习" data-key="{{period.key}}" bindinput="onName" disabled="{{busy || loading || sessionExpired}}" aria-label="{{'第' + (periodIndex + 1) + '个禁言时段名称'}}" /></view>
+          <view class="field"><text class="label">每周生效日</text>
+            <checkbox-group class="weekdays" data-key="{{period.key}}" bindchange="onDays" aria-label="{{(period.name || '新时段') + '的生效星期'}}">
+              <label class="day" wx:for="{{period.weekOptions}}" wx:key="value" wx:for-item="day"><checkbox value="{{day.value}}" checked="{{day.checked}}" disabled="{{busy || loading || sessionExpired}}" color="#0866cb" aria-label="{{(period.name || '新时段') + day.label}}" /><text>{{day.label}}</text></label>
+            </checkbox-group>
+          </view>
+          <view class="times">
+            <view class="field"><text class="label">开始时间</text><picker mode="time" value="{{period.startTime}}" data-key="{{period.key}}" data-field="startTime" bindchange="onTime" disabled="{{busy || loading || sessionExpired}}" aria-label="{{(period.name || '新时段') + '开始时间'}}"><view class="picker">{{period.startTime}}</view></picker></view>
+            <view class="field"><text class="label">结束时间</text><picker mode="time" value="{{period.endPickerValue}}" data-key="{{period.key}}" data-field="endTime" bindchange="onTime" disabled="{{busy || loading || sessionExpired || period.endTime === '24:00'}}" aria-label="{{(period.name || '新时段') + '结束时间'}}"><view class="picker">{{period.endTime}}</view></picker></view>
+          </view>
+          <view class="switch-row"><text class="row-main">结束于当天 24:00</text><switch checked="{{period.endTime === '24:00'}}" data-key="{{period.key}}" bindchange="onMidnight" disabled="{{busy || loading || sessionExpired}}" aria-label="{{(period.name || '新时段') + '是否结束于当天24点'}}" color="#0866cb" /></view>
+          <button class="danger delete" data-key="{{period.key}}" bindtap="onDelete" disabled="{{busy || loading || sessionExpired}}" aria-label="{{'从草稿删除' + (period.name || '第' + (periodIndex + 1) + '个时段')}}">删除此时段</button>
+        </block>
+        <block wx:else><text class="row-title">{{period.name}}</text><text class="row-meta">{{period.daysText}}</text><text class="time">{{period.startTime}}-{{period.endTime}}</text></block>
+      </view>
+      <block wx:if="{{canEdit}}">
+        <text class="row-meta">最多 100 个时段；结束必须晚于开始，跨天请拆为两个时段。</text>
+        <view class="button-row"><button class="secondary" bindtap="onAdd" disabled="{{busy || loading || periods.length >= 100 || sessionExpired}}" aria-label="在草稿新增全校禁言时段">新增时段</button></view>
+      </block>
+    </view>
+    <view class="panel" wx:if="{{canEdit || dirty}}">
+      <text class="row-meta">保存将替换全校时间表，影响所有班级。保存前会再次展示范围与时段，请核对后确认。</text>
+      <view class="button-row">
+        <button class="primary" bindtap="onSave" loading="{{busy}}" disabled="{{!canEdit || !dirty || busy || loading || conflict || uncertain || sessionExpired}}" aria-label="核对影响范围并保存全校禁言时间表">核对并保存</button>
+        <button class="secondary" bindtap="onDiscard" disabled="{{busy || loading || sessionExpired}}" aria-label="放弃禁言草稿并重新载入全校最新时间表">重新载入最新时间表</button>
+      </view>
+    </view>
+  </block>
+</view>

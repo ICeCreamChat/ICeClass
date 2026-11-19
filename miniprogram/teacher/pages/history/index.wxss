@@ -1,0 +1,11 @@
+.history-filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; }
+.history-filters .field { flex: 1 1 160px; margin: 0; }
+.history-copy { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.history-heading { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.history-heading .row-title { font-size: 18px; }
+.history-content { margin: 10px 0 8px; }
+.history-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.history-timeline { margin-top: 10px; }
+.history-step { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 5px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.history-id { margin-top: 6px; }
+.history-footer { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }

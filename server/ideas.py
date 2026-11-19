@@ -19,7 +19,7 @@ from aiohttp import web
 from aiohttp.multipart import BodyPartReader
 
 from feedback import image_type, mail_settings, send_mail
-from teacher_capabilities import teacher_action, teacher_read
+from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
@@ -614,6 +614,10 @@ class Ideas:
             return self.reply({'error': '创意已被更新，请刷新后再保存。', 'item': self.item(latest)}, 409)
         return self.reply({'item': self.item(latest)})
 
+    @teacher_manual('微信客户端的人工评审表单使用 PUT；复用已声明的 idea.review 处理器。')
+    async def review_from_form(self, request):
+        return await self.review(request)
+
     def digest_summary(self):
         state = self.db.one('SELECT * FROM ideas_digest_state WHERE id=1')
         return {'enabled': self.enabled, 'configured': mail_settings() is not None,
@@ -735,5 +739,6 @@ def install_ideas(app: web.Application, service) -> None:
     app.router.add_get('/api/ideas/admin/summary', ideas.summary)
     app.router.add_get('/api/ideas/admin', ideas.admin_list)
     app.router.add_patch('/api/ideas/admin/{idea_id}', ideas.review)
+    app.router.add_put('/api/ideas/admin/{idea_id}', ideas.review_from_form)
     app.router.add_get('/api/ideas/media/{media_id}', ideas.media)
     app.cleanup_ctx.append(ideas.lifecycle)

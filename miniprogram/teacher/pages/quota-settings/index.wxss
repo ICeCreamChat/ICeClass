@@ -1,0 +1,11 @@
+.toolbar { justify-content: space-between; margin-bottom: 16px; }
+.toolbar .section-heading { margin: 0; }
+.usage-line { display: block; margin: 8px 0; font-variant-numeric: tabular-nums; }
+.permission { display: block; margin-top: 12px; }
+.segment button { min-height: 44px; }
+.search-field { margin-top: 16px; }
+.quota-row { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.quota-row:last-child { border-bottom: 0; }
+.target-button { margin-top: 10px; }
+.target-editor { padding-top: 20px; margin-top: 16px; border-top: 1px solid var(--line); }
+.save-button { width: 100%; }

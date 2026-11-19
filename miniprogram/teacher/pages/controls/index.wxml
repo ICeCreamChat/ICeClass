@@ -1,0 +1,41 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">教室控制</text></view>
+  <view wx:if="{{error}}" class="error" aria-role="alert"><text>{{error}}</text></view>
+  <view wx:if="{{sessionExpired}}" class="status"><text>登录已失效，当前班级的音量草稿会保留。</text><button class="primary" bindtap="relogin">重新登录</button></view>
+  <view wx:if="{{status}}" class="status"><text>{{status}}</text></view>
+  <view class="panel">
+    <view class="field">
+      <text class="label">操作班级</text>
+      <picker class="picker" mode="selector" range="{{classNames}}" value="{{classIndex}}" bindchange="chooseClass" aria-label="操作班级" disabled="{{busy || !classes.length || sessionExpired}}"><view class="picker-value">{{classIndex >= 0 ? classNames[classIndex] : '暂无可选班级'}}</view></picker>
+    </view>
+    <button class="secondary" bindtap="refresh" loading="{{loading}}" disabled="{{busy || loading || sessionExpired}}">刷新设备状态</button>
+    <view wx:if="{{availability}}" class="status"><text>{{availability}}</text></view>
+    <view class="field">
+      <text class="label">目标播放音量（0-100%）</text>
+      <input class="input" type="number" value="{{volumeDraft}}" bindinput="inputVolume" aria-label="目标播放音量，0 至 100 的整数" placeholder="输入 0-100，0 为静音" maxlength="3" disabled="{{busy || !classId}}" />
+      <text wx:if="{{volumeHint}}" class="muted">{{volumeHint}}</text>
+    </view>
+    <view class="button-row">
+      <button class="primary" bindtap="setVolume" loading="{{busy}}" disabled="{{busy || loading || uncertain || sessionExpired || !canSend}}">保存播放音量</button>
+      <button class="secondary" bindtap="openReading" disabled="{{busy || loading || uncertain || sessionExpired || !canOpenReading}}">打开早读</button>
+    </view>
+    <text wx:if="{{readingHint}}" class="muted">{{readingHint}}</text>
+  </view>
+  <view wx:if="{{loading}}" class="status"><text>正在读取教室设备状态…</text></view>
+  <view wx:elif="{{classId && !devices.length && !error && !sessionExpired}}" class="empty"><text>所选班级暂无绑定设备。</text></view>
+  <view wx:if="{{devices.length}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">本班教室设备 · {{devices.length}}</text>
+    <view wx:for="{{devices}}" wx:key="id" class="device-item">
+      <view class="row"><view class="row-main"><text class="row-title">{{item.name}}</text><text class="row-meta">{{item.computer_name || '电脑名称尚未上报'}}</text></view><text class="badge">{{item.connectionLabel}}</text></view>
+      <text class="row-meta">{{item.device_code || '设备编号未返回'}} · {{item.verifiedLabel}}</text>
+      <text wx:if="{{item.class_device_count > 1}}" class="status">同班有 {{item.class_device_count}} 台启用设备，指令会按班级广播，请核对目标。</text>
+      <text wx:if="{{item.addressesLabel}}" class="row-meta">局域网地址：{{item.addressesLabel}}</text>
+      <text wx:if="{{item.binding_note}}" class="row-meta">绑定备注：{{item.binding_note}}</text>
+      <view class="volume-line"><text>当前音量：{{item.actualLabel}}</text><text>目标音量：{{item.desiredLabel}}</text></view>
+      <text class="status">{{item.volumeState}}</text>
+      <text class="row-meta">设备版本：{{item.receiver_version || '尚未上报'}}</text>
+      <text class="row-meta">最近连接：{{item.lastSeenLabel}}</text>
+      <text class="row-meta">状态上报：{{item.reportedLabel}}</text>
+    </view>
+  </view>
+</view>

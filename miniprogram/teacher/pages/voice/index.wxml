@@ -1,0 +1,7 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">教室来音</text></view>
+  <view class="field"><text class="label">班级</text><picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy}}" aria-label="接收来音的班级"><view class="picker">{{classNames[classIndex] || '暂无有权限的班级'}}</view></picker></view>
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text><button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin">重新登录</button>
+  <view class="panel"><text wx:if="{{!messages.length}}" class="empty">{{loading ? '正在读取来音' : '暂无可收听的来音；过期录音不再显示'}}</text><view wx:for="{{messages}}" wx:key="id" class="voice-item"><text class="row-title">{{item.class_name}} · {{item.duration}} 秒</text><text class="row-meta">{{item.time}} · {{item.played_by_me ? '已听' : '未听'}}</text><view class="button-row"><button class="primary" data-id="{{item.id}}" bindtap="play" disabled="{{busy}}" aria-label="{{playingId === item.id ? '停止播放' : '播放'}}{{item.class_name}}在{{item.time}}的来音">{{playingId === item.id ? '停止' : '播放来音'}}</button><button class="danger" data-id="{{item.id}}" bindtap="remove" disabled="{{busy}}">删除</button></view></view></view>
+  <button class="secondary" bindtap="load" loading="{{loading}}" disabled="{{loading || busy}}">刷新来音</button>
+</view>

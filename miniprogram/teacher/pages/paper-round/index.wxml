@@ -1,0 +1,72 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title">纸卡课堂</text><text class="subtitle">{{className || '正在核对班级'}}</text></view>
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <button wx:if="{{sessionExpired}}" class="primary" bindtap="relogin">重新登录</button>
+  <view wx:if="{{status}}" class="status" aria-live="polite">{{status}}</view>
+  <view wx:if="{{loading}}" class="status">正在核对课堂连接与回执…</view>
+
+  <view wx:if="{{!pairId}}" class="panel">
+    <text class="section-heading">接入教室课堂</text>
+    <view class="paper-steps">先在教室端打开纸卡答题、创建课堂并选择“手机采集”。输入配对码后，在教室端确认使用本手机，再刷新连接。</view>
+    <label class="field"><text class="label">12 位配对码</text><input class="input" value="{{code}}" bindinput="inputCode" maxlength="12" disabled="{{busy || loading || pairUncertain}}" aria-label="教室端显示的12位配对码" placeholder="输入教室端配对码" /></label>
+    <button class="primary" bindtap="claimPair" loading="{{busy}}" disabled="{{busy || loading || pairUncertain || !classId || sessionExpired}}">连接本班课堂</button>
+    <button wx:if="{{pairUncertain}}" class="secondary paper-gap" bindtap="newPairCode" disabled="{{busy}}">使用新的配对码</button>
+    <text wx:if="{{!loading && !classId}}" class="empty">没有可访问班级，请返回工作台核对。</text>
+  </view>
+
+  <view wx:if="{{pairId}}" class="panel">
+    <text class="section-heading">{{state ? state.className : className}} · 课堂连接</text>
+    <view class="status">{{roundText || '请在教室端确认本手机来源后刷新连接。'}}</view>
+    <block wx:if="{{state}}">
+      <view class="paper-metrics"><view><text class="muted">当前题目</text><text class="paper-number">第 {{state.questionNumber}} 题</text></view><view><text class="muted">完整作答 / 应答</text><text class="paper-number">{{state.received}} / {{state.expected}}</text></view></view>
+      <view wx:if="{{state.questionType === 'multiple'}}" class="status">多选逐项收答：当前 {{state.activeOption || '尚未开始'}} 项，已收 {{state.optionReceived}} / {{state.expected}} 人。卡面 A 表示选、B 表示不选；各项收齐才是完整作答。</view>
+      <view wx:if="{{paused}}" class="status">暂停轮次只能由教室端恢复。也可封存本轮，再开始新一轮收答。</view>
+    </block>
+    <view class="button-row"><button class="secondary" bindtap="refreshRoom" loading="{{loading}}" disabled="{{busy || loading || sessionExpired}}">刷新课堂与回执</button><button class="secondary" bindtap="disconnect" disabled="{{busy}}">断开本机</button></view>
+    <view class="button-row"><button class="primary" bindtap="startRound" disabled="{{busy || loading || pendingCount || !canStart || sessionExpired}}">{{state.roundId ? '开启新一轮收答' : '开始收答'}}</button><button class="secondary" bindtap="endRound" disabled="{{busy || loading || pendingCount || !canEnd || sessionExpired}}">封存本轮</button></view>
+    <view wx:if="{{state.questionType === 'multiple' && collecting}}" class="button-row segment">
+      <button wx:for="{{['A', 'B', 'C', 'D']}}" wx:key="*this" wx:if="{{index < state.optionCount}}" class="{{item === state.activeOption ? 'primary' : 'secondary'}}" data-option="{{item}}" bindtap="multiOption" disabled="{{busy || loading || pendingCount || item === state.activeOption}}" aria-label="收取多选{{item}}项">{{item}} 项</button>
+    </view>
+    <text class="muted paper-gap">创建或结束整堂课、恢复暂停、免答设置和更换采集来源，请在教室端操作。</text>
+  </view>
+
+  <view wx:if="{{pendingCount}}" class="panel">
+    <text class="section-heading">{{pendingCount}} 条待确认操作</text><text class="muted">只有教室端保存并确认的作答才计入人数。网络异常时不会自动补发。</text>
+    <view wx:for="{{pendingRows}}" wx:key="id" class="row"><view class="row-main"><text class="row-title">{{item.label}}</text><text class="row-meta">{{item.phase}}</text></view></view>
+  </view>
+
+  <view wx:if="{{pairId && state && !state.ended}}" class="panel">
+    <text class="section-heading">本机相机识别</text>
+    <text class="muted">画面仅在本机实时解码，不拍照、不录像、不上传。离开页面、切换轮次或来源后相机停止，需要主动重新开启。</text>
+    <camera wx:if="{{cameraOn}}" id="paper-camera" class="paper-camera" mode="normal" device-position="back" flash="off" resolution="medium" frame-size="medium" bindinitdone="cameraReady" binderror="cameraError" bindstop="cameraError" aria-label="仅在本机识别纸卡的后置相机" />
+    <view class="button-row"><button wx:if="{{!cameraOn}}" class="primary" bindtap="startCamera" loading="{{cameraOpening}}" disabled="{{busy || loading || pendingCount || cameraOpening || privacyNeeded || !collecting || sessionExpired}}">开启纸卡相机</button><button wx:else class="secondary" bindtap="stopCamera">关闭相机</button><button wx:if="{{cameraDenied}}" class="secondary" bindtap="openCameraSettings">打开相机权限设置</button></view>
+    <view wx:if="{{privacyNeeded}}" class="status"><text>请先阅读并同意小程序隐私保护指引，再授权使用相机。</text><view class="button-row"><button class="secondary" bindtap="openPrivacy">阅读隐私保护指引</button><button id="paper-camera-consent" class="primary" open-type="agreePrivacyAuthorization" bindagreeprivacyauthorization="agreeCameraPrivacy">同意并开启相机</button><button class="secondary" bindtap="stopCamera">取消开启</button></view></view>
+  </view>
+
+  <view wx:if="{{pairId && state && !state.ended}}" class="panel">
+    <text class="section-heading">教师手工录入</text>
+    <text class="muted">按本课堂名单中的纸卡号录入。多选题只录入当前分项，A 表示选，B 表示不选。</text>
+    <label class="field paper-gap"><text class="label">纸卡编号</text><input class="input" type="number" maxlength="3" value="{{cardNumber}}" bindinput="inputCard" disabled="{{busy || pendingCount || !collecting}}" aria-label="手工录入的纸卡编号，1到157" placeholder="1-157" /></label>
+    <view class="field"><text class="label">本次作答</text><picker range="{{answerNames}}" value="{{answerIndex}}" bindchange="chooseAnswer" disabled="{{busy || pendingCount || !collecting}}" aria-label="手工录入本次作答"><view class="picker">{{answerNames[answerIndex] || '尚未开始收答'}}</view></picker></view>
+    <button class="primary" bindtap="manualAnswer" disabled="{{busy || loading || pendingCount || !collecting || !cardNumber || sessionExpired}}">提交本次作答</button>
+  </view>
+
+  <view wx:if="{{pairId && state && !state.ended}}" class="panel">
+    <text class="section-heading">下一道临时题</text><text class="muted">请先封存当前轮次。临时题保存在本课堂，题库和已发布题单不受影响。</text>
+    <view class="field paper-gap"><text class="label">题型</text><picker range="{{typeNames}}" value="{{typeIndex}}" bindchange="draftType" disabled="{{busy || pendingCount}}" aria-label="临时题题型"><view class="picker">{{typeNames[typeIndex]}}</view></picker></view>
+    <label class="field"><text class="label">题干（可留空配合课件）</text><textarea class="textarea" value="{{draft.text}}" data-field="text" bindinput="inputDraft" maxlength="20000" disabled="{{busy || pendingCount}}" aria-label="临时题题干" /></label>
+    <view wx:if="{{draft.type !== 'boolean'}}" class="field"><text class="label">选项数量</text><picker range="{{countNames}}" value="{{countIndex}}" bindchange="draftCount" disabled="{{busy || pendingCount}}" aria-label="临时题选项数量"><view class="picker">{{draft.options.length}} 个选项</view></picker></view>
+    <label wx:for="{{draft.options}}" wx:key="index" class="field"><text class="label">选项 {{['A', 'B', 'C', 'D'][index]}}</text><input class="input" value="{{item}}" data-index="{{index}}" bindinput="draftOption" maxlength="2000" disabled="{{busy || pendingCount || draft.type === 'boolean'}}" aria-label="临时题选项{{['A', 'B', 'C', 'D'][index]}}" /></label>
+    <label class="field"><text class="label">标准答案（留空不评分）</text><input class="input" value="{{draft.answerText}}" data-field="answerText" bindinput="inputDraft" maxlength="4" disabled="{{busy || pendingCount}}" aria-label="临时题标准答案，多选例如AC，判断A正确B错误，留空不评分" /></label>
+    <label class="field"><text class="label">知识点</text><input class="input" value="{{draft.tagsText}}" data-field="tagsText" bindinput="inputDraft" maxlength="4100" disabled="{{busy || pendingCount}}" aria-label="临时题知识点，用逗号分隔" /></label>
+    <button class="primary" bindtap="addQuestion" disabled="{{busy || loading || pendingCount || !canAdd || sessionExpired}}">请求添加下一题</button>
+  </view>
+
+  <view wx:if="{{pairId && state && !state.ended}}" class="panel">
+    <text class="section-heading">修订当前题目</text><text class="muted">仅在轮次间修改。草稿绑定当前题号和版本；题目变化后请核对并清空重填。</text>
+    <view class="field paper-gap"><text class="label">修订字段</text><picker range="{{editNames}}" value="{{editIndex}}" bindchange="chooseEdit" disabled="{{busy || pendingCount || editDirty}}" aria-label="当前题目修订字段"><view class="picker">{{editNames[editIndex]}}</view></picker></view>
+    <label class="field"><text class="label">替换内容</text><textarea class="textarea" value="{{editValue}}" bindinput="inputEdit" maxlength="20000" disabled="{{busy || pendingCount}}" aria-label="当前题目修订内容，标准答案用字母，知识点用逗号分隔" /></label>
+    <view class="button-row"><button class="primary" bindtap="saveEdit" disabled="{{busy || loading || pendingCount || !canEdit || !editDirty || sessionExpired}}">提交修订</button><button class="secondary" bindtap="reveal" disabled="{{busy || loading || pendingCount || !canEdit || sessionExpired}}">标记已经讲解</button></view>
+    <button class="secondary paper-gap" bindtap="clearDrafts" disabled="{{busy || pendingCount || (!draftDirty && !editDirty)}}">清空编辑草稿</button>
+  </view>
+</view>

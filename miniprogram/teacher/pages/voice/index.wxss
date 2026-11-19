@@ -1,0 +1,1 @@
+.voice-item { padding: 16px 0; border-bottom: 1px solid #e2eaf3; } .voice-item:last-child { border: none; }

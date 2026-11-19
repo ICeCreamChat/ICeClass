@@ -1,0 +1,75 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header">
+    <view class="title">班级作业管理</view>
+    <view class="subtitle">学生名单与学期作业预设</view>
+  </view>
+  <view class="panel">
+    <view class="field">
+      <view class="label">班级</view>
+      <picker range="{{classNames}}" value="{{classIndex}}" bindchange="onClassChange" disabled="{{busy || !classes.length || sessionExpired}}" aria-label="{{'管理班级，' + (classNames[classIndex] || '暂无班级')}}"><view class="picker">{{classNames[classIndex] || '暂无可访问班级'}}</view></picker>
+    </view>
+    <view wx:if="{{profileClassId}}" class="muted">{{canEdit ? '可维护本班名单与预设' : '当前为查看权限，修改须经本班班主任或有管理权限的老师'}} · 版本 {{revision}}</view>
+    <view wx:if="{{profileClassId}}" class="button-row">
+      <button wx:if="{{canEdit}}" class="primary" bindtap="save" loading="{{busy}}" disabled="{{busy || loading || !dirty || conflict || uncertain || sessionExpired}}" aria-label="保存本班作业设置">保存设置</button>
+      <button class="secondary" bindtap="reload" disabled="{{busy || loading || sessionExpired}}" aria-label="重新载入并替换本班草稿">重新载入</button>
+    </view>
+    <view wx:if="{{dirty}}" class="status" aria-live="polite">本班有未保存修改。</view>
+    <view wx:if="{{cachedDraftCount > 1 || (cachedDraftCount && !dirty)}}" class="muted">当前页面共保留 {{cachedDraftCount}} 个班级的未保存草稿，切回对应班级后可继续保存。</view>
+  </view>
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <view wx:if="{{sessionExpired}}" class="status"><view>登录已失效，当前页面草稿已保留。</view><button class="primary" bindtap="relogin" aria-label="重新登录并保留作业设置草稿">重新登录</button></view>
+  <view wx:if="{{conflict}}" class="status">设置已被其他老师修改。草稿已保留，请重新载入核对后再保存。</view>
+  <view wx:if="{{uncertain}}" class="status">上次保存结果未确认，已停止重复提交。草稿已保留，请重新载入服务器最新设置核对。</view>
+  <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
+  <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入班级作业设置…</view>
+  <view wx:if="{{!profileClassId && !loading && !error && !sessionExpired}}" class="empty">当前没有可查看的班级作业设置。</view>
+  <block wx:if="{{profileClassId === classId && profileClassId}}">
+    <view class="segment" aria-label="作业管理内容">
+      <button class="{{section === 'assignments' ? 'selected' : ''}}" data-section="assignments" bindtap="onSectionChange" disabled="{{busy}}" aria-label="查看学期与作业项目">学期与作业</button>
+      <button class="{{section === 'students' ? 'selected' : ''}}" data-section="students" bindtap="onSectionChange" disabled="{{busy}}" aria-label="查看学生名单">学生名单 {{students.length}} 人</button>
+    </view>
+    <block wx:if="{{section === 'assignments'}}">
+      <view class="panel">
+        <view class="section-heading">学期设置</view>
+        <view class="homework-fields">
+          <view class="field"><view class="label">查看学期</view><picker range="{{termNames}}" value="{{termIndex}}" bindchange="onTermChange" disabled="{{loading || busy}}" aria-label="{{'查看学期，' + termNames[termIndex]}}"><view class="picker">{{termNames[termIndex]}}</view></picker></view>
+          <view class="field"><view class="label">教室当前学期</view><picker range="{{termNames}}" value="{{activeTermIndex}}" bindchange="onActiveTermChange" disabled="{{!canEdit || loading || busy || sessionExpired}}" aria-label="{{'教室当前学期，' + termNames[activeTermIndex]}}"><view class="picker">{{termNames[activeTermIndex]}}</view></picker></view>
+        </view>
+        <view class="field"><view class="label">学期名称</view><input class="input" value="{{termLabel}}" maxlength="120" bindinput="onTermLabelInput" disabled="{{!canEdit || loading || busy || sessionExpired}}" aria-label="查看学期的名称，最多60字" /></view>
+      </view>
+      <view class="panel">
+        <view class="section-heading">作业项目</view>
+        <view class="field"><view class="label">学科</view><picker range="{{subjectNames}}" value="{{subjectIndex}}" bindchange="onSubjectChange" disabled="{{loading || busy}}" aria-label="{{'作业学科，' + subjectNames[subjectIndex]}}"><view class="picker">{{subjectNames[subjectIndex]}}</view></picker></view>
+        <view wx:if="{{!items.length}}" class="empty">该学科暂无作业项目。</view>
+        <view wx:for="{{items}}" wx:key="id" class="homework-item">
+          <input class="input" value="{{item.name}}" data-id="{{item.id}}" bindinput="onItemInput" maxlength="100" disabled="{{!canEdit || loading || busy || sessionExpired}}" aria-label="{{subjectNames[subjectIndex] + '作业名称，第' + (index + 1) + '项，最多50字'}}" />
+          <view class="row homework-item-actions">
+            <label class="homework-switch"><switch checked="{{item.active}}" data-id="{{item.id}}" bindchange="onItemActive" disabled="{{!canEdit || loading || busy || sessionExpired}}" color="#0065cb" aria-label="{{'启用作业项目，' + (item.name || '未命名项目')}}" /><text>{{item.active ? '已启用' : '已停用'}}</text></label>
+            <button wx:if="{{canEdit}}" class="danger" data-id="{{item.id}}" bindtap="removeItem" disabled="{{loading || busy || sessionExpired}}" aria-label="{{'移除作业项目，' + (item.name || '未命名项目')}}">移除</button>
+          </view>
+        </view>
+        <button wx:if="{{canEdit}}" class="secondary block-button" bindtap="addItem" disabled="{{items.length >= 40 || loading || busy || sessionExpired}}" aria-label="{{'为' + subjectNames[subjectIndex] + '添加作业项目'}}">添加作业项目</button>
+        <view class="muted homework-note">每科最多 40 项。停用或移除项目后，历史登记记录仍保留。</view>
+      </view>
+      <view wx:if="{{canEdit}}" class="panel">
+        <view class="section-heading">新增学期</view>
+        <view class="field"><view class="label">新学期名称</view><input class="input" value="{{pendingTerm}}" maxlength="120" bindinput="onPendingTerm" disabled="{{loading || busy || sessionExpired}}" aria-label="新学期名称，最多60字" /></view>
+        <button class="secondary block-button" bindtap="addTerm" disabled="{{terms.length >= 30 || loading || busy || sessionExpired}}" aria-label="沿用查看学期的作业项目创建新学期">创建新学期</button>
+        <view class="muted homework-note">沿用当前查看学期的作业项目。创建后可设为教室当前学期，最多保留 30 个学期。</view>
+      </view>
+    </block>
+    <view wx:if="{{section === 'students'}}" class="panel">
+      <view class="section-heading">学生名单 · {{students.length}} 人</view>
+      <view class="muted">顺序与教室端一致；修改名单后历史登记仍使用当时的名单。</view>
+      <view wx:if="{{!students.length}}" class="empty">本班尚未设置学生名单。</view>
+      <view wx:for="{{students}}" wx:key="id" class="homework-student">
+        <text class="muted homework-number">{{index + 1}}</text><input class="input" value="{{item.name}}" maxlength="80" data-id="{{item.id}}" bindinput="onStudentInput" disabled="{{!canEdit || loading || busy || sessionExpired}}" aria-label="{{'第' + (index + 1) + '位学生姓名，最多40字'}}" />
+        <button wx:if="{{canEdit}}" class="danger" data-id="{{item.id}}" bindtap="removeStudent" disabled="{{loading || busy || sessionExpired}}" aria-label="{{'移除学生，' + (item.name || '未命名学生')}}">移除</button>
+      </view>
+      <block wx:if="{{canEdit}}">
+        <view class="divider"></view><view class="field"><view class="label">批量添加学生，每行一人</view><textarea class="textarea" value="{{pendingNames}}" maxlength="24000" bindinput="onPendingNames" disabled="{{loading || busy || sessionExpired}}" aria-label="批量添加学生，每行一个姓名，最多300人" /></view>
+        <button class="secondary block-button" bindtap="addStudents" disabled="{{loading || busy || students.length >= 300 || sessionExpired}}" aria-label="将输入的学生添加到名单草稿">添加到名单</button>
+      </block>
+    </view>
+  </block>
+</view>

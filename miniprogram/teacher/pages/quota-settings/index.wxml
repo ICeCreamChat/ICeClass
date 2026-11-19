@@ -1,0 +1,44 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title">班班次数</text><text class="subtitle">查看本月用量；超级管理员可调整默认规则和单独上限。</text></view>
+  <text wx:if="error" class="error" role="alert">{{error}}</text>
+  <view wx:if="sessionExpired" class="status"><text>登录已失效，次数设置草稿已保留。</text><button class="primary" bindtap="relogin">重新登录</button></view>
+  <text wx:if="status" class="status" role="status">{{status}}</text>
+  <view class="panel">
+    <view class="toolbar"><text class="section-heading">本月用量</text><button class="secondary" disabled="{{busy || loading || sessionExpired}}" bindtap="refresh">重新载入</button></view>
+    <text wx:if="loading" class="status">正在读取用量与次数规则…</text>
+    <block wx:if="usage"><text class="row-title">{{usage.month}} · {{usage.kind === 'device' ? '当前教室设备' : '本账号'}}</text><text class="usage-line">已用 {{usage.used}} 次 · 剩余 {{usage.remainingLabel}}</text><text class="row-meta">{{usage.source === 'custom' ? '单独设置' : '默认规则'}} · {{usage.limitLabel}}</text><text class="row-meta">下次恢复：{{resetLabel}}（北京时间）</text></block>
+    <text wx:elif="!loading" class="empty">暂未读取到本月用量，请重新载入。</text>
+    <text wx:if="!canManage" class="muted permission">仅非教室登录的超级管理员可管理全校次数上限。</text>
+  </view>
+  <block wx:if="canManage && draft">
+    <view class="panel">
+      <text class="section-heading">默认规则</text>
+      <view class="field"><text class="label">教室设备月度规则</text><picker aria-label="教室设备默认月度次数规则" range="{{modeLabels}}" value="{{deviceModeIndex}}" data-kind="device" disabled="{{busy || loading || sessionExpired}}" bindchange="changeDefaultMode"><view class="picker">{{modeLabels[deviceModeIndex]}}</view></picker></view>
+      <view wx:if="draft.deviceMode === 'limit'" class="field"><label class="label" for="device-limit">每台设备每月上限</label><input id="device-limit" class="input" type="number" aria-label="每台教室设备每月次数上限，0 至 1000000" maxlength="7" value="{{draft.deviceValue}}" data-kind="device" disabled="{{busy || loading || sessionExpired}}" bindinput="inputDefault" /></view>
+      <view class="field"><text class="label">教师账号月度规则</text><picker aria-label="教师账号默认月度次数规则" range="{{modeLabels}}" value="{{accountModeIndex}}" data-kind="account" disabled="{{busy || loading || sessionExpired}}" bindchange="changeDefaultMode"><view class="picker">{{modeLabels[accountModeIndex]}}</view></picker></view>
+      <view wx:if="draft.accountMode === 'limit'" class="field"><label class="label" for="account-limit">每个账号每月上限</label><input id="account-limit" class="input" type="number" aria-label="每个教师账号每月次数上限，0 至 1000000" maxlength="7" value="{{draft.accountValue}}" data-kind="account" disabled="{{busy || loading || sessionExpired}}" bindinput="inputDefault" /></view>
+      <text class="row-meta">0 次暂停使用；不限次数与沿用默认是不同规则。修改上限会保留当月已用次数。</text>
+    </view>
+    <view class="panel">
+      <text class="section-heading">单独设置</text>
+      <view class="segment" aria-label="次数对象类型"><button class="{{workspace === 'device' ? 'selected' : ''}}" data-workspace="device" disabled="{{busy || loading || sessionExpired || editor}}" bindtap="changeWorkspace">教室设备</button><button class="{{workspace === 'account' ? 'selected' : ''}}" data-workspace="account" disabled="{{busy || loading || sessionExpired || editor}}" bindtap="changeWorkspace">教师账号</button></view>
+      <view class="field search-field"><label class="label" for="quota-search">查找{{workspace === 'device' ? '设备或班级' : '账号或显示名'}}</label><input id="quota-search" class="input" aria-label="查找次数设置对象" maxlength="120" value="{{search}}" disabled="{{busy}}" bindinput="inputSearch" /></view>
+      <text wx:if="!rows.length" class="empty">没有匹配的{{workspace === 'device' ? '设备' : '账号'}}。</text>
+      <view wx:for="{{rows}}" wx:key="key" class="quota-row">
+        <text class="row-title">{{item.name}}<text wx:if="!item.enabled">（已停用）</text></text><text class="row-meta">{{item.detail}} · 本月已用 {{item.used}} 次</text><text class="row-meta">{{item.ruleLabel}}</text>
+        <button class="secondary target-button" data-key="{{item.key}}" aria-label="调整{{item.name}}的月度次数" disabled="{{busy || loading || sessionExpired || editor}}" bindtap="openTarget">调整单独规则</button>
+      </view>
+      <view wx:if="editor" class="target-editor">
+        <text class="section-heading">{{editor.name}}</text>
+        <view class="field"><text class="label">月度次数规则</text><picker aria-label="此对象的月度次数规则" range="{{targetModeLabels}}" value="{{editor.modeIndex}}" disabled="{{busy || loading || sessionExpired}}" bindchange="changeTargetMode"><view class="picker">{{targetModeLabels[editor.modeIndex]}}</view></picker></view>
+        <view wx:if="editor.modeIndex === 1" class="field"><label class="label" for="target-limit">月度上限</label><input id="target-limit" class="input" type="number" aria-label="此对象每月次数上限，0 至 1000000" maxlength="7" value="{{editor.value}}" disabled="{{busy || loading || sessionExpired}}" bindinput="inputTarget" /></view>
+        <view class="button-row"><button class="secondary" disabled="{{busy}}" bindtap="cancelTarget">取消调整</button><button class="primary" disabled="{{busy || loading || sessionExpired}}" bindtap="applyTarget">暂存此规则</button></view>
+      </view>
+    </view>
+    <view class="panel">
+      <text wx:if="dirty || editor" class="status">有尚未提交的次数设置。暂存单独规则后，请统一保存。</text>
+      <text wx:if="conflict || uncertain" class="status">{{uncertain ? '保存结果不明确，请重新载入核对。' : '次数版本已变化，已阻止覆盖。请重新载入后核对。'}}草稿和原版本均已保留。</text>
+      <button class="primary save-button" loading="{{busy}}" disabled="{{busy || loading || !dirty || editor || conflict || uncertain || sessionExpired}}" bindtap="save">保存次数设置</button>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,14 @@
+.period { padding: 20px 0; border-bottom: 1px solid #e2eaf3; }
+.period:first-of-type { padding-top: 0; }
+.period:last-of-type { margin-bottom: 16px; }
+.weekdays { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.day { display: flex; align-items: center; gap: 4px; min-width: 78px; min-height: 44px; padding: 6px 0; }
+.day checkbox { flex-shrink: 0; }
+.times { display: flex; flex-wrap: wrap; gap: 12px; }
+.times .field { flex: 1 1 130px; min-width: 0; }
+.switch-row { display: flex; align-items: center; gap: 12px; min-height: 44px; margin-bottom: 16px; }
+.switch-row switch { flex-shrink: 0; min-height: 44px; }
+.delete { width: 100%; margin-bottom: 4px; }
+.time { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.recovery { margin: 12px 0 20px; }
+@media (max-width: 340px) { .times .field { flex-basis: 100%; } }

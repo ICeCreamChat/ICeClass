@@ -1,0 +1,16 @@
+.segment { margin-bottom: 16px; }
+button, .picker, .input, .homework-switch { min-height: 44px; }
+button { height: auto; padding: 10px 14px; font-size: 16px; font-weight: 600; line-height: 1.5; white-space: normal; }
+.homework-fields { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.homework-fields .field { flex: 1 1 200px; }
+.homework-item { padding: 14px 0; border-bottom: 1px solid #7199b538; }
+.homework-item:first-of-type { padding-top: 0; }
+.homework-item-actions { justify-content: space-between; border-bottom: 0; padding-bottom: 0; }
+.homework-item-actions button { margin: 0; flex: none; }
+.homework-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.homework-note { margin-top: 12px; line-height: 1.7; }
+.homework-student { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.homework-student .input { flex: 1; min-width: 0; }
+.homework-student button { flex: none; margin: 0; padding-right: 12px; padding-left: 12px; }
+.homework-number { flex: 0 0 24px; font-size: 14px; font-variant-numeric: tabular-nums; }
+@media (max-width: 360px) { .homework-student { flex-wrap: wrap; } .homework-student .input { flex-basis: calc(100% - 36px); } .homework-student button { margin-left: auto; } }

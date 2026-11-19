@@ -1,0 +1,41 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title">教室电脑</text><text class="subtitle">核实设备身份，管理班级归属和连接状态。</text></view>
+  <view wx:if="error" class="error" role="alert"><text>{{error}}</text></view>
+  <view wx:if="sessionExpired" class="status"><text>登录已失效，当前设备草稿已保留。</text><button class="primary" bindtap="relogin">重新登录</button></view>
+  <view wx:if="status" class="status" role="status">{{status}}</view>
+  <view wx:if="!allowed" class="panel"><text class="empty">仅校长、主任、年级部和超级管理员可管理设备；可见班级范围由学校服务核验。</text></view>
+  <block wx:else>
+    <view class="panel">
+      <view class="toolbar"><text class="section-heading">已绑定设备</text><button class="secondary" disabled="{{busy || loading || sessionExpired}}" bindtap="refresh">重新载入</button></view>
+      <view class="field"><label class="label" for="device-search">查找设备</label><input id="device-search" class="input" aria-label="查找设备名称、班级或电脑标识" value="{{search}}" maxlength="120" disabled="{{busy}}" bindinput="inputSearch" placeholder="名称、班级、电脑标识" /></view>
+      <view class="field"><text class="label">连接状态</text><picker aria-label="筛选设备连接状态" range="{{filters}}" value="{{filterIndex}}" disabled="{{busy}}" bindchange="changeFilter"><view class="picker">{{filters[filterIndex]}}</view></picker></view>
+      <text wx:if="loading" class="status" role="status">正在读取设备和可管理班级…</text>
+      <text wx:if="!loading && !rows.length" class="empty">{{devices.length ? '没有匹配的设备。' : '当前管理范围尚未绑定教室电脑。'}}</text>
+      <view wx:for="{{rows}}" wx:key="id" class="device-row">
+        <view class="device-heading"><text class="row-title">{{item.class_name}} · {{item.name}}</text><text class="badge">{{item.connectionLabel}}</text></view>
+        <text class="row-meta">{{item.verifiedLabel}}<text wx:if="item.class_device_count > 1"> · 同班 {{item.class_device_count}} 台</text></text>
+        <text class="row-meta">电脑名称：{{item.computer_name || '尚未上报'}}</text>
+        <text class="row-meta">设备标识：{{item.device_code || item.id}}</text>
+        <text class="row-meta">局域网：{{item.addressesLabel}}</text>
+        <text class="row-meta">系统：{{item.os_version || '尚未上报'}}</text>
+        <text wx:if="item.binding_note" class="row-meta">位置备注：{{item.binding_note}}</text>
+        <text class="row-meta">最近连接：{{item.last_seen_at ? item.seenLabel : '从未连接'}}</text>
+        <button class="secondary device-action" data-id="{{item.id}}" aria-label="核实或修改{{item.class_name}}的{{item.name}}" disabled="{{busy || loading || sessionExpired || uncertain || draft}}" bindtap="openDevice">核实 / 修改绑定</button>
+      </view>
+    </view>
+    <view wx:if="draft" class="panel">
+      <text class="section-heading">{{editName}}</text>
+      <text class="muted">请在教室核对电脑名称和局域网地址后，再标记归属已核实。</text>
+      <view class="field"><label class="label" for="device-name">设备名称</label><input id="device-name" class="input" aria-label="设备名称" value="{{draft.name}}" maxlength="160" disabled="{{busy || loading || sessionExpired}}" data-field="name" bindinput="inputField" /></view>
+      <view class="field"><text class="label">所属班级</text><picker aria-label="设备所属班级" range="{{classNames}}" value="{{classIndex}}" disabled="{{busy || loading || sessionExpired}}" bindchange="changeClass"><view class="picker">{{classNames[classIndex] || '没有可管理班级'}}</view></picker></view>
+      <view class="field"><label class="label" for="device-note">位置备注</label><input id="device-note" class="input" aria-label="设备位置备注" value="{{draft.note}}" maxlength="240" disabled="{{busy || loading || sessionExpired}}" data-field="note" bindinput="inputField" /></view>
+      <checkbox-group aria-label="设备连接与归属核验状态" bindchange="changeFlags">
+        <label class="check-option"><checkbox value="enabled" aria-label="允许设备连接" checked="{{draft.enabled}}" disabled="{{busy || loading || sessionExpired}}" />允许设备连接</label>
+        <label class="check-option"><checkbox value="verified" aria-label="已在教室核实设备归属" checked="{{draft.verified}}" disabled="{{busy || loading || sessionExpired}}" />已在教室核实归属</label>
+      </checkbox-group>
+      <text wx:if="dirty" class="status">有尚未保存的设备设置。修改会使用现有确认接口，消耗本账号 1 次班班次数。</text>
+      <text wx:if="conflict || uncertain" class="status">{{uncertain ? '操作结果不明确，请重新载入核对后再操作。' : '绑定已变化，已阻止覆盖。请重新载入后核对。'}}草稿已保留。</text>
+      <view class="button-row"><button class="secondary" disabled="{{busy}}" bindtap="cancelEdit">取消编辑</button><button class="primary" loading="{{busy}}" disabled="{{busy || loading || !dirty || conflict || uncertain || sessionExpired}}" bindtap="save">保存设备设置</button></view>
+    </view>
+  </block>
+</view>

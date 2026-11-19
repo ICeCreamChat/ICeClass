@@ -1,0 +1,50 @@
+<view class="page theme-{{appearance}} history-page">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">通知记录</text></view>
+  <view class="panel history-filters">
+    <view class="field">
+      <text class="label">筛选班级</text>
+      <picker mode="selector" range="{{filterNames}}" value="{{filterIndex}}" bindchange="onClassChange" disabled="{{sessionExpired}}" aria-label="筛选班级，{{filterNames[filterIndex]}}">
+        <view class="picker">{{filterNames[filterIndex]}}</view>
+      </picker>
+    </view>
+    <button class="secondary" bindtap="refresh" disabled="{{loading || loadingMore || sessionExpired}}">刷新</button>
+  </view>
+
+  <view wx:if="{{error}}" class="error" aria-role="alert"><text selectable>{{error}}</text></view>
+  <view wx:if="{{sessionExpired}}" class="status">
+    <text>登录已失效，请重新登录后查看记录。</text>
+    <button class="primary" bindtap="relogin">重新登录</button>
+  </view>
+  <text wx:if="{{loading}}" class="status" aria-role="status">正在读取通知记录…</text>
+  <view wx:elif="{{!items.length && !error && !sessionExpired}}" class="panel empty">当前筛选下暂无通知记录。</view>
+
+  <view wx:for="{{items}}" wx:key="id" class="panel history-item">
+    <view class="history-heading">
+      <text class="row-title" aria-role="heading" aria-level="2">{{item.className}}</text>
+      <text class="badge {{item.statusTone}}">{{item.statusLabel}}</text>
+    </view>
+    <text class="row-meta history-copy">{{item.createdTime}} · {{item.senderName}}</text>
+    <text class="history-content history-copy" selectable>{{item.text}}</text>
+    <view class="history-badges">
+      <text class="badge">{{item.levelLabel}}</text>
+      <text wx:if="{{item.audioDuration}}" class="badge">{{item.audioDuration}}</text>
+      <text wx:if="{{item.quietOverride}}" class="badge warn">禁言时间内确认发送</text>
+    </view>
+    <text wx:if="{{item.detail}}" class="row-meta history-copy" selectable>{{item.detail}}</text>
+    <text wx:if="{{item.status === 'offline'}}" class="row-meta history-copy">恢复网络后不会补播。</text>
+    <text wx:if="{{item.status === 'sent'}}" class="row-meta history-copy">尚未收到教室回执。</text>
+    <text wx:if="{{item.statusLabel === '未知状态'}}" class="row-meta history-copy">服务端状态：{{item.rawStatus}}</text>
+    <view wx:if="{{item.timeline.length}}" class="history-timeline">
+      <text class="label">送达回执</text>
+      <view wx:for="{{item.timeline}}" wx:for-item="step" wx:key="label" class="history-step">
+        <text>{{step.label}}</text><text class="row-meta">{{step.time}}</text>
+      </view>
+    </view>
+    <text class="row-meta history-id" selectable>记录编号：{{item.id}}</text>
+  </view>
+
+  <view wx:if="{{items.length}}" class="history-footer">
+    <text class="muted" aria-role="status">已显示 {{items.length}} 条记录{{!hasMore ? '，全部加载完毕' : ''}}</text>
+    <button wx:if="{{hasMore}}" class="secondary" bindtap="loadMore" loading="{{loadingMore}}" disabled="{{loading || loadingMore || sessionExpired}}">{{loadingMore ? '正在加载…' : '加载更多'}}</button>
+  </view>
+</view>

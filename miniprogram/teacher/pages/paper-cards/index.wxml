@@ -1,0 +1,31 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">纸卡编号与名单</text><text class="subtitle">一个卡号对应一名学生，历史课堂使用原名单快照</text></view>
+  <view class="panel">
+    <view class="field"><text class="label">班级</text><picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy || uncertain || !classes.length}}" aria-label="纸卡名单所属班级"><view class="picker">{{classNames[classIndex] || '暂无可访问班级'}}</view></picker></view>
+    <view class="button-row"><button class="secondary" bindtap="reload" loading="{{loading}}" disabled="{{busy || loading}}">重新读取纸卡</button><button class="primary" bindtap="initialize" disabled="{{busy || loading || !loaded || !canEdit || !students.length || dirty || uncertain || conflict || sessionExpired}}">为缺号学生分配</button></view>
+    <view class="button-row"><button class="secondary" bindtap="openStudentAccounts" disabled="{{busy || loading || !loaded || !classId || dirty || uncertain || sessionExpired}}">本班学生账号</button></view>
+    <text wx:if="{{loaded && !canEdit}}" class="status">当前账号可以查看名单与卡面，不能修改本班纸卡编号。</text>
+  </view>
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <button wx:if="{{sessionExpired}}" class="primary" bindtap="relogin">重新登录</button>
+  <view wx:if="{{status}}" class="status" aria-live="polite">{{status}}</view>
+  <view wx:if="{{conflict}}" class="status">版本有冲突，草稿已保留。请重新读取服务端卡号并核对。</view>
+  <view wx:if="{{uncertain}}" class="status">保存结果未确认，已暂停写入。重新读取成功前不会解除保护。</view>
+  <view wx:if="{{loading}}" class="status">正在读取纸卡与名单…</view>
+  <view wx:if="{{loaded && !students.length}}" class="empty">当前班级暂无名单，请先维护班级作业名单。</view>
+  <view wx:if="{{students.length}}" class="panel">
+    <text class="section-heading">{{students.length}} 名学生 · 版本 {{revision}}</text>
+    <text class="muted">卡号 1-157，留空解除绑定。只保存修改过的学生；已占用的卡号不能重复分配。</text>
+    <view wx:for="{{students}}" wx:key="id" class="paper-student">
+      <label class="field"><text class="label">{{item.name}} · 纸卡编号</text><input class="input" type="number" value="{{item.draftNumber}}" data-id="{{item.id}}" bindinput="inputCard" maxlength="3" disabled="{{busy || loading || !canEdit || uncertain || conflict}}" aria-label="{{item.name}}的纸卡编号，1到157，留空解除绑定" placeholder="尚未绑定" /></label>
+      <button class="secondary" data-number="{{item.cardNumber}}" bindtap="previewCard" disabled="{{busy || loading || dirty || uncertain || !item.cardNumber}}" aria-label="生成{{item.name}}的{{item.cardNumber}}号纸卡图样">查看已保存卡面</button>
+    </view>
+    <text wx:if="{{dirty}}" class="muted">卡号修改尚未保存。</text><button wx:if="{{canEdit}}" class="primary paper-gap" bindtap="saveBindings" disabled="{{busy || loading || !dirty || uncertain || conflict || sessionExpired}}">保存卡号修改</button>
+  </view>
+  <view wx:if="{{previewPath}}" class="panel">
+    <text class="section-heading">{{previewNumber}} 号纸卡图样</text><image class="paper-card-image" src="{{previewPath}}" mode="widthFix" show-menu-by-longpress="{{true}}" aria-label="{{previewNumber}}号纸卡，含完整白边与方向字母" />
+    <text class="muted">可分享 PNG 后自行打印，保持图案为正方形并保留白边。带账号和密码的正式纸卡请在网页教师工作台打印。</text>
+    <button class="primary paper-gap" bindtap="shareCard" disabled="{{busy}}">分享纸卡 PNG</button>
+  </view>
+  <canvas id="paper-card-canvas" type="2d" class="paper-card-canvas" aria-label="纸卡图样绘制画布" />
+</view>

@@ -1,0 +1,70 @@
+<view class="page theme-{{appearance || 'glass'}}">
+  <view class="page-header"><view class="title">早读统计</view><view class="subtitle">查看有效发声、完成量和同步状态</view></view>
+  <view wx:if="{{canManageReading}}" class="panel"><view class="section-heading">全校早读规则</view><view class="row-meta">维护全校统计时段、声量门槛和到点提醒。</view><view class="button-row"><button class="secondary" bindtap="openSettings" disabled="{{exporting || sessionExpired}}" aria-label="进入全校早读规则，仅校长或超级管理员可编辑">设置早读规则</button></view></view>
+  <view class="panel">
+    <view class="field">
+      <view class="label">班级</view>
+      <picker mode="selector" range="{{classNames}}" value="{{classIndex}}" disabled="{{exporting || !classes.length}}" bindchange="onClassChange" aria-label="{{'班级，' + (classNames[classIndex] || '暂无可访问班级')}}"><view class="picker">{{classNames[classIndex] || '暂无可访问班级'}}</view></picker>
+    </view>
+    <view class="report-filters">
+      <view class="field">
+        <view class="label">开始日期</view>
+        <picker mode="date" value="{{start}}" data-field="start" disabled="{{exporting}}" bindchange="onDateChange" aria-label="{{'开始日期，' + start}}"><view class="picker">{{start}}</view></picker>
+      </view>
+      <view class="field">
+        <view class="label">结束日期</view>
+        <picker mode="date" value="{{end}}" data-field="end" disabled="{{exporting}}" bindchange="onDateChange" aria-label="{{'结束日期，' + end}}"><view class="picker">{{end}}</view></picker>
+      </view>
+    </view>
+    <view class="button-row">
+      <button class="primary" bindtap="queryReport" loading="{{loading}}" disabled="{{loading || exporting || !classId || sessionExpired}}">查询统计</button>
+      <button class="secondary" bindtap="exportReport" loading="{{exporting}}" disabled="{{loading || exporting || !report || sessionExpired}}">导出 Excel</button>
+    </view>
+    <view class="muted report-note">导出当前日期范围，由你选择文件收件人。</view>
+  </view>
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <view wx:if="{{sessionExpired}}" class="status"><view>登录会话已失效，筛选条件已保留。</view><button class="primary" bindtap="relogin">重新登录</button></view>
+  <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
+  <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入早读统计…</view>
+  <view wx:if="{{!loading && !classes.length && !error && !sessionExpired}}" class="empty">当前账号没有可访问班级。</view>
+  <view wx:if="{{loaded && !report}}" class="empty">当前范围没有班级统计，请检查班级选择后刷新。</view>
+
+  <block wx:if="{{report}}">
+    <view class="panel">
+      <view class="report-line"><view class="section-heading">{{report.className}}</view><text class="badge">{{report.syncLabel}}</text></view>
+      <view class="report-metrics">
+        <view wx:for="{{report.metrics}}" wx:key="key" class="report-metric"><view class="muted">{{item.label}}</view><text class="report-value">{{item.value}}</text></view>
+      </view>
+      <view wx:if="{{report.noActivity}}" class="empty">所选日期暂无已同步运行记录。</view>
+      <view class="muted">达标占比按有效发声秒数 / 运行秒数计算；没有运行记录时不显示 0%。</view>
+      <view class="row-meta report-note">模式：{{report.modesText}}</view>
+      <view class="section-heading report-heading">完成量</view>
+      <view class="report-metrics">
+        <view wx:for="{{report.completed}}" wx:key="key" class="report-metric"><view class="muted">{{item.label}}</view><text class="report-value">{{item.value}}</text></view>
+      </view>
+      <view class="section-heading report-heading">设备同步</view>
+      <view wx:if="{{report.syncNote}}" class="status">{{report.syncNote}}</view>
+      <view class="row-meta">最近同步：{{report.syncedText}}</view>
+      <view class="row-meta">待补传 {{report.pendingText}} 批 · 待核实 {{report.reviewText}} 批</view>
+      <view class="muted report-note">同步状态反映设备当前状态；统计只包含服务器已接收并计入的记录。</view>
+    </view>
+
+    <view class="panel">
+      <view class="section-heading">每日明细</view>
+      <view wx:if="{{!dailyRows.length}}" class="empty">所选日期没有已同步的每日记录。</view>
+      <view wx:for="{{dailyRows}}" wx:key="key" wx:for-item="day" class="report-item">
+        <view class="row-title">{{day.day}}</view>
+        <view class="row-meta">使用 {{day.sessions}} 次 · 运行 {{day.activeText}}</view>
+        <view class="row-meta">有效发声 {{day.effectiveText}}</view>
+        <view class="report-completed"><text wx:for="{{day.completed}}" wx:key="key">{{item.label}} {{item.value}}</text></view>
+      </view>
+      <view wx:if="{{dailyPages > 1}}" class="report-pagination">
+        <view class="muted">共 {{dailyTotal}} 条 · 第 {{dailyPage}} / {{dailyPages}} 页</view>
+        <view class="button-row">
+          <button class="secondary" data-step="-1" bindtap="onDailyPage" disabled="{{dailyPage <= 1 || exporting}}">上一页日期</button>
+          <button class="secondary" data-step="1" bindtap="onDailyPage" disabled="{{dailyPage >= dailyPages || exporting}}">下一页日期</button>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

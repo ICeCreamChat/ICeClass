@@ -1,0 +1,47 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header">
+    <text class="title" aria-role="heading" aria-level="1">班级管理</text>
+    <text wx:if="{{scopeLabel}}" class="subtitle">{{scopeLabel}}</text>
+  </view>
+  <view wx:if="{{error}}" class="error" aria-role="alert"><text>{{error}}</text></view>
+  <view wx:if="{{sessionExpired}}" class="status">
+    <text>登录已失效，当前班级草稿会保留。</text>
+    <button class="primary" bindtap="relogin">重新登录</button>
+  </view>
+  <view wx:if="{{status}}" class="status"><text>{{status}}</text></view>
+  <view class="toolbar">
+    <button class="secondary" bindtap="refresh" disabled="{{busy || loading || sessionExpired}}" loading="{{loading}}">刷新班级</button>
+    <button wx:if="{{canManage}}" class="primary" bindtap="newClass" disabled="{{busy || editorOpen || sessionExpired}}">新建班级</button>
+  </view>
+  <view wx:if="{{!canManage && !sessionExpired}}" class="status"><text>当前账号可查看授权班级，不能新建、修改或启停班级。</text></view>
+  <view wx:if="{{editorOpen}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">{{editId ? '编辑班级' : '新建班级'}}</text>
+    <view class="field">
+      <text class="label">班级名称</text>
+      <input class="input" value="{{name}}" bindinput="inputName" aria-label="班级名称" placeholder="例如：高一（1）班" maxlength="80" disabled="{{busy}}" />
+    </view>
+    <text wx:if="{{editId}}" class="muted">更名会同步到教室。修改和启停计入 1 次班班操作次数。</text>
+    <view class="button-row">
+      <button class="primary" bindtap="saveClass" loading="{{busy}}" disabled="{{busy || loading || uncertain || sessionExpired}}">{{editId ? '保存名称' : '创建班级'}}</button>
+      <button class="secondary" bindtap="cancelEdit" disabled="{{busy}}">取消编辑</button>
+    </view>
+  </view>
+  <view wx:if="{{loading}}" class="status"><text>正在读取班级列表…</text></view>
+  <view wx:elif="{{!classes.length && !error && !sessionExpired}}" class="empty"><text>当前管理范围内暂无班级。</text></view>
+  <view wx:if="{{classes.length}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">授权班级 · {{classes.length}}</text>
+    <view class="list">
+      <view wx:for="{{classes}}" wx:key="id" class="class-item">
+        <view class="row">
+          <view class="row-main"><text class="row-title">{{item.name}}</text><text class="row-meta">{{item.teacherCountLabel}}</text></view>
+          <text class="badge">{{item.isEnabled ? '启用' : '已停用'}}</text>
+        </view>
+        <text class="row-meta">设备最近连接：{{item.lastSeenLabel}}</text>
+        <view wx:if="{{item.canManage}}" class="button-row">
+          <button class="secondary" data-id="{{item.id}}" bindtap="editClass" aria-label="编辑{{item.name}}" disabled="{{busy || editorOpen || sessionExpired}}">编辑名称</button>
+          <button class="{{item.isEnabled ? 'danger' : 'secondary'}}" data-id="{{item.id}}" bindtap="toggleClass" aria-label="{{item.isEnabled ? '停用' : '启用'}}{{item.name}}" disabled="{{busy || loading || uncertain || sessionExpired}}">{{item.isEnabled ? '停用班级' : '启用班级'}}</button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

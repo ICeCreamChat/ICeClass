@@ -1,0 +1,65 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header">
+    <text class="title" aria-role="heading" aria-level="1">本班学生账号</text>
+    <view class="subtitle">查看账号与关联状态</view>
+  </view>
+  <view class="panel">
+    <view class="field"><text class="label">班级</text><picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy || !classes.length || sessionExpired}}" aria-label="{{'账号管理班级，' + (classNames[classIndex] || '暂无班级')}}"><view class="picker">{{classNames[classIndex] || '暂无可访问班级'}}</view></picker></view>
+    <text wx:if="{{loaded && rows.length}}" class="muted">{{canEdit ? '可管理本班学生账号' : '当前为查看权限，账号操作须由名单管理员执行'}}</text>
+    <button class="secondary block-button" bindtap="reload" disabled="{{busy || loading || sessionExpired}}" aria-label="重新读取学生账号并核对最新版本">重新读取账号状态</button>
+  </view>
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <view wx:if="{{sessionExpired}}" class="status"><view>登录已失效，操作输入已保留，一次性密码已清除。</view><button class="primary" bindtap="relogin" aria-label="重新登录后继续核对账号操作">重新登录</button></view>
+  <view wx:if="{{conflict}}" class="status">账号、名单或卡号版本有冲突，操作输入已保留。请重新读取并核对后操作。</view>
+  <view wx:if="{{uncertain}}" class="status">上次操作结果未确认，已停止重复提交。请重新读取账号状态核对；原一次性密码无法补读。</view>
+  <view wx:if="{{status}}" class="status" aria-live="polite">{{status}}</view>
+  <view wx:if="{{loading}}" class="status" aria-live="polite">正在读取学生账号…</view>
+  <view wx:if="{{credentials.length}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">本次密码 · {{credentials.length}} 人</text>
+    <view class="status">密码仅本页本次显示，页面隐藏或离开即清除。请在本页核对，完成后清除本次密码。</view>
+    <view wx:for="{{credentials}}" wx:key="studentId" class="account-credential">
+      <text class="row-title">{{item.name}}</text><view>账号 <text class="account-number">{{item.username}}</text></view><view>本次密码 <text class="account-password">{{item.password}}</text></view>
+    </view>
+    <button class="secondary block-button" bindtap="clearCredentials" disabled="{{busy}}" aria-label="从当前页面清除全部一次性密码">清除本次密码</button>
+  </view>
+  <view wx:if="{{loaded && !rows.length && !loading && !error}}" class="empty">当前班级没有学生名单，请先维护班级作业名单。</view>
+  <block wx:if="{{loaded && rows.length}}">
+    <view class="segment" aria-label="学生账号工作区">
+      <button class="{{section === 'accounts' ? 'selected' : ''}}" data-section="accounts" bindtap="onSectionChange" disabled="{{busy}}" aria-label="查看学生账号及选择需要重置的学生">账号与重置</button>
+      <button wx:if="{{canEdit}}" class="{{section === 'manage' ? 'selected' : ''}}" data-section="manage" bindtap="onSectionChange" disabled="{{busy}}" aria-label="生成或关联学生账号">生成与关联</button>
+    </view>
+    <view wx:if="{{section === 'accounts' || !canEdit}}" class="panel">
+      <text class="section-heading" aria-role="heading" aria-level="2">账号名单 · {{rows.length}} 人</text>
+      <checkbox-group bindchange="selectStudents" aria-label="选择需要重置密码的当前关联学生账号">
+        <view wx:for="{{rows}}" wx:key="studentId" class="row account-row">
+          <label wx:if="{{canEdit}}" class="account-check"><checkbox value="{{item.studentId}}" checked="{{item.selected}}" disabled="{{!item.resettable || busy || loading || sessionExpired}}" color="#0065cb" aria-label="{{'选择重置' + item.name + '的账号' + item.username}}" /></label>
+          <view class="row-main"><text class="row-title">{{item.name}}</text><view class="account-number">{{item.username}}</view><view class="row-meta">{{item.status}}</view></view>
+        </view>
+      </checkbox-group>
+      <block wx:if="{{canEdit}}">
+        <view class="button-row"><button class="secondary" bindtap="selectAll" disabled="{{!resettableCount || resettableCount > 157 || busy || loading || sessionExpired}}" aria-label="选择或取消选择全部当前关联本班的学生账号">{{selectedIds.length === resettableCount && resettableCount ? '取消全选' : '选择全部可重置账号'}}</button></view>
+        <text class="muted account-note">已选 {{selectedIds.length}} 人；一次最多 157 人，仅当前关联本班的账号可重置。</text>
+        <button class="danger block-button" bindtap="reset" loading="{{busy}}" disabled="{{!selectedIds.length || busy || loading || conflict || uncertain || credentials.length || sessionExpired}}" aria-label="确认后重置所选学生密码并立即使旧密码和旧会话失效">重置所选密码</button>
+      </block>
+    </view>
+    <block wx:if="{{section === 'manage' && canEdit}}">
+      <view class="panel">
+        <text class="section-heading" aria-role="heading" aria-level="2">生成未关联学生账号</text>
+        <view class="account-fields">
+          <view class="field"><text class="label">入学年份</text><input class="input" type="number" value="{{entryYear}}" maxlength="4" data-field="entryYear" bindinput="onFieldInput" disabled="{{busy || loading || sessionExpired}}" aria-label="入学年份，2000至2099" /></view>
+          <view class="field"><text class="label">首次发放班级编码</text><input class="input" type="number" value="{{classCode}}" maxlength="3" data-field="classCode" bindinput="onFieldInput" disabled="{{busy || loading || sessionExpired}}" aria-label="首次发放班级编码，三位数字，例如109" /></view>
+        </view>
+        <text class="muted">编码为年级 1/2/3 加班号 01-99，如高一（9）班为 109。仅为已分配卡号且未关联的 {{eligibleCount}} 人生成，已有账号不覆盖。请先在本班纸卡保存卡号。</text>
+        <button class="primary block-button account-gap" bindtap="generate" loading="{{busy}}" disabled="{{!eligibleCount || busy || loading || conflict || uncertain || credentials.length || sessionExpired}}" aria-label="确认后批量生成未关联学生账号和一次性初始密码">生成账号和初始密码</button>
+      </view>
+      <view class="panel">
+        <text class="section-heading" aria-role="heading" aria-level="2">转班或升班：关联原账号</text>
+        <view class="field"><text class="label">本班未关联学生</text><picker range="{{linkNames}}" value="{{linkIndex}}" bindchange="onLinkStudent" disabled="{{linkNames.length <= 1 || busy || loading || sessionExpired}}" aria-label="{{'明确选择本班学生，' + linkNames[linkIndex]}}"><view class="picker">{{linkNames[linkIndex]}}</view></picker></view>
+        <view class="field"><text class="label">原学生账号编号</text><input class="input" type="number" value="{{username}}" maxlength="32" data-field="username" bindinput="onFieldInput" disabled="{{busy || loading || sessionExpired}}" aria-label="原学生账号完整数字编号" /></view>
+        <text class="muted">需要同时管理原班和本班。明确选择学生并输入原账号，不按姓名或卡号推断身份；关联后密码与原历史保留。</text>
+        <button class="secondary block-button account-gap" bindtap="link" loading="{{busy}}" disabled="{{!linkStudentId || !username || busy || loading || conflict || uncertain || credentials.length || sessionExpired}}" aria-label="确认后关联原账号并保留密码和历史">关联原账号</button>
+      </view>
+    </block>
+    <view class="muted account-note">账号版本 {{revision}} · 名单版本 {{rosterRevision}} · 卡号版本 {{cardRevision}}</view>
+  </block>
+</view>

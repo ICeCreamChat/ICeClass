@@ -1,0 +1,31 @@
+<view class="page theme-{{appearance}} login-page">
+  <view class="login-brand">
+    <image src="/assets/app-icon.png" mode="aspectFit" aria-hidden="true" />
+    <text>ICeClass 班伴</text>
+  </view>
+  <view class="panel login-panel">
+    <view class="login-intro">
+      <view>
+        <text class="title" aria-role="heading" aria-level="1">欢迎回来</text>
+        <text class="subtitle">使用学校账号，进入教师工作台。</text>
+      </view>
+      <image class="login-mascot" src="/assets/banban/{{passwordFocus && passwordHidden ? 'login-cover' : 'login-rest'}}.webp" mode="aspectFit" aria-hidden="true" />
+    </view>
+    <form bindsubmit="submit">
+      <label class="field">
+        <text class="label">学校账号</text>
+        <input class="input" value="{{username}}" name="username" data-field="username" bindinput="input" maxlength="64" disabled="{{busy}}" aria-label="学校账号" confirm-type="next" bindconfirm="focusPassword" placeholder="请输入学校账号" />
+      </label>
+      <view class="field">
+        <label class="label" for="login-password">密码</label>
+        <view class="password-field">
+          <input id="login-password" class="input" value="{{password}}" name="password" data-field="password" bindinput="input" password="{{passwordHidden}}" focus="{{passwordFocus}}" bindfocus="focusPassword" bindblur="blurPassword" maxlength="128" disabled="{{busy}}" aria-label="密码" confirm-type="done" bindconfirm="submit" placeholder="请输入密码" />
+          <button class="password-toggle quiet-button" bindtap="togglePassword" disabled="{{busy}}" aria-label="{{passwordHidden ? '显示密码' : '隐藏密码'}}">{{passwordHidden ? '显示' : '隐藏'}}</button>
+        </view>
+      </view>
+      <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+      <button class="primary block-button" form-type="submit" loading="{{busy}}" disabled="{{busy}}">{{busy ? '正在登录…' : '进入工作台'}}</button>
+    </form>
+  </view>
+  <button class="privacy-button quiet-button" bindtap="privacy">隐私说明</button>
+</view>

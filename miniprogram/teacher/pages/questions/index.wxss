@@ -1,0 +1,11 @@
+.question-item { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.question-item:last-child { border-bottom: none; padding-bottom: 0; }
+.question-choice { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px 0; }
+.question-choice text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.question-nav { margin-bottom: 12px; }
+.question-scope { margin-bottom: 16px; }
+.question-panel-head { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.question-panel-head .section-heading { margin: 0; }
+.question-options { margin-top: 16px; }
+.order-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.order-actions button { padding-left: 8px; padding-right: 8px; }

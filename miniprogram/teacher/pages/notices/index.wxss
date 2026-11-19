@@ -1,0 +1,24 @@
+.notice-heading, .compose-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.notice-heading { flex-wrap: wrap; }
+.panel-head .section-heading { margin-bottom: 0; }
+.compose-label { flex-wrap: wrap; margin-bottom: 6px; }
+.compose-label .label { margin: 0; }
+.count, .receipt-step { font-variant-numeric: tabular-nums; }
+.notice-text { min-height: 126px; }
+.notice-copy { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.field-note { margin-top: 6px; }
+.audio-draft { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--field); }
+.voice-actions { margin-top: 6px; }
+.disclosure { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-left: 0; padding-right: 4px; }
+.disclosure-chevron { width: 8px; height: 8px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.disclosure-chevron.expanded { transform: rotate(225deg); }
+.notice-settings { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 12px; }
+.notice-settings .field { flex: 1 1 130px; margin: 0; }
+.notice-send { margin-top: 6px; }
+.notice-item { padding: 13px 0; border-bottom: 1px solid var(--line); }
+.notice-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.notice-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 5px 0; }
+.receipt-step { color: var(--ink); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding: 6px 0; }
+@media (min-width: 740px) {
+  .notice-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+}

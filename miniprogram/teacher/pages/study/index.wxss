@@ -1,0 +1,21 @@
+.switch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 44px; margin-bottom: 12px; }
+.switch-row switch { min-height: 44px; flex-shrink: 0; }
+.config-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 6px 0; }
+.event { padding: 18px 0; border-bottom: 1px solid #e2eaf3; }
+.event:last-child { border-bottom: none; padding-bottom: 0; }
+.event-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.event-photo { display: block; width: 100%; min-height: 120px; border-radius: 10px; margin-bottom: 12px; }
+.photo-panel { margin-top: 20px; }
+.photo-panel button { margin-top: 16px; width: 100%; }
+.recovery { margin: 12px 0 20px; }
+.study-fields { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 16px; }
+.study-fields .field { flex: 1 1 200px; min-width: 0; }
+.study-fields .input { font-variant-numeric: tabular-nums; }
+.study-flow { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0; }
+.flow-step { color: var(--muted); padding: 5px 0; font-size: 14px; }
+.flow-step.active { color: var(--blue); font-weight: 600; }
+.authorization { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 12px 0; }
+.disclosure, .timetable { width: 100%; margin-top: 16px; }
+.segment button, button, .picker, .authorization { min-height: 44px; }
+.budget-fields { margin-top: 20px; }
+@media (max-width: 380px) { .event .button-row button { flex-basis: 100%; } }

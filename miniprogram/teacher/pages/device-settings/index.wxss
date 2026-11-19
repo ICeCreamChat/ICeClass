@@ -1,0 +1,9 @@
+.toolbar { justify-content: space-between; margin-bottom: 16px; }
+.toolbar .section-heading { margin: 0; }
+.device-row { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.device-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.device-heading { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.device-heading .row-title { flex: 1; min-width: 130px; }
+.device-action { margin-top: 12px; }
+.check-option { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 0; }
+.panel > .muted { display: block; margin-bottom: 16px; }

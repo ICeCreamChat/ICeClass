@@ -1,0 +1,6 @@
+.paper-student { padding: 16px 0; border-bottom: 1px solid #7199b538; }
+.paper-student:last-child { border-bottom: 0; }
+.paper-gap { display: block; margin-top: 14px; }
+.paper-card-image { display: block; width: 100%; max-width: 360px; margin: 12px auto; background: #fff; }
+.paper-card-canvas { position: fixed; left: -10000px; top: 0; width: 300px; height: 350px; }
+button, .input, .picker { min-height: 44px; font-size: 16px; }

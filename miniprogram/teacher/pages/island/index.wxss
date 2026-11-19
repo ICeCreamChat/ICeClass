@@ -1,0 +1,12 @@
+.switch-row { display: flex; align-items: center; gap: 12px; min-height: 44px; margin-bottom: 16px; }
+.switch-row switch { flex-shrink: 0; min-height: 44px; }
+.weekday-picker { margin-top: 16px; }
+.lesson { padding: 18px 0; border-bottom: 1px solid #e2eaf3; }
+.lesson:last-child { border-bottom: none; padding-bottom: 0; }
+.lesson-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.lesson-heading .badge { white-space: normal; }
+.lesson-fields { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.lesson-fields .field { flex: 1 1 180px; min-width: 0; margin-bottom: 0; }
+.time { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.recovery { margin: 12px 0 20px; }
+@media (max-width: 380px) { .lesson-fields .field { flex-basis: 100%; } .row { flex-wrap: wrap; } }

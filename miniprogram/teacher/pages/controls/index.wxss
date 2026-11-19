@@ -1,0 +1,11 @@
+.device-item { padding: 16px 0; border-bottom: 1px solid rgba(113, 153, 181, 0.22); }
+.device-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.row-main { min-width: 0; }
+.device-item .row { padding: 0 0 8px; border-bottom: 0; }
+.row-title, .row-meta { display: block; overflow-wrap: anywhere; }
+.volume-line { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 12px; font-variant-numeric: tabular-nums; }
+button, .input, .picker-value { min-height: 44px; }
+.picker { padding: 0 12px; }
+.picker-value { display: flex; align-items: center; overflow-wrap: anywhere; }
+.button-row { flex-wrap: wrap; }
+.button-row button { flex: 1; min-width: 116px; white-space: normal; }

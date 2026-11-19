@@ -1,0 +1,154 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header">
+    <text class="title" aria-role="heading" aria-level="1">纸卡课堂</text>
+    <view class="subtitle">接入教室收答，核对纸卡与课堂统计</view>
+  </view>
+
+  <view class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">课堂收答</text>
+    <view class="muted">在教室端开课并生成手机配对码后，可在本机开启收答、识别纸卡或手工录入。</view>
+    <view class="button-row"><button class="primary" bindtap="connectClassroom" disabled="{{loading || exporting || !classId || sessionExpired}}">接入本班课堂</button><button class="secondary" bindtap="openCards" disabled="{{loading || exporting || !classId || sessionExpired}}">纸卡编号与名单</button></view>
+  </view>
+
+  <view class="panel">
+    <view class="report-filters">
+      <view class="field">
+        <view class="label">班级</view>
+        <picker mode="selector" range="{{classNames}}" value="{{classIndex}}" disabled="{{exporting || !classes.length}}" bindchange="onClassChange" aria-label="{{'班级，' + (classNames[classIndex] || '暂无可访问班级')}}">
+          <view class="picker">{{classNames[classIndex] || '暂无可访问班级'}}</view>
+        </picker>
+      </view>
+      <view class="field">
+        <view class="label">学科</view>
+        <picker mode="selector" range="{{subjectNames}}" value="{{subjectIndex}}" disabled="{{exporting}}" bindchange="onSubjectChange" aria-label="{{'学科，' + subjectNames[subjectIndex]}}">
+          <view class="picker">{{subjectNames[subjectIndex]}}</view>
+        </picker>
+      </view>
+    </view>
+    <view class="button-row">
+      <button class="primary" bindtap="reload" loading="{{loading || detailLoading}}" disabled="{{loading || detailLoading || exporting || sessionExpired}}">刷新统计</button>
+      <button class="secondary" bindtap="exportReport" loading="{{exporting}}" disabled="{{loading || detailLoading || exporting || !loaded || !classId || sessionExpired}}">导出本班明细 CSV</button>
+    </view>
+    <view class="muted report-note">导出当前班级及学科下的全部已同步课堂，由你选择文件收件人。</view>
+  </view>
+
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <view wx:if="{{sessionExpired}}" class="status">
+    <view>登录会话已失效，当前筛选条件已保留。</view>
+    <button class="primary" bindtap="relogin">重新登录</button>
+  </view>
+  <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
+  <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入课堂记录…</view>
+  <view wx:if="{{!loading && !classes.length && !error && !sessionExpired}}" class="empty">当前账号没有可访问班级。</view>
+
+  <view wx:if="{{loaded && !sessionId}}" class="panel">
+    <view class="section-heading">课堂记录</view>
+    <view class="muted">共 {{sessionTotal}} 节，按开始时间从近到远排列</view>
+    <view wx:if="{{!sessionRows.length}}" class="empty">本班所选学科暂无已同步课堂，可更换学科或稍后刷新。</view>
+    <view wx:for="{{sessionRows}}" wx:key="id" class="report-item">
+      <view class="row-title">{{item.subjectName}} · {{item.startedText}}</view>
+      <view class="row-meta">{{item.questionCount}} 题 · {{item.studentCount}} 人 · {{item.statusText}}</view>
+      <button class="secondary" data-id="{{item.id}}" bindtap="openSession" disabled="{{exporting || sessionExpired}}" aria-label="{{'查看' + item.startedText + item.subjectName + '课堂统计'}}">查看本课统计</button>
+      <button wx:if="{{item.statusText === '尚未结束'}}" class="primary" data-id="{{item.id}}" bindtap="connectClassroom" disabled="{{loading || exporting || sessionExpired}}">接入这节课堂</button>
+    </view>
+    <view wx:if="{{sessionPages > 1}}" class="report-pagination">
+      <view class="muted">第 {{sessionPage}} / {{sessionPages}} 页</view>
+      <view class="button-row">
+        <button class="secondary" data-step="-1" bindtap="onSessionPage" disabled="{{sessionPage <= 1 || exporting}}">上一页课堂</button>
+        <button class="secondary" data-step="1" bindtap="onSessionPage" disabled="{{sessionPage >= sessionPages || exporting}}">下一页课堂</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{sessionId}}" class="panel">
+    <button class="secondary" bindtap="closeSession" disabled="{{exporting}}">返回课堂列表</button>
+    <view wx:if="{{detailLoading}}" class="status" aria-live="polite">正在载入本课统计…</view>
+    <block wx:if="{{detail}}">
+      <view class="section-heading report-heading">{{detail.subjectName}} · {{detail.startedText}}</view>
+      <view class="status">{{detail.statusText}}</view>
+      <view class="report-metrics">
+        <view wx:for="{{detail.metrics}}" wx:key="key" class="report-metric">
+          <view class="muted">{{item.label}}</view>
+          <text class="report-value">{{item.value}}</text>
+        </view>
+      </view>
+      <view class="muted report-note">正式汇总取每题最后一个已封存正式轮次。正确率 = 正确 / 判定样本；未完成、未答、免答、未判定和练习不直接计错。未答仅表示未收到作答，服务不单列未识别数量。</view>
+    </block>
+  </view>
+
+  <view wx:if="{{detail}}" class="panel">
+    <view class="section-heading">逐题分析</view>
+    <view wx:if="{{!questionNames.length}}" class="empty">本课尚无题目。</view>
+    <block wx:if="{{question}}">
+      <view class="field">
+        <view class="label">题目</view>
+        <picker mode="selector" range="{{questionNames}}" value="{{questionIndex}}" bindchange="onQuestionChange" disabled="{{exporting}}" aria-label="{{'题目，' + questionNames[questionIndex]}}">
+          <view class="picker">{{questionNames[questionIndex]}}</view>
+        </picker>
+      </view>
+      <view class="report-question">{{question.text}}</view>
+      <view wx:if="{{question.hasImage}}" class="muted">本题含课堂配图。</view>
+      <view wx:for="{{question.options}}" wx:key="letter" class="report-option"><text class="report-option-letter">{{item.letter}}</text><text>{{item.text}}</text></view>
+      <view class="status">{{question.answerText}}</view>
+      <view wx:if="{{question.tagsText}}" class="muted">知识点：{{question.tagsText}}</view>
+      <view wx:if="{{!roundNames.length}}" class="empty">本题尚无收答轮次。</view>
+      <block wx:if="{{round}}">
+        <view class="field report-heading">
+          <view class="label">答题轮次</view>
+          <picker mode="selector" range="{{roundNames}}" value="{{roundIndex}}" bindchange="onRoundChange" disabled="{{exporting}}" aria-label="{{'答题轮次，' + roundNames[roundIndex]}}">
+            <view class="picker">{{roundNames[roundIndex]}}</view>
+          </picker>
+        </view>
+        <view class="muted">{{round.contribution}}</view>
+        <view wx:if="{{!round.closed}}" class="status">本轮尚未封存，结束后显示作答结果与统计。</view>
+        <block wx:if="{{round.closed}}">
+          <view class="status">完整作答 / 应答人数：{{round.participationText}}</view>
+          <view class="report-metrics">
+            <view wx:for="{{round.metrics}}" wx:key="key" class="report-metric">
+              <view class="muted">{{item.label}}</view><text class="report-value">{{item.value}}</text>
+            </view>
+          </view>
+          <view class="section-heading report-heading">选项分布</view>
+          <view wx:if="{{question.multiple}}" class="muted">多选按完整作答人数计算，各选项占比相加可超过 100%。未完成不计错。</view>
+          <view wx:for="{{round.distribution}}" wx:key="letter" class="report-item">
+            <view class="row-title">{{item.letter}} · {{item.text}}</view>
+            <view class="row-meta">{{item.count}} 人 · 占完整作答 {{item.percent}}</view>
+          </view>
+          <view class="section-heading report-heading">本轮学生作答</view>
+          <view wx:if="{{!answerRows.length}}" class="empty">本轮没有学生明细。</view>
+          <view wx:for="{{answerRows}}" wx:key="id" class="report-item">
+            <view class="report-line"><text class="row-title">{{item.name}}</text><text class="badge">{{item.statusText}}</text></view>
+            <view class="row-meta">作答：{{item.answerText}}</view>
+          </view>
+          <view wx:if="{{answerPages > 1}}" class="report-pagination">
+            <view class="muted">共 {{answerTotal}} 人 · 第 {{answerPage}} / {{answerPages}} 页</view>
+            <view class="button-row">
+              <button class="secondary" data-step="-1" bindtap="onAnswerPage" disabled="{{answerPage <= 1 || exporting}}">上一页作答</button>
+              <button class="secondary" data-step="1" bindtap="onAnswerPage" disabled="{{answerPage >= answerPages || exporting}}">下一页作答</button>
+            </view>
+          </view>
+        </block>
+      </block>
+    </block>
+  </view>
+
+  <view wx:if="{{detail}}" class="panel">
+    <view class="section-heading">本课学生汇总</view>
+    <view wx:if="{{!studentRows.length}}" class="empty">本课没有学生统计。</view>
+    <view wx:for="{{studentRows}}" wx:key="id" wx:for-item="student" class="report-item">
+      <view class="row-title">{{student.name}}</view>
+      <view class="report-metrics">
+        <view wx:for="{{student.metrics}}" wx:key="key" class="report-metric">
+          <view class="muted">{{item.label}}</view><text class="report-value">{{item.value}}</text>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{studentPages > 1}}" class="report-pagination">
+      <view class="muted">共 {{studentTotal}} 人 · 第 {{studentPage}} / {{studentPages}} 页</view>
+      <view class="button-row">
+        <button class="secondary" data-step="-1" bindtap="onStudentPage" disabled="{{studentPage <= 1 || exporting}}">上一页学生</button>
+        <button class="secondary" data-step="1" bindtap="onStudentPage" disabled="{{studentPage >= studentPages || exporting}}">下一页学生</button>
+      </view>
+    </view>
+  </view>
+</view>

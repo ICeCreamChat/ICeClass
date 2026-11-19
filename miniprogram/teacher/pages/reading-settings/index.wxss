@@ -1,0 +1,11 @@
+.switch-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 44px; margin-bottom: 14px; }
+.switch-row switch { min-height: 44px; flex-shrink: 0; }
+.reading-period { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.period-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.weekdays { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.weekday { display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 2px 0; }
+.time-fields { display: flex; flex-wrap: wrap; gap: 0 14px; font-variant-numeric: tabular-nums; }
+.time-fields .field { flex: 1 1 140px; min-width: 0; }
+.input { max-width: 260px; font-variant-numeric: tabular-nums; }
+.add-period, .refresh { width: 100%; margin-top: 16px; }
+button, .picker { min-height: 44px; }

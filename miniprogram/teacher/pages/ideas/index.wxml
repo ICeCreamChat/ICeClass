@@ -1,0 +1,58 @@
+<view class="page theme-{{appearance}} ideas-page">
+  <view class="page-header ideas-heading">
+    <text class="title" aria-role="heading" aria-level="1">创意计划</text>
+    <button class="secondary" bindtap="load" loading="{{loading}}" disabled="{{loading || draft || sessionExpired}}">刷新</button>
+  </view>
+  <view wx:if="{{admin}}" class="panel">
+    <text class="label">评审状态</text>
+    <picker range="{{statusFilters}}" value="{{filterIndex}}" bindchange="filter" disabled="{{draft || loading || sessionExpired}}" aria-label="评审状态，{{statusFilters[filterIndex]}}">
+      <view class="picker">{{statusFilters[filterIndex]}}</view>
+    </picker>
+  </view>
+  <text wx:if="{{error && !draft}}" class="error" aria-role="alert">{{error}}</text>
+  <text wx:if="{{notice}}" class="status" aria-role="status">{{notice}}</text>
+  <button wx:if="{{sessionExpired && !draft}}" class="secondary" bindtap="relogin">重新登录</button>
+  <text wx:if="{{!items.length && !error}}" class="empty" aria-role="status">{{loading ? '正在读取创意…' : '当前没有符合条件的创意。'}}</text>
+  <view wx:for="{{items}}" wx:key="id" class="panel">
+    <view class="ideas-heading">
+      <text class="row-title idea-title" aria-role="heading" aria-level="2">{{item.title}}</text>
+      <text class="badge {{item.status === 'pending' ? 'warn' : item.published || item.status === 'launched' ? 'good' : ''}}">{{item.statusText}}</text>
+    </view>
+    <text class="row-meta">{{item.className}} · {{item.time}}{{admin && item.name ? ' · ' + item.name : ''}}</text>
+    <text class="idea-body" selectable>{{item.text}}</text>
+    <text wx:if="{{item.reply && editId !== item.id}}" class="status">回复：{{item.reply}}</text>
+    <view wx:if="{{item.media.length}}" class="button-row">
+      <button wx:for="{{item.media}}" wx:for-item="file" wx:key="id" class="secondary" data-id="{{file.id}}" bindtap="openMedia" disabled="{{mediaBusy || saving || sessionExpired}}">{{playingId === file.id ? '停止播放' : file.label}}</button>
+    </view>
+    <button wx:if="{{admin && editId !== item.id}}" class="secondary idea-edit" data-id="{{item.id}}" bindtap="edit" disabled="{{draft || loading || sessionExpired}}" aria-label="评审，{{item.title}}">评审</button>
+    <view wx:if="{{admin && draft && editId === item.id}}" class="idea-editor">
+      <text class="section-heading" aria-role="heading" aria-level="3">评审创意</text>
+      <view class="field">
+        <text class="label">处理状态</text>
+        <picker range="{{statusLabels}}" value="{{editStatusIndex}}" bindchange="draftStatus" disabled="{{saving}}" aria-label="处理状态，{{statusLabels[editStatusIndex]}}"><view class="picker">{{statusLabels[editStatusIndex]}}</view></picker>
+      </view>
+      <label class="field">
+        <text class="label">回复学生</text>
+        <textarea class="textarea" value="{{draft.reply}}" data-field="reply" bindinput="draftInput" maxlength="3000" disabled="{{saving}}" aria-label="回复学生" />
+      </label>
+      <label class="field idea-switch"><text class="label">公开到创意展示</text><switch color="#0866cb" checked="{{draft.published}}" disabled="{{saving}}" bindchange="draftPublished" aria-label="公开到创意展示" /></label>
+      <block wx:if="{{draft.published}}">
+        <label class="field"><text class="label">公开标题</text><input class="input" value="{{draft.publishedTitle}}" data-field="publishedTitle" bindinput="draftInput" maxlength="120" disabled="{{saving}}" aria-label="公开标题" /></label>
+        <label class="field"><text class="label">公开摘要</text><textarea class="textarea" value="{{draft.publishedText}}" data-field="publishedText" bindinput="draftInput" maxlength="3000" disabled="{{saving}}" aria-label="公开摘要" /></label>
+      </block>
+      <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+      <text wx:if="{{conflict}}" class="status">已保留草稿。请复制需要保留的内容，再退出评审、刷新记录并核对。</text>
+      <button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin" disabled="{{saving}}">重新登录</button>
+      <view class="button-row">
+        <button class="secondary" bindtap="discard" disabled="{{saving}}">退出评审</button>
+        <button class="primary" bindtap="save" loading="{{saving}}" disabled="{{saving || conflict || sessionExpired}}">保存评审</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{total > 20}}" class="ideas-pagination">
+    <button class="secondary" bindtap="previous" disabled="{{loading || draft || page <= 1}}">上一页</button>
+    <text class="row-meta">第 {{page}} 页 · {{total}} 条</text>
+    <button class="secondary" bindtap="next" disabled="{{loading || draft || page * 20 >= total}}">下一页</button>
+  </view>
+</view>

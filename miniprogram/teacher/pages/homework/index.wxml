@@ -1,0 +1,84 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header">
+    <text class="title" aria-role="heading" aria-level="1">作业统计</text>
+    <view class="subtitle">按作业或学生查看上交情况</view>
+    <view class="button-row"><button class="secondary" bindtap="manageHomework" disabled="{{exporting || sessionExpired}}" aria-label="查看和管理班级学生名单、学期与作业预设">班级作业管理</button></view>
+  </view>
+  <view class="panel">
+    <view class="report-filters">
+      <view class="field">
+        <view class="label">班级</view>
+        <picker mode="selector" range="{{classNames}}" value="{{classIndex}}" disabled="{{allScope || exporting || !classes.length}}" bindchange="onClassChange" aria-label="{{'班级，' + (allScope ? '权限内全部班级' : (classNames[classIndex] || '暂无可访问班级'))}}"><view class="picker">{{allScope ? '权限内全部班级' : (classNames[classIndex] || '暂无可访问班级')}}</view></picker>
+        <button wx:if="{{!allScope}}" class="secondary all-classes" bindtap="allClasses" disabled="{{exporting || !classes.length || sessionExpired}}" aria-label="查询权限内全部班级作业统计">权限内全部班级</button>
+        <button wx:else class="secondary all-classes" bindtap="singleClass" disabled="{{exporting || sessionExpired}}" aria-label="返回单个班级筛选">筛选单个班级</button>
+      </view>
+      <view class="field">
+        <view class="label">学期</view>
+        <picker mode="selector" range="{{termNames}}" value="{{termIndex}}" disabled="{{exporting || !terms.length}}" bindchange="onTermChange" aria-label="{{'学期，' + termNames[termIndex]}}"><view class="picker">{{termNames[termIndex]}}</view></picker>
+      </view>
+      <view class="field">
+        <view class="label">开始日期</view>
+        <picker mode="date" value="{{start}}" data-field="start" disabled="{{exporting}}" bindchange="onDateChange" aria-label="{{'开始日期，' + start}}"><view class="picker">{{start}}</view></picker>
+      </view>
+      <view class="field">
+        <view class="label">结束日期</view>
+        <picker mode="date" value="{{end}}" data-field="end" disabled="{{exporting}}" bindchange="onDateChange" aria-label="{{'结束日期，' + end}}"><view class="picker">{{end}}</view></picker>
+      </view>
+      <view class="field">
+        <view class="label">学科</view>
+        <picker mode="selector" range="{{subjectNames}}" value="{{subjectIndex}}" disabled="{{exporting}}" bindchange="onSubjectChange" aria-label="{{'学科，' + subjectNames[subjectIndex]}}"><view class="picker">{{subjectNames[subjectIndex]}}</view></picker>
+      </view>
+      <view class="field">
+        <view class="label">统计方式</view>
+        <picker mode="selector" range="{{groupNames}}" value="{{groupIndex}}" disabled="{{exporting}}" bindchange="onGroupChange" aria-label="{{'统计方式，' + groupNames[groupIndex]}}"><view class="picker">{{groupNames[groupIndex]}}</view></picker>
+      </view>
+    </view>
+    <view class="button-row">
+      <button class="primary" bindtap="queryReport" loading="{{loading}}" disabled="{{loading || exporting || !classes.length || sessionExpired}}" aria-label="按当前班级、学期、学科和日期查询统计">查询统计</button>
+      <button class="secondary" bindtap="exportReport" loading="{{exporting}}" disabled="{{loading || exporting || !report || sessionExpired}}">导出完整 CSV</button>
+    </view>
+    <view class="muted report-note">导出当前筛选下的全部记录，由你选择文件收件人。</view>
+  </view>
+  <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
+  <view wx:if="{{sessionExpired}}" class="status"><view>登录会话已失效，筛选条件已保留。</view><button class="primary" bindtap="relogin">重新登录</button></view>
+  <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
+  <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入作业统计…</view>
+  <view wx:if="{{!loading && !classes.length && !error && !sessionExpired}}" class="empty">当前账号没有可访问班级。</view>
+
+  <block wx:if="{{report}}">
+    <view class="panel">
+      <view class="section-heading">筛选范围总计</view>
+      <view class="report-metrics">
+        <view wx:for="{{report.metrics}}" wx:key="key" class="report-metric"><view class="muted">{{item.label}}</view><text class="report-value">{{item.value}}</text></view>
+      </view>
+      <view class="muted">应交仅包含已登记作业；“今日无作业”单独计数，不计入应交和上交率。总计包含全部分页记录。</view>
+    </view>
+    <view class="panel">
+      <view class="section-heading">{{report.group === 'students' ? '学生上交明细' : '作业登记明细'}}</view>
+      <view wx:if="{{!report.rows.length}}" class="empty">当前筛选没有记录，可更换日期、学期或学科后查询。</view>
+      <view wx:for="{{report.rows}}" wx:key="key" class="report-item">
+        <view class="row-title">{{item.name}}</view>
+        <view class="row-meta">{{item.className}} · {{item.termName}}</view>
+        <block wx:if="{{report.group === 'assignments'}}">
+          <view class="row-meta">{{item.date}} · {{item.subjectName}} · {{item.statusText}}</view>
+        </block>
+        <view class="report-counts">
+          <text>应交 {{item.expected}}{{report.group === 'students' ? ' 次' : ' 人'}}</text>
+          <text>已交 {{item.submitted}}{{report.group === 'students' ? ' 次' : ' 人'}}</text>
+          <text>未交 {{item.missing}}{{report.group === 'students' ? ' 次' : ' 人'}}</text>
+        </view>
+        <block wx:if="{{report.group === 'assignments'}}">
+          <view class="row-meta">未交名单：{{item.missingNamesText}}</view>
+          <view class="muted">登记更新：{{item.updatedText}}</view>
+        </block>
+      </view>
+      <view class="report-pagination">
+        <view class="muted">共 {{total}} 条 · 第 {{page}} / {{pages}} 页</view>
+        <view class="button-row">
+          <button class="secondary" bindtap="previousPage" disabled="{{page <= 1 || loading || exporting || sessionExpired}}">上一页</button>
+          <button class="secondary" bindtap="nextPage" disabled="{{page >= pages || loading || exporting || sessionExpired}}">下一页</button>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

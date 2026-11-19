@@ -1,0 +1,10 @@
+.paper-steps { margin-bottom: 18px; }
+.paper-gap { display: block; margin-top: 14px; }
+.paper-camera { width: 100%; height: 260px; margin-top: 16px; border-radius: 12px; overflow: hidden; }
+.paper-metrics { display: flex; gap: 20px; flex-wrap: wrap; margin: 16px 0; }
+.paper-metrics > view { flex: 1 1 120px; }
+.paper-number { display: block; font-size: 23px; font-weight: 600; }
+.segment { display: flex; flex-wrap: wrap; gap: 8px; }
+.segment button { flex: 1 1 64px; }
+button, .input, .picker { min-height: 44px; font-size: 16px; }
+.textarea { font-size: 16px; }

@@ -213,6 +213,7 @@ GitHub Actions 的 **Publish release** 在推送 v* 标签或手动运行时检�
 | 主题 | 文档 |
 | --- | --- |
 | 安装与验收 | [完整操作流程](docs/完整操作流程.md)、[验收指南](docs/验收指南.md)、[三端本地验收](docs/三端本地验收.md) |
+| 微信教师端 | [小程序导入与上线](docs/微信教师端.md) |
 | 视频展台 | [安装与维护](docs/视频展台插件.md)、[插件工程](plugins/VideoBooth/README.md)、[插件流程](workflows/video-booth-plugin.md)、[点评流程](workflows/math-classroom-review.md) |
 | 纸卡答题 | [纸卡打印、课堂收答和学生报告](docs/纸卡答题.md) |
 | 客户端与发布 | [教师端](docs/Windows教师端.md)、[客户端更新](docs/客户端更新说明.md)、[自动发布](docs/GitHub自动发布.md) |

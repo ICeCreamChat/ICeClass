@@ -1,0 +1,52 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">题库与题单</text></view>
+  <view wx:if="{{!editor && !deckEditor}}" class="segment question-nav">
+    <button wx:for="{{sections}}" wx:key="id" class="{{section === item.id ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="selectSection" disabled="{{busy}}" aria-pressed="{{section === item.id}}" aria-label="{{item.name}}{{section === item.id ? '，已选' : ''}}">{{item.name}}</button>
+  </view>
+  <view wx:if="{{section !== 'bank' && !editor && !deckEditor}}" class="field question-scope"><text class="label">发布班级</text><picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy || loading || !classes.length}}" aria-label="发布班级，{{classNames[classIndex] || '暂无可用班级'}}"><view class="picker">{{classNames[classIndex] || '暂无可用班级'}}</view></picker></view>
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text><button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin">重新登录</button><text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
+  <text wx:if="{{uncertain}}" class="status">上次提交结果尚未确认，已暂停写入。草稿仍在，请重新载入列表核对后再编辑。</text>
+  <view wx:if="{{editor}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">{{editor.id ? '编辑题目' : '新建题目'}}</text>
+    <label class="field"><text class="label">学科</text><picker range="{{subjectNames}}" value="{{editor.subjectIndex}}" bindchange="subject" disabled="{{busy}}" aria-label="题目学科"><view class="picker">{{subjectNames[editor.subjectIndex]}}</view></picker></label>
+    <label class="field"><text class="label">题型</text><picker range="{{typeNames}}" value="{{editor.typeIndex}}" bindchange="type" disabled="{{busy}}" aria-label="题型"><view class="picker">{{typeNames[editor.typeIndex]}}</view></picker></label>
+    <label class="field"><text class="label">题干</text><textarea class="textarea" value="{{editor.text}}" data-field="text" bindinput="inputQuestion" maxlength="20000" disabled="{{busy}}" aria-label="题干" /></label>
+    <view class="button-row"><button class="secondary" bindtap="image" disabled="{{busy}}">{{editor.imageId ? '更换题图' : '添加题图'}}</button><button wx:if="{{editor.imageId}}" class="secondary" bindtap="previewImage" disabled="{{busy}}">查看题图</button><button wx:if="{{editor.imageId}}" class="danger" bindtap="removeImage" disabled="{{busy}}">移除题图</button></view>
+    <label wx:if="{{editor.type !== 'boolean'}}" class="field question-options"><text class="label">选项数量</text><picker range="{{countNames}}" value="{{editor.options.length - 2}}" bindchange="count" disabled="{{busy}}" aria-label="选项数量"><view class="picker">{{editor.options.length}} 个选项</view></picker></label>
+    <label wx:for="{{editor.options}}" wx:key="index" class="field"><text class="label">选项 {{letters[index]}}</text><input class="input" value="{{item}}" data-index="{{index}}" bindinput="option" maxlength="2000" disabled="{{busy || editor.type === 'boolean'}}" aria-label="选项{{letters[index]}}" /></label>
+    <label class="field"><text class="label">标准答案（留空则不评分）</text><input class="input" value="{{editor.answerText}}" data-field="answerText" bindinput="inputQuestion" maxlength="4" disabled="{{busy}}" aria-label="标准答案，单选填一个字母，多选例如AC，判断A正确B错误，留空不评分" placeholder="{{editor.type === 'multiple' ? '例如 AC' : editor.type === 'boolean' ? 'A 正确，B 错误' : '例如 A'}}" /></label>
+    <label class="field"><text class="label">知识点</text><input class="input" value="{{editor.tagsText}}" data-field="tagsText" bindinput="inputQuestion" maxlength="4050" disabled="{{busy}}" aria-label="知识点，用逗号分隔" placeholder="用逗号分隔" /></label>
+    <text wx:if="{{conflict}}" class="error">版本有冲突，修改内容已保留。请核对后重新载入。</text><text wx:elif="{{dirty}}" class="muted">尚未保存</text>
+    <view class="button-row"><button class="secondary" bindtap="closeEditor" disabled="{{busy}}">返回列表</button><button class="primary" bindtap="saveQuestion" loading="{{busy}}" disabled="{{busy || conflict || uncertain}}">保存题目</button></view>
+  </view>
+  <view wx:elif="{{deckEditor}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">{{deckEditor.id ? '编辑题单' : '新建题单'}}</text><label class="field"><text class="label">题单名称</text><input class="input" value="{{deckEditor.title}}" bindinput="deckTitle" maxlength="400" disabled="{{busy}}" aria-label="题单名称" /></label>
+    <text class="label">题目顺序</text><view wx:for="{{orderedQuestions}}" wx:key="id" class="row"><view class="row-main"><text>{{index + 1}}. {{item.text || '图片或课件题'}}</text></view><view class="order-actions"><button class="secondary" data-index="{{index}}" data-direction="-1" bindtap="move" disabled="{{busy || index === 0}}" aria-label="第{{index+1}}题上移">上移</button><button class="secondary" data-index="{{index}}" data-direction="1" bindtap="move" disabled="{{busy || index === orderedQuestions.length - 1}}" aria-label="第{{index+1}}题下移">下移</button></view></view>
+    <text class="label question-options">选择题库题目</text><checkbox-group bindchange="deckSelect" aria-label="选择加入题单的题目"><label wx:for="{{deckOptions}}" wx:key="id" class="question-choice"><checkbox color="#0866cb" value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" aria-label="{{item.subjectName}}，{{item.text || '图片或课件题'}}" /><text>{{item.subjectName}} · {{item.text || '图片或课件题'}}</text></label></checkbox-group>
+    <text wx:if="{{conflict}}" class="error">版本有冲突，修改内容已保留，请重新载入核对。</text><view class="button-row"><button class="secondary" bindtap="closeEditor" disabled="{{busy}}">返回列表</button><button class="primary" bindtap="saveDeck" disabled="{{busy || conflict || uncertain}}" loading="{{busy}}">保存题单</button></view>
+  </view>
+  <block wx:else>
+    <view wx:if="{{section === 'bank'}}" class="panel">
+      <view class="question-panel-head"><text class="section-heading" aria-role="heading" aria-level="2">我的题库</text><button class="primary" bindtap="openQuestion" disabled="{{busy || loading || sessionExpired}}">新建题目</button></view>
+      <text wx:if="{{!bank.length}}" class="empty" aria-role="status">{{loading ? '正在读取题库…' : '还没有题目'}}</text>
+      <view wx:for="{{bank}}" wx:key="id" class="question-item">
+        <text class="row-title">{{item.text || '图片或课件题'}}</text><text class="row-meta">{{item.subjectName}} · {{item.typeName}} · {{item.answer ? '答案 ' + item.answer : '未设答案'}} · 版本 {{item.revision}}</text>
+        <view class="button-row"><button class="secondary" data-id="{{item.id}}" bindtap="openQuestion" disabled="{{busy || sessionExpired}}" aria-label="编辑，第 {{index + 1}} 题">编辑</button><button class="danger" data-id="{{item.id}}" bindtap="deleteQuestion" disabled="{{busy || uncertain || sessionExpired}}" aria-label="删除，第 {{index + 1}} 题">删除</button></view>
+      </view>
+    </view>
+    <view wx:elif="{{section === 'decks'}}" class="panel">
+      <view class="question-panel-head"><text class="section-heading" aria-role="heading" aria-level="2">我的题单</text><button class="primary" bindtap="openDeck" disabled="{{busy || loading || sessionExpired}}">新建题单</button></view>
+      <text wx:if="{{!decks.length}}" class="empty" aria-role="status">{{loading ? '正在读取题单…' : '还没有题单'}}</text>
+      <view wx:for="{{decks}}" wx:key="id" class="question-item">
+        <text class="row-title">{{item.title}}</text><text class="row-meta">{{item.questionIds.length}} 题 · 版本 {{item.revision}}</text>
+        <view class="button-row"><button class="secondary" data-id="{{item.id}}" bindtap="openDeck" disabled="{{busy || sessionExpired}}" aria-label="编辑题单，{{item.title}}">编辑</button><button class="primary" data-id="{{item.id}}" bindtap="publish" disabled="{{busy || uncertain || !classId || !item.questionIds.length || sessionExpired}}" aria-label="发布题单，{{item.title}}，到所选班级">发布到班级</button></view>
+      </view>
+    </view>
+    <view wx:else class="panel">
+      <text class="section-heading" aria-role="heading" aria-level="2">本班已发布题单</text>
+      <text wx:if="{{!publications.length}}" class="empty" aria-role="status">{{loading ? '正在读取已发布题单…' : '当前班级暂无已发布题单'}}</text>
+      <view wx:for="{{publications}}" wx:key="id" class="row"><view class="row-main"><text class="row-title">{{item.title}}</text><text class="row-meta">{{item.questions.length}} 题</text></view><button class="danger" data-id="{{item.id}}" bindtap="withdraw" disabled="{{busy || uncertain || sessionExpired}}" aria-label="撤回题单，{{item.title}}">撤回</button></view>
+    </view>
+  </block>
+  <button class="secondary" bindtap="reload" disabled="{{busy || loading}}" loading="{{loading}}">重新载入</button>
+</view>

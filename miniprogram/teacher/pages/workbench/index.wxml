@@ -1,0 +1,68 @@
+<view class="page theme-{{appearance}} workbench-page" wx:if="{{user || loading || error}}">
+  <view class="workbench-header">
+    <view class="brand-lockup">
+      <image src="/assets/app-icon.png" aria-hidden="true" mode="aspectFit" />
+      <text class="brand-name">ICeClass 班伴</text>
+    </view>
+    <button class="secondary account-button" data-page="account" bindtap="open" aria-label="账号设置">账号设置</button>
+  </view>
+
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+  <button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin">重新登录</button>
+  <button wx:elif="{{error}}" class="secondary" bindtap="load" disabled="{{loading}}">重试加载</button>
+
+  <view class="class-workspace" wx:if="{{user}}">
+    <view class="class-content">
+      <text class="title" aria-role="heading" aria-level="1">教师工作台</text>
+      <text class="current-class-label">当前班级</text>
+      <picker wx:if="{{classes.length}}" range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{loading || sessionExpired}}" aria-label="当前班级，{{classNames[classIndex]}}">
+        <view class="picker class-picker">{{classNames[classIndex]}}</view>
+      </picker>
+      <text wx:else class="row-meta" aria-role="status">{{loading ? '正在读取班级…' : error ? '班级暂不可用' : '暂无可访问的班级'}}</text>
+    </view>
+    <button class="mascot-entry" data-page="banban" bindtap="open" aria-label="呼叫班班">
+      <image src="/assets/banban/portrait.webp" aria-hidden="true" mode="aspectFit" />
+      <text>呼叫班班</text>
+    </button>
+  </view>
+
+  <view wx:if="{{user}}" class="workbench-content">
+    <view class="workbench-group teaching-group">
+      <text class="section-heading" aria-role="heading" aria-level="2">班级工作</text>
+      <view class="quick-actions">
+        <button wx:for="{{quick}}" wx:key="page" class="quick-action" data-page="{{item.page}}" bindtap="open" aria-label="{{item.name}}">
+          <image class="quick-icon" src="/assets/icons/{{item.icon}}.png" aria-hidden="true" mode="aspectFit" />
+          <view>
+            <text class="quick-title">{{item.name}}</text>
+            <text class="quick-detail">{{item.detail}}</text>
+          </view>
+        </button>
+      </view>
+      <view class="panel nav-list">
+        <button wx:for="{{teaching}}" wx:key="page" class="nav-row" data-page="{{item.page}}" bindtap="open" aria-label="{{item.name}}">
+          <image class="nav-icon" src="/assets/icons/{{item.icon}}.png" aria-hidden="true" mode="aspectFit" />
+          <text class="nav-name">{{item.name}}</text>
+          <view class="chevron" aria-hidden="true"></view>
+        </button>
+      </view>
+    </view>
+    <view class="workbench-group">
+      <text class="section-heading" aria-role="heading" aria-level="2">校园管理</text>
+      <view class="panel nav-list">
+        <button wx:for="{{management}}" wx:key="page" class="nav-row" data-page="{{item.page}}" bindtap="open" aria-label="{{item.name}}">
+          <image class="nav-icon" src="/assets/icons/{{item.icon}}.png" aria-hidden="true" mode="aspectFit" />
+          <text class="nav-name">{{item.name}}</text>
+          <view class="chevron" aria-hidden="true"></view>
+        </button>
+        <button class="nav-row" data-page="ideas" bindtap="open">
+          <image class="nav-icon" src="/assets/icons/ideas.png" aria-hidden="true" mode="aspectFit" />
+          <text class="nav-name">创意计划</text>
+          <view class="chevron" aria-hidden="true"></view>
+        </button>
+      </view>
+    </view>
+  </view>
+  <text wx:elif="{{loading}}" class="status" aria-role="status">正在加载工作台…</text>
+
+  <button wx:if="{{user}}" class="quiet-button refresh-button" bindtap="load" loading="{{loading}}" disabled="{{loading || sessionExpired}}">刷新工作台</button>
+</view>

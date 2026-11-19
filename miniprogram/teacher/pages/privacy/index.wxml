@@ -1,0 +1,10 @@
+<view class="page theme-{{appearance}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">隐私说明</text><text class="subtitle">班伴教师工作台</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">账号与班级数据</text><text>教师使用学校分配的账号登录。账号、通知、答题记录和统计请求发送至学校现有的 ICeClass 服务，查看与操作范围由学校账号权限决定。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">本机保存</text><text>小程序在本机保存学校登录会话、所选班级和外观偏好。不会保存账号密码。退出登录时会向学校服务注销会话，并清除本机登录状态。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">录音与扫码</text><text>选择录音后才会使用麦克风，确认发送后才上传原声。选择纸卡扫描后才会使用相机；画面在手机内识别，只提交纸卡编号和所选答案。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">教室来音与核验照片</text><text>有权限的教师可以播放教室来音、查看晚自习核验照片。来音从发送起最多可播放 30 分钟，核验照片从采集起最多可查看 24 小时。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">班班对话</text><text>学校服务按账号保存对话，供你查看历史。学校启用外部 AI 模型时，生成答复所需的对话和课堂资料会发送给学校配置的模型服务。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">班级文件</text><text>题图和创意附件只在你主动选择或打开时处理。下载的统计包含班级信息，分享前请核对收件人。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">联系与数据管理</text><text>账号分配、权限调整和学校业务数据的更正、删除，请联系分配账号的学校管理员。微信平台的隐私保护指引和小程序备案仍须由运营主体按实际情况填写。</text></view>
+</view>

@@ -15,6 +15,7 @@ dist/
 test-results/
 .playwright-cli/
 ICeClass.code-workspace
+/miniprogram/teacher/project.private.config.json
 data/
 __pycache__/
 *.py[cod]

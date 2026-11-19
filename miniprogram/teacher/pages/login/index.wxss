@@ -1,0 +1,13 @@
+.login-page { max-width: 484px; padding-top: clamp(24px, 9vh, 68px); }
+.login-brand { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; font-size: 17px; font-weight: 700; }
+.login-brand image { width: 38px; height: 38px; border-radius: 9px; flex: none; }
+.login-panel { margin-bottom: 6px; }
+.login-intro { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 16px; }
+.login-intro view { min-width: 0; }
+.login-mascot { width: 80px; height: 90px; flex: none; }
+.password-field { display: flex; gap: 4px; border-radius: 10px; background: var(--field); border: 1px solid var(--control-line); }
+.password-field:focus-within { box-shadow: var(--focus); }
+.password-field .input { flex: 1; min-width: 0; height: 44px; border: 0; background: transparent; box-shadow: none; }
+.password-toggle { flex: none; min-width: 58px; border: 0; font-size: 15px; }
+.privacy-button { margin: 6px auto 0; font-size: 15px; }
+@media (max-width: 350px) { .login-mascot { width: 64px; height: 74px; } }

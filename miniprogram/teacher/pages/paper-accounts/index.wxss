@@ -1,0 +1,12 @@
+button, .picker, .input, .account-check { min-height: 44px; }
+button { height: auto; padding: 10px 14px; font-size: 16px; font-weight: 600; line-height: 1.5; white-space: normal; }
+.segment { margin-bottom: 16px; }
+.account-fields { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.account-fields .field { flex: 1 1 170px; }
+.account-row { align-items: center; }
+.account-check { display: flex; flex: 0 0 44px; align-items: center; justify-content: center; }
+.account-number { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.account-credential { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.account-password { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+.account-note { display: block; margin: 12px 0; line-height: 1.7; }
+.account-gap { margin-top: 14px; }

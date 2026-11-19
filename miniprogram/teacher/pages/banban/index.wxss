@@ -1,0 +1,29 @@
+.banban-header { display: flex; align-items: center; gap: 10px; }
+.banban-header image { width: 48px; height: 52px; flex: none; }
+.thread-toolbar .field { margin: 0; }
+.thread-history { border-top: 1px solid var(--line); margin-top: 12px; }
+.history-row { flex-wrap: wrap; }
+.history-row .row-main { min-width: 120px; }
+.history-row button { padding-left: 10px; padding-right: 10px; }
+.chat-message { border-top: 1px solid var(--line); padding: 13px 0; }
+.chat-message.user .label { color: var(--blue); }
+.chat-message:last-child { padding-bottom: 0; }
+.chat-content { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-evidence { margin-top: 10px; border-radius: 10px; background: var(--soft); padding: 8px 10px; }
+.chat-card + .chat-card { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.chat-metric { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; color: var(--label); font-size: 14px; font-variant-numeric: tabular-nums; }
+.action-heading, .action-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.action-heading .section-heading { margin-bottom: 0; }
+.action-item { border-top: 1px solid var(--line); padding: 4px 0; }
+.action-toggle { width: 100%; text-align: left; color: var(--ink); padding: 7px 0; }
+.action-toggle .row-meta { font-weight: 400; }
+.action-review { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 6px; }
+.action-field { margin: 8px 0; }
+.action-field .label { margin-bottom: 1px; }
+.chat-compose .textarea { height: 112px; }
+@media (min-width: 600px) {
+  .thread-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
+  .thread-toolbar .field { flex: 1 1 180px; }
+  .thread-toolbar .button-row { margin: 0; }
+  .thread-history { width: 100%; }
+}

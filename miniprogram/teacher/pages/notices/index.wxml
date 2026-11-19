@@ -1,0 +1,128 @@
+<view class="page theme-{{appearance}} notice-page">
+  <view class="page-header notice-heading">
+    <text class="title" aria-role="heading" aria-level="1">班级通知</text>
+    <button class="secondary" bindtap="openHistory" disabled="{{busy || fileBusy}}">通知记录</button>
+  </view>
+
+  <view wx:if="{{error}}" class="error" aria-role="alert"><text selectable>{{error}}</text></view>
+  <view wx:if="{{sessionExpired}}" class="status" aria-role="status">
+    <text>登录已失效，草稿已保留。</text>
+    <button class="primary" bindtap="relogin" disabled="{{busy || fileBusy}}">重新登录</button>
+  </view>
+  <view wx:if="{{uncertain}}" class="panel send-protection" aria-role="alert">
+    <text class="section-heading" aria-role="heading" aria-level="2">发送结果尚不明确</text>
+    <text class="notice-copy">{{uncertainClassName}} 的通知可能已经发出。草稿已保留，请先核对记录。</text>
+    <view class="button-row">
+      <button class="primary" bindtap="openHistory" disabled="{{busy}}">核对通知记录</button>
+      <button class="secondary" bindtap="resolveUncertain" disabled="{{busy || !recordsOpened}}">确认未发出</button>
+    </view>
+  </view>
+
+  <view class="notice-layout">
+    <view class="panel notice-compose">
+      <view class="field">
+        <view class="compose-label">
+          <text class="label">目标班级</text>
+          <text wx:if="{{presenceLoading}}" class="row-meta" aria-role="status">正在读取状态…</text>
+          <text wx:elif="{{presence}}" class="badge {{presenceTone}}" aria-role="status">{{presenceTone === 'warn' && presence === '教室离线，通知不会补播' ? '教室离线' : presence}}</text>
+        </view>
+        <picker mode="selector" range="{{classNames}}" value="{{classIndex}}" bindchange="onClassChange" disabled="{{busy || fileBusy || loading || !classes.length}}" aria-label="目标班级，{{classNames[classIndex] || '暂无可用班级'}}">
+          <view class="picker">{{loading ? '正在读取班级…' : (classNames[classIndex] || '暂无可用班级')}}</view>
+        </picker>
+        <text wx:if="{{!loading && !classes.length && !error}}" class="row-meta field-note">没有可用班级。请联系学校管理员核对班级权限。</text>
+        <text wx:if="{{presence === '教室离线，通知不会补播'}}" class="row-meta field-note">离线通知不会补播。</text>
+      </view>
+
+      <view class="field">
+        <text class="label">通知方式</text>
+        <view class="segment">
+          <button wx:for="{{modeNames}}" wx:key="*this" class="{{modeIndex === index ? 'selected' : ''}}" data-index="{{index}}" bindtap="onModeChange" disabled="{{busy || fileBusy}}" aria-pressed="{{modeIndex === index}}" aria-label="{{item}}{{modeIndex === index ? '，已选' : ''}}">{{item}}</button>
+        </view>
+      </view>
+      <view wx:if="{{modeIndex === 0}}" class="field">
+        <view class="compose-label"><text class="label">通知正文</text><text class="row-meta count">{{textCount}}/500</text></view>
+        <textarea class="textarea notice-text" value="{{text}}" maxlength="500" bindinput="onTextInput" disabled="{{busy}}" placeholder="输入要在教室大屏显示的通知…" aria-label="通知正文，最多 500 字" />
+      </view>
+      <view wx:else class="field voice-field">
+        <text class="label">教师原声</text>
+        <text wx:if="{{audioState}}" class="status" aria-role="status">{{audioState === 'recording' ? '正在录音，最长 30 秒' : audioState === 'starting' ? '正在开启麦克风…' : '正在保存录音…'}}</text>
+        <view wx:if="{{audioFile && !audioState}}" class="audio-draft">
+          <text class="row-title">{{audioFile.name}}</text>
+          <text class="row-meta">{{audioFile.durationLabel}}</text>
+          <view class="button-row">
+            <button class="secondary" bindtap="togglePreview" disabled="{{busy || fileBusy}}">{{previewing ? '停止试听' : '试听'}}</button>
+            <button class="quiet-button" bindtap="removeWav" disabled="{{busy || fileBusy}}">移除原声</button>
+          </view>
+        </view>
+        <view class="button-row voice-actions">
+          <button wx:if="{{audioState === 'recording'}}" class="primary" bindtap="stopVoice">停止录音</button>
+          <button wx:else class="secondary" bindtap="startVoice" disabled="{{busy || fileBusy || sessionExpired}}">{{audioFile ? '重新录音' : '开始录音'}}</button>
+          <button class="quiet-button" bindtap="chooseWav" disabled="{{busy || fileBusy || sessionExpired}}">{{audioFile ? '更换 WAV' : '选择 WAV'}}</button>
+        </view>
+        <text class="row-meta field-note">录音 0.5-30 秒。导入支持单声道 16 位 PCM WAV，最大 4 MB。</text>
+      </view>
+
+      <view class="field">
+        <text class="label">通知级别</text>
+        <view class="segment">
+          <button wx:for="{{levelNames}}" wx:key="*this" class="{{levelIndex === index ? 'selected' : ''}}" data-index="{{index}}" bindtap="onLevelChange" disabled="{{busy || fileBusy || (modeIndex === 1 && index === 0)}}" aria-pressed="{{levelIndex === index}}" aria-label="{{item}}{{levelIndex === index ? '，已选' : ''}}">{{item}}</button>
+        </view>
+        <text class="row-meta field-note" aria-role="status">{{modeIndex === 1 ? (levelIndex === 2 ? '播放教师原声并突出显示' : '播放教师原声') : levelMode}}</text>
+      </view>
+
+      <button class="disclosure quiet-button" bindtap="toggleSettings" disabled="{{busy || fileBusy}}" aria-expanded="{{showSettings}}">
+        <text>{{showSettings ? '收起更多设置' : '更多设置'}}</text>
+        <view class="disclosure-chevron {{showSettings ? 'expanded' : ''}}" aria-hidden="true"></view>
+      </button>
+      <view wx:if="{{showSettings}}" class="notice-settings">
+        <view class="field">
+          <text class="label">显示时长</text>
+          <picker mode="selector" range="{{durationNames}}" value="{{durationIndex}}" bindchange="onDurationChange" disabled="{{busy || fileBusy}}" aria-label="通知显示时长">
+            <view class="picker">{{durationNames[durationIndex]}}</view>
+          </picker>
+        </view>
+        <view wx:if="{{levelIndex !== 0}}" class="field">
+          <text class="label">播放音量</text>
+          <picker mode="selector" range="{{volumeNames}}" value="{{volumeIndex}}" bindchange="onVolumeChange" disabled="{{busy || fileBusy}}" aria-label="通知播放音量">
+            <view class="picker">{{volumeNames[volumeIndex]}}</view>
+          </picker>
+        </view>
+        <view wx:if="{{modeIndex === 0 && levelIndex !== 0}}" class="field">
+          <text class="label">文字播报语速</text>
+          <picker mode="selector" range="{{speedNames}}" value="{{speedIndex}}" bindchange="onSpeedChange" disabled="{{busy || fileBusy}}" aria-label="文字播报语速">
+            <view class="picker">{{speedNames[speedIndex]}}</view>
+          </picker>
+        </view>
+      </view>
+
+      <button class="primary notice-send block-button" bindtap="sendNotice" loading="{{busy}}" disabled="{{busy || fileBusy || loading || uncertain || sessionExpired || !classId}}">{{phase || (modeIndex === 1 ? '发送原声通知' : '发送文字通知')}}</button>
+    </view>
+
+    <view class="notice-activity">
+      <view wx:if="{{lastResult}}" class="panel" aria-role="status">
+        <text class="section-heading" aria-role="heading" aria-level="2">送达回执</text>
+        <text class="row-meta">{{lastResult.className}}</text>
+        <text class="row-title">{{lastResult.label}}</text>
+        <text wx:if="{{lastResult.detail}}" class="row-meta notice-copy">{{lastResult.detail}}</text>
+        <view wx:for="{{lastResult.timeline}}" wx:key="label" class="receipt-step"><text>{{item.label}}</text><text class="muted">{{item.time}}</text></view>
+        <text class="row-meta field-note" selectable>记录编号：{{lastResult.id}}</text>
+      </view>
+
+      <view class="panel">
+        <view class="notice-heading panel-head">
+          <text class="section-heading" aria-role="heading" aria-level="2">最近通知</text>
+          <button class="quiet-button" bindtap="refresh" disabled="{{busy || fileBusy || loading || recentLoading || presenceLoading}}">刷新</button>
+        </view>
+        <text wx:if="{{recentLoading}}" class="empty" aria-role="status">正在读取最近通知…</text>
+        <text wx:elif="{{!recent.length && !error}}" class="empty">{{classId ? '本班暂无通知。' : '选择班级后查看通知。'}}</text>
+        <view wx:for="{{recent}}" wx:key="id" class="notice-item">
+          <text class="row-title notice-copy" selectable>{{item.text}}</text>
+          <view class="notice-badges"><text class="badge">{{item.levelLabel}}</text><text class="badge {{item.statusTone}}">{{item.statusLabel}}</text></view>
+          <text class="row-meta notice-copy">{{item.createdTime}} · {{item.senderName}}</text>
+          <text wx:if="{{item.detail}}" class="row-meta notice-copy" selectable>{{item.detail}}</text>
+          <text wx:if="{{item.quietOverride}}" class="row-meta notice-copy">禁言时间内确认发送</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

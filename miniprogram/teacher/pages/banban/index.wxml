@@ -1,0 +1,90 @@
+<view class="page theme-{{appearance}} banban-page">
+  <view class="page-header banban-header">
+    <image src="/assets/banban/portrait.webp" aria-hidden="true" mode="aspectFit" />
+    <view>
+      <text class="title" aria-role="heading" aria-level="1">班班</text>
+      <text wx:if="{{quotaText}}" class="row-meta">{{quotaText}}</text>
+    </view>
+  </view>
+  <view class="panel thread-toolbar">
+    <view class="field">
+      <text class="label">分析班级</text>
+      <picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy || managing || loading || !classes.length}}" aria-label="分析班级，{{classNames[classIndex] || '暂无指定班级'}}"><view class="picker">{{classNames[classIndex] || (loading ? '正在读取…' : '账号授权范围')}}</view></picker>
+    </view>
+    <view class="button-row">
+      <button class="secondary" bindtap="newThread" disabled="{{busy || managing || loading || operationBusy || sessionExpired}}">新对话</button>
+      <button class="secondary" bindtap="toggleThreads" aria-expanded="{{showThreads}}" disabled="{{busy || managing || loading || operationBusy || sessionExpired}}">{{showThreads ? '收起历史' : '历史对话'}}</button>
+    </view>
+    <view wx:if="{{showThreads}}" class="thread-history">
+      <text wx:if="{{!threads.length}}" class="empty" aria-role="status">{{managing ? '正在读取历史…' : '暂无历史对话。'}}</text>
+      <view wx:for="{{threads}}" wx:key="id" class="row history-row">
+        <view class="row-main"><text class="row-title">{{item.title}}</text><text class="row-meta">{{item.time}}</text></view>
+        <button class="secondary" data-id="{{item.id}}" bindtap="openThread" aria-label="打开对话，{{item.title}}" disabled="{{managing}}">打开</button>
+        <button class="quiet-button" data-id="{{item.id}}" bindtap="deleteThread" aria-label="删除对话，{{item.title}}" disabled="{{managing}}">删除</button>
+      </view>
+      <button wx:if="{{threadCursor}}" class="secondary" bindtap="moreThreads" disabled="{{managing}}">加载更多对话</button>
+    </view>
+  </view>
+
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+  <button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin">重新登录</button>
+  <button wx:elif="{{!ready && !loading && !busy}}" class="secondary" bindtap="load">刷新对话</button>
+  <view class="panel chat-panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">{{threadTitle || '课堂对话'}}</text>
+    <button wx:if="{{beforeId}}" class="quiet-button" bindtap="olderMessages" disabled="{{busy || managing || loading}}">加载更早的消息</button>
+    <text wx:if="{{!messages.length && !busy}}" class="row-meta">{{loading ? '正在读取对话…' : '可以询问班级情况，或请班班准备一项操作。'}}</text>
+    <view wx:for="{{messages}}" wx:key="key" class="chat-message {{item.role}}">
+      <text class="label">{{item.role === 'user' ? '我' : '班班'}}</text>
+      <text selectable class="chat-content">{{item.content}}</text>
+      <view wx:if="{{item.cards.length}}" class="chat-evidence">
+        <view wx:for="{{item.cards}}" wx:for-item="card" wx:key="key" class="chat-card">
+          <text class="row-title">{{card.title}}</text>
+          <text wx:if="{{card.scope}}" class="row-meta">{{card.scope}}</text>
+          <view wx:for="{{card.metrics}}" wx:for-item="metric" wx:key="key" class="chat-metric"><text>{{metric.label}}</text><text>{{metric.value}}</text></view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{busy || pending}}" class="chat-message assistant">
+      <text wx:if="{{busy}}" class="label" aria-role="status">{{status || '班班正在思考…'}}</text>
+      <text wx:elif="{{status}}" class="label" aria-role="status">{{status}}</text>
+      <text wx:if="{{pending}}" class="chat-content" selectable>{{pending}}</text>
+    </view>
+    <text wx:elif="{{status}}" class="row-meta" aria-role="status">{{status}}</text>
+  </view>
+
+  <view class="panel action-panel">
+    <view class="action-heading">
+      <text class="section-heading" aria-role="heading" aria-level="2">班班操作</text>
+      <button class="quiet-button" bindtap="refreshOperations" disabled="{{actionRead || operationBusy || sessionExpired}}">刷新状态</button>
+    </view>
+    <text wx:if="{{operationWarning}}" class="error" aria-role="alert">{{operationWarning}}</text>
+    <text wx:if="{{!operations.length}}" class="row-meta">{{actionRead ? '正在读取操作…' : '暂无待处理操作。'}}</text>
+    <view wx:for="{{operations}}" wx:key="id" class="action-item">
+      <button class="action-toggle quiet-button" data-id="{{item.id}}" bindtap="selectOperation" disabled="{{operationBusy}}" aria-expanded="{{reviewingId === item.id}}" aria-label="{{item.title}}，{{item.target}}，{{item.statusText}}">
+        <view class="row-main"><text class="row-title">{{item.title}}</text><text class="row-meta">{{item.target}}{{item.created ? ' · ' + item.created : ''}}</text></view>
+        <text class="badge">{{item.statusText}}</text>
+      </button>
+      <view wx:if="{{reviewingId === item.id}}" class="action-review">
+        <text wx:if="{{item.impact}}" class="row-meta">{{item.impact}}</text>
+        <view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="action-field">
+          <text class="label">{{field.label}}</text><text selectable class="chat-content">{{field.value}}</text>
+        </view>
+        <text wx:if="{{item.detail}}" class="row-meta">{{item.detail}}</text>
+        <text wx:if="{{item.unavailable}}" class="row-meta">这项操作需到教师工作台补充资料或确认。</text>
+        <view wx:if="{{item.confirmable || item.cancellable}}" class="button-row">
+          <button wx:if="{{item.cancellable}}" class="secondary" data-id="{{item.id}}" data-decision="cancel" bindtap="commitOperation" disabled="{{operationBusy || actionRead || uncertainOperationId || sessionExpired}}">取消操作</button>
+          <button wx:if="{{item.confirmable}}" class="primary" data-id="{{item.id}}" data-decision="confirm" bindtap="commitOperation" disabled="{{operationBusy || actionRead || uncertainOperationId || sessionExpired}}">确认执行</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel chat-compose">
+    <label class="field">
+      <text class="label">向班班提问</text>
+      <textarea class="textarea" value="{{input}}" bindinput="input" maxlength="2000" disabled="{{busy || managing || !ready}}" aria-label="向班班提问，最多 2000 字" placeholder="例如：这个班近一周的早读情况怎么样？" />
+    </label>
+    <button wx:if="{{busy}}" class="secondary block-button" bindtap="stop" loading="{{stopping}}" disabled="{{stopping || operationBusy}}">停止回答</button>
+    <button wx:else class="primary block-button" bindtap="send" disabled="{{loading || !ready || managing || operationBusy || sessionExpired}}">发送问题</button>
+  </view>
+</view>

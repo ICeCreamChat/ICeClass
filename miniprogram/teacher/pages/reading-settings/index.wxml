@@ -1,0 +1,48 @@
+<view class="page theme-{{appearance || 'glass'}}">
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">全校早读规则</text><text class="subtitle">统一统计时段、声量门槛与到点提醒</text></view>
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+  <view wx:if="{{sessionExpired}}" class="status"><text>会话已失效，未保存草稿已保留。</text><button class="primary" bindtap="relogin" disabled="{{busy}}">重新登录</button></view>
+  <text wx:if="{{loading}}" class="status" aria-role="status">正在读取全校早读规则…</text>
+  <text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
+  <view wx:if="{{config}}" class="panel">
+    <text class="section-heading" aria-role="heading" aria-level="2">已保存规则</text>
+    <text class="row-title">{{config.enabled ? '统计已启用' : '统计未启用'}} · {{inPeriod ? '当前在统计时段' : '当前不在统计时段'}}</text>
+    <text class="row-meta">全校 {{config.periods.length}} 个时段 · 声量门槛 {{config.threshold}} · 到点提醒{{config.reminderEnabled ? '已启用' : '未启用'}}</text>
+    <text class="row-meta">核对时间：{{checkedAt}}（北京时间）</text>
+    <text wx:if="{{dirty}}" class="row-meta">以下草稿尚未生效。</text>
+  </view>
+  <block wx:if="{{draft}}">
+    <view class="panel">
+      <text class="section-heading" aria-role="heading" aria-level="2">统计与提醒</text>
+      <view class="switch-row"><text class="row-main row-title">启用早读统计</text><switch checked="{{draft.enabled}}" data-field="enabled" bindchange="onOption" disabled="{{!canEdit || busy || loading || sessionExpired}}" color="#286bb5" aria-label="启用全校早读统计，保存后生效" /></view>
+      <view class="field"><text class="label">统一声量门槛</text><input class="input" type="number" value="{{draft.threshold}}" maxlength="2" bindinput="onThreshold" disabled="{{!canEdit || busy || loading || sessionExpired}}" aria-label="全校统一声量门槛，5 至 90 的整数" /><text class="row-meta">5-90，沿用教室早读的声量刻度。</text></view>
+      <view class="switch-row"><view class="row-main"><text class="row-title">到点提醒教室开始晨读</text><text class="row-meta">按已保存时段提醒；保存不会立即打开早读或启动采集。</text></view><switch checked="{{draft.reminderEnabled}}" data-field="reminderEnabled" bindchange="onOption" disabled="{{!canEdit || busy || loading || sessionExpired}}" color="#286bb5" aria-label="按全校早读时段到点提醒教室开始晨读" /></view>
+    </view>
+    <view class="panel">
+      <text class="section-heading" aria-role="heading" aria-level="2">统计时段</text>
+      <text class="row-meta">北京时间，最多 30 个时段。跨天请拆分；结束可设为当天 24:00。</text>
+      <text wx:if="{{!periods.length}}" class="empty">尚未设置统计时段。启用统计前请先添加。</text>
+      <view wx:for="{{periods}}" wx:key="key" wx:for-item="period" wx:for-index="periodIndex" class="reading-period">
+        <view class="period-heading"><text class="row-title">时段 {{periodIndex + 1}}</text><button class="secondary" data-key="{{period.key}}" bindtap="onDelete" disabled="{{!canEdit || busy || loading || sessionExpired}}" aria-label="{{'删除早读时段' + (periodIndex + 1) + '，保存后生效'}}">删除时段</button></view>
+        <view class="field"><text class="label">每周执行日期</text>
+          <checkbox-group class="weekdays" data-key="{{period.key}}" bindchange="onDays" aria-label="{{'早读时段' + (periodIndex + 1) + '的执行星期'}}"><label wx:for="{{period.weekOptions}}" wx:key="value" wx:for-item="day" class="weekday"><checkbox value="{{day.value}}" checked="{{day.checked}}" disabled="{{!canEdit || busy || loading || sessionExpired}}" color="#286bb5" aria-label="{{'时段' + (periodIndex + 1) + '，' + day.label}}" /><text>{{day.label}}</text></label></checkbox-group>
+        </view>
+        <view class="time-fields">
+          <view class="field"><text class="label">开始时间</text><picker mode="time" value="{{period.startTime}}" data-key="{{period.key}}" data-field="startTime" bindchange="onTime" disabled="{{!canEdit || busy || loading || sessionExpired}}" aria-label="{{'早读时段' + (periodIndex + 1) + '开始时间，' + period.startTime}}"><view class="picker">{{period.startTime}}</view></picker></view>
+          <view class="field"><text class="label">结束时间</text><picker mode="time" value="{{period.endPickerValue}}" data-key="{{period.key}}" data-field="endTime" bindchange="onTime" disabled="{{!canEdit || busy || loading || sessionExpired || period.endTime === '24:00'}}" aria-label="{{'早读时段' + (periodIndex + 1) + '结束时间，' + period.endTime}}"><view class="picker">{{period.endTime}}</view></picker></view>
+        </view>
+        <view class="switch-row"><text class="row-main">结束于当天 24:00</text><switch checked="{{period.endTime === '24:00'}}" data-key="{{period.key}}" bindchange="onMidnight" disabled="{{!canEdit || busy || loading || sessionExpired}}" color="#286bb5" aria-label="{{'早读时段' + (periodIndex + 1) + '结束于当天 24:00'}}" /></view>
+      </view>
+      <button class="secondary add-period" bindtap="onAdd" disabled="{{!canEdit || busy || loading || sessionExpired || periods.length >= 30}}" aria-label="添加全校早读统计时段，最多 30 个">添加时段</button>
+    </view>
+    <view class="panel">
+      <text wx:if="{{!canEdit && !sessionExpired}}" class="status">当前无法编辑，请刷新核对校长或超级管理员权限。草稿已保留。</text>
+      <text wx:if="{{dirty}}" class="status">有未保存草稿，同账号重新登录后仍会保留。</text>
+      <text wx:if="{{conflict}}" class="status">全校规则已变化，请核对草稿并重新载入最新规则后编辑。</text>
+      <text wx:if="{{uncertain}}" class="status">保存结果尚未确认，请先刷新核对，避免重复提交。</text>
+      <text class="row-meta">仅校长或超级管理员可保存，影响所有班级。保存前会核对最新规则；多位管理员同时保存时，以最后保存的规则为准。</text>
+      <view class="button-row"><button class="primary" bindtap="onSave" loading="{{busy}}" disabled="{{!canEdit || !dirty || busy || loading || conflict || uncertain || sessionExpired}}" aria-label="核对全校影响并保存早读规则">保存全校规则</button><button class="secondary" bindtap="onDiscard" disabled="{{!canEdit || busy || loading || sessionExpired}}" aria-label="放弃此页草稿并载入最新全校早读规则">重新载入最新规则</button></view>
+    </view>
+  </block>
+  <button wx:if="{{canEdit || loaded}}" class="secondary refresh" bindtap="onRefresh" disabled="{{busy || loading || sessionExpired}}" aria-label="刷新全校早读规则，保留未保存草稿">刷新规则</button>
+</view>

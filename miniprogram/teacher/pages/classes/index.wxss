@@ -1,0 +1,10 @@
+.class-item { padding: 16px 0; border-bottom: 1px solid rgba(113, 153, 181, 0.22); }
+.class-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.class-item .row-meta { display: block; overflow-wrap: anywhere; }
+.class-item .row { padding: 0 0 8px; border-bottom: 0; }
+.row-main { min-width: 0; }
+.row-title { overflow-wrap: anywhere; }
+button, .input { min-height: 44px; }
+.toolbar, .button-row { flex-wrap: wrap; }
+.toolbar { margin-bottom: 20px; }
+.button-row button { flex: 1; min-width: 116px; white-space: normal; }

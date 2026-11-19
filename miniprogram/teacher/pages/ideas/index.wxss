@@ -1,0 +1,8 @@
+.ideas-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.idea-title { font-size: 18px; }
+.idea-body { display: block; margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.idea-edit { margin-top: 12px; }
+.idea-editor { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.idea-switch { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.idea-switch .label { margin: 0; }
+.ideas-pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
