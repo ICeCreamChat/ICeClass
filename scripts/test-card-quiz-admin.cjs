@@ -74,13 +74,14 @@ test('真实教师入口分配卡号，未保存离开保护，保存及单卡�
 });
 test('文字图片题保存、版本冲突保留草稿，题单按序发布和撤回',async t=>{
   const{page,fixture}=await setup(t);
+  const questionText=page.getByRole('textbox',{name:'题干',exact:true});
   await page.locator('[data-cq-tab=bank]').click();await page.locator('[data-cq-action=new-question]').click();
-  await page.locator('[name=text]').fill('新建图文题');await page.locator('[name=count]').selectOption('2');await page.locator('[name=answer]').selectOption('B');await page.locator('[name=tags]').fill('集合，函数');
+  await questionText.fill('新建图文题');await page.locator('[name=count]').selectOption('2');await page.locator('[name=answer]').selectOption('B');await page.locator('[name=tags]').fill('集合，函数');
   await page.locator('[name=image]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:png});
   await page.locator('[data-cq-action=save-question]').click();await page.locator('[data-cq-action=new-question]').waitFor();
   assert.equal(fixture.questions[1].imageId,'image1');assert.equal(fixture.questions[1].answer,'B');assert.deepEqual(fixture.questions[1].tags,['集合','函数']);
-  await page.locator('[data-cq-action=edit-question][data-id=q2]').click();await page.locator('[name=text]').fill('未保存的冲突草稿');fixture.conflict=true;
-  await page.locator('[data-cq-action=save-question]').click();await page.locator('.cq-feedback.cq-error').waitFor();assert.equal(await page.locator('[name=text]').inputValue(),'未保存的冲突草稿');
+  await page.locator('[data-cq-action=edit-question][data-id=q2]').click();await questionText.fill('未保存的冲突草稿');fixture.conflict=true;
+  await page.locator('[data-cq-action=save-question]').click();await page.locator('.cq-feedback.cq-error').waitFor();assert.equal(await questionText.inputValue(),'未保存的冲突草稿');
   assert.equal(await page.locator('[data-cq-action=save-question]').isDisabled(),true);
   await page.locator('[data-cq-action=cancel-editor]').click();await page.locator('#workbenchConfirm[open] #workbenchConfirmAccept').click();
   await page.locator('[data-cq-tab=decks]').click();await page.locator('[data-cq-action=new-deck]').click();await page.locator('[name=title]').fill('复习题单');
@@ -92,7 +93,7 @@ test('文字图片题保存、版本冲突保留草稿，题单按序发布和�
 test('教师报告展示样本和未答，课后修订及本人认领、CSV下载',async t=>{
   const{page,fixture}=await setup(t,390);
   await page.locator('[data-cq-tab=reports]').click();await page.locator('[data-cq-action=open-session]').click();await page.locator('[data-cq-action=review-question]').click();
-  await page.locator('[name=text]').fill('课后补录题干');await page.locator('[name=answer]').selectOption('B');await page.locator('[name=tags]').fill('数与式');await page.locator('[data-cq-action=save-review]').click();
+  await page.getByRole('textbox',{name:'题干',exact:true}).fill('课后补录题干');await page.locator('[name=answer]').selectOption('B');await page.locator('[name=tags]').fill('数与式');await page.locator('[data-cq-action=save-review]').click();
   await page.locator('[data-cq-action=claim]').click();await page.waitForFunction(()=>document.querySelector('.cq-feedback').textContent.includes('认领'));
   assert.equal(fixture.detail.session.teacherId,'review-teacher');assert.equal(fixture.detail.session.questions[0].text,'课后补录题干');
   await page.locator('.cq-round summary').click();assert.match(await page.locator('#cardQuizRoot').innerText(),/未答/);
@@ -102,11 +103,12 @@ test('教师报告展示样本和未答，课后修订及本人认领、CSV下�
 
 test('保存期间锁住完整题目草稿，延迟成功响应不吞掉后续输入',async t=>{
   const{page,fixture}=await setup(t);await page.locator('[data-cq-tab=bank]').click();await page.locator('[data-cq-action=edit-question]').click();
-  await page.locator('[name=text]').fill('已提交版本');let release;fixture.holdSave=new Promise(resolve=>release=resolve);const started=new Promise(resolve=>fixture.saveStarted=resolve);
+  const questionText=page.getByRole('textbox',{name:'题干',exact:true});
+  await questionText.fill('已提交版本');let release;fixture.holdSave=new Promise(resolve=>release=resolve);const started=new Promise(resolve=>fixture.saveStarted=resolve);
   await page.locator('[data-cq-action=save-question]').click();await started;
   try{
     assert.equal(await page.locator('.cq-form input:not([disabled]),.cq-form textarea:not([disabled]),.cq-form select:not([disabled])').count(),0);
-    await page.keyboard.type('保存途中新内容');assert.equal(await page.locator('[name=text]').inputValue(),'已提交版本');
+    await page.keyboard.type('保存途中新内容');assert.equal(await questionText.inputValue(),'已提交版本');
   }finally{release();}
   await page.locator('[data-cq-action=new-question]').waitFor();assert.equal(fixture.questions[0].text,'已提交版本');
 });
@@ -141,7 +143,7 @@ test('三种题型提供真实多选复选框，键盘选择按 ABCD 顺序保�
   const{page,fixture}=await setup(t,390);
   await page.locator('[data-cq-tab=bank]').click();await page.locator('[data-cq-action=new-question]').click();
   assert.deepEqual(await page.locator('[name=type] option').evaluateAll(nodes=>nodes.map(n=>n.value)),['single','boolean','multiple']);
-  await page.locator('[name=text]').fill('多选题');await page.locator('[name=type]').selectOption('multiple');
+  await page.getByRole('textbox',{name:'题干',exact:true}).fill('多选题');await page.locator('[name=type]').selectOption('multiple');
   const answers=page.locator('fieldset.cq-answer-set input[type=checkbox][name=answer]');assert.equal(await answers.count(),4);
   await answers.nth(2).focus();await page.keyboard.press('Space');await answers.nth(0).check();
   assert.equal(await answers.nth(2).isChecked(),true);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
