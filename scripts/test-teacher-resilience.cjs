@@ -135,16 +135,16 @@ for(const width of [1280,390]) test(`Unsaved reading rules protect keyboard navi
   assert.equal(await beforeUnload(),true);
   if(await page.locator('#menuToggle').isVisible())await page.locator('#menuToggle').click();
   await page.locator('#mainNav [data-view="console"]').press('Enter');
-  assert.equal(await page.locator('#reading-leave[open]').count(),1);
+  assert.equal(await page.locator('#workbenchConfirm[open]').count(),1);
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#readingThreshold').inputValue(),'42');
   assert.equal(await page.locator('#view-reading').isVisible(),true);
   if(await page.locator('#mainContent').evaluate(node => node.inert))await page.keyboard.press('Escape');
   if(await page.locator('#menuToggle').isVisible() && !await page.locator('body').evaluate(node => node.classList.contains('nav-open')))await page.locator('#menuToggle').click();
   await page.locator('#mainNav [data-view="console"]').press('Enter');
-  const dialog=page.locator('#reading-leave');
+  const dialog=page.locator('#workbenchConfirm');
   assert.ok(await dialog.evaluate(node => node.scrollWidth <= innerWidth));
-  await dialog.getByRole('button',{name:'放弃修改',exact:true}).press('Enter');
+  await dialog.getByRole('button',{name:'放弃并继续',exact:true}).press('Enter');
   await page.locator('#view-console:not(.hidden)').waitFor();
   assert.equal(await beforeUnload(),false);
   await navigate(page,'reading');
@@ -155,9 +155,9 @@ test('Logout waits for an explicit decision about unsaved reading rules',async t
   const {page,requests} = await setup(t);
   await editReading(page);
   await logout(page);
-  assert.equal(await page.locator('#reading-leave[open]').count(),1);
+  assert.equal(await page.locator('#workbenchConfirm[open]').count(),1);
   assert.equal(requests.filter(r => r.path === '/api/auth/logout').length,0);
-  await page.locator('#reading-leave').getByRole('button',{name:'继续编辑',exact:true}).click();
+  await page.locator('#workbenchConfirm').getByRole('button',{name:'继续编辑',exact:true}).click();
   assert.equal(await page.locator('#readingThreshold').inputValue(),'42');
   assert.equal(await page.locator('#banbanRoot').count(),1,'Cancelling logout keeps the assistant mounted');
   await page.locator('#bbLauncher').click();
@@ -170,11 +170,89 @@ test('Cancelling logout from unsaved acknowledgements preserves both the draft a
   await settingsSection(page,'thanks');
   const title=page.locator('#acknowledgementsFields input').first();
   await title.fill('取消退出后保留的内容');
-  page.once('dialog',dialog=>dialog.dismiss());
   await logout(page);
+  await page.locator('#workbenchConfirmCancel').click();
   assert.equal(requests.filter(r=>r.path==='/api/auth/logout').length,0);
   assert.equal(await title.inputValue(),'取消退出后保留的内容');
   assert.equal(await page.locator('#banbanRoot').count(),1);
+});
+
+test('A 401 during the shared refresh confirmation prevents reload and cancelling sign-in keeps the draft',async t => {
+  const {page}=await setup(t,{width:1280,handle:({url})=>{
+    if(url.pathname==='/api/audit-expired-session')return {status:401,json:{error:'会话过期'}};
+  }});
+  await editReading(page);
+  assert.ok(await page.evaluate(()=>scrollY>0),'The editor has scrolled below the header');
+  await page.locator('#headerToolsToggle').press('ArrowDown');
+  await page.getByRole('menuitem',{name:'刷新页面'}).click();
+  const dialog=page.locator('#workbenchConfirm');
+  await dialog.locator('#workbenchConfirmExtra').filter({hasText:'保存并继续'}).waitFor();
+  let navigations=0;page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
+  assert.equal(await page.evaluate(()=>ICeClass.api('/api/audit-expired-session').catch(error=>error.status)),401);
+  await dialog.locator('#workbenchConfirmExtra').waitFor({state:'hidden'});
+  await dialog.locator('#workbenchConfirmAccept').click();
+  await page.locator('#toastRegion').getByText(/登录状态或页面已变化，刷新未执行/).waitFor();
+  await page.locator('#signInAgain').click();
+  assert.match(await dialog.locator('#workbenchConfirmText').textContent(),/早读规则/);
+  await dialog.getByRole('button',{name:'继续编辑',exact:true}).click();
+  await dialog.waitFor({state:'hidden'});
+  assert.equal(await page.locator('#readingThreshold').inputValue(),'42');
+  assert.equal(await page.locator('#signInAgain').evaluate(node=>document.activeElement===node),true);
+  assert.equal(navigations,0);
+});
+
+test('A failed homework class switch keeps the old roster draft and retries the requested class',async t => {
+  let attempts=0;
+  const {page}=await setup(t,{handle:({url})=>{
+    if(url.pathname==='/api/homework/classes/c2/profile'){
+      if(++attempts===1)return {status:503,json:{error:'班级暂时不可用。'}};
+      return {json:{classId:'c2',revision:2,canEdit:true,value:{activeTermId:'',students:[{id:'s2',name:'第二个班的学生'}],terms:[]}}};
+    }
+  }});
+  await navigate(page,'homework');
+  const classSelect=page.locator('#hw-class');
+  await classSelect.selectOption('c1');
+  await page.locator('#hw-class:enabled').filter({has:page.locator('option[value="c1"]:checked')}).waitFor();
+  await page.getByRole('button',{name:'名单与学期预设'}).click();
+  const student=page.locator('#hw-student-s1');
+  await student.fill('第一个班的草稿');
+  await classSelect.selectOption('c2');
+  const dialog=page.locator('#workbenchConfirm');
+  await dialog.getByRole('button',{name:'放弃并继续'}).click();
+  await page.locator('.hw-feedback[role="alert"]').filter({hasText:'当前仍显示高一（1）班'}).waitFor();
+  assert.equal(await classSelect.inputValue(),'c1');
+  assert.equal(await student.inputValue(),'第一个班的草稿');
+  await page.getByRole('button',{name:'重试载入'}).click();
+  await dialog.getByRole('button',{name:'放弃并继续'}).click();
+  await page.locator('#hw-student-s2').waitFor();
+  assert.equal(await classSelect.inputValue(),'c2');
+  assert.equal(await page.locator('#hw-student-s2').inputValue(),'第二个班的学生');
+  assert.equal(await student.count(),0);
+  assert.equal(attempts,2);
+});
+
+test('The actual idea review draft participates in the shared sign-out confirmation',async t => {
+  let signedOut=false;
+  const item={id:'review-check',title:'课堂建议',text:'学生的建议',classId:'c1',className:'高一（1）班',
+    status:'pending',reply:'',version:1,createdAt:1793491200000,published:false,media:[]};
+  const {page,requests}=await setup(t,{handle:({url})=>{
+    if(url.pathname==='/api/ideas/admin')return {json:{items:[item],total:1}};
+    if(url.pathname==='/api/auth/logout'){signedOut=true;return {json:{ok:true}};}
+    if(url.pathname==='/api/session'&&signedOut)return {json:{authenticated:false}};
+  }});
+  await navigate(page,'ideas');
+  const reply=page.locator('#ideasReply');
+  await reply.fill('尚未保存的评审回复');
+  const dialog=page.locator('#workbenchConfirm');
+  await logout(page);
+  assert.match(await dialog.locator('#workbenchConfirmText').textContent(),/创意评审/);
+  await dialog.getByRole('button',{name:'继续编辑'}).click();
+  assert.equal(await reply.inputValue(),'尚未保存的评审回复');
+  assert.equal(requests.filter(request=>request.path==='/api/auth/logout').length,0);
+  await logout(page);
+  await dialog.getByRole('button',{name:'放弃并继续'}).click();
+  await page.locator('#loginForm:not(.hidden)').waitFor();
+  assert.equal(requests.filter(request=>request.path==='/api/auth/logout').length,1);
 });
 
 test('A failed logout preserves the signed-in page and draft, reports failure and supports retry',async t => {
@@ -192,16 +270,16 @@ test('A failed logout preserves the signed-in page and draft, reports failure an
   await settingsSection(page,'thanks');
   await page.locator('#acknowledgementsFields input').first().fill('退出失败也保留的草稿');
   let navigations=0;page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
-  page.once('dialog',dialog=>dialog.accept());
   await logout(page);
+  await page.locator('#workbenchConfirmAccept').click();
   await page.locator('#toastRegion').getByText(/退出未完成/).waitFor();
   assert.equal(navigations,0);
   assert.equal(await page.locator('#appShell').isVisible(),true);
   assert.equal(await page.locator('#banbanRoot').count(),1);
   assert.equal(await page.locator('#acknowledgementsFields input').first().inputValue(),'退出失败也保留的草稿');
   assert.equal(await page.locator('#logoutButton').isDisabled(),false);
-  page.once('dialog',dialog=>dialog.accept());
   await logout(page);
+  await page.locator('#workbenchConfirmAccept').click();
   await page.locator('#loginForm:not(.hidden)').waitFor();
   assert.equal(attempts,2);
   assert.equal(await page.locator('#banbanRoot').count(),0);
@@ -248,7 +326,7 @@ test('Save-and-continue retains reading edits after failure and retries the exac
   }});
   await editReading(page);
   await page.locator('#mainNav [data-view="console"]').click();
-  const dialog=page.locator('#reading-leave');
+  const dialog=page.locator('#workbenchConfirm');
   assert.equal(await dialog.isVisible(),true);
   await dialog.getByRole('button',{name:'保存并继续',exact:true}).click();
   await dialog.getByRole('alert').filter({hasText:'请重试'}).waitFor();

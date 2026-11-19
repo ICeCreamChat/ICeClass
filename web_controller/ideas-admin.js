@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  const ui = window.ICeClassUI, draftLabel = '创意评审';
 
   const statuses = {
     pending: '待评审', adopted: '已采纳', implementing: '实现中',
@@ -11,7 +12,7 @@
   let items = [], total = 0, page = 1, status = '', classId = '';
   let selected = null, draft = null, latestReview = null;
   let busy = false, saving = false, reloading = false, conflict = false;
-  let listError = '', listRequest = 0, summaryRequest = 0, detailRequest = 0, editRevision = 0;
+  let listLoaded = false, listError = '', listRequest = 0, summaryRequest = 0, detailRequest = 0, editRevision = 0;
 
   function context() {
     const app = window.ICeClass || {};
@@ -76,24 +77,17 @@
     refs.feedback.setAttribute('role', error ? 'alert' : 'status');
   }
 
-  function canLeave() {
+  async function canLeave() {
     if (saving || reloading) {
       notify(saving ? '正在保存评审，请稍候。' : '正在载入最新版本，请稍候。');
       return false;
     }
-    if (!dirty()) return true;
-    return window.confirm('当前评审尚未保存，离开后草稿仍会保留在本页。继续吗？');
+    return !dirty() || ui.ask({title:'离开创意评审？', message:'当前草稿仍会保留。回到创意评审可以继续编辑。', acceptLabel:'离开', cancelLabel:'继续编辑'});
   }
 
-  function canLogout() {
-    if (saving || reloading) return canLeave();
-    return !dirty() || window.confirm('退出登录将丢弃当前未保存的评审草稿，退出后无法恢复。确定退出登录吗？');
-  }
-
-  function discardChanges() {
-    if (saving || reloading) return canLeave();
+  async function discardChanges(action) {
+    if (!await ui.confirmLeave(action, {only:draftLabel})) return false;
     if (!dirty()) return true;
-    if (!window.confirm('当前评审尚未保存，离开将丢弃这些修改。继续吗？')) return false;
     draft = editable(selected);
     conflict = false;
     latestReview = null;
@@ -149,8 +143,12 @@
     refs.statusFilter.addEventListener('change', () => changeFilter('status'));
     refs.classFilter.addEventListener('change', () => changeFilter('class'));
 
-    refs.digest = node('p', '正在加载每日汇总状态…', 'ideas-digest');
+    const digest = node('p', undefined, 'ideas-digest');
+    refs.digest = node('span', '正在加载每日汇总状态…');
     refs.digest.setAttribute('role', 'status');
+    const glyph = ui?.iconNode('clock');
+    if (glyph) digest.append(glyph);
+    digest.append(refs.digest);
     const workspace = node('div', undefined, 'ideas-workspace');
     const listPanel = node('section', undefined, 'ideas-list-panel');
     const listHeading = node('div', undefined, 'ideas-list-heading');
@@ -202,7 +200,7 @@
       }
     });
     refs.lightbox.append(photoBar, refs.photo, refs.photoError);
-    root.replaceChildren(heading, filters, refs.digest, workspace, refs.lightbox);
+    root.replaceChildren(heading, filters, digest, workspace, refs.lightbox);
     fillClasses();
     renderList();
     renderDetail();
@@ -240,6 +238,8 @@
     refs.next.disabled = busy || saving || reloading || page * pageSize >= total;
     refs.pageInfo.textContent = `第 ${page} / ${Math.max(1, Math.ceil(total / pageSize))} 页`;
     refs.list.replaceChildren();
+    refs.pagination.hidden = total <= pageSize;
+    refs.detail.hidden = !selected && !items.length;
     if (listError) {
       const error = node('div', undefined, 'ideas-state');
       const message = node('p', listError, 'ideas-error');
@@ -249,7 +249,21 @@
       return;
     }
     if (!items.length) {
-      refs.list.append(node('p', busy ? '正在加载创意…' : '没有符合条件的创意，可调整状态或班级筛选。', 'ideas-state'));
+      if (busy || !listLoaded) {
+        refs.list.append(node('p', '正在加载创意…', 'ideas-state'));
+      } else if (status || classId) {
+        refs.list.append(node('p', '没有符合条件的创意，请调整筛选。', 'ideas-state'));
+      } else {
+        const empty = node('div', undefined, 'wb-empty');
+        const image = node('img');
+        image.src = '/assets/teacher-ideas-empty.webp';
+        image.alt = '';
+        image.width = image.height = 112;
+        image.decoding = 'async';
+        image.addEventListener('error', () => { image.hidden = true; });
+        empty.append(image, node('strong', '还没有学生创意'), node('p', '学生提交后会出现在这里。'));
+        refs.list.append(empty);
+      }
       return;
     }
     const list = node('ul', undefined, 'ideas-list');
@@ -277,8 +291,8 @@
     refs.list.append(list);
   }
 
-  function selectItem(item) {
-    if (selected?.id === item.id || !discardChanges()) return;
+  async function selectItem(item) {
+    if (selected?.id === item.id || !await discardChanges('切换创意')) return;
     detailRequest++;
     editRevision++;
     selected = item;
@@ -365,9 +379,10 @@
     if (!refs.detail) return;
     refs.detail.querySelectorAll('audio').forEach(audio => audio.pause());
     refs.detail.replaceChildren();
+    refs.detail.hidden = !selected && !items.length;
     refs.feedback = null;
     if (!selected) {
-      refs.detail.append(node('p', '选择一条学生创意，查看内容并回复评审。', 'ideas-state ideas-detail-empty'));
+      refs.detail.append(node('p', '选择创意进行评审', 'ideas-state ideas-detail-empty'));
       return;
     }
     const back = button('返回列表', () => {
@@ -494,21 +509,19 @@
     refs.draftNote.textContent = dirty() ? '有未保存的修改' : '已保存';
   }
 
-  function changeFilter(kind) {
+  async function changeFilter(kind) {
     const nextStatus = refs.statusFilter.value, nextClass = refs.classFilter.value;
-    if (!discardChanges()) {
-      refs.statusFilter.value = status;
-      refs.classFilter.value = classId;
-      return;
-    }
-    if (kind === 'status') status = nextStatus;
-    else classId = nextClass;
+    refs.statusFilter.value = status;
+    refs.classFilter.value = classId;
+    if (!await discardChanges('切换评审筛选')) return;
+    status = refs.statusFilter.value = kind === 'status' ? nextStatus : status;
+    classId = refs.classFilter.value = kind === 'class' ? nextClass : classId;
     page = 1;
     void fetchList();
   }
 
-  function changePage(next) {
-    if (next < 1 || next > Math.max(1, Math.ceil(total / pageSize)) || !discardChanges()) return;
+  async function changePage(next) {
+    if (next < 1 || next > Math.max(1, Math.ceil(total / pageSize)) || !await discardChanges('翻页')) return;
     page = next;
     void fetchList();
   }
@@ -529,6 +542,7 @@
       if (page > lastPage) { page = lastPage; return await fetchList(keepSelection); }
       items = data.items;
       total = data.total;
+      listLoaded = true;
       if ((!keepSelection || !selected) && selection === detailRequest && edits === editRevision) {
         selected = items.find(item => item.id === selected?.id) || items[0] || null;
         draft = selected ? editable(selected) : null;
@@ -551,7 +565,8 @@
     try {
       const data = await context().api('/api/ideas/admin/summary');
       if (request !== summaryRequest || !allowed()) return;
-      refs.counts.textContent = `待评审 ${data.pending} · 共 ${data.total} 条 · 已公开 ${data.published} 条`;
+      const glyph = ui?.iconNode('inbox');
+      refs.counts.replaceChildren(...(glyph ? [glyph] : []), node('span', `待评审 ${data.pending} · 共 ${data.total} 条 · 已公开 ${data.published} 条`));
       const digest = data.digest || {};
       let schedule = !digest.enabled ? '每日 18:00 汇总 · 未启用'
         : !digest.configured ? '每日 18:00 汇总 · 待配置邮件服务'
@@ -559,7 +574,7 @@
       if (digest.lastSentAt) schedule += ` · 最近发送 ${formatTime(digest.lastSentAt)}`;
       if (digest.lastError) schedule += ' · 最近发送失败，请检查服务端邮件配置';
       refs.digest.textContent = schedule;
-      refs.digest.classList.toggle('ideas-error', Boolean(digest.lastError));
+      refs.digest.parentElement.classList.toggle('ideas-error', Boolean(digest.lastError));
     } catch {
       if (request !== summaryRequest || !allowed()) return;
       refs.counts.textContent = '统计暂时无法加载';
@@ -655,7 +670,7 @@
       fillClasses();
       return true;
     }
-    if (root && owner === nextOwner && allowed(nextUser) && !discardChanges()) return false;
+    if (root && owner === nextOwner && allowed(nextUser) && (dirty() || saving || reloading)) return false;
     suspend();
     config = options;
     listRequest++;
@@ -664,6 +679,7 @@
     root = nextRoot;
     refs = {};
     items = [];
+    listLoaded = false;
     total = 0;
     page = 1;
     status = classId = '';
@@ -714,6 +730,7 @@
     refs = {};
     config = {};
     items = [];
+    listLoaded = false;
     selected = draft = latestReview = null;
     busy = saving = reloading = conflict = false;
     total = 0;
@@ -727,13 +744,10 @@
     else fillClasses();
   }
 
-  window.addEventListener('beforeunload', event => {
-    if (!dirty() && !saving && !reloading) return;
-    event.preventDefault();
-    event.returnValue = '';
-  });
+  ui.registerDraft(draftLabel, () => ({dirty:dirty(), busy:saving || reloading}));
+  window.addEventListener('iceclass-logout', destroy);
   window.addEventListener('iceclass-classes-changed', fillClasses);
-  window.ICeClassIdeasAdmin = { init, load, canLeave, canLogout, suspend, destroy };
+  window.ICeClassIdeasAdmin = { init, load, canLeave, suspend, destroy };
   window.addEventListener('iceclass-ready', tryInit);
   document.addEventListener('DOMContentLoaded', tryInit, { once: true });
   tryInit();

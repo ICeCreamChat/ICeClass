@@ -89,7 +89,7 @@
 .ranking-sync[data-state="review"] { color: #a14a44; }
 .ranking-sync[data-state="unconfirmed"] { color: #63768b; }
 .ranking-axis { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 18px; margin: 0 26px; padding: 12px 0 17px; border-top: 1px solid #e8eff7; color: #536c85; font-size: 12px; }
-.ranking-table-link { border: 0; background: transparent; color: #096cc9; padding: 10px 0; min-height: 44px; font-size: inherit; font-weight: 600; text-align: left; }
+.ranking-table-link { border: 0; background: transparent; color: #096cc9; padding: 10px 0; min-height: 44px; font-size: inherit; font-weight: 600; }
 .ranking-table-link:hover { text-decoration: underline; }
 .ranking-waiting { padding: 30px 25px 35px; text-align: center; background: radial-gradient(ellipse at 50% 0,#e8f4ff,transparent 70%); }
 .ranking-waiting svg { display: block; width: 34px; height: 34px; margin: 0 auto 15px; stroke: #5799d8; stroke-width: 1.5; fill: none; }

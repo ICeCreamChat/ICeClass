@@ -23,6 +23,7 @@ public sealed class StudentVoiceWindow : Window
     private readonly Func<byte[], Task> _send;
     private readonly Func<Task>? _openReading;
     private readonly Action? _openSettings, _openAbout, _showIsland, _showBanban;
+    private readonly Action? _openCardQuiz;
     private readonly Action<string>? _openIdeas;
     private readonly Action<long>? _acknowledge;
     private readonly Func<string, object?>? _selfStudy;
@@ -91,12 +92,13 @@ public sealed class StudentVoiceWindow : Window
 
     public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null,
         Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null,
-        Action<string>? openIdeas = null, Action<long>? acknowledge = null, Func<string, object?>? selfStudy = null)
+        Action<string>? openIdeas = null, Action<long>? acknowledge = null, Func<string, object?>? selfStudy = null, Action? openCardQuiz = null)
     {
         ClassroomStyle.Apply(this);
         _config = config; _scope = BindingScope(config); _send = send; _openReading = openReading;
         _openSettings = openSettings; _openAbout = openAbout; _showIsland = showIsland;
         _showBanban = showBanban; _openIdeas = openIdeas; _acknowledge = acknowledge;
+        _openCardQuiz = openCardQuiz;
         _selfStudy = selfStudy;
         Title = $"ICeClass 班伴 · {config.ClassName}";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
@@ -218,7 +220,7 @@ public sealed class StudentVoiceWindow : Window
         className = _config.ClassName,
         deviceCaption = $"{_config.DeviceName} · 设备编号 {ComputerIdentity.DeviceCode(_config.DeviceId)}",
         connected = _connection.Connected, connectionText = _connection.Text,
-        capabilities = new {reading = _openReading is not null, plan = _openIdeas is not null, banban = _showBanban is not null},
+        capabilities = new {reading = _openReading is not null, plan = _openIdeas is not null, banban = _showBanban is not null, cardQuiz = _openCardQuiz is not null},
         voice = VoiceState(), island = _islandState ?? ClassroomHomeSnapshot.Empty()}});
     private async Task ReceiveAsync(CoreWebView2 core, CoreWebView2WebMessageReceivedEventArgs args)
     {
@@ -264,6 +266,7 @@ public sealed class StudentVoiceWindow : Window
                 case "voice": if (!_sending) {if (_recording) FinishRecording();else StartRecording();} break;
                 case "cancel-voice": if (_recording) {StopRecorder(); ResetVoice("录音已取消，可以重新开始。");} break;
                 case "plan": _openIdeas?.Invoke("submit"); break;
+                case "card-quiz": _openCardQuiz?.Invoke(); break;
                 case "banban": _showBanban?.Invoke(); break;
                 case "binding": _openSettings?.Invoke(); break;
                 case "about": _openAbout?.Invoke(); break;

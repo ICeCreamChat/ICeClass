@@ -29,10 +29,12 @@
   --teacher-surface-edge: #ffffffa3;
   --teacher-surface-shadow: 0 10px 24px #264f6d0e, inset 0 1px #ffffffb3;
   --teacher-table-head: #edf7ff85;
+  --teacher-field-label: #34546c;
   --teacher-row-hover: #ffffff59;
   --teacher-segment: #edf7ff59;
   --teacher-sticky: #edf7fff0;
   --teacher-overlay: #eef8ffd9;
+  --teacher-banban-surface: #edf7ff;
   --teacher-inset: 24px;
   --teacher-nav-width: 222px;
   font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
@@ -67,7 +69,7 @@
 .teacher-liquid h3 { font-size: 18px; line-height: 1.5; font-weight: 600; }
 .teacher-liquid :is(.muted, .hint, .reading-note, .hw-note, .hw-note p) { color: var(--muted); }
 .teacher-liquid :is(.hint, .reading-note, .hw-note, .form-error) { font-size: 14px; line-height: 1.75; }
-.teacher-liquid :is(.field label, .label, .hw-scope > label, .island-field, .island-class-field) { color: #34546c; font-size: 15px; font-weight: 600; }
+.teacher-liquid :is(.field label, .label, .hw-scope > label, .island-field, .island-class-field, .cq-toolbar > label, .cq-form label:not(.cq-choice), .cq-account-form label) { color: var(--teacher-field-label); font-size: 15px; font-weight: 600; }
 .teacher-liquid a { text-underline-offset: 4px; }
 .teacher-liquid .page-kicker { display: none; }
 
@@ -104,8 +106,8 @@
 .teacher-liquid main { padding: 24px 32px 40px 24px; }
 .teacher-liquid .view, .teacher-liquid #view-island { max-width: 1480px; }
 .teacher-liquid .ideas-admin { max-width: none; }
-.teacher-liquid :is(.view-head, .hw-heading, .ideas-heading, .ss-heading, .island-top) { margin-bottom: 24px; gap: 16px; }
-.teacher-liquid :is(.hw-heading, .ss-heading, .island-top) { align-items: center; }
+.teacher-liquid :is(.view-head, .hw-heading, .ideas-heading, .ss-heading, .island-top, .cq-heading) { margin-bottom: 24px; gap: 16px; }
+.teacher-liquid :is(.hw-heading, .ss-heading, .island-top, .cq-heading) { align-items: center; }
 .teacher-liquid :is(.hw-heading, .ideas-heading, .island-top) h1 { font-size: 28px; line-height: 1.4; letter-spacing: -.02em; }
 .teacher-liquid .view > .view-head { min-height: 44px; }
 .teacher-liquid .view-head p { font-size: 15px; max-width: 70ch; }
@@ -124,13 +126,14 @@
   box-shadow: var(--teacher-control-shadow);
   transition: background-color .16s, box-shadow .16s, color .16s;
 }
-.teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):hover { color: #174e79; background: var(--teacher-control-hover); border-color: #7fa4c0; }
-.teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):active { transform: none; box-shadow: inset 0 2px 5px #28577522; }
+.teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):hover:not(:disabled) { color: #174e79; background: var(--teacher-control-hover); border-color: #7fa4c0; }
+.teacher-liquid :is(.btn, .bb-send, .bb-tool, .bb-prompt, .bb-followup):active:not(:disabled) { transform: none; box-shadow: inset 0 2px 5px #28577522; }
 .teacher-liquid :is(.btn.primary, .btn.send, .bb-send) { color: #ffffff; border-color: #005dbf; background: var(--teacher-primary); box-shadow: inset 0 1px #ffffff47, 0 3px 7px #075ba91c; }
-.teacher-liquid :is(.btn.primary, .btn.send, .bb-send):hover { color: #ffffff; background: var(--teacher-primary-hover); border-color: #0056ae; }
+.teacher-liquid :is(.btn.primary, .btn.send, .bb-send):hover:not(:disabled) { color: #ffffff; background: var(--teacher-primary-hover); border-color: #0056ae; }
 .teacher-liquid :is(.btn.danger, .bb-danger) { color: var(--red); border-color: #e2b9b4; background: #fff6f4; }
 .teacher-liquid .btn.send.is-urgent { color: #ffffff; border-color: var(--red); background: var(--red); }
 .teacher-liquid .btn.send.is-warning { color: #ffffff; border-color: var(--orange); background: var(--orange); }
+.teacher-liquid .btn.record-button.recording, .teacher-liquid .btn.record-button.recording:hover { color: #ffffff; border-color: var(--red); background: var(--red); }
 .teacher-liquid .btn.block { font-size: 16px; }
 .teacher-liquid .btn.icon { width: 44px; min-height: 44px; padding: 8px; border-radius: 50%; font-size: 22px; flex: none; }
 .teacher-liquid :is(.dialog-head, .ideas-detail-header) .btn.icon { box-shadow: none; border-color: transparent; background: #f8fdff6b; }
@@ -161,7 +164,7 @@
 }
 
 /* Data and editing surfaces. Long tables keep their own scroll region. */
-.teacher-liquid :is(.reading-filter, .metric, .reading-panel, .reading-settings, .daily-details, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .island-main, .island-day-panel, .island-delivery-panel, .ideas-list-panel, .ideas-detail, .hw-scope, .hw-section, .users-panel, :where(#acknowledgementsPanel), .client-diagnostic-detail, .ss-settings, .ss-runtime, .ss-events, .table-wrap, .hw-table-wrap, .client-diagnostic-table, .bb-panel) {
+.teacher-liquid :is(.reading-filter, .metric, .reading-panel, .reading-settings, .daily-details, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .island-main, .island-day-panel, .island-delivery-panel, .ideas-list-panel, .ideas-detail, .hw-scope, .hw-section, .users-panel, :where(#acknowledgementsPanel), .client-diagnostic-detail, .ss-settings, .ss-runtime, .ss-events, .cq-panel, .print-panel, .table-wrap, .hw-table-wrap, .client-diagnostic-table, .bb-panel) {
   border: 1px solid var(--teacher-surface-edge);
   border-radius: 16px;
   background: var(--teacher-surface-highlight), var(--surface);
@@ -175,65 +178,68 @@
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 .teacher-liquid .reading-panel .table-wrap { border-top: 1px solid var(--line); }
-.teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section) { padding: var(--teacher-inset); }
-.teacher-liquid :is(.metric strong, .metric strong small, .metric-heading, th, #readingRanking td:nth-child(8)) { color: var(--text); }
+.teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section, .cq-panel, .print-panel) { padding: var(--teacher-inset); }
+.teacher-liquid :is(.metric strong, .metric strong small, .metric-heading) { color: var(--text); }
 .teacher-liquid .metric { padding: 20px 24px; }
 .teacher-liquid .metric strong { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
 .teacher-liquid .metric strong small { color: var(--muted); }
 .teacher-liquid .panel-heading { padding: 20px 24px; gap: 16px; flex-wrap: wrap; }
 .teacher-liquid :is(.panel-heading h2, .compose h2, .plain-section h2) { font-size: 20px; }
-.teacher-liquid :is(.table-wrap, .hw-table-wrap, .client-diagnostic-table) { min-width: 0; max-width: 100%; }
+.teacher-liquid :is(.table-wrap, .hw-table-wrap, .client-diagnostic-table, .cq-table-wrap) { min-width: 0; max-width: 100%; }
 .teacher-liquid table { font-size: 15px; font-variant-numeric: tabular-nums; }
+.teacher-liquid table :is(th, td) { text-align: center; vertical-align: middle; }
+.teacher-liquid table tbody th { white-space: normal; overflow-wrap: anywhere; }
+.teacher-liquid table td > :is(button, input) { text-align: inherit; }
+.teacher-liquid table td > input[type=checkbox] { display: block; margin: 0 auto; }
+/* Keep native controls at the edge without shifting the value in Chromium. */
+.teacher-liquid :is(.cq-table [data-card-student], .island-slots input[type=time]) { position: relative; }
+.teacher-liquid .cq-table [data-card-student]::-webkit-inner-spin-button {
+  position: absolute; inset-block: 6px; inset-inline-end: 8px; margin: 0;
+}
+.teacher-liquid .island-slots input[type=time]::-webkit-calendar-picker-indicator {
+  position: absolute; inset-block-start: 50%; inset-inline-end: 8px; transform: translateY(-50%); margin: 0;
+}
+/* Keep a reading edge for prose and row group labels. */
+.teacher-liquid .grade-divider td,
+.teacher-liquid #historyContainer :is(th, td):nth-child(6),
+.teacher-liquid .users-table :is(th, td):nth-child(3),
+.teacher-liquid .client-diagnostic-table :is(th, td):nth-child(2) { text-align: start; }
 .teacher-liquid :is(#historyContainer, #classesContainer, #devicesContainer) table { min-width: 820px; }
 .teacher-liquid #classesContainer td:first-child { min-width: 144px; }
 /* Class rows share column centers, including the actual button group.
    A bounded table scrolls on narrow screens instead of wrapping actions. */
 .teacher-liquid #classesContainer .classes-table { table-layout: fixed; min-width: 1040px; }
-.teacher-liquid .classes-table :is(th, td) { text-align: center; vertical-align: middle; }
 .teacher-liquid .classes-table th:nth-child(1) { width: 20%; }
 .teacher-liquid .classes-table th:nth-child(2) { width: 11%; }
 .teacher-liquid .classes-table th:nth-child(3) { width: 9%; }
 .teacher-liquid .classes-table th:nth-child(4) { width: 18%; }
 .teacher-liquid .classes-table th:nth-child(5) { width: 42%; }
-.teacher-liquid .classes-table .grade-divider td { text-align: left; }
 .teacher-liquid .row-actions { align-items: center; justify-content: center; gap: 8px; }
 .teacher-liquid .row-actions .btn { min-height: 44px; padding: 10px 12px; font-size: 14px; white-space: nowrap; }
 .teacher-liquid .classes-table .row-actions { flex-wrap: nowrap; }
-/* Descriptive identities remain easy to scan; compact states and actions
-   use the same center in their header and body. */
-.teacher-liquid .devices-table :is(th, td):nth-child(n+4),
-.teacher-liquid .control-device-table :is(th, td):nth-child(n+2),
-.teacher-liquid .users-table :is(th, td):is(:nth-child(2), :nth-child(n+4)) { text-align: center; vertical-align: middle; }
-.teacher-liquid .control-device-table td:nth-child(2) .device-detail { min-width: 0; align-items: center; }
+.teacher-liquid .control-device-table .device-detail { min-width: 0; align-items: center; }
+.teacher-liquid .control-device-table :is(.device-detail strong, .device-code) { color: inherit; font-weight: inherit; }
 .teacher-liquid .control-device-table td:last-child .btn { padding-inline: 12px; }
 .teacher-liquid .devices-table td:nth-child(3) { min-width: 128px; }
 .teacher-liquid .devices-table :is(th, td):nth-child(5) { white-space: nowrap; }
-.teacher-liquid .users-table .user-role-badges { justify-content: center; }
+.teacher-liquid .users-table :is(.user-identity, .user-role-badges) { justify-content: center; }
 .teacher-liquid .users-table td:nth-child(4) { padding-inline: 12px; }
 .teacher-liquid .users-table td:last-child { padding-inline: 8px; }
 .teacher-liquid .user-row-actions { justify-content: center; }
 .teacher-liquid .user-row-actions .btn { padding-inline: 12px; }
-/* Compact report columns share a center. Names, work and notification
-   content retain a readable left edge, even when they span several lines. */
-.teacher-liquid #rankingTable :is(th, td):is(:first-child, :nth-child(n+3)),
-.teacher-liquid #readingDaily :is(th, td):is(:first-child, :nth-child(n+3)),
-.teacher-liquid .hw-table[data-group=assignments] :is(th, td):is(:first-child, :nth-child(3), :nth-child(n+5):nth-child(-n+8)),
-.teacher-liquid .hw-table[data-group=students] :is(th, td):nth-child(n+3),
-.teacher-liquid #historyContainer :is(th, td):is(:first-child, :nth-child(4), :nth-child(5), :nth-child(n+7)),
-.teacher-liquid .client-diagnostic-table :is(th, td):not(:nth-child(2)),
-.teacher-liquid #classRolloverRows :is(th, td):nth-child(-n+2),
-.teacher-liquid .island-slots :is(th, td):last-child { text-align: center; vertical-align: middle; }
 .teacher-liquid #rankingTable .ranking-number { margin-inline: auto; }
 .teacher-liquid #rankingTable .mode-tag { margin-inline: 2px; }
-.teacher-liquid .hw-table :is(th, td) { vertical-align: middle; }
 .teacher-liquid .hw-table[data-group=assignments] { min-width: 1100px; }
 .teacher-liquid .hw-table[data-group=assignments] :is(th, td):nth-child(2) { min-width: 160px; }
 .teacher-liquid .hw-table[data-group=assignments] tbody th { min-width: 200px; }
 .teacher-liquid .hw-table[data-group=assignments] :is(th, td):is(:nth-child(3), :nth-child(n+5):nth-child(-n+8)) { white-space: nowrap; }
 .teacher-liquid #historyContainer :is(th, td):first-child,
 .teacher-liquid #historyContainer td:last-child .btn { white-space: nowrap; }
-.teacher-liquid th { color: var(--muted); font-size: 14px; font-weight: 600; background: var(--teacher-table-head); border-color: var(--line); }
-.teacher-liquid td { border-color: #7199b524; }
+.teacher-liquid thead th { color: var(--text); font-size: 14px; font-weight: 600; background: var(--teacher-table-head); border-color: var(--line); }
+/* Keep row header semantics without applying column header styling to data. */
+.teacher-liquid tbody th { color: inherit; font-size: inherit; font-weight: inherit; background: transparent; }
+.teacher-liquid td,
+.teacher-liquid tbody th { border-color: #7199b524; }
 .teacher-liquid tbody tr:hover:not(.grade-divider) { background: var(--teacher-row-hover); }
 .teacher-liquid :is(.report-note, .calendar-help, .ranking-chart-caption) { color: var(--muted); background: #eff8ff36; border-color: var(--line); }
 .teacher-liquid :is(.empty, .hw-empty, .island-empty) { background: #f4fbff38; border-color: #90b9d252; color: var(--muted); font-size: 15px; border-radius: 18px; }
@@ -244,7 +250,8 @@
 .teacher-liquid :is(.period-shortcuts, .ranking-switch, .mode-picker, .hw-tabs, .hw-group, .island-tabs, .island-duty-mode, .island-preview-scenes, .ideas-admin-tabs) { padding: 3px; gap: 4px; min-height: 44px; background: var(--teacher-segment); border: 1px solid var(--line); border-radius: 12px; }
 .teacher-liquid :is(.period-shortcuts .btn, .ranking-switch button, .mode-button, .island-tabs button, .island-preview-scenes button, .hw-tabs .btn, .hw-group .btn) { color: #3e5b72; font-size: 15px; font-weight: 400; min-height: 36px; line-height: 1.5; border-radius: 8px; box-shadow: none; border: 1px solid transparent; padding: 6px 12px; background: transparent; }
 .teacher-liquid .period-shortcuts { height: 44px; }
-.teacher-liquid :is(.period-shortcuts .btn.active, .ranking-switch button[aria-pressed=true], .mode-button.selected, .island-tabs button.active, .island-preview-scenes button[aria-pressed=true], .hw-tabs .btn[aria-pressed=true], .hw-group .btn[aria-pressed=true], .island-duty-mode .btn[aria-pressed=true]) { color: #005dbf; background: #f8fdffb8; border-color: #ffffffc2; font-weight: 600; box-shadow: 0 3px 8px #2857750c, inset 0 1px #fff; }
+.teacher-liquid :is(.period-shortcuts .btn.active, .ranking-switch button[aria-pressed=true], .mode-button.selected, .mode-button:has(> input:checked), .island-tabs button.active, .island-preview-scenes button[aria-pressed=true], .hw-tabs .btn[aria-pressed=true], .hw-group .btn[aria-pressed=true], .island-duty-mode .btn[aria-pressed=true]) { color: #005dbf; background: #f8fdffb8; border-color: #ffffffc2; font-weight: 600; box-shadow: 0 3px 8px #2857750c, inset 0 1px #fff; }
+.teacher-liquid .mode-button:hover:not(.selected, :has(> input:is(:checked, :disabled))) { background: var(--teacher-control-hover); color: var(--blue-text); }
 .teacher-liquid :is(.check-item, .weekday-picker label, .reading-days label, .reading-grade-options button) { color: #345c7a; background: #f5fbff63; border-color: #90b9d252; border-radius: 11px; min-height: 40px; }
 .teacher-liquid :is(.check-item:has(input:checked), .reading-grade-options button[aria-pressed=true]) { color: #075cad; background: #e6f6ffb5; border-color: #90bde09c; }
 .teacher-liquid .calendar-day-detail > div { background: #f6fcff59; border-color: var(--line); }
@@ -294,11 +301,6 @@
 .teacher-liquid .dialog-body { padding: 20px 24px 24px; min-width: 0; }
 .teacher-liquid .dialog-actions { padding: 16px 24px; gap: 10px; background: var(--teacher-table-head); border-color: var(--line); flex-wrap: wrap; }
 .teacher-liquid .dialog-body > :last-child { margin-bottom: 0; }
-.teacher-liquid .hw-confirm { padding: 28px; }
-.teacher-liquid .hw-confirm h2 { font-size: 25px; }
-.teacher-liquid .hw-confirm p { color: var(--muted); font-size: 16px; line-height: 1.75; }
-.teacher-liquid .island-dialog { padding: 28px; }
-.teacher-liquid .island-dialog h2 { font-size: 25px; }
 .teacher-liquid :is(#islandTabContent, .island-dialog) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) { font-size: 16px; }
 .teacher-liquid :is(.toast, .calendar-tooltip) { background: #eaf7fff2; color: #1d527b; border: 1px solid #ffffffde; border-radius: 17px; box-shadow: 0 12px 30px #193c5933; font-size: 15px; }
 
@@ -309,8 +311,7 @@
 .teacher-liquid .user-actions-popover .btn:hover { background: #ffffffa6; }
 .teacher-liquid :is(.user-meta span, .user-tab-count, .users-resultbar, .user-pending-link, .user-identity small, .user-scope small, .user-role-badge, .users-table .status, .users-pagination, .user-permission-guide, .user-menu-title, .staff-class-grade h3) { font-size: 14px; }
 .teacher-liquid :is(.user-identity small, .user-scope small, .user-menu-title) { color: var(--muted); }
-.teacher-liquid .users-table th { color: var(--muted); font-size: 14px; font-weight: 600; background: var(--teacher-table-head); }
-.teacher-liquid .user-identity strong { color: var(--text); font-size: 16px; }
+.teacher-liquid .user-identity strong { color: inherit; font-size: inherit; font-weight: inherit; }
 .teacher-liquid :is(.user-row-actions .btn, .users-pagination .btn) { min-height: 44px; font-size: 15px; }
 .teacher-liquid .staff-class-picker .check-item { font-size: 14px; min-height: 40px; }
 .teacher-liquid .ideas-admin { font-size: 16px; }
@@ -330,7 +331,8 @@
 .teacher-liquid :is(.ideas-status-adopted, .ideas-status-launched) { color: var(--green); background: #d9f0e585; }
 .teacher-liquid .ideas-status-implementing { color: #715223; background: #fff0dba1; }
 .teacher-liquid .ideas-photo { background: #e9f4fa66; }
-.teacher-liquid .hw-table thead th { background: var(--teacher-table-head); }
+.teacher-liquid :is(.hw-table, .cq-table, .print-metadata) thead th { background: var(--teacher-table-head); }
+.teacher-liquid .cq-tabs .btn[aria-pressed=true] { background: var(--blue-soft); border-color: var(--teacher-control-line); color: var(--blue-text); }
 .teacher-liquid :is(.hw-tabs, .hw-group) { width: fit-content; }
 .teacher-liquid .hw-section h2 { font-size: 20px; }
 .teacher-liquid :is(.hw-students, .hw-items, .hw-term-name) input { font-size: 16px; }
@@ -339,12 +341,11 @@
 .teacher-liquid :is(.acknowledgements-group, .acknowledgements-preview) { border-color: var(--line); }
 .teacher-liquid .acknowledgements-group legend { font-size: 18px; }
 .teacher-liquid .acknowledgements-group-actions .btn { font-size: 16px; }
-.teacher-liquid #acknowledgementsPreview { padding: 22px 24px; border: 1px solid #ffffffb8; border-radius: 20px; }
 .teacher-liquid :is(.client-diagnostic-detail pre, .client-diagnostic-detail textarea) { background: #f6fcff66; border: 1px solid #90b9d252; color: var(--text); border-radius: 16px; }
 
 /* Banban: launcher, conversation, settings, history, operations and nested prompts. */
 .teacher-liquid .banban-root { --bb-ink: #193c59; --bb-blue: #075cad; font-family: inherit; font-size: 16px; }
-.teacher-liquid .bb-panel { border-radius: 20px; }
+.teacher-liquid .bb-panel { border-radius: 20px; background: var(--teacher-surface-highlight), var(--teacher-banban-surface); }
 .teacher-liquid :is(.bb-header, .bb-scope-bar, .bb-compose, .bb-settings-footer) { background: #f4fbff47; border-color: var(--line); }
 .teacher-liquid :is(.bb-scroll, .bb-welcome, .bb-settings-body, .bb-history-list) { background: transparent; color: var(--text); }
 .teacher-liquid :is(.bb-heading strong, .bb-welcome h2, .bb-settings h2) { color: var(--text); font-size: 22px; font-weight: 700; }
@@ -372,7 +373,7 @@
 .teacher-liquid :is(.bb-settings label, .bb-scope-editor label) { font-size: 15px; font-weight: 600; color: #34546c; }
 .teacher-liquid :is(.bb-input-box, .bb-operation-field input) { background: #f7fcff80; border: 1px solid #92b4cc8c; border-radius: 15px; }
 .teacher-liquid .bb-input-box textarea { font-size: 16px; color: var(--text); background: transparent; box-shadow: none; border: 0; }
-.teacher-liquid :is(.bb-scope-editor, .bb-options, .bb-settings, .bb-session-popover, .bb-task-panel, .bb-confirm-dialog, .bb-history, .bb-history-delete-dialog) { border-radius: 20px; color: var(--text); background: var(--teacher-overlay); --teacher-pane: linear-gradient(125deg, #f3fbffef, #d9efffe0); }
+.teacher-liquid :is(.bb-scope-editor, .bb-options, .bb-settings, .bb-session-popover, .bb-task-panel, .bb-confirm-dialog, .bb-history, .bb-history-delete-dialog) { border-radius: 20px; color: var(--text); background: var(--teacher-banban-surface); --teacher-pane: linear-gradient(125deg, #ffffff, var(--teacher-banban-surface)); }
 .teacher-liquid :is(.bb-session-row, .bb-thread-row):hover { background: #ffffff91; }
 .teacher-liquid :is(.bb-settings-actions .bb-tool, .bb-history-delete-actions .bb-tool) { background: var(--teacher-control); color: #234f73; }
 .teacher-liquid :is(.bb-settings-actions .bb-send, .bb-history-delete-actions .bb-send) { background: var(--teacher-primary); color: #ffffff; }
@@ -432,6 +433,7 @@
   --teacher-surface-edge: #dce3eb; --teacher-surface-shadow: none;
   --teacher-table-head: #f4f8fc; --teacher-row-hover: #f4f8fc;
   --teacher-segment: #eff4f9; --teacher-sticky: #ffffff; --teacher-overlay: #ffffff;
+  --teacher-banban-surface: #ffffff;
 }
 [data-teacher-material="white"] .teacher-liquid { --bg: #f5f6f8; --text: #24364b; --muted: #526477; background: var(--bg); }
 [data-teacher-material="white"] .teacher-liquid::before { display: none; }
@@ -492,7 +494,7 @@
   .teacher-liquid h2 { font-size: 20px; }
   .teacher-liquid main { padding: 22px 17px 30px; }
   .teacher-liquid :is(.btn, .bb-send) { font-size: 15px; padding: 10px 15px; }
-  .teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section) { padding: var(--teacher-inset); }
+  .teacher-liquid :is(.reading-filter, .control-actions, .compose, .plain-section, .classroom-voice-item, .schedule-item, .hw-section, .cq-panel, .print-panel) { padding: var(--teacher-inset); }
   .teacher-liquid .metric { padding: 20px; }
   .teacher-liquid .panel-heading { padding: 20px; }
   .teacher-liquid :is(.panel-heading h2, .compose h2, .plain-section h2) { font-size: 20px; }
@@ -511,8 +513,6 @@
   .teacher-liquid .dialog-body { padding: 16px 22px 23px; }
   .teacher-liquid .dialog-actions { padding: 16px 22px; gap: 8px; }
   .teacher-liquid .dialog-actions .btn { font-size: 14px; padding: 10px 13px; }
-  .teacher-liquid .hw-confirm { padding: 23px; }
-  .teacher-liquid .island-dialog { padding: 23px; }
   .teacher-liquid #acknowledgementsPanel { padding: 20px; }
   .teacher-liquid .auth-layout { display: block; max-width: 480px; }
   .teacher-liquid .auth-story { display: none; }
@@ -531,16 +531,18 @@
     --teacher-surface-edge: #dce3eb; --teacher-surface-shadow: none;
     --teacher-table-head: #f4f8fc; --teacher-row-hover: #f4f8fc;
     --teacher-segment: #eff4f9; --teacher-sticky: #ffffff; --teacher-overlay: #ffffff;
+    --teacher-banban-surface: #ffffff;
   }
   .teacher-liquid .lg-pane { background: #ffffff !important; border-color: #b7cddd !important; }
   .teacher-liquid .lg-pseudo::before, .teacher-liquid::before { display: none; }
   .teacher-liquid select::picker(select) { background: #ffffff; backdrop-filter: none; }
 }
 @media (forced-colors: active) {
-  :root .teacher-liquid { --surface: Canvas; --surface-solid: Canvas; --teacher-overlay: Canvas; --teacher-surface-highlight: none; --teacher-surface-edge: CanvasText; --teacher-surface-shadow: none; --teacher-table-head: Canvas; --teacher-sticky: Canvas; --teacher-row-hover: Canvas; background: Canvas; color: CanvasText; }
+  :root .teacher-liquid { --surface: Canvas; --surface-solid: Canvas; --teacher-overlay: Canvas; --teacher-banban-surface: Canvas; --teacher-surface-highlight: none; --teacher-surface-edge: CanvasText; --teacher-surface-shadow: none; --teacher-table-head: Canvas; --teacher-sticky: Canvas; --teacher-row-hover: Canvas; background: Canvas; color: CanvasText; }
   .teacher-liquid::before, .teacher-liquid .lg-pseudo::before { display: none !important; }
   :root .teacher-liquid .lg-pane, :root .teacher-liquid :is(input, textarea, select, .btn) { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText !important; box-shadow: none; }
   .teacher-liquid .nav button.active { outline: 1px solid Highlight; }
+  .teacher-liquid .mode-picker :is(.mode-button.selected, .mode-button:has(> input:checked)) { border-color: Highlight; }
   .teacher-liquid .appearance-choice:has(input:checked) { outline: 2px solid Highlight; outline-offset: 2px; }
   .teacher-liquid select option:is(:checked, :hover, :focus) { background: Highlight; color: HighlightText; box-shadow: none; }
   .teacher-liquid select option:focus-visible { outline: 1px solid HighlightText; outline-offset: -2px; }

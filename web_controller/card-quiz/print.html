@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN" class="card-quiz-print-page">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>纸卡打印 · ICeClass</title>
+  <script src="../teacher-appearance.js?v=1"></script>
+  <link rel="stylesheet" href="../ui.css?v=19">
+  <link rel="stylesheet" href="../teacher-liquid-glass.css?v=13">
+  <link rel="stylesheet" href="print.css?v=3">
+  <link rel="stylesheet" href="../assets/control-focus.css?v=1">
+  <script src="vendor/cv.js" defer></script>
+  <script src="vendor/aruco.js" defer></script>
+  <script src="cards.js" defer></script>
+  <script src="print-card.js?v=2" defer></script>
+  <script src="print.js?v=2" defer></script>
+</head>
+<body class="teacher-liquid card-quiz-print">
+  <main>
+    <header class="print-toolbar print-panel">
+      <div>
+        <h1>教师代印纸卡</h1>
+        <p>代印会重置所选学生的六位密码，旧密码和旧学生会话立即失效。请将新纸卡交给对应学生。</p>
+        <p>A4 黑白打印，实际大小（100%），关闭页眉页脚。每张一页，黑色识别方块为 144 mm；请先试印一张并在实际距离试扫。</p>
+      </div>
+      <div class="print-actions">
+        <button type="button" id="reload" class="btn">重新载入名单</button>
+        <button type="button" id="prepare" class="btn primary" disabled>重置密码并准备打印</button>
+        <button type="button" id="print" class="btn primary" disabled>打印纸卡</button>
+        <button type="button" id="clear" class="btn" hidden>清除本次密码</button>
+      </div>
+    </header>
+    <p id="feedback" role="status" aria-live="polite" tabindex="-1">正在核对教师权限与学生账号…</p>
+    <section id="metadata" class="print-metadata print-panel" aria-label="待打印账号信息"></section>
+    <section id="cards" aria-label="可打印纸卡"></section>
+  </main>
+  <dialog id="reset-confirm" aria-labelledby="reset-title" aria-describedby="reset-description">
+    <div class="dialog-head"><h2 id="reset-title">重置密码并准备打印？</h2><button class="btn icon" type="button" data-close-reset aria-label="关闭">×</button></div>
+    <div class="dialog-body"><p id="reset-description"></p></div>
+    <div class="dialog-actions">
+      <button type="button" id="cancel-reset" class="btn" autofocus>取消</button>
+      <button type="button" id="confirm-reset" class="btn primary">确认重置并准备</button>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -30,7 +30,13 @@ async function setup(t,{width=1280,saveStatus=200,photo=false,photoValid=true,ph
       }
       return {json:{...snapshot(),...runtime}};
     }
-    if(url.pathname==='/api/self-study/events')return {json:{events:photo&&media.present?[{id:'event1',class_id:'c1',class_name:'高一（1）班',started_at:1794226200000,reported_at:1794226200000,status:'reported',photo_status:media.photo_status,photo_at:1794226200000-photoAgeMs,handled_at:media.handled_at,resolution:media.resolution}]:[],pending:photo&&media.present&&!media.handled_at?1:0,serverTime:media.serverTime}};
+    if(url.pathname==='/api/self-study/events'){
+      const json={events:photo&&media.present?[{id:'event1',class_id:'c1',class_name:'高一（1）班',started_at:1794226200000,reported_at:1794226200000,status:'reported',photo_status:media.photo_status,photo_at:1794226200000-photoAgeMs,handled_at:media.handled_at,resolution:media.resolution}]:[],pending:photo&&media.present&&!media.handled_at?1:0,serverTime:media.serverTime};
+      if(!url.searchParams.has('classId')&&media.holdPoll){
+        const pending=media.holdPoll;media.holdPoll=null;media.pollStarted();await pending;
+      }
+      return {json};
+    }
     if(url.pathname==='/api/self-study/events/event1/review'&&request.method()==='POST'){
       const review=request.postDataJSON();reviews.push(review);media.handled_at=media.serverTime;media.resolution=review.resolution;
       return {json:{ok:true}};
@@ -135,11 +141,11 @@ test('Changing class protects unsaved settings and navigation works by keyboard'
   const {page}=await setup(t);
   await page.getByLabel('已完成学校告知与授权').check();
   await page.locator('#ss-class').selectOption('c2');
-  await page.locator('#ss-leave[open]').waitFor();
+  await page.locator('#workbenchConfirm[open]').waitFor();
   await page.getByRole('button',{name:'继续编辑',exact:true}).click();
   assert.equal(await page.locator('#ss-class').inputValue(),'c1');
   await page.locator('#ss-class').selectOption('c2');
-  await page.getByRole('button',{name:'放弃修改',exact:true}).click();
+  await page.getByRole('button',{name:'放弃并继续',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#ss-class').value==='c2');
   assert.equal(await page.getByLabel('已完成学校告知与授权').isChecked(),false);
 });
@@ -231,7 +237,7 @@ test('The processing flow follows fresh device state and clears its stage when s
 test('Bottom actions remain clickable above the floating assistant on a narrow screen',async t=>{
   const {page}=await setup(t,{width:390,photo:true});
   await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
-  const button=page.getByRole('button',{name:'查看晚自习安排',exact:true});
+  const button=page.getByRole('button',{name:'晚自习安排',exact:true});
   const clear=await button.evaluate(node=>{const r=node.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('button')===node;});
   assert.equal(clear,true,'The launcher cannot intercept the schedule action');
   await button.click();await page.locator('#ss-week[open]').waitFor();
@@ -252,17 +258,41 @@ test('Unchanged records preserve keyboard focus when polling advances the server
 test('Record actions submit their resolution and refresh the pending state',async t=>{
   for(const [name,resolution] of [['标记误报','false_alarm'],['处理完成','handled']]){
     const {page,reviews}=await setup(t,{photo:true});
+    await page.locator('#ss-nav-count').filter({hasText:'待核 1'}).waitFor({state:'attached'});
+    assert.equal(await page.locator('#ss-pending').textContent(),'本班 1 条待核实');
     await page.getByRole('button',{name,exact:true}).click();
     await page.locator('#ss-feedback').filter({hasText:'处理结果已记录'}).waitFor();
     assert.deepEqual(reviews,[{resolution}]);
-    assert.equal(await page.locator('#ss-pending').textContent(),'暂无待核实');
+    assert.equal(await page.locator('#ss-pending').textContent(),'本班暂无待核实');
+    await page.locator('#ss-nav-count[hidden]').waitFor({state:'attached'});
     assert.equal(await page.locator('[data-ss-review]').count(),0);
   }
 });
 
+test('A poll started before the review cannot restore the old pending count',async t=>{
+  const {page,media}=await setup(t,{photo:true});
+  const count=page.locator('#ss-nav-count');
+  await count.filter({hasText:'待核 1'}).waitFor({state:'attached'});
+  await page.locator('#ss-event-list[aria-busy=false]').waitFor();
+  let release;
+  media.holdPoll=new Promise(resolve=>release=resolve);
+  const started=new Promise(resolve=>media.pollStarted=resolve);
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await started;
+  try{
+    await page.getByRole('button',{name:'处理完成',exact:true}).click();
+    await page.locator('#ss-nav-count[hidden]').waitFor({state:'attached'});
+  }finally{
+    const previous=page.waitForResponse(async response=>response.url().includes('/api/self-study/events?limit=30')&&(await response.json()).pending===1);
+    release();await previous;
+  }
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await count.textContent(),'');
+});
+
 test('The weekly schedule has a keyboard dialog, returns focus and reaches the real timetable editor',async t=>{
   const {page}=await setup(t);
-  const button=page.getByRole('button',{name:'查看晚自习安排',exact:true});
+  const button=page.getByRole('button',{name:'晚自习安排',exact:true});
   await button.focus();await page.keyboard.press('Enter');
   await page.locator('#ss-week[open]').waitFor();
   assert.match(await page.locator('#ss-schedule').textContent(),/20:00.*21:30/);

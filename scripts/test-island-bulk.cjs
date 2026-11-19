@@ -250,7 +250,7 @@ test('Selective preview freezes source, selected sections and targets, then appl
 test('Whole configuration is an explicit selection and includes the source floating state', async t => {
   const { page, model, bulk } = await open(t);
   model.profiles['bulk-11'].config.enabled = false;
-  await page.locator('#islandMore summary').click(); await page.getByRole('button', { name: '重新载入', exact: true }).click();
+  await page.locator('#islandMore summary').click(); await page.getByRole('menuitem', { name: '重新载入', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#islandEditor').getAttribute('aria-busy') === 'false');
   const dialog = await dialogFor(page, bulk);
   await dialog.getByRole('checkbox', { name: '全部设置', exact: true }).check();
@@ -383,8 +383,12 @@ test('Changed source blocks submitting the old template and supports reloading t
 test('More operations uses the existing menu and Escape restores focus', async t => {
   const { page } = await open(t);
   const menu = page.locator('#islandMore'), trigger = menu.locator('summary');
-  await trigger.click();
-  for (const name of ['重新载入', '导入 Excel', '导出 Excel']) assert.equal(await menu.getByRole('button', { name, exact: true }).isVisible(), true);
+  await trigger.press('ArrowDown');
+  for (const name of ['重新载入', '导入 Excel', '导出 Excel']) assert.equal(await menu.getByRole('menuitem', { name, exact: true }).isVisible(), true);
+  const load = menu.getByRole('menuitem', { name: '重新载入', exact: true });
+  assert.equal(await load.evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('End');
+  assert.equal(await menu.getByRole('menuitem', { name: '导出 Excel', exact: true }).evaluate(node => node === document.activeElement), true);
   await page.keyboard.press('Escape'); assert.equal(await menu.getAttribute('open'), null);
   assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
 });

@@ -54,12 +54,11 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 #islandTabContent [aria-invalid=true] { border-color: var(--red); }
 #islandTabContent .island-field-error { display: block; margin: 4px 0 0; color: var(--red); font-size: 13px; line-height: 1.6; }
 #islandTabContent .table-wrap { margin: 18px 0 8px; }
-#islandTabContent th, #islandTabContent td { padding: 10px 8px; font-size: 14px; vertical-align: middle; }
+#islandTabContent th, #islandTabContent td { padding: 10px 8px; font-size: 14px; }
 #islandTabContent th { font-size: 13px; font-weight: 600; }
 .island-week { isolation: isolate; }
 .island-week table { min-width: 880px; table-layout: fixed; }
 .island-week th:first-child { width: 126px; }
-.island-week thead th:not(:first-child) { text-align: center; }
 .island-week td:first-child, .island-week th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
 .island-slot-label { display: grid; gap: 4px; line-height: 1.5; }
 .island-slot-label strong { font-size: 14px; font-weight: 600; }
@@ -147,12 +146,9 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 .island-delivery-heading > span { font-size: 13px; flex: none; }
 .island-delivery-row small { display: block; color: var(--muted); font-size: 13px; margin-top: 7px; line-height: 1.7; }
 #view-island .success-text { color: var(--green); }
-.island-dialog { width: min(520px, calc(100vw - 32px)); max-height: 88dvh; border: 1px solid var(--line); border-radius: 16px; padding: 26px; color: var(--text); background: var(--surface); overflow: auto; overscroll-behavior: contain; }
-.island-dialog::backdrop { background: #0d182b66; }
+.island-dialog { width: min(520px, calc(100vw - 32px)); }
 .island-dialog .island-field { margin: 16px 0; }
-.island-dialog h2 { font-size: 20px; margin-bottom: 6px; }
-.island-dialog .island-inline { justify-content: flex-end; margin-top: 24px; }
-.island-dialog .island-inline .danger { margin-right: auto; }
+.island-dialog .dialog-actions .danger { margin-right: auto; }
 .island-dialog :is(select, textarea) { font-size: 14px; }
 .island-dialog-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
 .island-dialog .island-dialog-fields .island-field { margin: 0; }
@@ -254,9 +250,8 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
 #islandTabContent .island-duty-grid th, #islandTabContent .island-duty-grid td { padding: 8px 6px; }
 #islandTabContent .island-duty-grid th { font-size: 14px; line-height: 1.7; white-space: normal; }
 .island-duty-grid th:first-child { width: 138px; position: sticky; left: 0; z-index: 1; background: var(--surface); }
-#islandTabContent .island-duty-grid thead th { padding-block: 13px; text-align: center; color: var(--text); background: var(--bg); }
-#islandTabContent .island-duty-grid thead th:first-child { text-align: left; padding-left: 14px; }
-#islandTabContent .island-duty-grid tbody th { padding-left: 14px; font-weight: 400; }
+#islandTabContent .island-duty-grid thead th { padding-block: 13px; color: var(--text); background: var(--bg); }
+#islandTabContent .island-duty-grid tbody th { font-weight: 400; }
 .island-duty-grid .island-slot-label { gap: 6px; }
 .island-duty-grid .island-slot-label strong { font-size: 15px; }
 .island-duty-grid .island-slot-label small { font-size: 13px; }
@@ -443,8 +438,6 @@ main:has(> #view-island:not(.hidden)) { padding-bottom: 150px; }
   .island-preview-clock { position: static; }
   .island-preview-time-panel { right: 14px; width: calc(100% - 28px); top: auto; margin-top: 8px; }
   .island-error, .island-notice { margin-inline: 14px; }
-  .island-dialog { padding: 22px; }
-  .island-dialog .island-inline { gap: 8px; }
   .island-dialog-fields { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: no-preference) {

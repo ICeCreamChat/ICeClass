@@ -53,7 +53,7 @@ internal sealed partial class DesktopWindow : Window
     private readonly HashSet<Guid> _recordingFrames = [];
     private readonly HashSet<CoreWebView2DownloadOperation> _pageDownloads = [];
     private readonly TeacherActions _teacherActions;
-    private bool _teacherDocumentActive, _unifiedHeader;
+    private bool _teacherDocumentActive, _unifiedHeader, _refreshing;
 
     internal DesktopWindow(App app, string endpoint, bool main, string? address = null)
     {
@@ -88,7 +88,7 @@ internal sealed partial class DesktopWindow : Window
         };
         var refresh = ToolbarButton("刷新页面"); refresh.Click += async (_, _) =>
         {
-            if (await ConfirmRefreshAsync()) Navigate();
+            await RefreshFromToolbarAsync();
         };
         var settings = ToolbarButton("桌面设置"); settings.Click += async (_, _) =>
         { await ShowSettingsAsync(); };
@@ -366,27 +366,109 @@ internal sealed partial class DesktopWindow : Window
         catch (Exception error) { DesktopLog.Write(error); }
     }
 
-    private async Task<bool> ConfirmRefreshAsync()
+    private async Task<bool> ConfirmRefreshAsync(string? document, string token)
     {
         _app.Diagnostics.Record("action", "刷新页面", _browser.Core?.Source ?? _endpoint);
+        if (document is not null && _browser.Core is { } core)
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnReply(object? _, CoreWebView2WebMessageReceivedEventArgs args)
+            {
+                if (!DesktopSettings.SameOrigin(_endpoint, args.Source)) return;
+                try
+                {
+                    using var json = JsonDocument.Parse(args.WebMessageAsJson);
+                    var reply = json.RootElement;
+                    if (reply.ValueKind == JsonValueKind.Object && reply.TryGetProperty("type", out var type) &&
+                        type.ValueKind == JsonValueKind.String && type.GetString() == "iceclass-refresh-confirmed" &&
+                        reply.TryGetProperty("token", out var value) && value.ValueKind == JsonValueKind.String && value.GetString() == token &&
+                        reply.TryGetProperty("accepted", out var accepted) && accepted.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                        completion.TrySetResult(accepted.GetBoolean());
+                }
+                catch (JsonException) { }
+            }
+            void OnNavigation(object? _, CoreWebView2NavigationStartingEventArgs args) => completion.TrySetResult(false);
+            core.WebMessageReceived += OnReply;
+            core.NavigationStarting += OnNavigation;
+            try
+            {
+                var started = await core.ExecuteScriptAsync($$"""
+                    (() => {
+                      if (window.ICeClassTeacherHost?.clientId !== {{JsonSerializer.Serialize(document)}}) return false;
+                      const ui = window.ICeClassUI;
+                      if (!ui?.confirmRefresh || document.getElementById('appShell')?.classList.contains('hidden')) return null;
+                      const token = {{JsonSerializer.Serialize(token)}};
+                      const reply = accepted => window.chrome.webview.postMessage({type:'iceclass-refresh-confirmed', token, accepted});
+                      Promise.resolve(ui.confirmRefresh(token)).then(reply, () => reply(false));
+                      return true;
+                    })()
+                    """);
+                if (started == "true") return await completion.Task.WaitAsync(TimeSpan.FromSeconds(85), _lifetime.Token);
+                if (started != "null") return false;
+            }
+            catch (TimeoutException) { return false; }
+            finally { core.WebMessageReceived -= OnReply; core.NavigationStarting -= OnNavigation; }
+        }
         return await Dialogs.Confirm(this, "刷新工作台？", "页面会重新加载。请先保存尚未提交的内容。", "刷新");
+    }
+
+    private async Task ReloadTeacherDocumentAsync(string? document, string token)
+    {
+        if (document is not null && _browser.Core is { } core)
+        {
+            var result = await core.ExecuteScriptAsync($$"""
+                (() => {
+                  if (window.ICeClassTeacherHost?.clientId !== {{JsonSerializer.Serialize(document)}}) return false;
+                  const ui = window.ICeClassUI;
+                  if (!ui?.reloadAfterConfirmation || document.getElementById('appShell')?.classList.contains('hidden')) return null;
+                  if (ui.reloadAfterConfirmation({{JsonSerializer.Serialize(token)}})) return true;
+                  window.ICeClass?.toast('页面内容已变化，刷新未执行。请重新确认。');
+                  return false;
+                })()
+                """);
+            if (result != "null" || document != await ReadTeacherDocumentAsync()) return;
+        }
+        Navigate();
+    }
+
+    private async Task RefreshFromToolbarAsync()
+    {
+        if (_refreshing || _disposed) return;
+        _refreshing = true;
+        try
+        {
+            var document = await ReadTeacherDocumentAsync();
+            var context = document is null ? null : await ReadTeacherActionContextAsync();
+            var source = _browser.Core?.Source;
+            var token = Guid.NewGuid().ToString("N");
+            if (!await ConfirmRefreshAsync(document, token) || _disposed || source != _browser.Core?.Source ||
+                document != await ReadTeacherDocumentAsync() || context != await ReadTeacherActionContextAsync()) return;
+            await ReloadTeacherDocumentAsync(document, token);
+        }
+        catch (Exception error) { DesktopLog.Write(error); }
+        finally { _refreshing = false; }
     }
 
     private async Task<TeacherActionResult> RefreshTeacherActionAsync(TeacherActionContext expected)
     {
-        if (!await ConfirmRefreshAsync()) return new(false, true, "已取消刷新，页面未重新加载。", "cancelled");
-        // The confirmation can outlive logout or navigation. Revalidate before scheduling any refresh.
-        var context = await ReadTeacherActionContextAsync();
-        if (context != expected)
-            return TeacherActionResult.Refused("document-changed", "登录或页面已变化，本次刷新未执行。");
-        return new(true, false, "已确认刷新，即将重新加载；完成状态尚未核实。", "started")
+        if (_refreshing) return TeacherActionResult.Refused("refresh-busy", "正在确认刷新，请稍候。");
+        _refreshing = true;
+        var token = Guid.NewGuid().ToString("N");
+        try
         {
-            AfterReply = () => Dispatcher.UIThread.Post(async () =>
+            if (!await ConfirmRefreshAsync(expected.ClientId, token)) return new(false, true, "已取消刷新，页面未重新加载。", "cancelled");
+            if (expected != await ReadTeacherActionContextAsync())
+                return TeacherActionResult.Refused("document-changed", "登录或页面已变化，本次刷新未执行。");
+            return new(true, false, "已确认刷新，即将重新加载；完成状态尚未核实。", "started")
             {
-                try { if (expected == await ReadTeacherActionContextAsync()) Navigate(); }
-                catch (Exception) { /* A refresh must not survive a changed document or login. */ }
-            }, DispatcherPriority.Background)
-        };
+                AfterReply = () => Dispatcher.UIThread.Post(async () =>
+                {
+                    try { if (expected == await ReadTeacherActionContextAsync()) await ReloadTeacherDocumentAsync(expected.ClientId, token); }
+                    catch (Exception error) { DesktopLog.Write(error); }
+                }, DispatcherPriority.Background)
+            };
+        }
+        finally { _refreshing = false; }
     }
 
     private async Task<bool> ShowFeedback(TeacherActionContext? expected = null)

@@ -133,6 +133,8 @@ Windows 发布程序自带 .NET 运行环境，使用者无需安装 .NET、Pyth
 
 ## 创意计划与教师反馈
 
+创意工坊的“纸卡答题”支持教室相机或手机收答，配合现有 PPT 临时出题，也支持私有图文题库、题单发布、固定班级纸卡、离线保存和教师课后分析。班主任可批量发放学生账号及六位密码，纸卡打印编号、密码和说明；学生在统一登录页选择“学生”，登录后可查看本人课堂分析、改密和补印纸卡。使用与现场验收见[纸卡答题](docs/纸卡答题.md)。
+
 学生从教室端“创意计划”提交文字、手写、纸条图片或语音，先核对再提交，也可查看本班进度。超级管理员评审并回复，是否向全校展示单独确认；公开成果只展示确认后的标题、摘要、班级和状态，不公开原稿、姓名、照片或录音。
 
 Windows 教师端的“反馈”支持问题描述、可选联系方式、诊断和截图，发送前可预览日志。邮件通过服务器配置的邮箱投递，SMTP 密钥不放在客户端；未配置或发送失败时提供错误提示并保留草稿。详见[创意计划](docs/千人创意计划.md)和[反馈邮件配置](docs/教师反馈邮件配置.md)。
@@ -171,8 +173,11 @@ Windows 教师端的“反馈”支持问题描述、可选联系方式、诊断
 | --- | --- | --- |
 | 超级管理员 | `ICe` | `LocalDemo2026` |
 | 教师 | `teacher1` | `LocalTeacher2026` |
+| 学生（新验收库的高一（1）班 01 号卡） | `2610101` | `260001` |
 
 这些账号仅用于本机演示，正式服务不包含默认管理员密码。本地服务只监听回环地址，演示数据库位于 `.tools/preview/demo.db`。教师端本地入口为 `start-desktop-preview.bat`，需先启动对应的 8838 演示服务；该入口使用独立本机资料。
+
+首次启动时预设虚构的学生名单、作业登记、早读统计、浮岛课表、纸卡题库与三题型课堂报告、创意评审、通知和自习事件。之后每天首次启动补充当天的统计和待办样例，已有的演示班级数据和本轮修改会保留。教室来音使用合成提示音供试听。
 
 ## 代码与开发
 
@@ -206,12 +211,18 @@ npm test
 node scripts/test-auth-mascot.cjs
 node scripts/test-banban-voice.cjs
 node --test scripts/test-banban-quota.cjs
+node --test scripts/test-card-quiz-model.cjs scripts/test-card-quiz-scanner.cjs scripts/test-card-quiz-journal.cjs
+node --test scripts/test-card-quiz-classroom.cjs scripts/test-card-quiz-phone.cjs scripts/test-card-quiz-admin.cjs
+node --test scripts/test-student-accounts-ui.cjs scripts/test-student-accounts.cjs
+dotnet run --project tests/CardQuizChecks/CardQuizChecks.csproj -c Release
+dotnet run --project tests/CardQuizServiceChecks/CardQuizServiceChecks.csproj -c Release
 
 python -m unittest discover -s tests -p "test_*.py" -v
 powershell.exe -NoProfile -File tests/test_classroom_installer_defaults.ps1 -OutputDirectory output/installer-defaults-check
 
 dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile
 dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile -- --connection-checks
+dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile -- --card-quiz-wheel-checks output/card-quiz-wheel-checks
 dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --no-launch-profile -- --ribbon-rendering-checks
 node --test scripts/test-classroom-resilience.cjs
 dotnet run --project tests/DesktopChecks/DesktopChecks.csproj -c Release --no-launch-profile

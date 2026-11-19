@@ -353,15 +353,14 @@
   }
   function confirmDutyChange(title, message, label, returnFocus) {
     return new Promise(resolve => {
-      const { dialog, form } = dialogForm(title, returnFocus);
+      const { dialog, form, body, actions } = dialogForm(title, returnFocus);
       const note = el('p', message, 'hint');
       note.id = `island-duty-confirm-${++fieldId}`;
       dialog.setAttribute('aria-describedby', note.id);
-      const actions = el('div', undefined, 'island-inline');
       const cancel = button('取消', () => dialog.close());
       const submit = el('button', label, 'btn primary'); submit.type = 'submit';
       let approved = false;
-      actions.append(cancel, submit); form.append(note, actions);
+      actions.append(cancel, submit); body.append(note);
       form.onsubmit = event => { event.preventDefault(); approved = true; dialog.close(); };
       dialog.addEventListener('close', () => resolve(approved), { once: true });
       dialog.showModal(); cancel.focus();
@@ -512,15 +511,15 @@
     root.append(panel, details);
   }
   function copyDutyWeek(duty) {
-    const { dialog, form } = dialogForm(`复制到第 ${dutyWeek} 周`, 'duty.copy');
+    const { dialog, form, body, actions } = dialogForm(`复制到第 ${dutyWeek} 周`, 'duty.copy');
     const source = select('', Array.from({ length: duty.cycleWeeks }, (_, i) => i + 1).filter(n => n !== dutyWeek).map(n => [String(n), `第 ${n} 周 · ${new Set(duty.lessons.filter(l => l.cycleWeek === n).map(l => l.weekday)).size} 天安排`]), () => {}, null, false);
     source.selectedIndex = 0;
     const note = el('p', `仅复制${dutyNames[dutyKind]}的学科、教师和地点；目标周已有内容将被替换。`, 'hint');
-    form.append(note, field('从哪一周复制', source));
-    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
+    body.append(note, field('从哪一周复制', source));
+    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); body.append(error);
     const submitLabel = !duty.enabled && !dutyIssue(dutyKind) ? '复制并启用' : `复制到第 ${dutyWeek} 周`;
-    const actions = el('div', undefined, 'island-inline'), submit = el('button', submitLabel, 'btn primary'); submit.type = 'submit';
-    actions.append(button('取消', () => dialog.close()), submit); form.append(actions);
+    const submit = el('button', submitLabel, 'btn primary'); submit.type = 'submit';
+    actions.append(button('取消', () => dialog.close()), submit);
     form.onsubmit = async event => {
       event.preventDefault();
       const rows = duty.lessons.filter(l => l.cycleWeek === Number(source.value));
@@ -543,7 +542,7 @@
     let split = wasSplit, separateOpened = wasSplit;
     const draft = lesson => ({ subject: lesson?.subject || '', teacher: lesson?.teacher || '', location: lesson?.location || '' });
     const shared = draft(lessons.find(Boolean)), separate = lessons.map(draft);
-    const { dialog, form } = dialogForm(`${name} · 第 ${editingWeek} 周 · ${weekdays[weekday - 1]}`, key);
+    const { dialog, form, body, actions } = dialogForm(`${name} · 第 ${editingWeek} 周 · ${weekdays[weekday - 1]}`, key);
     const mode = el('div', undefined, 'island-duty-mode');
     mode.setAttribute('role', 'group'); mode.setAttribute('aria-label', '晚自习填写方式');
     if (slots.length > 1) {
@@ -554,10 +553,10 @@
         }, 'btn');
         choice.dataset.split = String(value); mode.append(choice);
       }
-      form.append(mode);
+      body.append(mode);
     }
-    const fields = el('div', undefined, 'island-duty-edit-fields'); form.append(fields);
-    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
+    const fields = el('div', undefined, 'island-duty-edit-fields'); body.append(fields);
+    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); body.append(error);
     function renderFields() {
       fields.replaceChildren(); error.textContent = '';
       [...mode.children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.split === String(split))));
@@ -579,11 +578,10 @@
     }
     renderFields();
     function remove() { duty.lessons = duty.lessons.filter(l => l.cycleWeek !== editingWeek || l.weekday !== weekday || !slots.some(s => s.id === l.slotId)); }
-    const actions = el('div', undefined, 'island-inline');
     const clear = button('清空本日', () => { remove(); mark(); render(); dialog.close(); }, 'btn danger'); clear.disabled = !lessons.some(Boolean);
     const submitLabel = duty.enabled ? '应用修改' : dutyIssue(kind) ? '保存为草稿' : '应用并启用';
     const submit = el('button', submitLabel, 'btn primary'); submit.type = 'submit';
-    actions.append(clear, button('取消', () => dialog.close()), submit); form.append(actions);
+    actions.append(clear, button('取消', () => dialog.close()), submit);
     form.onsubmit = async event => {
       event.preventDefault();
       const entries = slots.map((slot, index) => {
@@ -602,8 +600,8 @@
     dialog.showModal(); fields.querySelector('input')?.focus();
   }
   function editDutyTimes(duty, kind, returnFocus = `duty.${kind}.times`) {
-    const { dialog, form } = dialogForm(`${dutyNames[kind]} · 值班时段`, returnFocus);
-    form.append(el('p', '选择已有作息，或填写学校实际时间新增。已有时段的时间可在“作息时间”中调整。', 'hint'));
+    const { dialog, form, body, actions } = dialogForm(`${dutyNames[kind]} · 值班时段`, returnFocus);
+    body.append(el('p', '选择已有作息，或填写学校实际时间新增。已有时段的时间可在“作息时间”中调整。', 'hint'));
     const reserved = Object.entries(config.dutyRotations).filter(([key]) => key !== kind).flatMap(([, d]) => d.slotIds);
     const available = config.slots.filter(s => !reserved.includes(s.id));
     const controls = [];
@@ -617,11 +615,11 @@
       }
       const row = el('div', undefined, 'island-fields');
       row.append(field(kind === 'midday' ? '午间时段' : `晚自习第 ${n + 1} 节`, choice), field('开始时间', start), field('结束时间', end));
-      form.append(row); controls.push({ choice, start, end }); refresh();
+      body.append(row); controls.push({ choice, start, end }); refresh();
     }
-    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); form.append(error);
-    const actions = el('div', undefined, 'island-inline'), submit = el('button', '应用时段', 'btn primary'); submit.type = 'submit';
-    actions.append(button('取消', () => dialog.close()), submit); form.append(actions);
+    const error = el('p', '', 'island-field-error'); error.setAttribute('role', 'alert'); body.append(error);
+    const submit = el('button', '应用时段', 'btn primary'); submit.type = 'submit';
+    actions.append(button('取消', () => dialog.close()), submit);
     form.onsubmit = async event => {
       event.preventDefault(); error.textContent = '';
       const ids = [], added = [];
@@ -733,20 +731,26 @@
     const titleNode = el('h2', title);
     titleNode.id = `island-dialog-title-${++fieldId}`;
     dialog.setAttribute('aria-labelledby', titleNode.id);
+    const head = el('div', undefined, 'dialog-head');
+    const close = button('×', () => dialog.close(), 'btn icon');
+    close.setAttribute('aria-label', '关闭');
+    head.append(titleNode, close);
+    const body = el('div', undefined, 'dialog-body');
+    const actions = el('div', undefined, 'dialog-actions');
     form.method = 'dialog';
-    form.append(titleNode);
+    form.append(head, body, actions);
     dialog.append(form);
     document.body.append(dialog);
     dialog.onclose = () => {
       dialog.remove();
       if (returnFocus && !focusKey(returnFocus)) ($(returnFocus) || $('islandTabs').querySelector('[aria-selected=true]'))?.focus({ preventScroll: true });
     };
-    return { dialog, form };
+    return { dialog, form, title: titleNode, body, actions, close };
   }
   function editLesson(slot, weekday, returnFocus) {
     const split = !regularLesson(slot.id, weekday, 'all') && config.lessons.some(l => l.slotId === slot.id && l.weekday === weekday);
     let scope = week === 'all' && split ? (regularLesson(slot.id, weekday, 'odd') ? 'odd' : 'even') : week;
-    const { dialog, form } = dialogForm(`${weekdays[weekday - 1]} · ${slot.label}`, returnFocus);
+    const { dialog, form, body, actions } = dialogForm(`${weekdays[weekday - 1]} · ${slot.label}`, returnFocus);
     const subject = input('', () => {}, 'text', { required: true, maxLength: 40 }, null, false);
     const teacher = input('', () => {}, 'text', { maxLength: 40 }, null, false);
     const location = input('', () => {}, 'text', { maxLength: 60 }, null, false);
@@ -767,7 +771,7 @@
     const place = el('details', undefined, 'island-details'), placeSummary = el('summary');
     place.append(placeSummary, field('其他地点（选填）', location));
     note.classList.add('island-dialog-note');
-    form.append(el('p', `${clock(slot.start)}-${clock(slot.end)}`, 'hint'), fields, place, note);
+    body.append(el('p', `${clock(slot.start)}-${clock(slot.end)}`, 'hint'), fields, place, note);
     function removeScope() {
       config.lessons = config.lessons.flatMap(lesson => {
         if (lesson.slotId !== slot.id || lesson.weekday !== weekday) return [lesson];
@@ -776,13 +780,11 @@
         return [lesson];
       });
     }
-    const actions = el('div', undefined, 'island-inline');
     const clear = button('清空本格课程', () => { removeScope(); mark(); render(); dialog.close(); }, 'btn danger');
     actions.append(clear, button('取消', () => dialog.close()));
     const submit = el('button', '应用修改', 'btn primary');
     submit.type = 'submit';
     actions.append(submit);
-    form.append(actions);
     form.onsubmit = event => {
       event.preventDefault();
       if (!subject.value.trim()) { subject.setCustomValidity('请填写科目。'); subject.reportValidity(); return; }
@@ -894,16 +896,15 @@
     catch (error) { showError(error); return; }
     finally { setBusy(false); }
     if (loadedClass !== classId) return;
-    const { dialog, form } = dialogForm('全校默认规则', 'visibility.school');
+    const { dialog, form, body, actions } = dialogForm('全校默认规则', 'visibility.school');
     const draft = { ...school.config };
     const fields = el('div', undefined, 'island-school-visibility');
     fields.append(switchToggle('白天课程期间隐藏', draft, 'hideDaytimeLessons', null, null, null, false),
       switchToggle('晚自习第一节隐藏', draft, 'hideFirstEvening', null, null, null, false));
     const error = el('p', '', 'island-dialog-error'); error.setAttribute('role', 'alert');
-    const actions = el('div', undefined, 'island-inline');
     const submit = el('button', '保存全校默认', 'btn primary'); submit.type = 'submit';
     actions.append(button('取消', () => dialog.close()), submit);
-    form.append(el('p', '仅影响跟随全校默认的班级。', 'hint'), fields, error, actions);
+    body.append(el('p', '仅影响跟随全校默认的班级。', 'hint'), fields, error);
     form.onsubmit = async event => {
       event.preventDefault(); submit.disabled = true; submit.textContent = '保存中…'; error.textContent = '';
       try {
@@ -1206,11 +1207,13 @@
   function renderDelivery(devices, revision = profile?.revision) {
     const list = $('islandDelivery');
     list.replaceChildren();
-    $('islandDeliveryNote').textContent = !devices.length ? '未绑定教室设备。' : revision ? '联网后自动同步。' : '尚未保存配置。';
+    $('islandDeliveryNote').textContent = !devices.length ? '未绑定设备' : revision ? '联网后自动同步' : '尚未保存配置';
     devices.forEach(device => {
       const row = el('div', undefined, 'island-delivery-row'), top = el('div', undefined, 'island-delivery-heading');
       const current = device.revision === revision && revision > 0;
-      top.append(el('strong', device.name), el('span', current ? '已同步' : '等待同步', current ? 'success-text' : 'muted'));
+      const status = el('span', undefined, 'wb-inline-label ' + (current ? 'success-text' : 'muted'));
+      status.append(window.ICeClassUI.iconNode(current ? 'check' : 'clock'), current ? '已同步' : '等待同步');
+      top.append(el('strong', device.name), status);
       row.append(top);
       if (device.revision !== null && device.revision !== undefined) row.append(el('small', `设备版本 ${device.revision}`));
       if (device.synced_at) row.append(el('small', '最近回报：' + new Date(device.synced_at).toLocaleString('zh-CN')));
@@ -1232,7 +1235,7 @@
   }
   async function load(force = false) {
     if (busy) return;
-    if (dirty && !force && !await confirmDutyChange('重新载入', '重新载入会放弃当前未保存的修改。', '重新载入', 'islandReload')) return;
+    if (!force && !await window.ICeClassUI.confirmLeave('重新载入浮岛设置', {only: '教室浮岛'})) return;
     const classId = $('islandClass').value, requestId = ++loadId;
     closeFloatingPreview(false);
     if (!classId) { clearClass(); return; }
@@ -1303,19 +1306,15 @@
   }
   function bulkDialog() {
     if (!profile || !config || busy || !canEdit() || !bulkClasses().length) return;
-    const { dialog, form } = dialogForm('批量设置', 'islandBulk');
+    const { dialog, form, title, body, actions, close } = dialogForm('批量设置', 'islandBulk');
     dialog.className = 'island-bulk-dialog';
-    const title = form.firstElementChild, head = el('div', undefined, 'dialog-head');
+    body.classList.add('island-bulk-body');
+    actions.classList.add('island-bulk-actions');
     let phase = 'edit', sourceChanged = false;
-    const close = button('×', () => dialog.close(), 'btn icon');
-    close.setAttribute('aria-label', '关闭');
-    head.append(title, close);
-    const body = el('div', undefined, 'dialog-body island-bulk-body');
     const errorNode = el('p', '', 'form-error island-bulk-error');
     errorNode.setAttribute('role', 'alert'); errorNode.tabIndex = -1; errorNode.hidden = true;
-    const actions = el('div', undefined, 'dialog-actions island-bulk-actions');
     const cancel = button('取消', () => dialog.close());
-    form.replaceChildren(head, body, errorNode, actions);
+    actions.before(errorNode);
     form.onsubmit = event => event.preventDefault();
     dialog.oncancel = event => { if (phase === 'applying' || phase === 'saving') event.preventDefault(); };
     function setError(message) {
@@ -1592,7 +1591,7 @@
   $('islandClass').onchange = async () => {
     const nextClass = $('islandClass').value;
     $('islandClass').value = loadedClass;
-    if (dirty && !await confirmDutyChange('切换班级', '切换班级会放弃当前未保存的修改。', '确认切换', 'islandClass')) return;
+    if (!await window.ICeClassUI.confirmLeave('切换班级', {only: '教室浮岛'})) return;
     $('islandClass').value = nextClass;
     void load(true);
   };
@@ -1620,17 +1619,12 @@
   });
   $('islandMotionSeek').oninput = event => ribbon.seek(Number(event.target.value));
   document.addEventListener('pointerdown', event => {
-    if ($('islandMore').open && !$('islandMore').contains(event.target)) $('islandMore').open = false;
     if ($('islandPreviewClock').open && !$('islandPreviewClock').contains(event.target)) $('islandPreviewClock').open = false;
   });
   document.addEventListener('focusin', event => {
-    if ($('islandMore').open && !$('islandMore').contains(event.target)) $('islandMore').open = false;
     if ($('islandPreviewClock').open && !$('islandPreviewClock').contains(event.target)) $('islandPreviewClock').open = false;
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && $('islandMore').open) {
-      $('islandMore').open = false; $('islandMore').querySelector('summary').focus({ preventScroll: true }); event.preventDefault(); return;
-    }
     if (event.key === 'Escape' && !event.defaultPrevented && previewOpen && !document.querySelector('dialog[open]') && !event.target.closest('input, select, textarea')) {
       if ($('islandPreviewClock').open) {
         $('islandPreviewClock').open = false; $('islandPreviewClock').querySelector('summary').focus({ preventScroll: true }); event.preventDefault(); return;
@@ -1639,14 +1633,14 @@
     }
   });
   new MutationObserver(() => { if ($('view-island').classList.contains('hidden')) closeFloatingPreview(false); }).observe($('view-island'), { attributes: true, attributeFilter: ['class'] });
-  window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-  $('logoutButton').addEventListener('click', async event => {
-    if (!dirty) return;
-    event.preventDefault(); event.stopImmediatePropagation();
-    if (!await confirmDutyChange('退出登录', '退出登录会放弃教室浮岛中未保存的修改。', '确认退出', 'logoutButton')) return;
-    dirty = false;
-    $('logoutButton').click();
-  }, true);
+  const draftLabel = '教室浮岛';
+  window.ICeClassUI.registerDraft(draftLabel, () => ({dirty, busy}));
+  window.ICeClassIslandAdmin = {async canLeave() {
+    if (!await window.ICeClassUI.confirmLeave('离开教室浮岛', {only:draftLabel})) return false;
+    if (dirty) { config = prepareConfig(profile.config); dutyDrafts = {}; timetableDutyWeeks = {}; dirty = false; status(); render(); }
+    return true;
+  }};
+  window.addEventListener('iceclass-logout', () => { ++loadId; dutyDrafts = {}; timetableDutyWeeks = {}; clearClass(); });
   window.addEventListener('iceclass-ready', () => { fillClasses(); void load(true); });
   window.addEventListener('iceclass-classes-changed', () => {
     fillClasses();

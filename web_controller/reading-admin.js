@@ -2,32 +2,15 @@
   'use strict';
   const $ = id => document.getElementById(id);
   let initialized = false, config = null, report = null, settingsDirty = false, boundClasses = new Set(), reportGeneration = 0;
-  let saving = false, leaveAction;
+  let saving = false;
+  const draftLabel = '早读规则', ui = window.ICeClassUI;
   let reportRequest = null, controlsRequest = null, controlsSignature = '';
   const visible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
   const selectedGrades = new Set();
-  const leave = document.createElement('dialog');
-  leave.id = 'reading-leave';
-  leave.setAttribute('aria-labelledby', 'reading-leave-title');
-  leave.setAttribute('aria-describedby', 'reading-leave-description');
-  leave.innerHTML = '<div class="dialog-head"><h2 id="reading-leave-title">早读规则尚未保存</h2></div><div class="dialog-body"><p id="reading-leave-description">保存规则后继续，或放弃本次修改。</p><p id="reading-leave-error" class="form-error" role="alert"></p></div><div class="dialog-actions"><button type="button" class="btn" data-reading-keep autofocus>继续编辑</button><button type="button" class="btn" data-reading-discard>放弃修改</button><button type="button" class="btn primary" data-reading-save>保存并继续</button></div>';
-  document.body.append(leave);
-  leave.querySelector('[data-reading-keep]').onclick = () => { leaveAction = undefined; leave.close(); };
-  leave.addEventListener('cancel', event => { if (saving) event.preventDefault(); else leaveAction = undefined; });
-  leave.querySelector('[data-reading-discard]').onclick = () => {
-    const next = leaveAction; leaveAction = undefined; settingsDirty = false;
-    if (config) renderSettings(true);
-    leave.close(); next?.();
-  };
-  leave.querySelector('[data-reading-save]').onclick = async () => {
-    if (!await saveSettings()) return;
-    const next = leaveAction; leaveAction = undefined; leave.close(); next?.();
-  };
-  function canLeave(next) {
-    if (saving) { window.ICeClass.toast('正在保存早读规则，请稍候。'); return false; }
-    if (!settingsDirty) return true;
-    if (!leave.open) { leaveAction = next; $('reading-leave-error').textContent = ''; leave.showModal(); }
-    return false;
+  async function canLeave() {
+    if (!await ui.confirmLeave('离开早读统计', {only:draftLabel})) return false;
+    if (settingsDirty && config) { settingsDirty = false; renderSettings(true); }
+    return true;
   }
   const gradeOf = name => {
     const match = String(name || '').normalize('NFKC').replace(/\s/g, '').match(/^高([一二三123])(?=[^0-9]|$)/);
@@ -84,22 +67,25 @@
     event?.preventDefault();
     if (saving) return false;
     const form = $('readingSettingsForm');
+    const feedback = $('readingSettingsError');
+    feedback.textContent = '';
     if (!form.checkValidity()) {
-      leaveAction = undefined; leave.close(); form.closest('details').open = true; form.reportValidity(); return false;
+      feedback.textContent = '请检查早读门槛和时段。';
+      if (event) { form.closest('details').open = true; form.reportValidity(); }
+      return false;
     }
-    $('readingSettingsError').textContent = ''; $('reading-leave-error').textContent = '';
     const num = id => Number($(id).value);
     const value = { enabled: $('readingEnabled').checked, reminderEnabled: $('readingReminderEnabled').checked, threshold: num('readingThreshold'), periods: [...$('readingPeriods').children].map(row => {
       const times = row.querySelectorAll('input[type=time]'); return { weekdays: [...row.querySelectorAll('input[type=checkbox]:checked')].map(n => Number(n.value)), start: minute(times[0].value), end: minute(times[1].value) || 1440 };
     }) };
-    const controls = [...form.elements, ...leave.querySelectorAll('button')].map(control => [control, control.disabled]);
+    const controls = [...form.elements].map(control => [control, control.disabled]);
     saving = true; controls.forEach(([control]) => { control.disabled = true; });
     try {
       const data = await api('/api/reading/settings', { method: 'PUT', body: JSON.stringify(value) });
       config = data.config; settingsDirty = false; renderSettings(true);
       window.ICeClass.toast('早读规则已保存，教室端将在 15 秒内同步。'); return true;
     } catch (e) {
-      $('readingSettingsError').textContent = e.message; $('reading-leave-error').textContent = e.message; return false;
+      feedback.textContent = e.message || '保存失败，请重试。'; return false;
     } finally { saving = false; controls.forEach(([control, disabled]) => { control.disabled = disabled; }); }
   }
   async function loadReport() {
@@ -186,9 +172,17 @@
     if([...$('controlClass').options].some(o=>o.value===previous)) $('controlClass').value=previous;
     const selected=$('controlClass').value;
     const rows = data.devices.filter(d => !selected || selected === 'all' || d.class_id === selected);
-    $('controlOverview').textContent = `${available.length} 个已绑定班级 · ${data.devices.filter(d=>d.online).length} 台设备在线 · ${data.devices.length} 台已绑定设备`;
+    const onlineCount = data.devices.filter(d => d.online).length;
+    $('controlOverview').innerHTML = [
+      ui.metric('已绑定班级', available.length, 'grid'),
+      ui.metric('在线设备', `${onlineCount} / ${data.devices.length}`, 'monitor'),
+    ].join('');
     document.querySelectorAll('.control-actions button').forEach(b=>b.disabled=!available.length);
-    const badge = (text, cls) => node('span',text,'status '+cls);
+    const badge = (text, cls, glyph) => {
+      const element = node('span', undefined, 'status ' + cls);
+      element.append(ui.iconNode(glyph), text);
+      return element;
+    };
     $('controlDevices').replaceChildren(rows.length ? table(['班级 / 电脑', '绑定核实', '在线状态', '当前音量', '管理员设置', '应用状态', '操作'], rows.map(d => {
       const supports = d.capabilities.includes('volume');
       const state = !d.enabled ? '已停用' : !supports ? '需安装 ICeClass 班伴 · 教室端 2.0.0' : d.command_error && d.command_id === d.desired_command ? d.command_error
@@ -196,10 +190,10 @@
         : d.actual_volume === null ? '无法读取当前音量' : d.actual_volume !== d.desired_volume ? '当前音量已变化' : '已应用';
       const identity=node('div',undefined,'device-detail');identity.append(node('strong',d.class_name+' / '+d.name),node('span',d.computer_name || '等待电脑上报'),node('span',d.device_code,'device-code'),node('span',(d.local_addresses || []).join('、') || '局域网地址尚未上报'));
       if(d.binding_note)identity.append(node('span',d.binding_note));
-      const verification=node('div',undefined,'device-detail');verification.append(badge(d.verified_at?'已核实':'待核实',d.verified_at?'enabled':'offline'));
+      const verification=node('div',undefined,'device-detail');verification.append(badge(d.verified_at?'已核实':'待核实',d.verified_at?'enabled':'sent',d.verified_at?'check':'clock'));
       if(d.class_device_count>1)verification.append(node('span',`同班 ${d.class_device_count} 台 · 请核对`));
       const manage=node('button','核实 / 改绑','btn');manage.type='button';manage.onclick=()=>window.ICeClassAdmin.openDevice(d);
-      return [identity, verification, badge(d.online ? '在线' : '离线',d.online?'enabled':'offline'), d.actual_volume === null ? '—' : d.actual_volume + '%', d.desired_volume === null ? '—' : d.desired_volume + '%', state+' · '+(d.receiver_version || '版本未上报'), manage];
+      return [identity, verification, badge(d.online ? '在线' : '离线',d.online?'enabled':'offline',d.online?'check':'monitor'), d.actual_volume === null ? '—' : d.actual_volume + '%', d.desired_volume === null ? '—' : d.desired_volume + '%', state+' · '+(d.receiver_version || '版本未上报'), manage];
     })) : node('div', '所选班级还没有绑定教室设备。', 'empty'));
     const controlsTable = $('controlDevices').querySelector('table');
     if (controlsTable) {
@@ -281,8 +275,10 @@
     });
   }
   window.addEventListener('iceclass-ready', initialize);
-  window.ICeClassReadingAdmin = {canLeave};
-  window.addEventListener('beforeunload', event => { if (settingsDirty || saving) { event.preventDefault(); event.returnValue = ''; } });
+  ui.registerDraft(draftLabel, () => ({dirty:settingsDirty, busy:saving}));
+  window.ICeClassReadingAdmin = {canLeave, async saveBeforeLeave() {
+    return await saveSettings() ? '' : $('readingSettingsError').textContent || '早读规则正在保存，请稍候。';
+  }};
   window.addEventListener('iceclass-classes-changed', () => {syncClasses();void loadReport().catch(error);void loadControls().catch(error);});
   initialize();
 })();

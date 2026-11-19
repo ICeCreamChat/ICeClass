@@ -53,6 +53,13 @@
 #bootstrapHeading { font-size: clamp(24px, 2.08vw, 32px); }
 .auth-card .field { margin: clamp(20px, 1.82vw, 28px) 0 0; gap: 8px; }
 .auth-card .auth-intro + .field { margin-top: clamp(32px, 3.65vw, 56px); }
+.auth-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-width: 0; margin: 24px 0 0; padding: 4px; border: 1px solid #a7bdcf; border-radius: 12px; background: #edf6fc; }
+.auth-role span { display: grid; place-items: center; min-height: 44px; padding: 4px 8px; border-radius: 8px; color: var(--auth-ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+.auth-role input:checked + span { color: #fff; background: #0d5fac; }
+.auth-role input:focus-visible + span { outline: 1px solid var(--focus); outline-offset: 2px; box-shadow: var(--focus-shadow); }
+.auth-roles:disabled span { cursor: default; }
+.auth-card .auth-notice, .auth-card .hint.auth-help { margin: 12px 0 0; color: var(--auth-muted); font-size: 14px; line-height: 1.6; }
+.auth-card .hint.auth-help { text-align: center; }
 .auth-card .field label { color: #3b536a; font-size: clamp(15px, 1.43vw, 22px); line-height: 1.45; }
 .auth-card input, .auth-card button { scroll-margin-block: 24px; }
 .auth-card input { border-color: var(--auth-input-border); border-radius: 12px; background: #fcfdff; color: var(--auth-ink); caret-color: var(--blue); font-size: clamp(16px, 1.3vw, 20px); }
@@ -121,4 +128,8 @@
 .bb-native-voice-page .auth-card .btn.block { min-height: 52px; font-size: 16px; }
 @media (prefers-reduced-motion: reduce) {
   .auth-mascot *, .auth-card input { transition: none; }
+}
+@media (forced-colors: active) {
+  .auth-role input:checked + span { color: HighlightText; background: Highlight; forced-color-adjust: none; }
+  .auth-role input:focus-visible + span { outline-width: 2px; }
 }

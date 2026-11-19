@@ -141,7 +141,7 @@
       if(action==='home'){if(native)showView('home');else window.chrome?.webview?.postMessage('close');}
       else if(action==='management')showView('management');
       else if(action==='close-detail')$('detail-dialog').close();
-      else if(action==='workshop')showDetail('创意工坊','<p>收集各学科的创意与互动作品，供课堂交流使用。</p><p>工坊正在筹备，敬请期待。</p>');
+      else if(action==='workshop')showDetail('创意工坊',`<h3>纸卡答题</h3><p>配合现有课件随堂收答，也可以使用老师提前准备的题单。</p>${native?'<button class="button primary" data-action="card-quiz">打开纸卡答题</button>':'<p>请在 Windows 教室端打开纸卡答题；教师工作台提供备课、打印和报告。</p>'}`);
       else if(action==='settings')showDetail('教室设置',`<div class="settings-row"><span>教室外观</span><div class="material-switch" role="group" aria-label="教室外观"><button data-material="glass" aria-pressed="${preference.material==='glass'}">液态玻璃</button><button data-material="white" aria-pressed="${preference.material==='white'}">原版白色</button></div></div><label class="settings-row"><span>降低透明度<small>使用更实的底色，让文字更清晰。</small></span><input type="checkbox" id="clear-setting" name="reduce-transparency"${reducedTransparency()?' checked':''}></label><div class="settings-actions"><button class="button soft" data-action="binding">教室绑定与连接</button><button class="button soft" data-action="island">教室浮岛</button></div>`);
       else if(action==='voice'){
         showDetail('语音留言',`<div class="voice-message">
@@ -155,7 +155,7 @@
         voicePanel=true;renderVoice();
       }else if(action==='voice-toggle'){await request('voice');}
       else if(action==='acknowledge')await request('acknowledge',{sequence:island?.notice?.sequence});
-      else if(['reading','plan','banban','binding','island','about'].includes(action)){
+      else if(['reading','plan','banban','binding','island','about','card-quiz'].includes(action)){
         if(action==='reading')control.disabled=true;
         try{await request(action);if(action==='reading')$('reading-status').querySelector('span').textContent='时段内的活动计入本班记录，联网后同步。';}
         finally{if(action==='reading')control.disabled=false;}

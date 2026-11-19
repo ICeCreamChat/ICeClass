@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  const ui = window.ICeClassUI, draftLabel = '致谢';
   const byId = id => document.getElementById(id);
   const api = (...args) => window.ICeClass.api(...args);
   const fields = byId('acknowledgementsFields');
@@ -34,7 +35,9 @@
     preview.replaceChildren();
     for (const group of draft) {
       const section = document.createElement('section');
-      section.append(node('h4', group.title || '分组标题'), node('p', group.body || '致谢正文')); preview.append(section);
+      section.append(node('h4', group.title.trim() || '未填写标题'));
+      if (group.body.trim()) section.append(node('p', group.body));
+      preview.append(section);
     }
     controls();
   }
@@ -42,18 +45,21 @@
     fields.replaceChildren();
     draft.forEach((group, index) => {
       const fieldset = node('fieldset', '', 'thanks-group');
-      fieldset.append(node('legend', `第 ${index + 1} 组`));
+      const title = `第 ${index + 1} 组`;
+      const head = node('div', '', 'thanks-group-head');
+      const caption = node('span', title, 'thanks-group-number'); caption.setAttribute('aria-hidden', 'true');
+      const actions = node('div', '', 'group-tools');
+      head.append(caption, actions); fieldset.append(node('legend', title, 'sr-only'), head);
       for (const [key, label, tag, limit] of [['title', '分组标题', 'input', 80], ['body', '正文', 'textarea', 4000]]) {
         const field = node('div', '', 'field'), caption = node('label', label), input = document.createElement(tag);
         input.id = `acknowledgements-${key}-${index}`; caption.htmlFor = input.id;
         input.name = `section-${index}-${key}`; input.maxLength = limit; input.required = true; input.value = group[key];
         input.autocomplete = 'off';
-        if (tag === 'textarea') input.rows = 4;
+        if (tag === 'textarea') input.rows = 3;
         else input.type = 'text';
         input.addEventListener('input', () => { group[key] = input.value; updatePreview(); status(conflict ? '内容已在其他页面修改，请重新载入后核对。' : '尚未保存。', conflict); });
         field.append(caption, input); fieldset.append(field);
       }
-      const actions = node('div', '', 'group-tools');
       for (const [text, delta] of [['上移', -1], ['下移', 1]]) {
         const button = node('button', text, 'button quiet'); button.type = 'button'; button.dataset.move = String(delta);
         button.setAttribute('aria-label', `${text}第 ${index + 1} 组`);
@@ -64,12 +70,12 @@
           fields.children[next].querySelector('input').focus(); status('顺序已调整，尚未保存。');
         }); actions.append(button);
       }
-      const remove = node('button', '移除分组', 'button quiet danger'); remove.type = 'button'; remove.dataset.remove = '';
+      const remove = node('button', '移除分组', 'button quiet remove-group'); remove.type = 'button'; remove.dataset.remove = '';
       remove.setAttribute('aria-label', `移除第 ${index + 1} 组`);
       remove.addEventListener('click', () => {
         if (busy || !allowed() || draft.length <= 1) return;
         draft.splice(index, 1); render(); fields.children[Math.min(index, draft.length - 1)].querySelector('input').focus(); status('分组已移除，尚未保存。');
-      }); actions.append(remove); fieldset.append(actions); fields.append(fieldset);
+      }); actions.append(remove); fields.append(fieldset);
     });
     updatePreview();
   }
@@ -102,8 +108,8 @@
     if (busy || !allowed() || !saved || draft.length >= 8) return;
     draft.push({ title: '', body: '' }); render(); fields.lastElementChild.querySelector('input').focus(); status('新分组尚未保存。');
   });
-  byId('acknowledgementsReload').addEventListener('click', () => {
-    if (dirty() && !window.confirm('重新载入会放弃当前尚未保存的致谢修改，继续吗？')) return;
+  byId('acknowledgementsReload').addEventListener('click', async () => {
+    if (!await ui.confirmLeave('重新载入致谢', {only:draftLabel})) return;
     void load();
   });
   window.addEventListener('iceclass-settings-section', event => { if (event.detail === 'thanks' && !saved) void load(); });
@@ -112,14 +118,7 @@
     if (account !== owner) { generation++; owner = account; saved = null; draft = []; busy = conflict = false; render(); status(''); }
     if (account && window.ICeClassSettings?.visible && window.ICeClassSettings.section === 'thanks' && !saved) void load();
   }
-  window.ICeClassAcknowledgements = { discardChanges() {
-    if (saved) { draft = structuredClone(saved.sections); render(); }
-  }, canLogout() {
-    if (!allowed()) return true;
-    if (busy) { window.ICeClass.toast('正在载入或保存致谢，请稍候。'); return false; }
-    if (dirty() && !window.confirm('致谢修改尚未保存，放弃修改并退出登录吗？')) return false;
-    return true;
-  } };
-  window.addEventListener('beforeunload', event => { if (allowed() && (dirty() || busy)) { event.preventDefault(); event.returnValue = ''; } });
+  ui.registerDraft(draftLabel, () => ({dirty:allowed() && dirty(), busy:allowed() && busy}));
+  window.addEventListener('iceclass-logout', () => { generation++; owner = ''; saved = null; draft = []; busy = conflict = false; render(); });
   window.addEventListener('iceclass-ready', init); init();
 })();

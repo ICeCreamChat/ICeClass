@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#e5f0f8">
+  <title>我的课堂 · ICeClass 班伴</title>
+  <link rel="icon" href="/favicon.ico?v=5">
+  <link rel="stylesheet" href="print.css">
+  <link rel="stylesheet" href="student.css?v=3">
+  <link rel="stylesheet" href="../assets/control-focus.css">
+  <script src="vendor/cv.js" defer></script>
+  <script src="vendor/aruco.js" defer></script>
+  <script src="cards.js" defer></script>
+  <script src="print-card.js?v=2" defer></script>
+  <script src="student.js?v=2" defer></script>
+</head>
+<body class="student-page">
+  <a class="student-skip" href="#student-main">跳到主要内容</a>
+  <header class="student-header"><a class="student-brand" href="/student">ICeClass 班伴</a><a href="/">教师工作台</a></header>
+  <main id="student-main" class="student-main">
+    <p id="student-feedback" class="student-feedback" role="status" aria-live="polite" tabindex="-1">正在核对学生登录状态…</p>
+    <button type="button" id="student-session-retry" hidden>重新核对登录</button>
+    <div id="student-workspace" hidden>
+      <div class="student-heading"><div><h1>我的课堂</h1><p id="student-identity" class="student-note"></p></div><button type="button" id="student-logout">退出登录</button></div>
+      <section class="student-panel" aria-labelledby="student-analysis-title">
+        <div class="student-section-heading"><h2 id="student-analysis-title">个人课堂分析</h2><div class="student-report-tools"><label for="student-subject">学科</label><select id="student-subject"><option value="">全部学科</option><option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option><option value="physics">物理</option><option value="chemistry">化学</option><option value="biology">生物</option><option value="politics">政治</option><option value="history">历史</option><option value="geography">地理</option></select><button type="button" id="student-report-reload">重新载入</button></div></div>
+        <p id="student-report-feedback" class="student-feedback" role="status" aria-live="polite" tabindex="-1"></p>
+        <div id="student-totals"></div>
+        <p class="student-note student-denominator">正确率 = 正确 / 判定样本（正确 + 错误）。未完成、未答、免答、未判定、练习和已被替代的记录不进入正确率分母。</p>
+        <div class="student-tabs" role="group" aria-label="个人课堂分析内容"><button type="button" data-student-view="records" aria-pressed="true">作答记录</button><button type="button" data-student-view="wrong" aria-pressed="false">错题回顾</button><button type="button" data-student-view="knowledge" aria-pressed="false">知识点统计</button></div>
+        <div id="student-report" aria-busy="false"></div>
+      </section>
+      <section class="student-panel" aria-labelledby="student-card-title">
+        <h2 id="student-card-title">补印我的纸卡</h2>
+        <p class="student-note">输入当前密码核验后，本页显示本人纸卡和密码。自行补印不改密；纸卡显示班级、编号、卡号、密码和使用说明。</p>
+        <form id="student-card-form" class="student-form student-inline-form"><div class="student-field"><label for="card-password">当前六位密码</label><input id="card-password" name="password" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="current-password" aria-describedby="student-card-error" required></div><button type="submit" class="primary">核验密码并准备纸卡</button></form>
+        <p id="student-card-error" class="student-error" role="alert" tabindex="-1"></p>
+        <div id="student-card-actions" class="student-card-actions" hidden><p class="student-note">A4 黑白打印，实际大小（100%），关闭页眉页脚。黑色识别方块为 144 mm。密码仅本次显示，请妥善保管纸卡。</p><div class="student-actions"><button type="button" id="student-print" class="primary" disabled>打印我的纸卡</button><button type="button" id="student-card-clear">清除本次纸卡和密码</button></div></div>
+      </section>
+      <section class="student-panel" aria-labelledby="student-password-title">
+        <h2 id="student-password-title">修改六位密码</h2>
+        <p class="student-note">新密码须为六位数字，可以以 0 开头。修改成功后，所有旧学生会话失效，请重新登录；已印纸卡上的旧密码也将失效。</p>
+        <form id="student-password-form" class="student-form"><div class="student-password-fields"><div class="student-field"><label for="current-password">当前密码</label><input id="current-password" name="currentPassword" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="current-password" aria-describedby="student-password-error" required></div><div class="student-field"><label for="new-password">新六位密码</label><input id="new-password" name="newPassword" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="new-password" aria-describedby="student-password-error" required></div><div class="student-field"><label for="confirm-password">再次输入新密码</label><input id="confirm-password" name="confirmPassword" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="new-password" aria-describedby="student-password-error" required></div></div><p id="student-password-error" class="student-error" role="alert" tabindex="-1"></p><button type="submit">修改密码并重新登录</button></form>
+      </section>
+    </div>
+    <section id="cards" aria-label="本人的可打印纸卡"></section>
+  </main>
+</body>
+</html>

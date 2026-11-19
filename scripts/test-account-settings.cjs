@@ -152,32 +152,39 @@ if (require.main === module) {
       if(url.pathname==='/api/session'&&changed)return {json:{authenticated:false}};
     }});
     await stageDrafts(page);
-    const dialogs=[]; page.on('dialog',async dialog=>{dialogs.push(dialog.type());await dialog.accept();});
+    const nativePrompts=[]; page.on('dialog',async dialog=>{nativePrompts.push(dialog.type());await dialog.accept();});
     await settingsSection(page,'account'); await page.locator('#currentPassword').fill('OldPassword123');
     await page.locator('#ownNewPassword').fill('NewPassword123'); await page.locator('#ownNewPasswordConfirm').fill('NewPassword123');
-    await page.locator('#ownPasswordForm button[type=submit]').click(); await page.locator('#loginForm:not(.hidden)').waitFor();
+    await page.locator('#ownPasswordForm button[type=submit]').click();
+    const confirm=page.locator('#workbenchConfirm[open]');
+    assert.match(await confirm.locator('#workbenchConfirmText').textContent(),/致谢/);
+    assert.match(await confirm.locator('#workbenchConfirmText').textContent(),/班班/);
+    assert.equal(writes.length,0);
+    await confirm.locator('#workbenchConfirmAccept').click(); await page.locator('#loginForm:not(.hidden)').waitFor();
     assert.equal(writes.filter(write=>write.path==='/api/auth/password').length,1);
-    assert.deepEqual(dialogs,['confirm','confirm'],'Already-approved draft disposal never opens a second before-unload prompt');
+    assert.deepEqual(nativePrompts,[],'Already-approved draft disposal never opens a second before-unload prompt');
   });
-  test('cancelling the second logout confirmation preserves both drafts; a later logout needs no extra unload prompt',async t=>{
+  test('one logout confirmation lists both drafts; cancelling preserves them and approval needs no extra unload prompt',async t=>{
     let loggedOut=false;
     const {page,writes}=await setup(t,{handle:({url})=>{
       if(url.pathname==='/api/auth/logout'){loggedOut=true;return {json:{success:true}};}
       if(url.pathname==='/api/session'&&loggedOut)return {json:{authenticated:false}};
     }});
     await stageDrafts(page);
-    const dialogs=[]; let acceptAll=false;
-    page.on('dialog',async dialog=>{
-      dialogs.push(dialog.type());
-      if(!acceptAll&&dialogs.length===2)await dialog.dismiss();else await dialog.accept();
-    });
+    const nativePrompts=[]; page.on('dialog',async dialog=>{nativePrompts.push(dialog.type());await dialog.accept();});
+    const confirm=page.locator('#workbenchConfirm[open]');
     await page.locator('#logoutButton').evaluate(e=>e.click());
-    await page.waitForFunction(()=>document.querySelector('#defaultEditor input[type=number]').value==='450');
+    assert.match(await confirm.locator('#workbenchConfirmText').textContent(),/致谢/);
+    assert.match(await confirm.locator('#workbenchConfirmText').textContent(),/班班/);
+    assert.equal(await confirm.locator('#workbenchConfirmCancel').evaluate(e=>e===document.activeElement),true);
+    await confirm.locator('#workbenchConfirmCancel').click();
     assert.equal(writes.length,0);
+    assert.equal(await page.locator('#defaultEditor input[type=number]').inputValue(),'450');
     await settingsSection(page,'thanks'); assert.equal(await page.locator('#acknowledgementsFields input').first().inputValue(),'未保存的致谢');
-    acceptAll=true;await page.locator('#logoutButton').evaluate(e=>e.click());await page.locator('#loginForm:not(.hidden)').waitFor();
+    await page.locator('#logoutButton').evaluate(e=>e.click());
+    await confirm.locator('#workbenchConfirmAccept').click(); await page.locator('#loginForm:not(.hidden)').waitFor();
     assert.equal(writes.filter(write=>write.path==='/api/auth/logout').length,1);
-    assert.deepEqual(dialogs,['confirm','confirm','confirm','confirm']);
+    assert.deepEqual(nativePrompts,[]);
   });
   test('acknowledgements preview, ordering and drafts persist across sections; save sends the revision',async t=>{
     const {page,writes}=await setup(t); await settingsSection(page,'thanks'); await page.locator('#acknowledgementsFields input').first().waitFor();
@@ -195,7 +202,8 @@ if (require.main === module) {
     await settingsSection(page,'thanks'); const input=page.locator('#acknowledgementsFields input').first();await input.waitFor();await input.fill('尚未保存的草稿');
     await page.locator('#acknowledgementsSave').click();await page.locator('#acknowledgementsStatus[role=alert]').waitFor();
     assert.equal(await input.inputValue(),'尚未保存的草稿');assert.equal(await page.locator('#acknowledgementsSave').isDisabled(),true);
-    page.once('dialog',dialog=>dialog.accept());await page.locator('#acknowledgementsReload').click();
+    await page.locator('#acknowledgementsReload').click();
+    await page.locator('#workbenchConfirm[open] #workbenchConfirmAccept').click();
     await page.waitForFunction(()=>document.querySelector('#acknowledgementsFields input').value==='产品共创');
   });
   test('device search and connection filters retain complete identity and addresses',async t=>{
@@ -217,7 +225,7 @@ if (require.main === module) {
   });
   test('device disable is confirmed once and returns focus to its named More control',async t=>{
     const {page,writes}=await setup(t);await settingsSection(page,'devices');
-    const more=page.locator('[data-device-id=d1] summary');await more.click();await page.locator('[data-device-id=d1]').getByRole('button',{name:'停用设备',exact:true}).click();
+    const more=page.locator('[data-device-id=d1] summary');await more.click();await page.locator('[data-device-id=d1]').getByRole('menuitem',{name:'停用设备',exact:true}).click();
     await page.locator('#settingsDeviceConfirm').getByRole('button',{name:'停用设备',exact:true}).click();
     await page.locator('#settingsDeviceConfirm').waitFor({state:'hidden'});
     await page.waitForFunction(()=>document.querySelector('[data-device-id=d1] .device-status').textContent==='已停用');
@@ -232,7 +240,7 @@ if (require.main === module) {
       if(url.pathname==='/api/devices'&&changed){started();await gate;return {status:503,json:{error:'设备列表暂不可用'}};}
     }});t.after(()=>release());
     await settingsSection(page,'devices');await page.locator('[data-device-id=d1] summary').click();
-    await page.locator('[data-device-id=d1]').getByRole('button',{name:'停用设备',exact:true}).click();
+    await page.locator('[data-device-id=d1]').getByRole('menuitem',{name:'停用设备',exact:true}).click();
     await page.locator('#settingsDeviceConfirm button[type=submit]').click();await entered;
     assert.equal(await page.locator('[data-device-id=d1] .device-status').textContent(),'已停用');
     assert.equal(await page.getByRole('button',{name:'核实或改绑南楼 201 白板'}).isDisabled(),true);
@@ -243,7 +251,7 @@ if (require.main === module) {
   });
   test('device deletion retains name confirmation and focuses search after removal',async t=>{
     const {page,writes}=await setup(t);await settingsSection(page,'devices');await page.locator('[data-device-id=d1] summary').click();
-    await page.locator('[data-device-id=d1]').getByRole('button',{name:'删除设备',exact:true}).click();
+    await page.locator('[data-device-id=d1]').getByRole('menuitem',{name:'删除设备',exact:true}).click();
     await page.locator('#deleteEntityConfirm').fill('错误名称');await page.locator('#deleteEntityForm button[type=submit]').click();assert.equal(writes.length,0);
     await page.locator('#deleteEntityConfirm').fill('南楼 201 白板');await page.locator('#deleteEntityForm button[type=submit]').click();
     await page.locator('[data-device-id=d1]').waitFor({state:'detached'});assert.equal(writes[0].method,'DELETE');

@@ -89,7 +89,8 @@ test('save failure and version conflict preserve staged changes until deliberate
   await moveBanbanAside(page);
   await page.locator('#quotaSave').click(); await page.locator('#quotaStatus[role=alert]').waitFor();
   assert.equal(await page.locator('#defaultValue').textContent(),'45'); assert.equal(await page.locator('#quotaSave').isDisabled(),true);
-  failed = false; page.once('dialog',dialog => dialog.accept()); await page.locator('#quotaReload').click();
+  failed = false; await page.locator('#quotaReload').click();
+  await page.locator('#workbenchConfirm[open] #workbenchConfirmAccept').click();
   await page.waitForFunction(() => document.getElementById('defaultValue').textContent === '30');
   await setDefault(page,45); await page.locator('#quotaSave').click(); await page.locator('#quotaStatus').filter({hasText:'已保存'}).waitFor();
 });
@@ -104,7 +105,8 @@ for (const role of ['teacher','principal']) test(`${role} cannot see or load quo
 
 test('declining logout preserves staged quota changes and the mounted Banban panel',async t => {
   const {page,requests} = await setup(t); await settings(page); await setDefault(page,55);
-  page.once('dialog',dialog => dialog.dismiss()); await page.locator('#logoutButton').evaluate(button => button.click());
+  await page.locator('#logoutButton').evaluate(button => button.click());
+  await page.locator('#workbenchConfirm[open] #workbenchConfirmCancel').click();
   assert.equal(await page.locator('#defaultValue').textContent(),'55'); assert.equal(await page.locator('#banbanRoot').count(),1);
   assert.equal(requests.filter(r => r.path === '/api/auth/logout').length,0);
 });

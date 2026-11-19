@@ -17,9 +17,6 @@
   } else $('headerEnvironment').textContent = '网页端';
   syncHost();
 
-  function items(menu) {
-    return [...menu.querySelectorAll('[role="menuitem"]')].filter(item => !item.disabled && item.getClientRects().length);
-  }
   function position(menu, trigger) {
     const rect = trigger.getBoundingClientRect();
     menu.style.setProperty('--header-menu-top', Math.min(rect.bottom + 10, innerHeight - 64) + 'px');
@@ -31,61 +28,59 @@
       if (restoreFocus) trigger.focus();
     }
   }
+  const ui = window.ICeClassUI;
   for (const [menu, trigger] of menus) {
     let focusLast = false;
     menu.addEventListener('beforetoggle', event => { if (event.newState === 'open') position(menu, trigger); });
     menu.addEventListener('toggle', event => {
       trigger.setAttribute('aria-expanded', String(event.newState === 'open'));
-      if (event.newState === 'open') {
-        const choices = items(menu);
-        (focusLast ? choices.at(-1) : choices[0])?.focus();
-        focusLast = false;
-      }
+      if (event.newState === 'open') { ui.focusMenu(menu, focusLast); focusLast = false; }
     });
     trigger.addEventListener('keydown', event => {
       if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-      event.preventDefault(); focusLast = event.key === 'ArrowUp'; menu.showPopover();
-      const choices = items(menu);
-      (event.key === 'ArrowUp' ? choices.at(-1) : choices[0])?.focus();
+      event.preventDefault(); focusLast = event.key === 'ArrowUp';
+      if (!menu.matches(':popover-open')) menu.showPopover({source:trigger});
+      else { ui.focusMenu(menu, focusLast); focusLast = false; }
     });
-    menu.addEventListener('keydown', event => {
-      const choices = items(menu), current = choices.indexOf(document.activeElement);
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); menu.hidePopover(); trigger.focus(); }
-      else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
-        event.preventDefault();
-        const index = event.key === 'Home' ? 0 : event.key === 'End' ? choices.length - 1
-          : (current + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
-        choices[index]?.focus();
-      }
-    });
+    ui.menuKeys(menu, closeMenus);
   }
-  window.addEventListener('resize', () => { for (const [menu, trigger] of menus) if (menu.matches(':popover-open')) position(menu, trigger); });
-  window.addEventListener('scroll', () => closeMenus(), {passive: true});
+  function positionOpenMenus() {
+    for (const [menu, trigger] of menus) if (menu.matches(':popover-open')) position(menu, trigger);
+  }
+  window.addEventListener('resize', positionOpenMenus);
+  window.addEventListener('scroll', positionOpenMenus, {passive: true});
 
+  const pending = new Set();
   document.querySelectorAll('[data-header-native]').forEach(button => button.addEventListener('click', async () => {
     closeMenus(true);
     if (!native) {
-      if (button.dataset.headerNative === 'teacher.refresh' && confirm('刷新工作台？请先保存尚未提交的内容。')) location.reload();
+      if (button.dataset.headerNative !== 'teacher.refresh') return;
+      const token = crypto.randomUUID();
+      if (await ui.confirmRefresh(token) && !ui.reloadAfterConfirmation(token)) window.ICeClass.toast('页面内容已变化，刷新未执行。请重新确认。');
       return;
     }
     const action = button.dataset.headerNative;
+    if (pending.has(action)) return;
+    pending.add(action);
     const controls = [...document.querySelectorAll('[data-header-native]')].filter(item => item.dataset.headerNative === action);
-    controls.forEach(item => { item.disabled = true; });
+    controls.forEach(item => item.setAttribute('aria-disabled', 'true'));
     try {
       const result = await host.execute(action, {}, crypto.randomUUID());
       if (!result.success && result.state !== 'cancelled') window.ICeClass.toast(result.detail || '操作未完成，请稍后重试。');
     } catch { window.ICeClass.toast('本机操作未完成，请重新打开工作台后再试。'); }
-    finally { controls.forEach(item => { item.disabled = false; }); }
+    finally {
+      pending.delete(action);
+      controls.forEach(item => item.removeAttribute('aria-disabled'));
+    }
   }));
-  document.querySelectorAll('[data-header-account]').forEach(button => button.addEventListener('click', () => {
-    closeMenus();
+  document.querySelectorAll('[data-header-account]').forEach(button => button.addEventListener('click', async () => {
+    closeMenus(true);
     const settings = $('mainNav').querySelector('[data-view="settings"]');
-    settings.click();
-    if (!settings.classList.contains('active')) return;
+    if (!await window.ICeClass.selectView(settings)) return;
     if (button.dataset.headerAccount === 'password') window.ICeClassSettings?.select('account');
     (button.dataset.headerAccount === 'password' ? $('currentPassword') : $('mainContent')).focus({preventScroll:false});
   }));
-  $('logoutButton').addEventListener('click', () => closeMenus(true));
+  $('logoutButton').addEventListener('click', () => closeMenus(true), {capture:true});
   $('menuToggle').addEventListener('click', () => closeMenus());
   window.addEventListener('iceclass-ready', () => {
     const user = window.ICeClass.state.user;

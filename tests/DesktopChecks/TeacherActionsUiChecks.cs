@@ -41,12 +41,16 @@ public sealed class TeacherActionsCheckApp : Application
         using var listener = new HttpListener();
         var signedIn = 1; var feedbackSent = 0; var pages = 0; var updateRequests = 0;
         var updateAvailable = 0; var downloaded = 0;
+        TaskCompletionSource? holdNextSession = null;
         var directory = Path.Combine(Path.GetTempPath(), "ICeClass-TeacherActions-" + Guid.NewGuid().ToString("N"));
         DesktopWindow? window = null;
         try
         {
             using var probe = new TcpListener(IPAddress.Loopback, 0); probe.Start();
             var endpoint = "http://127.0.0.1:" + ((IPEndPoint)probe.LocalEndpoint).Port; probe.Stop();
+            DirectoryInfo? source = new DirectoryInfo(AppContext.BaseDirectory);
+            while (source is not null && !File.Exists(Path.Combine(source.FullName, "web_controller", "index.html"))) source = source.Parent;
+            var webRoot = Path.Combine(source?.FullName ?? throw new DirectoryNotFoundException("web_controller"), "web_controller");
             listener.Prefixes.Add(endpoint + "/"); listener.Start();
             async Task Reply(HttpListenerContext context)
             {
@@ -57,15 +61,44 @@ public sealed class TeacherActionsCheckApp : Application
                     if (route == "/api/feedback") Interlocked.Increment(ref feedbackSent);
                     if (route.StartsWith("/api/desktop/update")) Interlocked.Increment(ref updateRequests);
                     if (route == "/api/desktop/update/payload") Interlocked.Increment(ref downloaded);
-                    if (!json) Interlocked.Increment(ref pages);
+                    if (route is "/" or "/workbench") Interlocked.Increment(ref pages);
+                    if (route == "/api/session" && Interlocked.Exchange(ref holdNextSession, null) is { } pending)
+                        await pending.Task.WaitAsync(lifetime.Token);
+                    if (route == "/api/refresh-check/expired") context.Response.StatusCode = 401;
+                    if (!json && route != "/")
+                    {
+                        var asset = Path.GetFullPath(Path.Combine(webRoot, route == "/workbench" ? "index.html" : route.TrimStart('/')));
+                        if (!asset.StartsWith(webRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(asset))
+                        { context.Response.StatusCode = 404; return; }
+                        context.Response.ContentType = Path.GetExtension(asset) switch
+                        {
+                            ".html" => "text/html; charset=utf-8", ".js" => "text/javascript", ".css" => "text/css", ".json" => "application/json",
+                            ".svg" => "image/svg+xml", ".png" => "image/png", ".webp" => "image/webp", ".woff2" => "font/woff2", _ => "application/octet-stream"
+                        };
+                        context.Response.Headers["Cache-Control"] = "no-store";
+                        await using var content = File.OpenRead(asset);
+                        context.Response.ContentLength64 = content.Length;
+                        await content.CopyToAsync(context.Response.OutputStream, lifetime.Token);
+                        return;
+                    }
                     var text = route == "/api/session" ? (Volatile.Read(ref signedIn) == 1
-                        ? """{"authenticated":true,"user":{"username":"bridge-check","displayName":"本机桥检查","csrfToken":"test-csrf"}}"""
+                        ? """{"authenticated":true,"user":{"id":"test-teacher","username":"bridge-check","displayName":"本机桥检查","csrfToken":"test-csrf","role":"superadmin","permissions":{"receiveClassroomVoice":true,"assignableRoles":[]}}}"""
                         : """{"authenticated":false}""")
                         : route == "/api/desktop/update/plan" && Volatile.Read(ref updateAvailable) == 1
                         ? JsonSerializer.Serialize(new UpdatePlan { Available = true, Version = "9.9.9", Files = [new UpdateFile {
                             Path = "ICeClass.Desktop.exe", Size = 100, Sha256 = new string('a', 64), DownloadUrl = "/api/desktop/update/payload" }] }, TeacherActions.Json)
-                        : json ? """{"available":false}"""
-                        : "<!doctype html><html><head><title>Teacher bridge check</title></head><body>本机桥隔离检查</body></html>";
+                        : route switch
+                        {
+                            "/api/classes" => """{"classes":[{"id":"c1","name":"隔离验收班级","enabled":1}]}""",
+                            "/api/teachers" => """{"teachers":[]}""", "/api/devices" or "/api/classroom-controls" => """{"devices":[]}""",
+                            "/api/history" => """{"history":[]}""", "/api/classroom-voice" => """{"messages":[]}""",
+                            "/api/quiet-hours" => """{"periods":[],"activePeriod":null}""",
+                            "/api/reading/settings" => """{"config":{"enabled":true,"threshold":30,"reminderEnabled":true,"periods":[]}}""",
+                            "/api/reading/report" => """{"grades":[],"rows":[],"daily":[]}""",
+                            "/api/refresh-check/expired" => """{"error":"登录已过期"}""",
+                            "/" => "<!doctype html><html><head><title>Teacher bridge check</title></head><body>本机桥隔离检查</body></html>",
+                            _ => """{"available":false}"""
+                        };
                     var bytes = Encoding.UTF8.GetBytes(text);
                     context.Response.ContentType = json ? "application/json" : "text/html";
                     context.Response.ContentLength64 = bytes.Length;
@@ -199,6 +232,92 @@ public sealed class TeacherActionsCheckApp : Application
             Assert(catalog.GetProperty("clientId").GetString() != clientId, "Actual reload creates a fresh bridge document ID");
             Assert((await Result(Execute("teacher.about", "about-once"))).GetProperty("code").GetString() == "operation-conflict" && !window.OwnedWindows.Any(),
                 "The window retains operation dedup across real document navigation");
+            // Use the real workbench scripts and markup for the desktop header and confirmation flow.
+            bool NoNativeDialog() => !window.OwnedWindows.Any();
+            Task<string> JavaScript(string script) => core.ExecuteScriptAsync(script);
+            Task WaitForPage(string label) => Until(async () => await JavaScript(
+                "document.readyState === 'complete' && !!window.ICeClass?.state.user && !!window.ICeClassUI && !document.getElementById('appShell').classList.contains('hidden')") == "true", label);
+            Task WaitForConfirm(string label) => Until(async () => await JavaScript("!!document.getElementById('workbenchConfirm')?.open") == "true", label);
+            Task<string> Click(string id) => JavaScript("document.getElementById(" + JsonSerializer.Serialize(id) + ").click()");
+            const string changeDraft = "const field = document.getElementById('shoutText'); field.focus(); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true}));";
+            Task<string> Draft(string value) => JavaScript("((text) => { " + changeDraft + " })(" + JsonSerializer.Serialize(value) + ")");
+            await Until(() => Task.FromResult(core.Source.StartsWith(endpoint, StringComparison.Ordinal)), "ready to open workbench");
+            core.Navigate(endpoint + "/workbench");
+            await WaitForPage("production workbench");
+            await Until(() => Task.FromResult(!toolbar.IsVisible), "production header replaces the native fallback");
+            await ClickInView("console");
+            await Draft("保留的通知草稿");
+            var productionPages = Volatile.Read(ref pages);
+            await JavaScript("""
+                (() => {
+                  const direct = document.getElementById('teacherRefresh');
+                  if (direct.getClientRects().length) { direct.focus(); direct.click(); }
+                  else { document.getElementById('headerToolsToggle').click(); document.querySelector('.compact-refresh').click(); }
+                })()
+                """);
+            await WaitForConfirm("production refresh confirmation");
+            Assert(NoNativeDialog() && await JavaScript("document.getElementById('workbenchConfirmText').textContent.includes('待发送通知')") == "true",
+                "The desktop refresh action uses the web confirmation with the actual notification draft");
+            await Click("workbenchConfirmCancel");
+            await Until(async () => await JavaScript("!document.querySelector('[data-header-native][aria-disabled=true]')") == "true", "production cancellation receipt");
+            Assert(await JavaScript("""
+                (() => {
+                  const direct = document.getElementById('teacherRefresh');
+                  return document.activeElement === (direct.getClientRects().length ? direct : document.getElementById('headerToolsToggle'));
+                })()
+                """) == "true", "Cancelled desktop refresh restores the header trigger for keyboard users");
+            await Draft("取消后继续编辑");
+            Assert(await JavaScript("document.getElementById('shoutText').value === '取消后继续编辑'") == "true" && pages == productionPages,
+                "Cancelling the production confirmation keeps the draft editable in the same document");
+
+            var duringCheck = Result(Execute("teacher.refresh", "edit-after-refresh-consent"));
+            await WaitForConfirm("confirmation before desktop session recheck");
+            var releaseSession = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref holdNextSession, releaseSession);
+            await Click("workbenchConfirmAccept");
+            try
+            {
+                await Until(() => Task.FromResult(Volatile.Read(ref holdNextSession) is null), "desktop session recheck after confirmation");
+                await Draft("确认后新增的草稿");
+            }
+            finally { releaseSession.TrySetResult(); }
+            Assert((await duringCheck).GetProperty("state").GetString() == "started", "The desktop reports acceptance while the reload still needs execution");
+            await Until(async () => await JavaScript("document.getElementById('toastRegion').textContent.includes('刷新未执行')") == "true", "new edits invalidate refresh consent");
+            Assert(await JavaScript("document.getElementById('shoutText').value === '确认后新增的草稿'") == "true" && pages == productionPages,
+                "A change made while the desktop checks the account blocks stale consent and preserves the new draft");
+
+            var expiring = Result(Execute("teacher.refresh", "expired-production-session"));
+            await WaitForConfirm("confirmation before session expiry");
+            await JavaScript("void ICeClass.api('/api/refresh-check/expired').catch(() => {});");
+            await Until(async () => await JavaScript("!document.getElementById('sessionExpired').hidden") == "true", "production 401 response");
+            await Click("workbenchConfirmAccept");
+            Assert((await expiring).GetProperty("state").GetString() == "cancelled" && pages == productionPages && NoNativeDialog(),
+                "A session expiry during the web confirmation prevents desktop reload without a second prompt");
+
+            await JavaScript("document.getElementById('shoutText').value = ''; document.getElementById('shoutText').dispatchEvent(new Event('input', {bubbles:true}));");
+            var currentId = await JavaScript("ICeClassTeacherHost.clientId");
+            await JavaScript(Execute("teacher.refresh", "replace-production-document") + ";");
+            await WaitForConfirm("confirmation before loading a different document");
+            core.Navigate(endpoint + "/workbench?document=second");
+            await Until(async () => await JavaScript("ICeClassTeacherHost.clientId") != currentId && core.Source.EndsWith("document=second", StringComparison.Ordinal), "replacement workbench document");
+            await WaitForPage("replacement workbench ready");
+            Assert(pages == productionPages + 1 && NoNativeDialog() && await JavaScript("!document.getElementById('workbenchConfirm').open") == "true",
+                "Replacing the workbench abandons the old refresh confirmation");
+
+            await ClickInView("console");
+            await Draft("已确认放弃的草稿");
+            currentId = await JavaScript("ICeClassTeacherHost.clientId");
+            var beforeProductionReload = Volatile.Read(ref pages);
+            await JavaScript(Execute("teacher.refresh", "confirm-production-document") + ";");
+            await WaitForConfirm("one production confirmation");
+            await Click("workbenchConfirmAccept");
+            await Until(async () => Volatile.Read(ref pages) > beforeProductionReload && await JavaScript("ICeClassTeacherHost.clientId") != currentId, "confirmed production reload");
+            await WaitForPage("reloaded production workbench ready");
+            Assert(pages == beforeProductionReload + 1 && NoNativeDialog() && await JavaScript("!document.getElementById('workbenchConfirm').open") == "true",
+                "Confirming the production dialog reloads exactly once and bypasses the beforeunload prompt");
+            Assert(await JavaScript("document.getElementById('shoutText').value === ''") == "true", "The confirmed reload clears the old draft");
+
+            Task<string> ClickInView(string view) => JavaScript("document.querySelector('#mainNav [data-view=' + " + JsonSerializer.Serialize(view) + " + ']').click()");
             await _product.Diagnostics.FlushAsync(default);
             Assert(!DesktopDiagnostics.ActivityReport(directory).Contains("never-logged"), "Bridge payloads do not fall through to diagnostic logging");
             Assert(feedbackSent == 0, "No bridge check sent feedback mail");

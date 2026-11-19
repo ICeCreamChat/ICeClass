@@ -171,6 +171,17 @@ class Management:
         paths = [r['audio_path'] for table in ('shouts', 'classroom_voice_messages')
                  for r in self.db.all(f'SELECT audio_path FROM {table} WHERE class_id=?', (cid,))]
         with self.db.transaction():
+            user = self.service.require_manager(request)
+            if isinstance(user, web.Response): return user
+            if not self.service.can_access_class(self.db, user, cid, include_disabled=True):
+                return self.service.json_response({'error': '没有此班级的管理权限。'}, 403)
+            if self.db.one('SELECT 1 FROM student_accounts WHERE class_id=?', (cid,)):
+                return self.service.json_response({
+                    'error': '本班仍有关联的学生账号。请先将学生关联到新班级，或停用班级以保留账号和个人历史。'}, 409)
+            # A confirmed class deletion removes this class's history, not identities moved elsewhere.
+            self.db.run('DELETE FROM student_account_links WHERE class_id=?', (cid,))
+            self.db.run('DELETE FROM student_account_versions WHERE class_id=?', (cid,))
+            self.db.run('DELETE FROM card_quiz_sessions WHERE class_id=?', (cid,))
             self.db.run('DELETE FROM reading_events WHERE class_id=?', (cid,))
             self.db.run('DELETE FROM reading_session_days WHERE session_id IN (SELECT id FROM reading_sessions WHERE class_id=?)', (cid,))
             self.db.run('DELETE FROM reading_sessions WHERE class_id=?', (cid,))
