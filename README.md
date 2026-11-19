@@ -1,6 +1,6 @@
 # ICeClass 班伴
 
-面向教室大屏、教师和学校管理员的班级伴学与管理平台。早读、课表浮岛、通知、作业登记、班班助手和视频展台在同一套系统中协作，教室端保留离线展示与早读能力。
+面向教室大屏、教师、学生和学校管理员的班级伴学与管理平台。早读、课表浮岛、通知、作业登记、班班助手、视频展台和纸卡答题在同一套系统中协作，教室端保留离线展示与早读能力。
 
 [学校平台](https://iceclass.icecreamchat.top/) · [下载教室端](https://iceclass.icecreamchat.top/api/client/download/classroom) · [下载教师端](https://iceclass.icecreamchat.top/api/client/download/teacher) · [GitHub Releases](https://github.com/ICeCreamChat/ICeClass/releases/latest)
 
@@ -10,12 +10,12 @@
 
 | 组件 | 源码版本 | 技术 |
 | --- | --- | --- |
-| Windows 教室端 | 2.5.16 | .NET 8 / Avalonia / WebView2 |
+| Windows 教室端 | 2.5.17 | .NET 8 / Avalonia / WebView2 |
 | Windows 教师端 | 2.5.15 | .NET 8 / Avalonia / WebView2 |
 | 学校服务 | 2.5.11 | Python / aiohttp / SQLite / WebSocket |
 | 视频展台插件 | 1.0.0 | .NET 10 / Windows Forms / WebView2 |
 
-本仓库包含新版视频展台及教室端创意工坊接入。源码、Release 附件和学校服务器分别更新，公开下载入口以实际发布内容为准。
+本仓库包含教室端创意工坊中的视频展台和纸卡答题。源码、Release 附件和学校服务器分别更新，公开下载入口以实际发布内容为准。
 
 ## 三端分工
 
@@ -60,6 +60,12 @@ flowchart LR
 - 当前源码包含摄像头授权及旧拒绝记录恢复修复。真实摄像头、手机、WPS 遮挡取图和模型数学准确率仍需在课堂设备上验收。
 
 安装、额度、卸载保留资料、构建和验证见[视频展台插件](docs/视频展台插件.md)，工程见[plugins/VideoBooth](plugins/VideoBooth/README.md)。
+
+## 纸卡答题与学生课堂分析
+
+在教室端“创意工坊”打开纸卡答题，可用教室摄像头或教师手机收答，支持单选、判断和多选。老师可配合现有课件临时出题，也可在教师工作台准备图文题和题单，课后按班级及知识点查看分析。
+
+班主任可批量发放学生编号和六位密码，打印带班级、卡号及使用说明的纸卡。学生在统一登录页选择“学生”，登录后可查看本人课堂分析、改密和补印。使用方法见[纸卡答题](docs/纸卡答题.md)。
 
 ## 早读陪伴与统计
 
@@ -107,6 +113,18 @@ flowchart LR
 
 更新保留绑定、设置和本机数据，安装前校验大小与 SHA256，并提供失败恢复。旧版更新问题及维护方法见[客户端更新说明](docs/客户端更新说明.md)。
 
+## 本地体验
+
+运行 `.\start-preview.bat` 启动仅监听本机的演示服务，默认端口为 8837。新演示库带有虚构的名单、作业、早读、课表、纸卡报告、创意评审、通知和自习记录。后续启动补充当天样例并保留已有演示数据。
+
+| 演示角色 | 用户名 | 密码 |
+| --- | --- | --- |
+| 超级管理员 | `ICe` | `LocalDemo2026` |
+| 教师 | `teacher1` | `LocalTeacher2026` |
+| 学生（高一（1）班 01 号卡） | `2610101` | `260001` |
+
+这些账号仅用于演示库。需要在 Windows 教师端验收时，详见[三端本地验收](docs/三端本地验收.md)。
+
 ## 代码与开发
 
 | 路径 | 职责 |
@@ -148,6 +166,17 @@ dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c
 node --test scripts/test-workshop-ui.cjs scripts/test-video-booth-workbench.cjs
 ~~~
 
+纸卡答题与学生账号的聚焦回归：
+
+~~~powershell
+node --test scripts/test-card-quiz-model.cjs scripts/test-card-quiz-scanner.cjs scripts/test-card-quiz-journal.cjs
+node --test scripts/test-card-quiz-classroom.cjs scripts/test-card-quiz-phone.cjs scripts/test-card-quiz-admin.cjs
+node --test scripts/test-student-accounts-ui.cjs scripts/test-student-accounts.cjs
+dotnet run --project tests/CardQuizChecks -c Release
+dotnet run --project tests/CardQuizServiceChecks -c Release
+dotnet run --project tests/ReceiverOfflineChecks -c Release -p:EmbedVoiceResources=false -- --card-quiz-wheel-checks output/card-quiz-wheel-checks
+~~~
+
 网页界面回归另需 Playwright 与 Microsoft Edge。插件的 .NET 10 构建、摄像头授权检查及固定浏览器要求见[插件工程说明](plugins/VideoBooth/README.md)。合成图片、模拟设备和模型契约检查不能代替真实硬件与模型效果验收；完整检查选择见[验收指南](docs/验收指南.md)。
 
 ## 构建与打包
@@ -185,6 +214,7 @@ GitHub Actions 的 **Publish release** 在推送 v* 标签或手动运行时检�
 | --- | --- |
 | 安装与验收 | [完整操作流程](docs/完整操作流程.md)、[验收指南](docs/验收指南.md)、[三端本地验收](docs/三端本地验收.md) |
 | 视频展台 | [安装与维护](docs/视频展台插件.md)、[插件工程](plugins/VideoBooth/README.md)、[插件流程](workflows/video-booth-plugin.md)、[点评流程](workflows/math-classroom-review.md) |
+| 纸卡答题 | [纸卡打印、课堂收答和学生报告](docs/纸卡答题.md) |
 | 客户端与发布 | [教师端](docs/Windows教师端.md)、[客户端更新](docs/客户端更新说明.md)、[自动发布](docs/GitHub自动发布.md) |
 | 教学与班级 | [权限](docs/用户权限与管理.md)、[早读](docs/早读使用说明.md)、[作业](docs/作业统计.md)、[课表](docs/教室岛课表与自动化.md)、[值班](docs/循环值班方案.md)、[晚自习](docs/晚自习管理.md) |
 | 班班与反馈 | [语音助手](docs/班班语音助手.md)、[功能接入](docs/班班功能接入.md)、[创意计划](docs/千人创意计划.md)、[反馈邮件](docs/教师反馈邮件配置.md)、[致谢名单](docs/致谢名单维护.md) |

@@ -4,6 +4,47 @@ ICeClass · 班伴由 ICeCreamChat 在原 ICeCreamShouter 通知平台基础上�
 
 本文汇总项目使用的第三方组件与素材及其许可。应用自身代码的使用范围以仓库根目录 `LICENSE` 中的“非商业学习参考许可”为准。
 
+## 纸卡答题
+
+`web_controller/card-quiz/vendor/cv.js` 和 `aruco.js` 来自 QCMCam2 固定提交 `dd161a7e9661ca5028757d69740152398a5e4c22` 的 `src/lib/js/`，沿用其 js-aruco / js-aruco2 检测器及 MIT 文件头。ICeClass 增加 UMD 封装，并在多分辨率检测合并时保留同卡相反方向，供上层拒绝冲突。纸卡采用该提交的 `QCMCAM_4X4_157h3` 字典，编号映射为字典索引加一；未引入上游编辑器或服务。
+
+Copyright (c) 2020 Damiano Falcioni  
+Copyright (c) 2011 Juan Mellado
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+`web_controller/card-quiz/vendor/qrcodegen.js` 来自 Project Nayuki QR Code generator 固定提交 `bcfe1b018cec5f1f91b5705eca5bb4cdd34e9f8d` 的 TypeScript 实现，编译为 ES2017 并增加 CommonJS 导出，用于本机生成配对二维码。原许可头保留。
+
+Copyright (c) Project Nayuki. (MIT License)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+- The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+- The Software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the Software or the use or other dealings in the Software.
+
+OurClass / ourclass-lite 仅用于需求与教学分析模型研究，本轮未复制其实现代码或许可受限资产。
+
 ## 早读陪伴
 
 早读陪伴由项目所有者提供并授权集成。原网页自带的字体、笔画数据、图标、Three.js 许可文本保留在 `web_controller/reading/index.html` 的 `third-party-licenses` 数据块中，同时提取到 `docs/licenses/` 便于查阅。
@@ -16,7 +57,7 @@ ICeClass · 班伴由 ICeCreamChat 在原 ICeCreamShouter 通知平台基础上�
 
 ## Lucide icons
 
-教室首页使用 lucide-static 0.468.0 的 book-open 与 mic 原始图标，以原始矢量路径离线呈现。
+教室首页、原生界面和纸卡课堂圆环使用 lucide-static 0.468.0 原始图标，以原始矢量路径离线呈现。纸卡课堂图标清单和来源见 `web_controller/card-quiz/icons/SOURCE.md`，同目录保留完整许可证。
 
 - 项目网站：<https://lucide.dev>
 - 项目仓库：<https://github.com/lucide-icons/lucide>

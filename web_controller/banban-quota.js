@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  const ui = window.ICeClassUI, draftLabel = '班班次数';
   const $ = id => document.getElementById(id);
   const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const icon = name => `<svg class="icon" aria-hidden="true"><use href="#settings-i-${name}"/></svg>`;
@@ -88,10 +89,15 @@
         || custom(target) && quota.overrides[target.id] !== savedQuota.overrides[target.id];
       const editing = openEditors[kind] === target.id;
       const li = document.createElement('li'); li.dataset.id = target.id; li.classList.toggle('editing', editing);
-      const usage = limit === null ? '<p class="usage-none">不限次数</p>' : limit === 0 ? '<p class="usage-none">暂停新对话与操作</p>'
-        : `<div class="usage-progress ${tone}" aria-hidden="true" ><i></i></div>`;
-      const remainingText = limit === null ? '不限次' : limit === 0 ? '已停用' : `${remaining.toLocaleString()}<small>${remaining === 0 ? '已用完' : '次可用'}</small>`;
-      li.innerHTML = `<div class="quota-overview"><div class="target-identity">${icon(kind === 'device' ? 'monitor' : 'user')}<div class="target-copy"><h3 class="target-name">${escape(target.name)}</h3><span class="muted">${escape(target.detail)}<span class="mobile-source">${source}</span></span></div></div><div class="usage" aria-label="本月已用 ${target.used} 次，${escape(limitLabel(limit))}"><strong class="usage-number">${target.used.toLocaleString()}<span>${limit !== null && limit > 0 ? `/ ${limit.toLocaleString()}` : '次'}</span></strong>${usage}</div><div class="remaining ${tone}" aria-label="剩余${limit === null ? '不限次数' : limit === 0 ? '已停用' : `${remaining} 次`}">${remainingText}</div><div class="rule-source">${source}${changed ? '<span class="draft-label">待保存</span>' : ''}</div><button id="adjust-${target.id}" class="row-adjust" type="button" data-adjust="${target.id}" aria-label="调整${escape(target.name)}的次数" aria-expanded="${editing}" aria-controls="editor-${target.id}">调整${icon('down')}</button></div>`;
+      const usage = limit > 0 ? `<div class="usage-progress ${tone}" aria-hidden="true"><i></i></div>` : '';
+      const remainingText = limit === null ? '不限次数' : limit === 0 ? '已停用' : remaining === 0 ? '已用完' : `${remaining.toLocaleString()} 次`;
+      li.innerHTML = `<div class="quota-overview">
+        <div class="target-identity">${icon(kind === 'device' ? 'monitor' : 'user')}<div class="target-copy"><h3 class="target-name">${escape(target.name)}</h3><span class="muted">${escape(target.detail)}</span></div></div>
+        <div class="usage"><span class="quota-cell-label">本月已用</span><strong class="usage-number">${target.used.toLocaleString()}<span>${limit > 0 ? `/ ${limit.toLocaleString()} 次` : '次'}</span></strong>${usage}</div>
+        <div class="remaining ${tone}"><span class="quota-cell-label">剩余次数</span>${remainingText}</div>
+        <div class="rule-source"><span class="quota-cell-label">月度规则</span>${source}${changed ? '<span class="draft-label">待保存</span>' : ''}</div>
+        <button id="adjust-${target.id}" class="row-adjust" type="button" data-adjust="${target.id}" aria-label="调整${escape(target.name)}的次数" aria-expanded="${editing}" aria-controls="editor-${target.id}">调整${icon('down')}</button>
+      </div>`;
       li.querySelector('.usage-progress')?.style.setProperty('--used-percent', Math.min(100, target.used / limit * 100) + '%');
       const editor = document.createElement('div'); editor.id = `editor-${target.id}`; editor.hidden = !editing;
       if (editing) { editor.className = 'inline-editor'; editor.append(createEditor(target.id)); }
@@ -269,8 +275,8 @@
       }
     }
   });
-  $('quotaReload').addEventListener('click', () => {
-    if ((quotaDirty() || activeEditor()) && !window.confirm('重新载入会放弃尚未保存的次数修改，继续吗？')) return;
+  $('quotaReload').addEventListener('click', async () => {
+    if (!await ui.confirmLeave('重新载入班班次数', {only:draftLabel})) return;
     void load();
   });
   function init() {
@@ -284,15 +290,7 @@
     if (account && window.ICeClassSettings?.visible && window.ICeClassSettings.section === 'quota' && !saved) void load();
   }
   window.addEventListener('iceclass-settings-section', event => { if (event.detail === 'quota' && !saved) void load(); });
-  window.ICeClassBanbanQuota = {discardChanges() {
-    quota = clone(savedQuota); clearEditors(); renderDefault(); renderQuotaRows();
-  },canLogout() {
-    if (!allowed()) return true;
-    if (savingQuota) { window.ICeClass.toast('次数设置正在处理，请稍候。'); return false; }
-    return !(quotaDirty() || activeEditor()) || window.confirm('次数修改尚未保存，放弃修改并退出登录吗？');
-  }};
-  window.addEventListener('beforeunload', event => {
-    if (allowed() && (quotaDirty() || activeEditor() || savingQuota)) { event.preventDefault(); event.returnValue = ''; }
-  });
+  ui.registerDraft(draftLabel, () => ({dirty:allowed() && (quotaDirty() || activeEditor()), busy:allowed() && savingQuota}));
+  window.addEventListener('iceclass-logout', () => { generation++; quota = clone(savedQuota); clearEditors(); renderDefault(); renderQuotaRows(); });
   window.addEventListener('iceclass-ready',init); init();
 })();

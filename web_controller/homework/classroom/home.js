@@ -66,8 +66,25 @@
     if(focused&&$('detail-dialog').open){const next=$('workshop-actions').querySelector(`[data-workshop="${focused}"]:not([disabled])`)||$('workshop-actions').querySelector('button:not([disabled])');next?.focus({preventScroll:true});}
   }
   async function openWorkshop(){
-    showDetail('创意工坊',`<section class="workshop-panel" id="workshop-panel" aria-labelledby="workshop-name"><h3 id="workshop-name">视频展台</h3><p id="workshop-version">本机课堂插件</p><p class="workshop-status" id="workshop-status" role="status" aria-live="polite">${native?'正在读取插件…':'请在 Windows 教室端安装并使用视频展台。'}</p><div class="workshop-actions" id="workshop-actions"></div><p class="workshop-note">AI 点评使用班班额度，仅保留本次会话。</p></section>`);
-    if(native)renderWorkshop(await request('workshop',{operation:'status'}));
+    const videoAvailable=native&&home?.capabilities?.workshop;
+    const quizAvailable=native&&home?.capabilities?.cardQuiz;
+    showDetail('创意工坊',`
+      <section class="workshop-panel" id="workshop-panel" aria-labelledby="workshop-name">
+        <h3 id="workshop-name">视频展台</h3>
+        <p id="workshop-version">本机课堂插件</p>
+        <p class="workshop-status" id="workshop-status" role="status">${videoAvailable?'正在读取插件…':'请在支持视频展台的 Windows 教室端使用。'}</p>
+        <div class="workshop-actions" id="workshop-actions"></div>
+        <p class="workshop-note">AI 点评使用班班额度，仅保留本次会话。</p>
+      </section>
+      <section class="workshop-panel" aria-labelledby="workshop-quiz-name">
+        <h3 id="workshop-quiz-name">纸卡答题</h3>
+        <p>配合课件随堂收答，也可使用老师准备的题单。</p>
+        ${quizAvailable?'<div class="workshop-actions"><button type="button" class="button primary" data-action="card-quiz">打开纸卡答题</button></div>':'<p>请在支持纸卡答题的 Windows 教室端使用。</p>'}
+      </section>`);
+    if(videoAvailable){
+      try{renderWorkshop(await request('workshop',{operation:'status'}));}
+      catch(error){const status=$('workshop-status');if(status)setText(status,error.message);}
+    }
   }
   function renderVoice(){
     const button=document.querySelector('[data-action="voice"]');setText(button,voice.recording?'正在留言':voice.sending?'正在发送…':'开始留言');button.disabled=voice.sending;
@@ -183,7 +200,7 @@
         voicePanel=true;renderVoice();
       }else if(action==='voice-toggle'){await request('voice');}
       else if(action==='acknowledge')await request('acknowledge',{sequence:island?.notice?.sequence});
-      else if(['reading','plan','banban','binding','island','about'].includes(action)){
+      else if(['reading','plan','banban','binding','island','about','card-quiz'].includes(action)){
         if(action==='reading')control.disabled=true;
         try{await request(action);if(action==='reading')$('reading-status').querySelector('span').textContent='时段内的活动计入本班记录，联网后同步。';}
         finally{if(action==='reading')control.disabled=false;}

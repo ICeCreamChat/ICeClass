@@ -9,23 +9,12 @@
   let owner = '', generation = 0, profile, draft, report, cid = '', termId = '', editTerm = '';
   let start = localDay(), end = start, subjectId = '', group = 'assignments', tab = 'report', page = 1;
   let loading = false, saving = false, exporting = false, conflict = false, message = '', failed = false;
-  let pendingNames = '', pendingTerm = '';
-  let leaveAction;
-  const leaveDialog = document.createElement('dialog');
-  leaveDialog.className = 'hw-confirm';
-  leaveDialog.setAttribute('aria-labelledby','hw-leave-title');
-  leaveDialog.innerHTML = '<h2 id="hw-leave-title">有尚未保存的设置</h2><p>放弃名单与学期预设的修改并继续？已保存的数据会保留。</p><div class="hw-actions"><button type="button" class="btn" data-hw-keep autofocus>继续编辑</button><button type="button" class="btn primary" data-hw-discard>放弃修改</button></div>';
-  document.body.append(leaveDialog);
-  leaveDialog.querySelector('[data-hw-keep]').addEventListener('click',() => {leaveAction = undefined; leaveDialog.close();});
-  leaveDialog.addEventListener('cancel',() => {leaveAction = undefined;});
-  leaveDialog.querySelector('[data-hw-discard]').addEventListener('click',() => {
-    const proceed = leaveAction; leaveAction = undefined;
-    draft = clone(profile.value); pendingNames = pendingTerm = ''; conflict = false;
-    leaveDialog.close(); proceed?.();
-  });
+  let pendingNames = '', pendingTerm = '', reportKey = '', retry = null;
+  const ui = window.ICeClassUI, draftLabel = '作业设置';
   const dirty = () => Boolean(profile && draft && (JSON.stringify(profile.value) !== JSON.stringify(draft) || pendingNames.trim() || pendingTerm.trim()));
   const editable = () => Boolean(profile?.canEdit && cid && profile.classId === cid);
   const currentTerm = () => draft?.terms.find(t => t.id === editTerm);
+  const className = id => app().state.classes.find(item => item.id === id)?.name || '所选班级';
   const visible = () => !document.getElementById('view-homework')?.classList.contains('hidden');
   const options = (values, selected) => values.map(([id,label]) => `<option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
   const button = (action,text,primary = false,disabled = false) => `<button type="button" class="btn${primary ? ' primary' : ''}" data-hw-action="${action}" ${disabled ? 'disabled' : ''}>${text}</button>`;
@@ -34,20 +23,17 @@
     const node = root.querySelector('.hw-feedback');
     if (node) {node.textContent = text; node.hidden = !text; node.classList.toggle('hw-error',error); node.setAttribute('role',error ? 'alert' : 'status');}
   }
-  function canLeave(proceed) {
-    if (saving || loading || exporting) {app()?.toast('正在载入、保存或导出，请稍候。'); return false;}
-    if (dirty()) {
-      if (!leaveDialog.open) {leaveAction = proceed; leaveDialog.showModal();}
-      return false;
-    }
+  async function canLeave() {
+    if (!await ui.confirmLeave('离开作业统计', {only:draftLabel})) return false;
+    if (dirty()) { draft = clone(profile.value); pendingNames = pendingTerm = ''; editTerm = draft.activeTermId; render(); }
     return true;
   }
-  function query(pagination = true) {
+  function query(pagination = true, requestedPage = page) {
     const params = new URLSearchParams({start,end,group});
     if (cid) params.set('classId',cid);
     if (termId) params.set('termId',termId);
     if (subjectId) params.set('subjectId',subjectId);
-    if (pagination) {params.set('page',page); params.set('pageSize',30);}
+    if (pagination) {params.set('page',requestedPage); params.set('pageSize',30);}
     return params;
   }
   function updateSave() {
@@ -58,13 +44,19 @@
     root.querySelector('[data-hw-tab="settings"]')?.setAttribute('data-dirty',String(dirty()));
   }
   function summaryHTML() {
-    if (!report) return '';
-    const t = report.totals, rate = t.expected ? `${(t.submitted / t.expected * 100).toFixed(1)}%` : '—';
-    return `<div class="hw-summary" aria-label="作业汇总"><span>已登记作业 <strong>${t.assignments}</strong> 项</span><span>应交 <strong>${t.expected}</strong> 人次</span><span>已交 <strong>${t.submitted}</strong> 人次</span><span class="hw-missing">未交 <strong>${t.missing}</strong> 人次</span><span>上交率 <strong>${rate}</strong></span></div><p class="hw-note">未登记与今日无作业不计入应交统计。本次范围有 ${t.noHomework} 项标记为无作业。</p>`;
+    if (!report || reportKey !== String(query(false))) return '';
+    const t = report.totals, rate = t.expected ? `${(t.submitted / t.expected * 100).toFixed(1)}%` : '无应交';
+    return `<div class="hw-summary wb-metrics" role="group" aria-label="作业汇总">
+      ${ui.metric('已登记作业', t.assignments, 'clipboard', {unit:'项'})}
+      ${ui.metric('应交', t.expected, 'user', {unit:'人次'})}
+      ${ui.metric('已交', t.submitted, 'check', {unit:'人次'})}
+      ${ui.metric('未交', t.missing, 'clock', {unit:'人次', className:'hw-missing'})}
+      ${ui.metric('上交率', rate, 'chart', {bar:ui.meter(t.submitted,t.expected)})}
+    </div><p class="hw-note">应交统计仅包含已登记作业。无作业 ${t.noHomework} 项。</p>`;
   }
   function tableHTML() {
-    if (!report) return loading ? '' : '<div class="hw-empty">选择班级和日期后查询作业上交情况。</div>';
-    if (!report.rows.length) return '<div class="hw-empty"><h2>这个范围还没有登记记录</h2><p>课代表在教室端保存后，可在这里查询。可更换日期或学科后重试。</p></div>';
+    if (!report || reportKey !== String(query(false))) return loading || failed ? '' : '<div class="hw-empty">选择班级和日期后查询作业上交情况。</div>';
+    if (!report.rows.length) return '<div class="hw-empty wb-empty"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-clipboard"/></svg><h2>这个范围还没有登记记录</h2><p>试试更换日期或学科。</p></div>';
     const student = report.group === 'students';
     const header = student ? ['班级','学期','学生','应交次数','已交次数','未交次数'] : ['日期','班级','学科','作业','状态','应交','已交','未交','未交名单'];
     const rows = report.rows.map(r => student ? `<tr><td>${esc(r.className)}</td><td>${esc(r.termName)}</td><th scope="row">${esc(r.studentName)}</th><td>${r.expected}</td><td>${r.submitted}</td><td class="${r.missing ? 'hw-missing' : ''}">${r.missing}</td></tr>`
@@ -85,47 +77,68 @@
       ${writable ? `<div class="hw-new-term"><label for="hw-new-term">新增学期</label><input id="hw-new-term" value="${esc(pendingTerm)}" placeholder="填写新学期名称" maxlength="60" ${disabled}>${button('add-term','创建新学期',false,saving || loading)}<p class="hw-note">沿用当前查看学期的作业项目，保存后可设为教室当前学期。</p></div>` : ''}</section>`;
   }
   function render() {
+    ui.preserveFocus(root, renderContent, () => root.querySelector('[data-hw-tab][aria-pressed="true"]'));
+  }
+  function renderContent() {
     const classes = app()?.state.classes || [];
     root.innerHTML = `<div class="hw-heading"><div><h1>作业统计</h1><p>查看上交情况，及时了解需要关注的学生。</p></div><div class="hw-tabs" role="group" aria-label="作业统计页面"><button type="button" class="btn" data-hw-tab="report" aria-pressed="${tab === 'report'}">统计概览</button><button type="button" class="btn" data-hw-tab="settings" aria-pressed="${tab === 'settings'}">名单与学期预设</button></div></div>
       <div class="hw-scope"><label>班级<select id="hw-class" ${loading || saving ? 'disabled' : ''}>${options([['','权限内全部班级'],...classes.map(c => [c.id,c.name])],cid)}</select></label>${tab === 'report' ? `<label>学期<select id="hw-term" ${loading ? 'disabled' : ''}>${options([['','全部学期'],...(profile?.value.terms || []).map(t => [t.id,t.label])],termId)}</select></label><label>开始日期<input id="hw-start" type="date" value="${esc(start)}" ${loading ? 'disabled' : ''}></label><label>结束日期<input id="hw-end" type="date" value="${esc(end)}" ${loading ? 'disabled' : ''}></label><label>学科<select id="hw-subject" ${loading ? 'disabled' : ''}>${options([['','全部学科'],...subjects],subjectId)}</select></label><div class="hw-actions">${button('query',loading ? '正在查询…' : '查询',true,loading)}${button('export',exporting ? '正在导出…' : '导出 CSV',false,loading || exporting)}</div>` : ''}</div>
-      <p class="hw-feedback${failed ? ' hw-error' : ''}" role="${failed ? 'alert' : 'status'}" ${message ? '' : 'hidden'}>${esc(message)}</p>${loading ? '<p class="hw-loading" role="status">正在载入作业统计…</p>' : ''}
+      <p class="hw-feedback${failed ? ' hw-error' : ''}" role="${failed ? 'alert' : 'status'}" ${message ? '' : 'hidden'}>${esc(message)}</p>${retry && !loading ? '<div class="workbench-retry">'+button('retry','重试载入')+'</div>' : ''}${loading ? '<p class="hw-loading" role="status">正在载入作业统计…</p>' : ''}
       ${tab === 'settings' ? settingsHTML() : `<div class="hw-group" role="group" aria-label="统计方式"><button type="button" class="btn" data-hw-group="assignments" aria-pressed="${group === 'assignments'}">按作业</button><button type="button" class="btn" data-hw-group="students" aria-pressed="${group === 'students'}">按学生</button></div><div aria-busy="${loading}">${summaryHTML()}${tableHTML()}</div>`}`;
     updateSave();
     if (loading || saving || exporting) root.querySelectorAll('button,input,select,textarea').forEach(control => {control.disabled = true;});
   }
-  async function load({reset = false} = {}) {
-    if (!root || !app()?.state.user) return;
-    const identity = `${app().state.user.id}:${app().state.user.csrfToken}`;
+  async function requestReport(request, requestedPage) {
+    const key = String(query(false));
+    const result = await app().api('/api/homework/report?' + query(true,requestedPage),{cache:'no-store'});
+    if (request === generation && key === String(query(false))) {
+      report = result; reportKey = key; page = requestedPage;
+    }
+  }
+  function reportError(error, next) {
+    retry = next;
+    const retained = report && reportKey === String(query(false));
+    notify('载入失败：'+error.message+(retained?' 当前显示上次成功结果。':''),true);
+  }
+  async function load({classId = cid, reset = false} = {}) {
+    if (!root || !app()?.state.user || loading || saving || exporting) return;
+    const identity = app().state.user.id;
     if (owner !== identity) {destroy(); owner = identity; reset = true;}
-    if (reset) {cid = app().state.classes[0]?.id || ''; termId = '';}
-    const request = ++generation; loading = true; profile = draft = report = undefined; notify(); render();
+    if (reset) classId = app().state.classes[0]?.id || '';
+    const request = ++generation; loading = true; retry = null; notify(); render();
     try {
-      const fresh = cid ? await app().api(`/api/homework/classes/${encodeURIComponent(cid)}/profile`,{cache:'no-store'}) : undefined;
+      const fresh = classId ? await app().api(`/api/homework/classes/${encodeURIComponent(classId)}/profile`,{cache:'no-store'}) : undefined;
       if (request !== generation) return;
+      const switched = classId !== cid;
+      cid = classId;
       profile = fresh; draft = fresh ? clone(fresh.value) : undefined; conflict = false; pendingNames = pendingTerm = '';
-      editTerm = fresh?.value.activeTermId || '';
-      if (fresh && !termId) termId = fresh.value.activeTermId;
-      if (!cid) termId = '';
-      report = undefined;
-      if (tab === 'report') {
-        const result = await app().api('/api/homework/report?' + query(),{cache:'no-store'});
-        if (request === generation) report = result;
-      }
-    } catch (error) {if (request === generation) notify(error.message,true);}
+      if (switched || !draft?.terms.some(term => term.id === editTerm)) editTerm = fresh?.value.activeTermId || '';
+      if (switched || termId && !fresh?.value.terms.some(term => term.id === termId)) termId = fresh?.value.activeTermId || '';
+      if (switched) page = 1;
+      if (tab === 'report') await requestReport(request,page);
+    } catch (error) {
+      if (request !== generation) return;
+      if (classId && classId !== cid) {
+        retry = async () => {
+          if (await ui.confirmLeave('切换班级', {only:draftLabel})) await load({classId});
+        };
+        notify('未能载入'+className(classId)+'。'+(cid?'当前仍显示'+className(cid)+'，已保留本班内容。':'')+'重试将再次载入'+className(classId)+'。'+error.message,true);
+      } else reportError(error,()=>load({classId}));
+    }
     finally {if (request === generation) {loading = false; render();}}
   }
-  async function fetchReport() {
-    if (loading) return;
-    const request = ++generation; loading = true; report = undefined; notify(); render();
-    try {const result = await app().api('/api/homework/report?' + query(),{cache:'no-store'}); if (request === generation) report = result;}
-    catch (error) {if (request === generation) notify(error.message,true);}
+  async function fetchReport(requestedPage = 1) {
+    if (loading || saving || exporting) return;
+    const request = ++generation; loading = true; retry = null; notify(); render();
+    try {await requestReport(request,requestedPage);}
+    catch (error) {if (request === generation) reportError(error,()=>fetchReport(requestedPage));}
     finally {if (request === generation) {loading = false; render();}}
   }
   async function saveProfile() {
     if (!editable() || !dirty() || saving || conflict) return;
     if (pendingNames.trim() || pendingTerm.trim()) return notify('请先将待添加的姓名加入名单，或创建填写中的新学期，再保存。',true);
     if (draft.students.some(s => !s.name.trim()) || draft.terms.some(t => !t.label.trim() || t.subjects.some(s => s.items.some(i => !i.name.trim())))) return notify('请填写所有学生姓名、学期名称和作业名称，或移除空白项目。',true);
-    const request = generation; saving = true; notify(); render();
+    const request = generation; saving = true; retry = null; notify(); render();
     try {
       const result = await app().api(`/api/homework/classes/${encodeURIComponent(cid)}/profile`,{method:'PUT',body:JSON.stringify({revision:profile.revision,value:draft})});
       if (request !== generation) return;
@@ -160,8 +173,8 @@
     const t = event.target; if (loading || saving) return;
     if (t.id === 'hw-class') {
       const next = t.value;
-      const change = () => {cid = next; termId = ''; page = 1; return load();};
-      if (!canLeave(change)) {t.value = cid; return;} await change();
+      t.value = cid;
+      if (await ui.confirmLeave('切换班级', {only:draftLabel})) await load({classId:next});
     }
     else if (t.id === 'hw-edit-term') {editTerm = t.value; render();}
     else if (editable() && t.id === 'hw-active-term') {draft.activeTermId = t.value; updateSave();}
@@ -171,20 +184,21 @@
       if (t.id === 'hw-subject') subjectId = t.value;
       if (t.id === 'hw-start') start = t.value;
       if (t.id === 'hw-end') end = t.value;
-      page = 1; report = undefined; render();
+      page = report && reportKey === String(query(false)) ? Number(report.page || 1) : 1; retry = null; notify(); render();
     }
   });
   root.addEventListener('click',async event => {
     const b = event.target.closest('button'); if (!b || b.disabled || saving || loading || exporting) return;
     try {
-      if (b.dataset.hwTab) {tab = b.dataset.hwTab; render(); if (tab === 'report') await fetchReport(); return;}
-      if (b.dataset.hwGroup) {group = b.dataset.hwGroup; page = 1; await fetchReport(); return;}
+      if (b.dataset.hwTab) {if(tab===b.dataset.hwTab)return; tab = b.dataset.hwTab; retry = null; notify(); if (tab === 'report') await fetchReport(page); else render(); return;}
+      if (b.dataset.hwGroup) {if(group===b.dataset.hwGroup)return; group = b.dataset.hwGroup; page = 1; await fetchReport(); return;}
       const action = b.dataset.hwAction;
-      if (action === 'query') {page = 1; await fetchReport();}
+      if (action === 'retry') await retry?.();
+      else if (action === 'query') await fetchReport();
       else if (action === 'save') await saveProfile();
-      else if (action === 'reload') {if (canLeave(() => load())) await load();}
+      else if (action === 'reload') {if (await ui.confirmLeave('重新载入作业设置', {only:draftLabel})) await load();}
       else if (action === 'export') await exportCSV();
-      else if (action === 'previous' || action === 'next') {page += action === 'next' ? 1 : -1; await fetchReport();}
+      else if (action === 'previous' || action === 'next') await fetchReport(page + (action === 'next' ? 1 : -1));
       else if (editable()) {
         if (action === 'add-students') {
           const names = pendingNames.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -210,12 +224,16 @@
     } catch (error) {notify(error.message,true);}
   });
   function destroy() {
-    leaveDialog.close(); leaveAction = undefined;
     generation++; owner = ''; profile = draft = report = undefined; cid = termId = editTerm = '';
     start = localDay(); end = start; subjectId = ''; group = 'assignments'; tab = 'report'; page = 1;
-    loading = saving = exporting = conflict = failed = false; message = pendingNames = pendingTerm = ''; if (root) root.replaceChildren();
+    loading = saving = exporting = conflict = failed = false; message = pendingNames = pendingTerm = reportKey = ''; retry = null; if (root) root.replaceChildren();
   }
-  window.addEventListener('beforeunload',event => {if (dirty() || saving) {event.preventDefault(); event.returnValue = '';}});
-  window.addEventListener('iceclass-classes-changed',() => {if (visible() && !dirty() && !saving) load();});
+  ui.registerDraft(draftLabel, () => ({dirty:dirty(), busy:saving || loading || exporting}));
+  window.addEventListener('iceclass-logout', destroy);
+  window.addEventListener('iceclass-classes-changed',() => {
+    const unavailable = cid && !app().state.classes.some(c=>c.id===cid);
+    if (unavailable) destroy();
+    if (visible() && !dirty() && !saving) void load();
+  });
   window.ICeClassHomeworkAdmin = {load,canLeave,destroy};
 })();

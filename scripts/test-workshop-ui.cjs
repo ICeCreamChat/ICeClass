@@ -18,12 +18,13 @@ async function open(t,{native=true,width=1280,forcedColors='none'}={}){
     return fs.existsSync(file)?route.fulfill({path:file}):route.fulfill({status:404});
   });
   if(native)await context.addInitScript(()=>{
-    window.ICeClassNativeHome=true;const listeners=[];window.__workshopCalls=[];
+    window.ICeClassNativeHome=true;const listeners=[];window.__workshopCalls=[];window.__cardQuizCalls=0;
     window.__emit=data=>listeners.forEach(listener=>listener({data}));
     window.__plugin={installed:false,enabled:false,running:false,starting:false,busy:false,ready:false,name:'视频展台',message:'导入本机插件包，开始课堂展示。'};
     window.chrome||={};window.chrome.webview={addEventListener(type,listener){if(type==='message')listeners.push(listener);},postMessage(message){
-      if(message.type==='classroom-ready')return queueMicrotask(()=>window.__emit({type:'home-state',state:{className:'虚构验收班',deviceCaption:'隔离测试',connected:true,connectionText:'已连接',capabilities:{reading:true,plan:true,banban:true,workshop:true},voice:{recording:false,sending:false}}}));
+      if(message.type==='classroom-ready')return queueMicrotask(()=>window.__emit({type:'home-state',state:{className:'虚构验收班',deviceCaption:'隔离测试',connected:true,connectionText:'已连接',capabilities:{reading:true,plan:true,banban:true,workshop:true,cardQuiz:true},voice:{recording:false,sending:false}}}));
       if(!message.id)return;
+      if(message.action==='card-quiz')window.__cardQuizCalls++;
       if(message.action==='workshop'){
         const op=message.operation;window.__workshopCalls.push(op);
         if(window.__workshopError)return queueMicrotask(()=>window.__emit({type:'response',id:message.id,error:window.__workshopError}));
@@ -46,6 +47,8 @@ async function open(t,{native=true,width=1280,forcedColors='none'}={}){
 }
 for(const width of [1280,720,390])test(`Workshop local lifecycle and keyboard at ${width}px`,async t=>{
   const page=await open(t,{width});
+  const cardQuiz=page.getByRole('button',{name:'打开纸卡答题',exact:true});await cardQuiz.focus();await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(()=>window.__cardQuizCalls),1);
   const install=page.getByRole('button',{name:'安装插件',exact:true});await install.focus();await page.keyboard.press('Enter');
   await page.getByRole('button',{name:'启用视频展台',exact:true}).waitFor();
   assert.equal(await page.locator('[data-workshop="open"]').count(),0,'fresh package is not enabled');
@@ -65,6 +68,7 @@ for(const width of [1280,720,390])test(`Workshop local lifecycle and keyboard at
 test('Browser clearly explains native installation',async t=>{
   const page=await open(t,{native:false});assert.match(await page.locator('#workshop-status').textContent(),/Windows 教室端/);
   assert.equal(await page.locator('#workshop-actions button').count(),0);
+  assert.equal(await page.getByRole('button',{name:'打开纸卡答题',exact:true}).count(),0);
 });
 test('Error, high contrast and untrusted text remain readable',async t=>{
   const page=await open(t,{forcedColors:'active'});

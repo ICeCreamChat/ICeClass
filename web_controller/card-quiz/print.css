@@ -1,0 +1,54 @@
+/* Workbench styling applies to the preview controls; each print sheet keeps its physical size. */
+.teacher-liquid.card-quiz-print main { max-width: 1148px; margin: auto; padding: 24px var(--teacher-inset) 40px; }
+.print-toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.print-toolbar > div { min-width: 0; }
+.print-toolbar h1 { margin: 0 0 12px; }
+.print-toolbar p { line-height: 1.75; max-width: 70ch; }
+.print-toolbar p:last-child { margin-bottom: 0; }
+.print-actions { display: flex; flex: 0 0 240px; flex-wrap: wrap; gap: 10px; align-items: center; }
+.print-actions [hidden] { display: none; }
+#feedback { margin: 16px 0; overflow-wrap: anywhere; }
+#feedback.error { color: var(--red); }
+.print-metadata { margin-block: 24px; }
+.print-metadata:empty, #cards:empty { display: none; }
+.print-metadata h2 { overflow-wrap: anywhere; }
+.print-metadata table { min-width: 400px; }
+.print-metadata :is(th, td) { text-align: center; vertical-align: middle; }
+#cards { display: flex; flex-direction: column; gap: 24px; align-items: center; margin-top: 24px; }
+#reset-confirm { width: min(480px, calc(100vw - 32px)); }
+
+.card-sheet { background:#fff; color:#000; width:190mm; height:276mm; padding:4mm 5mm; display:grid; grid-template-rows:minmax(0,1fr) 180mm 24mm; justify-items:center; gap:3mm; break-after:page; break-inside:avoid; font-variant-numeric:tabular-nums }
+.card-sheet:last-child { break-after:auto }
+.card-sheet svg { width:180mm; height:180mm; display:block }
+.card-caption { width:100%; display:flex; align-items:center; align-self:center; gap:6mm; font-size:13pt; line-height:1.4 }
+.card-identity { flex:1; min-width:0; display:grid; gap:2mm }
+.card-identity p { display:grid; grid-template-columns:2.5em minmax(0,1fr); align-items:baseline; gap:2mm; margin:0 }
+.card-identity span,.card-number span { font-size:11pt; font-weight:400; white-space:nowrap }
+.card-identity strong { font-weight:600; overflow-wrap:anywhere }
+.card-long-class { font-size:11pt }
+.card-number { display:grid; justify-items:center; gap:1mm; flex:none; min-width:19mm }
+.card-number strong { font-size:32pt; line-height:1.2; font-weight:600 }
+.card-password { letter-spacing:.12em }
+.card-instructions { width:100%; align-self:center; font-size:10pt; line-height:1.55 }
+.card-instructions p { margin:0 }
+
+@media screen and (max-width: 800px) {
+  .print-toolbar { flex-wrap: wrap; }
+  .print-actions { flex: 1 1 100%; }
+  .card-sheet { width: 100%; height: auto; padding: 16px; gap: 20px; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
+  .card-sheet svg { width: 100%; height: auto; }
+  .card-caption { gap: 16px; font-size: 16px; }
+  .card-identity, .card-identity p { gap: 8px; }
+  .card-number { min-width: 48px; }
+  .card-number strong { font-size: 32px; }
+  .card-identity span, .card-number span, .card-instructions { font-size: 13px; }
+  .card-long-class { font-size: 14px; }
+}
+@page { size: A4 portrait; margin: 10mm; }
+@media print {
+  :root.card-quiz-print-page, .teacher-liquid.card-quiz-print { background: #fff; color: #000; min-width: 0; min-height: 0; }
+  .card-quiz-print::before, .print-toolbar, #feedback, .print-metadata, #reset-confirm { display: none !important; }
+  .teacher-liquid.card-quiz-print main, #cards { display: block; max-width: none; margin: 0; padding: 0; }
+  .card-sheet { margin: 0; }
+  .card-sheet svg { max-width: none; }
+}

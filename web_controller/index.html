@@ -9,15 +9,16 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=19">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=7">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=30">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=22">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=8">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=32">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=4">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ideas-admin.css?v=2">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/homework-admin.css?v=1">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/self-study-admin.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ideas-admin.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/homework-admin.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/card-quiz-admin.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/self-study-admin.css?v=6">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-quota.css?v=1">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=12">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=35">
@@ -25,14 +26,53 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-operations.css?v=5">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/classroom-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/classroom-banban-glass.css">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=12">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-header.css?v=2">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/account-settings.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=19">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-header.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/account-settings.css?v=8">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-workbench.css?v=6">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-notices.css?v=4">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=1">
   <script nonce="__CSP_NONCE__" defer src="/assets/classroom-glass.js?v=5"></script>
-  <script nonce="__CSP_NONCE__" defer src="/users.js?v=20261101.1"></script>
 </head>
 <body class="teacher-liquid teacher-clear-header">
+  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="settings-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+    <symbol id="settings-i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18h1a2 2 0 0 0 1.4-3.4 1.2 1.2 0 0 1 .9-2.1H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3Z"/><path d="M7.5 10h.01M10 6.8h.01M14 6.8h.01M17 10h.01" stroke-width="3"/></symbol>
+    <symbol id="settings-i-play" viewBox="0 0 24 24"><path d="M8 5v14l12-7Z"/></symbol>
+    <symbol id="settings-i-spark" viewBox="0 0 24 24"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z"/></symbol>
+    <symbol id="settings-i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4M7 8h10"/></symbol>
+    <symbol id="settings-i-heart" viewBox="0 0 24 24"><path d="M20.5 5.5a5.2 5.2 0 0 0-7.4 0L12 6.6l-1.1-1.1a5.2 5.2 0 0 0-7.4 7.4L12 21l8.5-8.1a5.2 5.2 0 0 0 0-7.4Z"/></symbol>
+    <symbol id="settings-i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z"/><path d="M14 3v6h6M8 13h8m-8 4h5"/></symbol>
+    <symbol id="settings-i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="settings-i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="settings-i-chevron" viewBox="0 0 24 24"><path d="m8 5 7 7-7 7"/></symbol>
+    <symbol id="settings-i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="settings-i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5m2-10-3-3"/></symbol>
+    <symbol id="settings-i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="settings-i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+    <symbol id="settings-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="settings-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="settings-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/></symbol>
+    <symbol id="settings-i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-11 4h4"/></symbol>
+    <symbol id="settings-i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="settings-i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+    <symbol id="settings-i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3m-3 0h6"/></symbol>
+    <symbol id="settings-i-volume" viewBox="0 0 24 24"><path d="M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/></symbol>
+    <symbol id="settings-i-alert" viewBox="0 0 24 24"><path d="M10.3 4.8 3 18a1.6 1.6 0 0 0 1.4 2.4h15.2A1.6 1.6 0 0 0 21 18L13.7 4.8a1.9 1.9 0 0 0-3.4 0ZM12 9v4m0 3v.01"/></symbol>
+    <symbol id="settings-i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></symbol>
+    <symbol id="settings-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="settings-i-inbox" viewBox="0 0 24 24"><path d="M3 12 6 5h12l3 7v7H3zM3 13h5l2 3h4l2-3h5"/></symbol>
+    <symbol id="settings-i-checks" viewBox="0 0 24 24"><path d="m3 12 4 4L17 6m-5 10 9-9"/></symbol>
+    <symbol id="settings-i-clipboard" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H5v16h14V5h-3M8 11h8m-8 4h5"/></symbol>
+    <symbol id="settings-i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15h10m-10-5h6M8 5h3"/></symbol>
+    <symbol id="settings-i-book" viewBox="0 0 24 24"><path d="M12 6c-2-2-5-3-9-2v15c4-1 7 0 9 2 2-2 5-3 9-2V4c-4-1-7 0-9 2ZM12 6v15"/></symbol>
+    <symbol id="settings-i-cards" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h3v3H8zM14 8h2M8 15h2M14 14h2v2h-2z"/></symbol>
+    <symbol id="settings-i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+    <symbol id="settings-i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></symbol>
+    <symbol id="settings-i-wave" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></symbol>
+    <symbol id="settings-i-camera" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M8 6l2-3h4l2 3"/></symbol>
+    <symbol id="settings-i-moon" viewBox="0 0 24 24"><path d="M20.8 14.1A9 9 0 0 1 9.9 3.2a9 9 0 1 0 10.9 10.9Z"/></symbol>
+  </svg>
   <div id="loading" class="app-loading"><div class="spinner" aria-label="正在加载"></div></div>
 
   <section id="authPage" class="auth-page hidden">
@@ -51,12 +91,19 @@
       <form id="loginForm" class="hidden" aria-labelledby="loginHeading">
         <header class="auth-intro">
           <h1 id="loginHeading">欢迎回来</h1>
-          <p class="muted">使用学校账号，进入教师工作台。</p>
+          <p id="loginIntro" class="muted">使用学校账号，进入教师工作台。</p>
         </header>
-        <div class="field"><label for="loginUsername">用户名</label><input id="loginUsername" name="username" autocomplete="username" spellcheck="false" autocapitalize="none" required maxlength="64"></div>
+        <fieldset id="loginRoles" class="auth-roles">
+          <legend class="sr-only">登录身份</legend>
+          <label class="auth-role"><input id="loginRoleTeacher" class="sr-only" type="radio" name="login-role" value="teacher" checked><span>教师</span></label>
+          <label class="auth-role"><input id="loginRoleStudent" class="sr-only" type="radio" name="login-role" value="student"><span>学生</span></label>
+        </fieldset>
+        <p id="loginNotice" class="auth-notice" role="status" tabindex="-1" hidden></p>
+        <div class="field"><label id="loginUsernameLabel" for="loginUsername">用户名</label><input id="loginUsername" name="username" autocomplete="username" spellcheck="false" autocapitalize="none" required maxlength="64" aria-describedby="loginError"></div>
         <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="128" aria-describedby="loginError"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false" aria-controls="loginPassword">显示</button></div></div>
         <p id="loginError" class="form-error" role="alert" tabindex="-1"></p>
         <button id="loginSubmit" class="btn primary block" type="submit">进入工作台</button>
+        <p id="loginHelp" class="hint auth-help" hidden>忘记编号或密码，请联系班主任。</p>
       </form>
 
       <form id="bootstrapForm" class="hidden" aria-labelledby="bootstrapHeading">
@@ -113,7 +160,8 @@
         <button data-view="reading" class="active"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6c-2-2-5-3-9-2v15c4-1 7 0 9 2 2-2 5-3 9-2V4c-4-1-7 0-9 2ZM12 6v15"/></svg></span><span data-label>早读统计</span></button>
         <!-- Lucide panel-top (ISC); attribution: assets/island-icons-SOURCE.txt. -->
         <button data-view="homework"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h12v16H4V4h4m0-1h8v4H8zM8 11h8M8 15h6"/></svg></span><span data-label>作业统计</span></button>
-        <button data-view="self-study" class="hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>自习管理</span><span id="ss-nav-count" class="ss-nav-count" hidden></span></button>
+        <button data-view="card-quiz"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h3v3H8zM14 8h2M8 15h2M14 14h2v2h-2z"/></svg></span><span data-label>纸卡答题</span></button>
+        <button data-view="self-study" class="hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span class="ss-nav-content"><span data-label>自习管理</span><span id="ss-nav-count" class="ss-nav-count" title="全部可查看班级的待核实记录" hidden></span></span></button>
         <button data-view="island"><span class="nav-icon" aria-hidden="true"><svg class="lucide lucide-panel-top" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/></svg></span><span data-label>教室浮岛</span></button>
         <button data-view="console"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span><span data-label>班级通知</span></button>
         <button data-view="classroom-voice"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span><span data-label>教室来音</span></button>
@@ -129,8 +177,10 @@
     </aside>
     <main id="mainContent" tabindex="-1">
       <p id="previewNotice" class="preview-notice hidden">本地验收 · 当前展示演示数据。</p>
-      <section id="view-homework" class="view hidden" aria-label="作业统计"><div id="homeworkAdminRoot"></div></section>
-      <section id="view-self-study" class="view hidden" aria-label="自习管理"><div id="selfStudyRoot"></div></section>
+      <div id="sessionExpired" class="list-feedback" hidden><p role="alert">登录已过期。您可以先复制未保存的内容。</p><button id="signInAgain" class="btn" type="button">重新登录</button></div>
+      <section id="view-homework" class="view hidden" aria-label="作业统计"><div id="homeworkAdminRoot" tabindex="-1"></div></section>
+      <section id="view-card-quiz" class="view hidden" aria-label="纸卡答题"><div id="cardQuizRoot" tabindex="-1"></div></section>
+      <section id="view-self-study" class="view hidden" aria-label="自习管理"><div id="selfStudyRoot" tabindex="-1"></div></section>
       <section id="view-ideas" class="view hidden" aria-label="创意计划评审">
         <div id="ideasAdminRoot"></div>
       </section>
@@ -159,7 +209,7 @@
           <p id="islandError" class="island-error" role="alert" tabindex="-1"></p>
           <p id="islandSyncNotice" class="island-notice" role="status"></p>
           <div id="islandEditor" inert>
-            <div id="islandTabs" class="island-tabs" role="tablist" aria-label="教室浮岛设置分类"><button type="button" data-tab="timetable" class="active">周课表</button><button type="button" data-tab="duties">值班安排</button><button type="button" data-tab="slots">作息时间</button><button type="button" data-tab="overrides">临时调课</button><button type="button" data-tab="settings">提醒与外观</button><button type="button" data-tab="components">轮播信息</button><button type="button" data-tab="automation">自动化</button></div>
+            <div id="islandTabs" class="island-tabs" role="tablist" aria-label="教室浮岛设置分类"><button type="button" data-tab="timetable" class="active"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-calendar"/></svg>周课表</button><button type="button" data-tab="duties"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-user"/></svg>值班安排</button><button type="button" data-tab="slots"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-clock"/></svg>作息时间</button><button type="button" data-tab="overrides"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg>临时调课</button><button type="button" data-tab="settings"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-palette"/></svg>提醒与外观</button><button type="button" data-tab="components"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-grid"/></svg>轮播信息</button><button type="button" data-tab="automation"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-spark"/></svg>自动化</button></div>
             <div id="islandTabContent" role="tabpanel" tabindex="0"><p class="hint">选择班级后载入配置。</p></div>
           </div>
         </div>
@@ -168,63 +218,101 @@
           <section class="island-delivery-panel"><h2>设备同步</h2><p id="islandDeliveryNote" class="hint" role="status"></p><div id="islandDelivery"><p class="hint">载入班级后查看设备状态。</p></div></section>
         </aside></div>
       </section>
-      <section id="view-console" class="view hidden">
-        <div class="view-head"><h1>班级通知</h1></div>
-        <div class="console-layout">
-          <form id="shoutForm" class="compose">
-            <div class="target-row">
-              <div class="field"><label for="targetClass">接收班级</label><select id="targetClass" required></select></div>
-              <div id="presence" class="presence"><span class="dot"></span><span>正在检查</span></div>
-            </div>
-            <div class="mode-picker" role="tablist" aria-label="通知方式">
-              <button id="textModeButton" class="mode-button selected" type="button" role="tab" aria-selected="true" aria-controls="textComposer">文字通知</button>
-              <button id="voiceModeButton" class="mode-button" type="button" role="tab" aria-selected="false" aria-controls="voiceComposer" tabindex="-1">语音通知</button>
-            </div>
-            <div class="composer-modes">
-              <div id="textComposer" class="composer-panel text-composer" role="tabpanel" aria-labelledby="textModeButton">
-                <div class="field"><label for="shoutText">通知内容</label><textarea id="shoutText" maxlength="500" required placeholder="输入要在教室大屏显示的通知"></textarea><p class="hint"><span id="charCount">0</span>/500</p></div>
-                <div id="textPhrases" class="phrases" aria-label="快捷短语">
-                  <button class="phrase" type="button">全班保持安静</button>
-                  <button class="phrase" type="button">请班长到讲台前收作业</button>
-                  <button class="phrase" type="button">眼保健操开始</button>
-                  <button class="phrase" type="button">请任课老师查看消息</button>
+      <section id="view-console" class="view hidden" aria-labelledby="noticeTitle">
+        <div class="view-head"><h1 id="noticeTitle">发送通知</h1></div>
+        <div class="notice-layout">
+          <form id="shoutForm" class="plain-section notice-compose" aria-labelledby="noticeTitle" autocomplete="off">
+            <div class="notice-routing">
+              <div class="notice-field">
+                <div class="notice-field-head">
+                  <label for="targetClass" class="label">接收班级</label>
+                  <div id="presence" role="status" aria-atomic="true"><span id="presenceLabel" class="status">正在检查…</span></div>
                 </div>
+                <select id="targetClass" name="classId" required></select>
               </div>
-              <div id="voiceComposer" class="composer-panel voice-composer" role="tabpanel" aria-labelledby="voiceModeButton" aria-hidden="true" inert>
-                <button id="recordButton" class="record-button" type="button" aria-describedby="recordStatus" aria-pressed="false">按住说话</button>
-                <p id="recordStatus" class="hint" role="status">最长 30 秒；按住按钮或空格键录音，松开后可试听。</p>
-                <audio id="voicePreview" class="voice-preview hidden" controls preload="metadata"></audio>
-                <p id="voicePreviewStatus" class="hint" role="status"></p>
-                <div class="voice-actions"><button id="playVoiceButton" class="btn hidden" type="button">试听</button><button id="stopVoiceButton" class="btn hidden" type="button">停止试听</button><button id="reRecordButton" class="btn hidden" type="button">重录</button><button id="clearVoiceButton" class="btn hidden" type="button">取消语音</button></div>
+              <div id="noticeModeTabs" class="mode-picker" role="tablist" aria-label="通知方式">
+                <button id="textModeButton" class="mode-button selected" type="button" role="tab" aria-selected="true" aria-controls="textComposer"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-file"/></svg>文字通知</button>
+                <button id="voiceModeButton" class="mode-button" type="button" role="tab" aria-selected="false" aria-controls="voiceComposer" tabindex="-1"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-mic"/></svg>语音通知</button>
               </div>
             </div>
-            <div class="level-heading"><span class="label">通知类型</span></div>
-            <div class="level-picker" role="radiogroup" aria-label="通知类型">
-              <label class="level-option info selected"><input type="radio" name="alertLevel" value="info" checked><span class="level-icon" aria-hidden="true">i</span><span><strong>普通</strong><small>静音展示</small></span></label>
-              <label class="level-option warning"><input type="radio" name="alertLevel" value="warning"><span class="level-icon" aria-hidden="true">!</span><span><strong>重要</strong><small>语音播报</small></span></label>
-              <label class="level-option urgent"><input type="radio" name="alertLevel" value="urgent"><span class="level-icon" aria-hidden="true">!</span><span><strong>紧急</strong><small>语音播报 · 突出显示</small></span></label>
-            </div>
-            <details id="advancedSettings" class="advanced">
-              <summary>更多设置</summary>
-              <div class="options-row">
-                <div class="field"><label for="ttsSpeed">语速</label><select id="ttsSpeed"><option value="-2">较慢</option><option value="0" selected>正常</option><option value="2">较快</option><option value="4">很快</option></select></div>
-                <div class="field"><label for="displayDuration">显示时长</label><select id="displayDuration"><option value="8" selected>8 秒</option><option value="10">10 秒</option><option value="12">12 秒</option><option value="15">15 秒</option><option value="20">20 秒</option></select></div>
+            <div id="textComposer" class="notice-field" role="tabpanel" aria-labelledby="textModeButton">
+              <div class="notice-field-head">
+                <label for="shoutText" class="label">通知内容</label>
+                <p id="noticeCount" class="notice-count"><span id="charCount">0</span>/500</p>
               </div>
-            </details>
-            <button id="sendButton" class="btn send block" type="submit">发送通知</button>
+              <textarea id="shoutText" name="text" rows="4" maxlength="500" required placeholder="输入要在教室大屏显示的通知…" aria-describedby="noticeCount" aria-errormessage="noticeComposeError"></textarea>
+            </div>
+            <div id="voiceComposer" class="notice-field" role="tabpanel" aria-labelledby="voiceModeButton" hidden>
+              <span class="label">教师原声</span>
+              <div class="notice-recorder">
+                <div id="voiceCapture" class="voice-capture">
+                  <button id="recordButton" class="btn record-button" type="button" aria-describedby="recordHelp" aria-pressed="false"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-mic"/></svg><span id="recordLabel">按住说话</span></button>
+                  <span id="recordClock" class="record-clock" aria-hidden="true" hidden>00:00</span>
+                  <p id="recordHelp" class="hint">按住按钮或 <kbd>空格</kbd> · 最长 30 秒</p>
+                </div>
+                <div id="voiceReview" class="voice-review" hidden>
+                  <audio id="voicePreview" class="voice-preview" aria-label="试听录音" controls controlslist="nodownload noplaybackrate" preload="metadata"></audio>
+                  <div class="voice-actions"><button id="reRecordButton" class="btn" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg>重录</button><button id="clearVoiceButton" class="btn" type="button">取消录音</button></div>
+                </div>
+                <p id="recordStatus" class="hint" role="status"></p>
+              </div>
+            </div>
+            <fieldset class="notice-levels">
+              <legend class="label">通知级别</legend>
+              <div class="notice-level-controls">
+                <div class="mode-picker">
+                  <label class="mode-button level-option">
+                    <input type="radio" name="alertLevel" value="info" aria-describedby="infoNoticeMode" checked>
+                    普通
+                  </label>
+                  <label class="mode-button level-option">
+                    <input type="radio" name="alertLevel" value="warning" aria-describedby="warningNoticeMode">
+                    重要
+                  </label>
+                  <label class="mode-button level-option">
+                    <input type="radio" name="alertLevel" value="urgent" aria-describedby="urgentNoticeMode">
+                    紧急
+                  </label>
+                </div>
+                <p class="hint wb-inline-label notice-level-hint"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-info"/></svg><span id="infoNoticeMode">静音展示</span><span id="warningNoticeMode">语音播报</span><span id="urgentNoticeMode">播报并突出显示</span></p>
+              </div>
+            </fieldset>
+            <p id="noticeComposeError" class="form-error" role="alert"></p>
+            <div class="notice-compose-footer">
+              <details id="advancedSettings" class="wb-disclosure">
+                <summary>更多设置</summary>
+                <div class="notice-advanced-fields">
+                  <div id="noticeSpeedField" class="notice-field" hidden><label for="ttsSpeed" class="label">语速</label><select id="ttsSpeed" name="ttsSpeed"><option value="-2">较慢</option><option value="0" selected>正常</option><option value="2">较快</option><option value="4">很快</option></select></div>
+                  <div class="notice-field"><label for="displayDuration" class="label">显示时长</label><select id="displayDuration" name="displayDurationSec"><option value="8" selected>8 秒</option><option value="10">10 秒</option><option value="12">12 秒</option><option value="15">15 秒</option><option value="20">20 秒</option></select></div>
+                </div>
+              </details>
+              <button id="sendButton" class="btn send" type="submit" disabled><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-send"/></svg><span id="sendButtonLabel">发送通知</span></button>
+            </div>
           </form>
-          <aside class="side-panel">
-            <section class="plain-section">
-              <h2>送达状态</h2>
-              <div id="deliveryState" class="delivery"><strong>尚未发送</strong></div>
+          <aside class="plain-section notice-sidebar" aria-label="通知动态">
+            <section aria-labelledby="noticeDeliveryTitle">
+              <div id="deliveryState" role="status" aria-atomic="true">
+                <div class="notice-section-head">
+                  <h2 id="noticeDeliveryTitle">送达状态</h2>
+                  <div id="deliveryBadge"><span class="status"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-clock"/></svg>尚未发送</span></div>
+                </div>
+                <div id="deliveryDetail" class="delivery-detail"></div>
+              </div>
             </section>
-            <section class="plain-section"><h2>最近通知</h2><div id="recentList" class="recent-list"><p class="muted">暂无记录</p></div></section>
+            <section class="notice-recent" aria-labelledby="recentTitle">
+              <div class="notice-section-head">
+                <h2 id="recentTitle">最近通知</h2>
+                <button id="openNoticeHistory" class="btn" type="button">查看记录</button>
+              </div>
+              <div id="recentFeedback" class="list-feedback notice-recent-feedback" hidden><p id="recentStatus" role="status"></p><button id="retryRecent" class="btn" type="button">重试</button></div>
+              <div id="recentList" class="recent-list" tabindex="-1" role="region" aria-labelledby="recentTitle" aria-busy="false"><p class="notice-empty">选择班级后查看最近通知。</p></div>
+            </section>
           </aside>
         </div>
       </section>
 
       <section id="view-reading" class="view">
-        <div class="view-head"><h1>早读统计</h1><div class="toolbar"><button id="readingExport" class="btn" type="button">导出 XLSX</button><a class="btn primary" id="readingPreview" href="/reading/?preview=1" target="_blank" rel="noopener">预览早读陪伴</a></div></div>
+        <div class="view-head"><h1>早读统计</h1><div class="toolbar"><button id="readingExport" class="btn" type="button">导出 XLSX</button><a class="btn primary" id="readingPreview" href="/reading/?preview=1" target="_blank" rel="noopener"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-book"/></svg>预览早读陪伴</a></div></div>
         <div class="toolbar reading-filter">
           <div class="field"><label for="readingStart">开始日期</label><input id="readingStart" type="date" required></div>
           <div class="field"><label for="readingEnd">结束日期</label><input id="readingEnd" type="date" required></div>
@@ -250,9 +338,9 @@
         </div>
         <p id="readingRuleStatus" data-admin class="reading-rule-status hidden" role="status">正在读取统计规则…</p>
         <section class="reading-panel ranking-panel" aria-labelledby="rankingTitle">
-          <div class="panel-heading ranking-heading"><div><h2 id="rankingTitle">班级排行榜</h2><p>按有效发声时长排名 · 同时长并列</p></div><div class="ranking-heading-end"><div class="ranking-switch" role="group" aria-label="排行榜显示方式"><button type="button" id="rankingChartView" aria-pressed="true" aria-controls="rankingChart">成绩图</button><button type="button" id="rankingTableView" aria-pressed="false" aria-controls="rankingTable">数据表</button></div><span id="readingReportStatus" role="status">正在读取…</span></div></div>
+          <div class="panel-heading ranking-heading"><div><h2 id="rankingTitle">班级排行榜</h2><p>按有效发声时长排名 · 同时长并列</p></div><div class="ranking-heading-end"><div class="ranking-switch" role="group" aria-label="排行榜显示方式"><button type="button" id="rankingChartView" aria-pressed="true" aria-controls="rankingChart"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-chart"/></svg>成绩图</button><button type="button" id="rankingTableView" aria-pressed="false" aria-controls="rankingTable"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-grid"/></svg>数据表</button></div><span id="readingReportStatus" role="status">正在读取…</span></div></div>
           <div id="readingRanking" aria-busy="true"><div class="empty">正在读取班级成绩…</div></div>
-          <p class="report-note">仅累计统计时段内的有效发声，各模式完成量分别展示。弱网记录联网后补齐，结算前请确认同步完成。</p>
+          <details class="wb-disclosure"><summary><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-info"/></svg>成绩说明</summary><p>只统计时段内的有效发声，各模式完成量分别展示。弱网记录会在联网后补齐，结算前请确认同步完成。</p></details>
         </section>
         <section id="readingCalendar" class="reading-panel reading-calendar" aria-labelledby="readingCalendarTitle">
           <div class="panel-heading calendar-heading">
@@ -278,21 +366,20 @@
                 <p id="calendarHelp">选择日期查看明细，方向键可在日期间移动。</p>
                 <div class="calendar-legend" aria-label="统一色阶：无记录、5分钟以内、5至10分钟、10至20分钟、20分钟及以上"><span>少</span><i data-level="0" title="无软件记录"></i><i data-level="1" title="有效发声不足 5 分钟"></i><i data-level="2" title="5 至 10 分钟"></i><i data-level="3" title="10 至 20 分钟"></i><i data-level="4" title="20 分钟及以上"></i><span>多</span></div>
               </div>
-              <p class="calendar-scale">按每天有效发声着色 · 所有班级使用同一刻度：5 / 10 / 20 分钟 · 无记录不代表没有早读</p>
+              <p class="calendar-scale">有效发声色阶：5 / 10 / 20 分钟 · 无记录不代表没有早读</p>
               <div class="calendar-day-heading"><div><h3 id="calendarDayTitle">当天明细</h3><p id="calendarDayStatus"></p></div><div class="field"><label class="sr-only" for="calendarDate">查看具体日期</label><input id="calendarDate" type="date"></div></div>
               <dl id="calendarDayDetail" class="calendar-day-detail" aria-live="polite"></dl>
             </div>
           </div>
-          <details class="calendar-records"><summary>查看所选区间的原始明细<small>跟随上方日期筛选</small></summary><div id="readingDaily"></div></details>
+          <details class="calendar-records"><summary>区间明细<small>跟随日期筛选</small></summary><div id="readingDaily"></div></details>
         </section>
         <details class="reading-settings hidden" data-admin>
           <summary>全校统计规则<small>校长与超级管理员可调整全校规则</small></summary>
           <form id="readingSettingsForm">
             <div class="toolbar"><label><input id="readingEnabled" type="checkbox"> 启用早读统计</label><div class="field"><label for="readingThreshold">统一声量门槛（5-90）</label><input id="readingThreshold" type="number" min="5" max="90" value="30" required></div></div>
             <label class="reading-reminder-toggle"><input id="readingReminderEnabled" type="checkbox" checked> 到点提醒教室开始晨读</label>
-            <p class="reading-note">启用后，已绑定且正在运行的新版教室端会在时段开始时弹出提醒。教师可以选择“开始晨读”或“暂不开始”；同一时段只提醒一次，晚开机则在剩余时段内提醒，结束后自动收起。</p>
-            <p class="reading-note">时间按北京时间计算。时段之外仍能使用陪伴，成绩只累计时段内的活动。结束时间 00:00 表示当天结束。</p>
-            <p class="reading-note">新版教室端支持离线活动，联网后自动补传。补传按活动发生时的日期和当时生效的规则计算；断网期间显示的达标时长为暂估。比赛排名以已同步记录为准，待补传或待核实的班级请先确认数据完整。</p>
+            <details class="wb-disclosure"><summary><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-info"/></svg>提醒与离线补传说明</summary><ul><li><strong>到点提醒：</strong>新版教室端每个时段只提醒一次。晚开机时在剩余时段内提醒，时段结束后自动收起。</li><li><strong>离线补传：</strong>联网后按活动发生日期和当时规则补齐。在此之前达标时长为暂估，比赛排名以已同步记录为准。</li></ul></details>
+            <p class="wb-inline-note"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-clock"/></svg><span>北京时间 · 仅统计所设时段 · 00:00 表示当天结束</span></p>
             <div id="readingPeriods"></div><button id="readingAddPeriod" class="btn" type="button">添加统计时段</button>
             <p id="readingSettingsError" class="form-error" role="alert"></p>
             <button class="btn primary" type="submit">保存早读规则</button>
@@ -301,40 +388,47 @@
       </section>
       <section id="view-controls" class="view hidden">
         <div class="view-head"><h1>教室控制</h1><button id="controlRefresh" class="btn" type="button">刷新状态</button></div>
-        <div id="controlOverview" class="device-overview" role="status"></div>
+        <div id="controlOverview" class="wb-metrics" role="status" aria-label="教室设备概览"></div>
         <div class="control-actions">
           <div class="field"><label for="controlClass">班级</label><select id="controlClass"></select></div>
           <div class="field"><label for="controlVolume">播放音量（%）</label><input id="controlVolume" type="number" min="0" max="100" value="30"></div>
-          <button id="controlApply" class="btn primary" type="button">设置音量</button><button id="control30" class="btn" type="button">设为 30%</button><button id="control50" class="btn" type="button">设为 50%</button>
-          <button id="controlOpenReading" class="btn" type="button">在教室打开早读</button>
+          <button id="controlApply" class="btn primary" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-volume"/></svg>设置音量</button><button id="control30" class="btn" type="button">设为 30%</button><button id="control50" class="btn" type="button">设为 50%</button>
+          <button id="controlOpenReading" class="btn" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-book"/></svg>在教室打开早读</button>
         </div>
-        <p id="controlMessage" class="reading-note" role="status">离线设备联网后应用音量；打开早读需在线。</p>
+        <div class="wb-inline-note"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-info"/></svg><p id="controlMessage" role="status">音量在联网后同步，打开早读需在线。</p></div>
         <div id="controlDevices"></div>
       </section>
 
-      <section id="view-history" class="view hidden">
-        <div class="view-head">
-          <h1>通知记录</h1>
-          <div class="toolbar"><div class="field"><label for="historyClass">班级</label><select id="historyClass"></select></div><button id="refreshHistory" class="btn">刷新</button><button id="exportHistory" class="btn">导出 CSV</button></div>
+      <section id="view-history" class="view hidden" aria-labelledby="noticeHistoryTitle">
+        <div class="view-head"><h1 id="noticeHistoryTitle">通知记录</h1></div>
+        <div class="plain-section">
+          <div class="notice-history-tools">
+            <div class="notice-field"><label for="historyClass" class="label">班级</label><select id="historyClass"></select></div>
+            <div class="notice-history-actions">
+              <button id="refreshHistory" class="btn" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg><span>刷新</span></button>
+              <button id="exportHistory" class="btn" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-download"/></svg>导出 CSV</button>
+            </div>
+          </div>
+          <p id="historyFeedback" class="list-feedback" role="status" hidden></p>
+          <div id="historyContainer" tabindex="-1" aria-busy="false" role="region" aria-labelledby="noticeHistoryTitle"></div>
         </div>
-        <p id="historyFeedback" class="hint" role="status" hidden></p>
-        <div id="historyContainer" aria-busy="false"></div>
       </section>
 
       <section id="view-classroom-voice" class="view hidden">
         <div class="view-head">
           <h1>教室来音</h1>
-          <div class="toolbar"><div class="field"><label for="classroomVoiceClass">班级</label><select id="classroomVoiceClass"></select></div><button id="refreshClassroomVoice" class="btn">刷新</button></div>
+          <div class="toolbar"><div class="field"><label for="classroomVoiceClass">班级</label><select id="classroomVoiceClass"></select></div><button id="refreshClassroomVoice" class="btn"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg><span>刷新</span></button></div>
         </div>
-        <p class="reading-note">录音保留 30 分钟，相关教师播放后可能提前清理。</p>
-        <div id="classroomVoiceContainer" class="classroom-voice-list"></div>
+        <p class="wb-inline-note"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-clock"/></svg><span>录音保留 30 分钟，相关教师播放后可能提前清理。</span></p>
+        <p id="voiceFeedback" class="list-feedback" role="status" hidden></p>
+        <div id="classroomVoiceContainer" tabindex="-1" class="classroom-voice-list" aria-busy="false"></div>
       </section>
 
       <section id="view-quiet" class="view hidden">
-        <div class="view-head"><div><h1>禁言时间</h1><p>全校共用，时段内发送通知需再次确认。</p></div><button id="saveQuietSchedule" class="btn primary" type="button" data-admin>保存时间表</button></div>
-        <div id="quietCurrentStatus" class="quiet-status"><strong>正在读取当前状态</strong><span>时间统一按北京时间计算。</span></div>
+        <div class="view-head"><div><h1>禁言时间</h1><p>全校时段 · 发送前需再次确认</p></div><button id="saveQuietSchedule" class="btn primary" type="button" data-admin>保存时间表</button></div>
+        <div id="quietCurrentStatus" class="quiet-status"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-moon"/></svg><strong>正在读取当前状态</strong><span>北京时间</span></div>
         <section class="plain-section">
-          <div class="view-head"><h2>每周时间表</h2><button id="addQuietPeriod" class="btn" type="button" data-admin>添加时段</button></div>
+          <div class="view-head"><h2>每周时间表</h2><button id="addQuietPeriod" class="btn" type="button" data-admin><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-plus"/></svg>添加时段</button></div>
           <div id="quietScheduleList" class="schedule-list"></div>
           <p id="quietScheduleError" class="form-error" role="alert" data-admin></p>
         </section>
@@ -343,11 +437,11 @@
       <section id="view-classes" class="view hidden">
         <div class="view-head">
           <h1>班级管理</h1>
-          <button id="addClassButton" class="btn primary" type="button">创建班级</button>
+          <button id="addClassButton" class="btn primary" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-plus"/></svg>创建班级</button>
         </div>
         <div class="class-toolbar" aria-label="班级筛选与工具">
           <div id="classGradeFilter" class="grade-filter" role="group" aria-label="年级筛选"><button type="button" data-grade-filter="all" class="active" aria-pressed="true">全部</button><button type="button" data-grade-filter="高一" aria-pressed="false">高一</button><button type="button" data-grade-filter="高二" aria-pressed="false">高二</button><button type="button" data-grade-filter="高三" aria-pressed="false">高三</button></div>
-          <div class="class-tools"><button id="batchClassButton" class="btn" type="button">批量创建</button><details class="action-menu"><summary class="btn">更多操作</summary><div class="action-menu-content"><button id="classRolloverButton" class="btn" type="button" data-admin>年度升班</button><button id="schoolEnrollmentButton" class="btn" type="button" data-admin>全校快捷绑定</button><button id="allClassesButton" class="btn" type="button" data-admin>创建预设班级</button></div></details></div>
+          <div class="class-tools"><button id="batchClassButton" class="btn" type="button"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-grid"/></svg>批量创建</button><details class="action-menu"><summary class="btn">更多操作</summary><div class="action-menu-content"><button id="classRolloverButton" class="btn" type="button" data-admin>年度升班</button><button id="schoolEnrollmentButton" class="btn" type="button" data-admin>全校快捷绑定</button><button id="allClassesButton" class="btn" type="button" data-admin>创建预设班级</button></div></details></div>
         </div>
         <div id="classesContainer"></div>
       </section>
@@ -355,7 +449,7 @@
       <section id="view-teachers" class="view hidden">
         <div class="view-head">
           <h1>用户管理</h1>
-          <div class="toolbar"><button id="addTeacherButton" class="btn primary">创建用户</button></div>
+          <div class="toolbar"><button id="addTeacherButton" class="btn primary"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-plus"/></svg>创建用户</button></div>
         </div>
         <div id="userRoleTabs" class="user-role-tabs" aria-label="按身份筛选"></div>
         <section class="users-panel" aria-label="学校用户">
@@ -366,7 +460,7 @@
             <button id="userClearFilters" class="btn" type="button">清除筛选</button>
           </div>
           <div class="users-resultbar"><span id="userResultCount" role="status" aria-live="polite"></span><button id="userUnassigned" class="user-pending-link" type="button" hidden></button></div>
-          <div id="teachersContainer"></div>
+          <div id="teachersContainer" tabindex="-1"></div>
           <div id="userPagination" class="users-pagination"><span>每页 12 位</span><div><button id="userPrevPage" class="btn" type="button">上一页</button><span id="userPageLabel" aria-live="polite"></span><button id="userNextPage" class="btn" type="button">下一页</button></div></div>
         </section>
         <details class="user-permission-guide"><summary>身份与权限说明</summary><dl><div><dt>校长</dt><dd>全校功能、用户、班级、设备与学校设置。</dd></div><div><dt>主任</dt><dd>高一、高二、高三的班级、设备、数据与下级账号管理。</dd></div><div><dt>年级部</dt><dd>所负责年级的班级、设备、数据与教师账号管理。</dd></div><div><dt>班主任</dt><dd>管理带班班级的课表、浮岛、通知、来音与教室控制。</dd></div><div><dt>任课老师</dt><dd>查看任教班级，发送通知、控制教室；课表与浮岛只读，不接收来音。</dd></div></dl><p class="hint">同一账号可分别分配带班班级和任教班级。全校规则由校长或超级管理员维护。</p></details>
@@ -375,27 +469,6 @@
 
       <section id="view-settings" class="view account-settings hidden">
         <div class="view-head"><h1>账号设置</h1></div>
-  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <symbol id="settings-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
-    <symbol id="settings-i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18h1a2 2 0 0 0 1.4-3.4 1.2 1.2 0 0 1 .9-2.1H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3Z"/><path d="M7.5 10h.01M10 6.8h.01M14 6.8h.01M17 10h.01" stroke-width="3"/></symbol>
-    <symbol id="settings-i-spark" viewBox="0 0 24 24"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z"/></symbol>
-    <symbol id="settings-i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4M7 8h10"/></symbol>
-    <symbol id="settings-i-heart" viewBox="0 0 24 24"><path d="M20.5 5.5a5.2 5.2 0 0 0-7.4 0L12 6.6l-1.1-1.1a5.2 5.2 0 0 0-7.4 7.4L12 21l8.5-8.1a5.2 5.2 0 0 0 0-7.4Z"/></symbol>
-    <symbol id="settings-i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z"/><path d="M14 3v6h6M8 13h8m-8 4h5"/></symbol>
-    <symbol id="settings-i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
-    <symbol id="settings-i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
-    <symbol id="settings-i-chevron" viewBox="0 0 24 24"><path d="m8 5 7 7-7 7"/></symbol>
-    <symbol id="settings-i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
-    <symbol id="settings-i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5m2-10-3-3"/></symbol>
-    <symbol id="settings-i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
-    <symbol id="settings-i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
-    <symbol id="settings-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-    <symbol id="settings-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
-    <symbol id="settings-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/></symbol>
-    <symbol id="settings-i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-11 4h4"/></symbol>
-    <symbol id="settings-i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
-    <symbol id="settings-i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
-  </svg>
     <div class="settings-navigation">
       <nav class="section-nav" aria-label="账号设置分区">
         <a href="#settings/account" data-section="account" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#settings-i-user"/></svg>账号与安全</a>
@@ -421,7 +494,7 @@
             <p id="ownPasswordError" class="form-error" role="alert"></p>
             <div class="form-actions"><button class="button primary" type="submit">更新密码</button><span id="passwordStatus" class="feedback" role="status"></span></div>
           </form>
-          <aside class="security-note"><svg class="icon" aria-hidden="true"><use href="#settings-i-shield"/></svg><h3>保护你的账号</h3><p>更新后，网页和教师端需用新密码登录。</p></aside>
+          <aside class="security-note"><svg class="icon" aria-hidden="true"><use href="#settings-i-shield"/></svg><h3>登录密码</h3><p>新密码同时用于网页和教师端。</p></aside>
         </div>
       </section>
 
@@ -451,7 +524,7 @@
       </section>
 
       <section id="deviceSection" class="settings-section" aria-labelledby="devicesTitle" hidden>
-        <div class="section-heading"><div><h2 id="devicesTitle">教室电脑</h2><p class="muted">管理绑定、连接与设备状态</p></div><button id="refreshDevices" class="button" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg>刷新</button></div>
+        <div class="section-heading"><div><h2 id="devicesTitle">教室电脑</h2></div><button id="refreshDevices" class="button" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-refresh"/></svg>刷新</button></div>
         <div class="list-toolbar device-toolbar"><span id="deviceCount" class="muted"></span><div class="filters"><label class="search-field"><svg class="icon" aria-hidden="true"><use href="#settings-i-search"/></svg><span class="sr-only">搜索班级或电脑</span><input id="deviceSearch" name="deviceSearch" type="search" placeholder="搜索班级或电脑" autocomplete="off"></label><label><span class="sr-only">连接状态</span><select id="deviceFilter" name="deviceStatus"><option value="all">全部状态</option><option value="online">在线</option><option value="offline">离线</option><option value="disabled">已停用</option></select></label></div></div>
         <div class="device-table-head" aria-hidden="true"><span>班级与电脑</span><span>连接状态</span><span>最近连接</span><span>操作</span></div>
         <ul id="devicesContainer" class="device-list" aria-label="已绑定教室电脑"></ul>
@@ -460,7 +533,30 @@
 
       <section id="acknowledgementsSection" class="settings-section" aria-labelledby="thanksTitle" hidden>
         <div class="section-heading"><div><h2 id="thanksTitle">应用致谢</h2><p class="muted">保存后，两端下次打开“关于”时更新</p></div><span class="scope">全校管理</span></div>
-        <p id="acknowledgementsLoadStatus" class="feedback" role="status"></p><div class="thanks-layout"><form id="acknowledgementsForm"><div id="acknowledgementsFields"></div><button id="acknowledgementsAdd" disabled class="button quiet add-group" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-plus"/></svg>添加分组</button><div class="form-actions"><button id="acknowledgementsReload" class="button quiet" type="button">重新载入</button><button id="acknowledgementsSave" class="button primary" type="submit" disabled>保存并同步</button><span id="acknowledgementsStatus" class="feedback" role="status"></span></div></form><aside class="thanks-preview"><h3>显示预览</h3><div class="about-preview"><img src="/assets/app-icon.png" width="56" height="56" alt=""><strong>ICeClass 班伴</strong><span>致谢名单</span><div id="acknowledgementsPreview"></div></div></aside></div>
+        <div class="thanks-layout">
+          <form id="acknowledgementsForm" aria-labelledby="thanksEditorTitle">
+            <div class="thanks-editor-head">
+              <h3 id="thanksEditorTitle">致谢分组</h3>
+              <button id="acknowledgementsAdd" disabled class="button quiet small-button" type="button"><svg class="icon" aria-hidden="true"><use href="#settings-i-plus"/></svg>添加分组</button>
+            </div>
+            <div id="acknowledgementsFields"></div>
+            <div class="form-actions">
+              <button id="acknowledgementsReload" class="button quiet" type="button">重新载入</button>
+              <button id="acknowledgementsSave" class="button primary" type="submit" disabled>保存并同步</button>
+            </div>
+            <p id="acknowledgementsStatus" class="feedback" role="status"></p>
+          </form>
+          <aside class="thanks-preview" aria-labelledby="thanksPreviewTitle">
+            <h3 id="thanksPreviewTitle">客户端预览</h3>
+            <div class="about-preview">
+              <div class="about-preview-head">
+                <img src="/assets/app-icon.png" width="36" height="36" alt="">
+                <div><strong translate="no">ICeClass 班伴</strong><span>关于 · 致谢名单</span></div>
+              </div>
+              <div id="acknowledgementsPreview"></div>
+            </div>
+          </aside>
+        </div>
       </section>
 
       <section id="clientDiagnosticsSection" class="settings-section" aria-labelledby="logsTitle" hidden>
@@ -474,10 +570,26 @@
     </main>
   </div>
 
-  <dialog id="confirmDialog" aria-labelledby="confirmTitle">
+  <dialog id="workbenchConfirm" aria-labelledby="workbenchConfirmTitle" aria-describedby="workbenchConfirmText">
+    <div class="dialog-head"><h2 id="workbenchConfirmTitle"></h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
+    <div class="dialog-body"><p id="workbenchConfirmText"></p><p id="workbenchConfirmError" class="form-error" role="alert"></p></div>
+    <div class="dialog-actions"><button id="workbenchConfirmCancel" class="btn" type="button" data-close>取消</button><button id="workbenchConfirmAccept" class="btn primary" type="button">确认</button><button id="workbenchConfirmExtra" class="btn primary" type="button" hidden></button></div>
+  </dialog>
+
+  <dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmImpact">
     <div class="dialog-head"><h2 id="confirmTitle">确认发送</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-    <div class="dialog-body"><div class="confirm-summary"><p id="confirmTarget"></p><p id="confirmLevel"></p><p id="confirmMode"></p><p id="confirmText"></p></div><div id="quietWarning" class="quiet-warning hidden"><strong id="quietWarningTitle"></strong><p id="quietWarningDetail"></p></div><p class="danger-text">教室收到新通知后，会中断正在播放的上一条通知。</p></div>
-    <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button id="confirmSend" class="btn send" type="button">确认发送</button></div>
+    <div class="dialog-body notice-confirm-body">
+      <dl class="notice-confirm-facts">
+        <div><dt>接收班级</dt><dd id="confirmTarget"></dd></div>
+        <div><dt>通知级别</dt><dd id="confirmLevel"></dd></div>
+        <div><dt>展示方式</dt><dd id="confirmMode"></dd></div>
+      </dl>
+      <div class="notice-confirm-preview"><h3 class="label">通知内容</h3><p id="confirmText"></p></div>
+      <div id="quietWarning" class="quiet-warning hidden" role="status"><strong id="quietWarningTitle"></strong><p id="quietWarningDetail"></p></div>
+      <p id="confirmImpact" class="wb-inline-note"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-info"/></svg><span id="confirmImpactText"></span></p>
+      <p id="confirmSendError" class="form-error" role="alert" tabindex="-1"></p>
+    </div>
+    <div class="dialog-actions"><button id="cancelNoticeSend" class="btn" type="button" data-close autofocus>取消</button><button id="confirmSend" class="btn send" type="button">确认发送</button></div>
   </dialog>
 
   <dialog id="classDialog" aria-labelledby="classDialogTitle">
@@ -503,7 +615,7 @@
   <dialog id="renameClassDialog" aria-labelledby="renameClassDialogTitle">
     <form id="renameClassForm">
       <div class="dialog-head"><h2 id="renameClassDialogTitle">班级升班与更名</h2><button class="btn icon" type="button" data-close aria-label="关闭">×</button></div>
-      <div class="dialog-body"><p class="reading-note">例如将高一（10）班改为高二（10）班。设备绑定、教师授权和历史记录继续归属于这个班级，在线新版教室端会同步名称。换教室时，可在设备管理中单独改绑电脑。</p><div class="field"><label for="renameClassName">新的班级名称</label><input id="renameClassName" required maxlength="40"></div><input id="renameClassId" type="hidden"><p id="renameClassError" class="form-error" role="alert"></p></div>
+      <div class="dialog-body"><p class="wb-inline-note"><svg class="wb-icon" aria-hidden="true"><use href="#settings-i-info"/></svg><span>更名会保留设备绑定、教师权限和历史记录。若更换教室，请在设备管理中改绑。</span></p><div class="field"><label for="renameClassName">新的班级名称</label><input id="renameClassName" required maxlength="40"></div><input id="renameClassId" type="hidden"><p id="renameClassError" class="form-error" role="alert"></p></div>
       <div class="dialog-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存</button></div>
     </form>
   </dialog>
@@ -562,14 +674,17 @@
       "use strict";
       const scriptNonce = document.currentScript.nonce;
       let islandEditor;
-      const state = { user: null, csrf: "", classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, pendingQuietPeriod: null, selectedShoutId: null, selectedShoutClassId: null, selectedShoutLevel: null, selectedLevel: "info", deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceChunks: [], voiceStartedAt: 0, classGradeFilter: "all" };
+      const state = { user: null, csrf: "", sessionExpired: false, classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, selectedShoutId: null, selectedShoutClassId: null, deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceBusy: false, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
       const nativeClassroom = window.ICeClassVoiceHost?.classroomAccount === true && Boolean(window.chrome?.webview);
+      let loginRole = "teacher";
       let classroomIdentityTimer = null;
       const viewVisible = view => !document.hidden && !$(`view-${view}`).classList.contains('hidden');
-      let voiceRequest = 0, recentRequest = 0, presenceRequest = 0, historyRequest = 0, historyLoading = false;
-      let historyClassLoaded = null;
-      let recordingRequest = 0, recordingRequested = false, recordingTimer = null;
+      let voiceRequest = 0, recentRequest = 0, presenceRequest = 0, historyRequest = 0;
+      let historyClassLoaded = null, voiceClassLoaded = null, recentClassLoaded = null;
+      let historyLoading = null, voiceLoading = null, recentLoading = null, sessionEnding = false;
+      let noticePreparing = false, noticeSending = false, pendingNotice = null;
+      let recordingRequest = 0, recordingRequested = false, recordingTimer, recordingClock;
       let scheduleFieldId = 0;
       const roleLabels = { superadmin: "超级管理员", teacher: "班主任", subject_teacher: "任课老师", grade_leader: "年级部", director: "主任", principal: "校长" };
       const isSchoolAdmin = () => ["superadmin", "principal"].includes(state.user?.role);
@@ -585,6 +700,7 @@
       document.addEventListener("DOMContentLoaded", prepareIdeasAdmin);
       const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "已展示，待知晓", acknowledged: "教室已知晓", failed: "处理失败" };
       const deliveryStatus = item => item.acknowledged_at ? "acknowledged" : item.status;
+      const statusIcons = {checking: "clock", offline: "monitor", sent: "send", received: "inbox", displayed: "eye", acknowledged: "checks", failed: "alert", enabled: "check", disabled: "close"};
       const levelMeta = {
         info: { label: "普通", mode: "静音展示", sound: false, duration: 8, className: "info" },
         warning: { label: "重要", mode: "语音播报", sound: true, duration: 12, className: "warning" },
@@ -600,7 +716,22 @@
 
       function isVoiceMode() { return state.inputMode === "voice"; }
 
+      function updateNoticeSendControl() {
+        const busy = noticePreparing || noticeSending;
+        if (busy) $("sendButton").setAttribute("aria-disabled", "true");
+        else $("sendButton").removeAttribute("aria-disabled");
+        $("sendButtonLabel").textContent = noticePreparing ? "正在检查…" : noticeSending ? "正在发送…" : isVoiceMode() ? "发送语音通知" : "发送通知";
+      }
+
+      function cancelNoticePreparation() {
+        if (!noticePreparing) return;
+        pendingNotice = null;
+        noticePreparing = false;
+        updateNoticeSendControl();
+      }
+
       function setInputMode(mode) {
+        if (mode !== state.inputMode) cancelNoticePreparation();
         state.inputMode = mode;
         const voice = mode === "voice";
         $("textModeButton").classList.toggle("selected", !voice);
@@ -609,20 +740,20 @@
         $("voiceModeButton").setAttribute("aria-selected", String(voice));
         $("textModeButton").tabIndex = voice ? -1 : 0;
         $("voiceModeButton").tabIndex = voice ? 0 : -1;
-        if (!voice) void finishRecording();
-        $("textComposer").inert = voice;
-        $("textComposer").setAttribute("aria-hidden", String(voice));
-        $("voiceComposer").inert = !voice;
-        $("voiceComposer").setAttribute("aria-hidden", String(!voice));
+        if (!voice) { finishRecording(); $("voicePreview").pause(); }
+        $("textComposer").hidden = voice;
+        $("voiceComposer").hidden = !voice;
         $("shoutText").required = !voice;
-        $("sendButton").textContent = voice ? "发送语音通知" : "发送通知";
+        $("noticeComposeError").textContent = "";
+        $("shoutText").removeAttribute("aria-invalid");
+        updateNoticeSendControl();
         const infoInput = document.querySelector('input[name="alertLevel"][value="info"]');
         infoInput.disabled = voice;
-        infoInput.closest(".level-option")?.classList.toggle("disabled", voice);
-        if (voice && selectedAlertLevel() === "info") {
-          document.querySelector('input[name="alertLevel"][value="warning"]').checked = true;
-          updateLevelPresentation(true);
-        }
+        $("warningNoticeMode").textContent = voice ? "播放教师原声" : "语音播报";
+        $("urgentNoticeMode").textContent = voice ? "原声并突出显示" : "播报并突出显示";
+        const promote = voice && infoInput.checked;
+        if (promote) document.querySelector('input[name="alertLevel"][value="warning"]').checked = true;
+        updateLevelPresentation(promote);
       }
 
       function formatVoiceDuration(value) {
@@ -630,70 +761,34 @@
         return Number.isFinite(duration) && duration > 0 ? duration.toFixed(1) : "0.0";
       }
 
-      function updateVoicePreviewStatus() {
-        const preview = $("voicePreview");
-        if (!state.voiceBlob) return;
-        const metadataDuration = Number.isFinite(preview.duration) && preview.duration > 0 ? preview.duration : state.voiceDurationSec;
-        if (metadataDuration > 0) state.voiceDurationSec = metadataDuration;
-        $("recordStatus").textContent = `已录制 ${formatVoiceDuration(state.voiceDurationSec)} 秒，可试听后发送。`;
-        $("voicePreviewStatus").textContent = preview.paused ? "点击“试听”播放教师原声。" : "正在试听教师原声。";
+      function setRecordStatus(message = "", error = false) {
+        const status = $("recordStatus");
+        status.classList.toggle("is-error", error);
+        status.textContent = message;
       }
 
       function setVoiceBlob(blob, durationSec = 0) {
+        if (blob !== state.voiceBlob) cancelNoticePreparation();
         const preview = $("voicePreview");
-        if (state.voiceObjectUrl) {
-          URL.revokeObjectURL(state.voiceObjectUrl);
-          state.voiceObjectUrl = "";
-        }
+        const wasRecordingFocused = document.activeElement === $("recordButton");
+        preview.pause();
+        if (state.voiceObjectUrl) URL.revokeObjectURL(state.voiceObjectUrl);
         state.voiceBlob = blob;
-        state.voiceDurationSec = Number.isFinite(Number(durationSec)) ? Number(durationSec) : 0;
-        preview.pause();
-        preview.removeAttribute("src");
-        if (blob) {
-          state.voiceObjectUrl = URL.createObjectURL(blob);
-          preview.src = state.voiceObjectUrl;
-          preview.load();
-          preview.classList.remove("hidden");
-          $("playVoiceButton").classList.remove("hidden");
-          $("stopVoiceButton").classList.remove("hidden");
-          $("reRecordButton").classList.remove("hidden");
-          $("clearVoiceButton").classList.remove("hidden");
-          updateVoicePreviewStatus();
-        } else {
-          preview.load();
-          preview.classList.add("hidden");
-          $("playVoiceButton").classList.add("hidden");
-          $("stopVoiceButton").classList.add("hidden");
-          $("reRecordButton").classList.add("hidden");
-          $("clearVoiceButton").classList.add("hidden");
-          $("recordStatus").textContent = "最长 30 秒，松开后可试听。";
-          $("voicePreviewStatus").textContent = "";
-        }
-      }
-
-      async function playVoicePreview() {
-        if (!state.voiceBlob) return toast("请先录制一段语音。");
-        const preview = $("voicePreview");
-        try {
-          await preview.play();
-          updateVoicePreviewStatus();
-        } catch (error) {
-          $("voicePreviewStatus").textContent = "试听失败，请检查浏览器声音权限后重试。";
-          toast("试听失败，请点击播放器上的播放按钮重试。");
-        }
-      }
-
-      function stopVoicePreview() {
-        const preview = $("voicePreview");
-        preview.pause();
-        preview.currentTime = 0;
-        updateVoicePreviewStatus();
+        state.voiceDurationSec = durationSec;
+        state.voiceObjectUrl = blob ? URL.createObjectURL(blob) : "";
+        if (blob) preview.src = state.voiceObjectUrl;
+        else preview.removeAttribute("src");
+        preview.load();
+        $("voiceCapture").hidden = Boolean(blob);
+        $("voiceReview").hidden = !blob;
+        setRecordStatus(blob ? `已录制 ${formatVoiceDuration(durationSec)} 秒` : "");
+        if (blob && wasRecordingFocused && isVoiceMode() && viewVisible("console")) preview.focus({preventScroll: true});
       }
 
       function encodeWav(audioBuffer) {
         const sampleRate = 16000;
         const input = audioBuffer.getChannelData(0);
-        const outputLength = Math.max(1, Math.floor(input.length * sampleRate / audioBuffer.sampleRate));
+        const outputLength = Math.max(1, Math.min(30 * sampleRate, Math.floor(input.length * sampleRate / audioBuffer.sampleRate)));
         const pcm = new Int16Array(outputLength);
         for (let i = 0; i < outputLength; i++) {
           const source = Math.min(input.length - 1, Math.floor(i * audioBuffer.sampleRate / sampleRate));
@@ -707,78 +802,99 @@
         return new Blob([buffer], { type: "audio/wav" });
       }
 
-      async function finishRecording() {
-        recordingRequested = false;
-        recordingRequest++;
+      function finishRecording() {
+        if (recordingRequested) {
+          recordingRequested = false;
+          recordingRequest++;
+          state.voiceBusy = false;
+          setRecordStatus();
+        }
         clearTimeout(recordingTimer);
-        $("recordButton").setAttribute("aria-pressed", "false");
+        clearInterval(recordingClock);
+        $("recordClock").hidden = true;
+        const button = $("recordButton");
+        button.setAttribute("aria-pressed", "false");
+        button.classList.remove("recording");
         const recorder = state.mediaRecorder;
-        if (recorder && recorder.state !== "inactive") recorder.stop();
+        if (recorder && recorder.state !== "inactive") {
+          button.setAttribute("aria-disabled", "true");
+          $("recordLabel").textContent = "正在处理…";
+          setRecordStatus("正在处理录音…");
+          recorder.stop();
+        }
         state.voiceStream?.getTracks().forEach(track => track.stop());
         state.voiceStream = null;
       }
 
-      async function startRecording() {
-        if (recordingRequested || state.mediaRecorder) return;
+      async function startRecording(toggle = false) {
+        if (state.voiceBusy || state.voiceBlob || sessionEnding) return;
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-          toast("当前浏览器不支持录音，请改用最新版 Chrome 或 Edge。"); return;
+          setRecordStatus("此浏览器无法录音。请检查麦克风是否可用，或改用 Chrome / Edge。", true);
+          return;
         }
-        recordingRequested = true;
+        state.voiceBusy = recordingRequested = true;
         const request = ++recordingRequest;
+        setRecordStatus("正在连接麦克风…");
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
-          if (request !== recordingRequest || !recordingRequested || !isVoiceMode()) {
+          const stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1}});
+          if (request !== recordingRequest || !recordingRequested || !isVoiceMode() || sessionEnding) {
             stream.getTracks().forEach(track => track.stop());
             return;
           }
           state.voiceStream = stream;
-          state.voiceChunks = [];
-          state.mediaRecorder = new MediaRecorder(state.voiceStream);
-          state.voiceStartedAt = Date.now();
-          state.mediaRecorder.ondataavailable = event => { if (event.data.size) state.voiceChunks.push(event.data); };
-          const recorder = state.mediaRecorder;
+          const recorder = new MediaRecorder(stream), chunks = [];
+          state.mediaRecorder = recorder;
+          recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
           recorder.onstop = async () => {
-            $("recordButton").classList.remove("recording"); $("recordButton").textContent = "按住说话";
-            const chunks = state.voiceChunks.slice();
-            if (state.mediaRecorder === recorder) state.mediaRecorder = null;
+            finishRecording();
             try {
-              const source = new Blob(chunks, { type: recorder.mimeType || chunks[0]?.type || "audio/webm" });
+              const source = new Blob(chunks, {type: recorder.mimeType || chunks[0]?.type || "audio/webm"});
               const AudioContextClass = window.AudioContext || window.webkitAudioContext;
               if (!AudioContextClass) throw new Error("浏览器不支持音频处理");
               const context = new AudioContextClass();
               try {
                 const decoded = await context.decodeAudioData(await source.arrayBuffer());
-                const duration = decoded.duration;
-                const wav = encodeWav(decoded);
-                if (duration < .5 || duration > 30 || wav.size > 4 * 1024 * 1024) { setVoiceBlob(null); toast("录音长度需为 0.5 至 30 秒。"); return; }
-                setVoiceBlob(wav, duration);
+                if (sessionEnding) return;
+                if (decoded.duration < .5) { setRecordStatus("录音太短，请至少按住 0.5 秒。", true); return; }
+                setVoiceBlob(encodeWav(decoded), Math.min(decoded.duration, 30));
               } finally {
                 await context.close().catch(() => {});
               }
-            } catch { toast("录音处理失败，请重试。"); setVoiceBlob(null); }
+            } catch { setRecordStatus("录音处理失败，请重录。", true); }
+            finally {
+              state.mediaRecorder = null;
+              state.voiceBusy = false;
+              $("recordButton").removeAttribute("aria-disabled");
+              $("recordLabel").textContent = "按住说话";
+            }
           };
-          state.mediaRecorder.start();
-          $("recordButton").setAttribute("aria-pressed", "true");
-          $("recordButton").classList.add("recording"); $("recordButton").textContent = "正在录音，松开结束";
-          $("recordStatus").textContent = "正在录音，最长 30 秒";
-          recordingTimer = setTimeout(() => { if (state.mediaRecorder === recorder) void finishRecording(); }, 30_000);
-        } catch {
+          recorder.start();
+          recordingRequested = false;
+          const startedAt = performance.now(), clock = $("recordClock");
+          const updateClock = () => clock.textContent = `00:${String(Math.min(30, Math.floor((performance.now() - startedAt) / 1000))).padStart(2, "0")}`;
+          clock.hidden = false;
+          updateClock();
+          recordingClock = setInterval(updateClock, 250);
+          const button = $("recordButton");
+          button.setAttribute("aria-pressed", "true");
+          button.classList.add("recording");
+          $("recordLabel").textContent = toggle ? "停止录音" : "松开结束";
+          setRecordStatus("正在录音。");
+          recordingTimer = setTimeout(finishRecording, 30_000);
+        } catch (error) {
           if (request !== recordingRequest) return;
-          void finishRecording();
+          finishRecording();
           state.mediaRecorder = null;
-          toast("无法使用麦克风，请允许浏览器访问麦克风后重试。");
+          state.voiceBusy = false;
+          setRecordStatus(error.name === "NotAllowedError" ? "请允许访问麦克风后重试。" : "无法使用麦克风，请检查设备连接后重试。", true);
         }
       }
 
       function updateLevelPresentation(resetDuration = false) {
         const level = selectedAlertLevel();
         const meta = levelMeta[level] || levelMeta.info;
-        state.selectedLevel = level;
-        document.querySelectorAll(".level-option").forEach(node => node.classList.toggle("selected", node.querySelector("input")?.value === level));
+        $("noticeSpeedField").hidden = isVoiceMode() || !meta.sound;
         if (resetDuration || !state.durationManuallySet) $("displayDuration").value = String(meta.duration);
-        const confirmSend = $("confirmSend");
-        confirmSend.classList.toggle("is-warning", level === "warning");
-        confirmSend.classList.toggle("is-urgent", level === "urgent");
       }
 
       async function api(path, options = {}) {
@@ -793,10 +909,18 @@
           if (path === "/api/session") state.preview = response.headers.get("X-ICeClass-Preview") === "1";
           const type = response.headers.get("Content-Type") || "";
           const data = type.includes("application/json") ? await response.json() : await response.text();
-          if (response.status === 401 && !["/api/session", "/api/auth/login", "/api/auth/logout"].includes(path)) {
-            if (nativeClassroom) window.chrome.webview.postMessage({type: "banban-voice", kind: "logout"});
-            location.reload();
-            throw new Error(nativeClassroom ? "班级关联已变化，正在重新连接。" : "登录已过期，请重新登录。");
+          if (response.status === 401 && !["/api/session", "/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/student/login"].includes(path)) {
+            if (nativeClassroom) {
+              window.chrome.webview.postMessage({type: "banban-voice", kind: "logout"});
+              location.reload();
+            } else if (state.user && !sessionEnding && !state.sessionExpired) {
+              state.sessionExpired = true;
+              $("sessionExpired").hidden = false;
+              window.dispatchEvent(new Event("iceclass-session-expired"));
+            }
+            const error = new Error(nativeClassroom ? "班级关联已变化，正在重新连接。" : "登录已过期，请重新登录。");
+            error.status = response.status;
+            throw error;
           }
           if (!response.ok) {
             const error = new Error(data?.error || `请求失败 (${response.status})`);
@@ -814,7 +938,7 @@
       function loadIslandEditor() {
         if (!islandEditor) islandEditor = new Promise((resolve, reject) => {
           const script = document.createElement("script");
-          script.src = "/island-admin.js?v=34";
+          script.src = "/island-admin.js?v=35";
           script.nonce = scriptNonce;
           script.onload = () => resolve();
           script.onerror = () => {
@@ -827,6 +951,27 @@
       }
 
       async function start() {
+        const url = new URL(location.href);
+        if (!nativeClassroom && url.searchParams.get("login") === "student") {
+          setLoginRole("student");
+          showAuth(false);
+          const notices = {
+            "password-changed": "密码已修改，请用新密码重新登录。",
+            "signed-out": "已退出学生账号。",
+            expired: "学生登录已失效，请重新登录。"
+          };
+          const reason = url.searchParams.get("notice");
+          if (Object.hasOwn(notices, reason)) {
+            $("loginNotice").textContent = notices[reason];
+            $("loginNotice").hidden = false;
+            $("loginNotice").focus({preventScroll: true});
+          }
+          if (url.searchParams.has("notice")) {
+            url.searchParams.delete("notice");
+            history.replaceState(history.state, "", url);
+          }
+          return;
+        }
         try {
           const session = await api("/api/session");
           if (session.authenticated && session.user) await enterApp(session.user);
@@ -876,6 +1021,37 @@
         $(needsBootstrap ? "bootstrapForm" : "loginForm").classList.remove("hidden");
       }
 
+      function clearLoginPassword() {
+        const password = $("loginPassword");
+        password.value = "";
+        password.removeAttribute("aria-invalid");
+        if (password.type === "text") $("loginPasswordToggle").click();
+      }
+
+      function setLoginRole(role) {
+        const student = role === "student";
+        loginRole = role;
+        $(student ? "loginRoleStudent" : "loginRoleTeacher").checked = true;
+        $("loginIntro").textContent = student ? "使用纸卡上的编号和六位密码，进入我的课堂。" : "使用学校账号，进入教师工作台。";
+        $("loginUsernameLabel").textContent = student ? "学生编号" : "用户名";
+        $("loginSubmit").textContent = student ? "进入我的课堂" : "进入工作台";
+        $("loginError").textContent = "";
+        $("loginNotice").hidden = true;
+        $("loginHelp").hidden = !student;
+        const username = $("loginUsername"), password = $("loginPassword");
+        username.value = "";
+        clearLoginPassword();
+        username.maxLength = student ? 8 : 64;
+        password.maxLength = student ? 6 : 128;
+        for (const [input, digits, hint] of [[username, "7,8", "请输入 7-8 位数字编号。"], [password, "6", "请输入六位数字密码。"]]) {
+          if (student) {
+            input.inputMode = "numeric";
+            input.pattern = `[0-9]{${digits}}`;
+            input.title = hint;
+          } else for (const name of ["inputmode", "pattern", "title"]) input.removeAttribute(name);
+        }
+      }
+
       async function enterApp(user) {
         state.user = user;
         state.csrf = user.csrfToken;
@@ -889,6 +1065,7 @@
         document.querySelectorAll("[data-ideas-admin]").forEach(node => node.classList.toggle("hidden", !canReviewIdeas()));
         document.querySelector('[data-view="classroom-voice"]').classList.toggle('hidden', !user.permissions.receiveClassroomVoice);
         document.querySelector('[data-view="homework"]').classList.toggle('hidden', nativeClassroom);
+        document.querySelector('[data-view="card-quiz"]').classList.toggle('hidden', nativeClassroom);
         document.querySelector('[data-view="self-study"]').classList.toggle('hidden', user.role === 'subject_teacher' || nativeClassroom);
         $("previewNotice").classList.toggle("hidden", !state.preview);
         configureStaffOptions();
@@ -913,8 +1090,16 @@
 
       async function loadClasses() {
         const data = await api("/api/classes");
+        const filters = [$("targetClass"), $("historyClass"), $("classroomVoiceClass")];
+        const before = filters.map(select => select.value);
         state.classes = data.classes;
         fillClassSelects();
+        if (before[0] !== filters[0].value) {
+          cancelNoticePreparation();
+          if (state.presenceTimer) { void updatePresence(); void loadRecent(); }
+        }
+        if (before[1] && before[1] !== filters[1].value) void loadHistory();
+        if (before[2] && before[2] !== filters[2].value) void loadClassroomVoice();
         renderClasses();
       }
 
@@ -923,6 +1108,9 @@
         const target = $("targetClass");
         const previousTarget = target.value; target.replaceChildren();
         for (const item of active) target.append(new Option(item.name, item.id));
+        if (!active.length) target.append(new Option("暂无可用班级", ""));
+        target.disabled = !active.length;
+        $("sendButton").disabled = !active.length;
         if ([...target.options].some(option => option.value === previousTarget)) target.value = previousTarget;
         const requestedClass = new URLSearchParams(location.search).get("class") || "";
         const requested = active.find(item => item.id === requestedClass || item.name === requestedClass);
@@ -943,119 +1131,221 @@
         renderClassChecks("newTeachingClasses", []);
       }
 
+      function listFeedback(id, message = "") {
+        const node = $(id);
+        node.textContent = message;
+        node.hidden = !message;
+      }
+
       async function loadHistory(append = false) {
-        const classId = $("historyClass")?.value || "";
-        if (append && (historyLoading || historyClassLoaded !== classId)) return;
+        const classId = $("historyClass").value;
+        if (sessionEnding || historyLoading === classId || (append && historyClassLoaded !== classId)) return;
         const request = ++historyRequest;
         const offset = append ? state.historyOffset : 0;
-        historyLoading = true; $("historyContainer").setAttribute("aria-busy", "true");
-        $("refreshHistory").disabled = true; $("historyFeedback").hidden = true;
-        const more = $("historyContainer").querySelector('.load-more');
-        if (more) { more.disabled = true; if (append) more.textContent = "正在加载…"; }
+        const container = $("historyContainer"), refresh = $("refreshHistory");
+        historyLoading = classId;
+        container.setAttribute("aria-busy", "true");
+        refresh.setAttribute("aria-disabled", "true");
+        listFeedback("historyFeedback", historyClassLoaded === classId ? "" : "正在载入通知记录…");
+        if (historyClassLoaded !== classId) {
+          historyClassLoaded = null; state.history = []; state.historyOffset = 0; state.historyHasMore = false;
+          window.ICeClassUI.preserveFocus(container, () => container.replaceChildren(), () => $("historyClass"));
+        }
+        const more = container.querySelector('.load-more');
+        if (more) { more.setAttribute("aria-disabled", "true"); if (append) more.textContent = "正在加载…"; }
+        const current = () => request === historyRequest && classId === $("historyClass").value && !sessionEnding;
         try {
-          const data = await api(`/api/history?limit=100&offset=${offset}${classId ? `&classId=${encodeURIComponent(classId)}` : ""}`);
-          if (request !== historyRequest) return;
+          const data = await api("/api/history?limit=100&offset=" + offset + (classId ? "&classId=" + encodeURIComponent(classId) : ""));
+          if (!current()) return;
           historyClassLoaded = classId;
           state.history = append ? [...state.history, ...data.history] : data.history;
           state.historyOffset = offset + data.history.length;
           state.historyHasMore = Boolean(data.hasMore);
+          listFeedback("historyFeedback");
           renderHistory();
         } catch (error) {
-          if (request !== historyRequest) return;
-          $("historyFeedback").textContent = "刷新失败，当前为上次读取的记录。请重试。";
-          $("historyFeedback").hidden = false; throw error;
+          if (!current()) return;
+          listFeedback("historyFeedback", (append ? "未能加载更多记录。" : "通知记录载入失败。") + (historyClassLoaded === classId ? "已保留上次读取的结果。" : "") + " " + error.message);
+          if (!append) refresh.querySelector("span").textContent = "重试";
         } finally {
           if (request === historyRequest) {
-            historyLoading = false; $("historyContainer").setAttribute("aria-busy", "false"); $("refreshHistory").disabled = false;
-            const next = $("historyContainer").querySelector('.load-more');
-            if (next) { next.disabled = historyClassLoaded !== ($("historyClass")?.value || ""); next.textContent = "加载更多"; }
+            historyLoading = null; container.setAttribute("aria-busy", "false"); refresh.removeAttribute("aria-disabled");
+            if ($("historyFeedback").hidden) refresh.querySelector("span").textContent = "刷新";
+            const next = container.querySelector('.load-more');
+            if (next) { next.removeAttribute("aria-disabled"); next.textContent = "加载更多"; }
           }
         }
       }
 
-      async function loadRecent() {
+      function hideRecentFeedback() {
+        if (document.activeElement === $("retryRecent")) $("recentList").focus({preventScroll: true});
+        $("recentFeedback").hidden = true;
+      }
+
+      async function loadRecent({refresh = false} = {}) {
+        const classId = $("targetClass").value;
+        if (sessionEnding || (!refresh && recentLoading === classId)) return;
         const request = ++recentRequest;
-        const classId = $("targetClass")?.value || "";
-        if (!classId) { state.recent = []; renderRecent(); return; }
-        const data = await api(`/api/history?classId=${encodeURIComponent(classId)}&limit=5`);
-        if (request !== recentRequest) return;
-        state.recent = data.history;
-        renderRecent();
+        recentLoading = classId;
+        const wrapper = $("recentFeedback"), retry = $("retryRecent"), status = $("recentStatus");
+        const list = $("recentList");
+        const retrying = document.activeElement === retry;
+        if (retrying) status.textContent = "正在读取最近通知…";
+        else hideRecentFeedback();
+        retry.setAttribute("aria-disabled", "true");
+        list.setAttribute("aria-busy", "true");
+        if (recentClassLoaded !== classId || !classId) {
+          state.recent = [];
+          list.replaceChildren(el("p", "notice-empty", classId && !retrying ? "正在读取最近通知…" : "选择班级后查看最近通知。"));
+          if (retrying && classId) list.replaceChildren();
+          recentClassLoaded = null;
+        }
+        const current = () => request === recentRequest && classId === $("targetClass").value && !sessionEnding;
+        try {
+          if (!classId) { hideRecentFeedback(); return; }
+          const data = await api("/api/history?classId=" + encodeURIComponent(classId) + "&limit=5");
+          if (!current()) return;
+          recentClassLoaded = classId;
+          state.recent = data.history;
+          renderRecent();
+          hideRecentFeedback();
+        } catch (error) {
+          if (!current()) return;
+          if (recentClassLoaded !== classId) list.replaceChildren();
+          status.textContent = "最近通知载入失败。" + (recentClassLoaded === classId ? "已保留上次读取的结果。" : "") + " " + error.message;
+          wrapper.hidden = false;
+        } finally {
+          if (request === recentRequest) {
+            recentLoading = null;
+            list.setAttribute("aria-busy", "false");
+            retry.removeAttribute("aria-disabled");
+          }
+        }
       }
 
       function classroomVoiceInUse() {
-        return [...$('classroomVoiceContainer').querySelectorAll('audio')].some(audio => !audio.paused)
-          || $('classroomVoiceContainer').contains(document.activeElement);
+        const list = $("classroomVoiceContainer");
+        return [...list.querySelectorAll('audio')].some(audio => !audio.paused) || list.querySelector('[data-voice-playing][aria-busy="true"]') || list.contains(document.activeElement);
       }
 
       async function loadClassroomVoice({background = false} = {}) {
-        if (!state.user.permissions.receiveClassroomVoice) { state.classroomVoice = []; renderClassroomVoice(); return; }
+        if (sessionEnding || !state.user?.permissions.receiveClassroomVoice) return;
+        const classId = $("classroomVoiceClass").value;
+        if (voiceLoading === classId || (background && (voiceLoading !== null || classroomVoiceInUse()))) return;
         const request = ++voiceRequest;
-        const classId = $("classroomVoiceClass")?.value || "";
-        const data = await api(`/api/classroom-voice${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`);
-        if (request !== voiceRequest) return;
-        if (background && classroomVoiceInUse()) return;
-        if (JSON.stringify(state.classroomVoice) === JSON.stringify(data.messages || []) && $('classroomVoiceContainer').childElementCount) return;
-        state.classroomVoice = data.messages || [];
-        renderClassroomVoice();
+        const container = $("classroomVoiceContainer"), refresh = $("refreshClassroomVoice");
+        voiceLoading = classId;
+        container.setAttribute("aria-busy", "true");
+        refresh.setAttribute("aria-disabled", "true");
+        if (voiceClassLoaded !== classId) {
+          voiceClassLoaded = null; state.classroomVoice = [];
+          window.ICeClassUI.preserveFocus(container, () => {
+            container.querySelectorAll('audio').forEach(releaseClassroomVoiceAudio);
+            container.replaceChildren();
+          }, () => $("classroomVoiceClass"));
+        }
+        if (!background) listFeedback("voiceFeedback", voiceClassLoaded === classId ? "" : "正在载入语音留言…");
+        const current = () => request === voiceRequest && classId === $("classroomVoiceClass").value && !sessionEnding;
+        try {
+          const data = await api("/api/classroom-voice" + (classId ? "?classId=" + encodeURIComponent(classId) : ""));
+          if (!current() || (background && (!viewVisible('classroom-voice') || classroomVoiceInUse()))) return;
+          const messages = data.messages || [];
+          const changed = voiceClassLoaded !== classId || JSON.stringify(state.classroomVoice) !== JSON.stringify(messages);
+          voiceClassLoaded = classId;
+          state.classroomVoice = messages;
+          listFeedback("voiceFeedback"); refresh.querySelector("span").textContent = "刷新";
+          if (changed || !container.childElementCount) renderClassroomVoice();
+        } catch (error) {
+          if (!current()) return;
+          listFeedback("voiceFeedback", "语音留言载入失败。" + (voiceClassLoaded === classId ? "已保留上次读取的结果。" : "") + " " + error.message);
+          refresh.querySelector("span").textContent = "重试";
+        } finally {
+          if (request === voiceRequest) {
+            voiceLoading = null; container.setAttribute("aria-busy", "false"); refresh.removeAttribute("aria-disabled");
+          }
+        }
       }
 
+      const pendingVoiceAudio = new WeakMap();
       function releaseClassroomVoiceAudio(audio) {
+        pendingVoiceAudio.get(audio)?.abort();
         audio.pause();
         const source = audio.getAttribute("src");
         if (source?.startsWith("blob:")) URL.revokeObjectURL(source);
         audio.removeAttribute("src"); audio.load();
       }
-      window.addEventListener("pagehide", () => $("classroomVoiceContainer").querySelectorAll("audio").forEach(releaseClassroomVoiceAudio));
+      const clearVoicePlayers = () => $("classroomVoiceContainer").querySelectorAll("audio").forEach(releaseClassroomVoiceAudio);
+      window.addEventListener("pagehide", clearVoicePlayers);
+      window.addEventListener("iceclass-logout", () => {
+        sessionEnding = true;
+        cancelNoticePreparation();
+        clearInterval(state.classroomVoiceTimer); clearInterval(state.presenceTimer); clearInterval(state.quietTimer);
+        clearTimeout(state.deliveryTimer); clearTimeout(classroomIdentityTimer);
+        finishRecording();
+        setVoiceBlob(null);
+        clearVoicePlayers();
+      });
 
       function renderClassroomVoice() {
         const container = $("classroomVoiceContainer");
-        if (!container) return;
+        window.ICeClassUI.preserveFocus(container, () => renderVoiceItems(container), () => $("refreshClassroomVoice"));
+      }
+
+      function renderVoiceItems(container) {
         container.querySelectorAll("audio").forEach(releaseClassroomVoiceAudio);
         container.replaceChildren();
-        if (!state.classroomVoice.length) return container.append(el("div", "empty", "暂无语音留言"));
+        if (!state.classroomVoice.length) return renderEmpty(container, "暂无语音留言", "mic");
         for (const item of state.classroomVoice) {
           const node = el("article", "classroom-voice-item");
-          const details = el("div");
+          const identity = el("div", "wb-voice-identity"), details = el("div");
           details.append(el("h3", "", item.class_name));
-          details.append(el("p", "", `教室语音 · ${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒 · ${formatTime(item.created_at)}`));
-          if (item.played_by_me) details.append(el("p", "hint", "您已播放，录音会按保留规则自动清理。"));
-          node.append(details);
+          details.append(el("p", "", `${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒 · ${formatTime(item.created_at)}`));
+          identity.append(window.ICeClassUI.iconNode("mic"), details);
+          node.append(identity);
           const player = el("div", "classroom-voice-player");
-          const play = el("button", "btn primary", "播放语音");
+          const play = el("button", "btn primary");
+          const playLabel = el("span", "", "播放语音");
+          play.append(window.ICeClassUI.iconNode("play"), playLabel);
           play.type = "button";
-          const status = el("span", "hint", "尚未播放");
+          play.dataset.voicePlaying = item.id;
+          const status = el("span", "hint", item.played_by_me ? "已播放" : "尚未播放");
+          status.setAttribute("role", "status");
           const audio = document.createElement("audio");
           audio.controls = true; audio.preload = "none"; audio.className = "hidden";
           play.addEventListener("click", async () => {
-            if (audio.src) {
-              try { status.textContent = "正在播放"; await audio.play(); return; } catch { releaseClassroomVoiceAudio(audio); }
-            }
-            play.disabled = true;
-            play.textContent = "正在加载…";
+            if (pendingVoiceAudio.has(audio) || sessionEnding) return;
+            const controller = new AbortController();
+            pendingVoiceAudio.set(audio, controller);
+            play.setAttribute("aria-busy", "true"); play.setAttribute("aria-disabled", "true");
+            playLabel.textContent = "正在加载…";
             status.textContent = "正在加载语音…";
             try {
-              const response = await fetch(item.audio_url, { credentials: "same-origin", cache: "no-store" });
-              if (!response.ok) throw new Error(`HTTP ${response.status}`);
-              const blob = await response.blob();
-              if (!node.isConnected) return;
-              audio.src = URL.createObjectURL(blob);
-              audio.classList.remove("hidden");
+              if (!audio.hasAttribute("src")) {
+                const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]);
+                const response = await fetch(item.audio_url, {credentials:"same-origin", cache:"no-store", signal});
+                if (!response.ok) throw new Error(response.status === 404 || response.status === 410 ? "录音已不可用，请刷新列表。" : "语音载入失败，请重试。");
+                const blob = await response.blob();
+                if (!node.isConnected || controller.signal.aborted) return;
+                audio.src = URL.createObjectURL(blob);
+                audio.classList.remove("hidden");
+              } else audio.currentTime = 0;
               await audio.play();
-              play.textContent = "重新播放";
+              playLabel.textContent = "重新播放";
               status.textContent = "正在播放";
             } catch (error) {
+              const cancelled = controller.signal.aborted;
               releaseClassroomVoiceAudio(audio); audio.classList.add("hidden");
-              if (!node.isConnected) return;
-              toast("语音暂时无法播放，可能已清理或登录已过期。请刷新后重试。");
-              play.textContent = "播放语音";
-              status.textContent = "播放失败：语音已清理或登录已过期";
-            } finally { play.disabled = false; }
+              playLabel.textContent = "播放语音";
+              status.textContent = cancelled ? "尚未播放" : (error.name === "TimeoutError" ? "语音载入超时，请重试。" : error.message || "播放失败，请重试。");
+            } finally {
+              pendingVoiceAudio.delete(audio);
+              play.removeAttribute("aria-busy"); play.removeAttribute("aria-disabled");
+            }
           });
-          audio.addEventListener("ended", () => { play.textContent = "重新播放"; status.textContent = "播放完成"; });
+          audio.addEventListener("ended", () => { playLabel.textContent = "重新播放"; status.textContent = "播放完成"; });
           const actions = el("div", "classroom-voice-actions");
           const deleteButton = actionButton("删除留言", () => deleteClassroomVoice(item));
-          deleteButton.classList.add("danger");
+          deleteButton.classList.add("danger"); deleteButton.dataset.voiceDelete = item.id;
           actions.append(play, deleteButton);
           player.append(actions, status, audio);
           node.append(player);
@@ -1064,7 +1354,7 @@
       }
 
       async function deleteClassroomVoice(item) {
-        if (!confirm(`确定删除 ${item.class_name} 的这条学生语音留言吗？删除后无法恢复。`)) return;
+        if (!await window.ICeClassUI.ask({title:'删除语音留言？', message:`将删除 ${item.class_name} 的这条学生语音留言。删除后无法恢复。`, acceptLabel:'删除留言', danger:true})) return;
         try {
           await api(`/api/classroom-voice/${encodeURIComponent(item.id)}`, { method: "DELETE" });
           state.classroomVoice = state.classroomVoice.filter(message => message.id !== item.id);
@@ -1138,10 +1428,8 @@
         const status = $("quietCurrentStatus");
         const active = schedule.activePeriod;
         status.classList.toggle("active", Boolean(active));
-        status.replaceChildren(
-          el("strong", "", active ? "当前处于禁言时间" : "当前不在禁言时间"),
-          el("span", "", active ? `${active.name} ${active.startTime}-${active.endTime} · 北京时间` : "北京时间"),
-        );
+        status.querySelector("strong").textContent = active ? "当前处于禁言时间" : "当前不在禁言时间";
+        status.querySelector("span").textContent = active ? `${active.name} ${active.startTime}-${active.endTime} · 北京时间` : "北京时间";
       }
 
       function renderQuietEditor() {
@@ -1149,7 +1437,7 @@
         const list = $("quietScheduleList");
         list.replaceChildren();
         if (!schedule.periods?.length && !isSchoolAdmin()) {
-          list.append(el("div", "empty", "尚未设置禁言时间"));
+          renderEmpty(list, "尚未设置禁言时间", "clock");
           return;
         }
         for (const period of schedule.periods || []) list.append(createScheduleItem(period));
@@ -1185,8 +1473,13 @@
 
       function renderHistory() {
         const container = $("historyContainer");
-        if (!state.history.length) return renderEmpty(container, "还没有通知记录");
+        window.ICeClassUI.preserveFocus(container, () => renderHistoryItems(container), () => container.querySelector(".table-wrap") || container);
+      }
+
+      function renderHistoryItems(container) {
+        if (!state.history.length) return renderEmpty(container, "还没有通知记录", "inbox");
         const table = createTable(["时间", "班级", "发送教师", "通知级别", "类型", "内容", "结果", "操作"]);
+        table.classList.add("notice-history-table");
         for (const item of state.history) {
           const row = table.tBodies[0].insertRow();
           addCell(row, formatTime(item.created_at));
@@ -1203,42 +1496,50 @@
           if (item.status_detail) cell.append(el("div", "hint", item.status_detail));
           const actions = row.insertCell();
           const deleteButton = actionButton("删除", () => deleteHistoryItem(item));
-          deleteButton.classList.add("danger");
+          deleteButton.classList.add("danger"); deleteButton.dataset.historyDelete = item.id;
           actions.append(deleteButton);
         }
         const content = document.createDocumentFragment();
         content.append(wrapTable(table, '通知记录，可左右滚动'));
         if (state.historyHasMore) {
-          const more = actionButton("加载更多", () => loadHistory(true).catch(error => toast(error.message)));
-          more.disabled = historyLoading || historyClassLoaded !== ($("historyClass")?.value || "");
+          const more = actionButton("加载更多", () => void loadHistory(true));
+          more.dataset.historyMore = "";
           more.classList.add("block", "load-more"); content.append(more);
         }
         container.replaceChildren(content);
       }
 
       async function deleteHistoryItem(item) {
-        if (!confirm(`确定删除 ${item.class_name} 的这条通知记录吗？删除后无法恢复。`)) return;
+        if (!await window.ICeClassUI.ask({title:'删除通知记录？', message:`将删除 ${item.class_name} 的这条通知记录。删除后无法恢复。`, acceptLabel:'删除记录', danger:true})) return;
         try {
           await api(`/api/history/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+          if (state.history.some(message => message.id === item.id)) state.historyOffset = Math.max(0, state.historyOffset - 1);
           state.history = state.history.filter(message => message.id !== item.id);
           renderHistory();
+          if (item.class_id === $("targetClass").value) void loadRecent({refresh: true});
           toast("通知记录已删除");
         } catch (error) { toast(error.message); }
       }
 
       function renderRecent() {
         const list = $("recentList");
-        list.replaceChildren();
-        if (!state.recent.length) return list.append(el("p", "muted", "暂无记录"));
+        if (!state.recent.length) return list.replaceChildren(el("p", "notice-empty", "本班暂无通知记录。"));
+        const items = el("ol", "notice-items");
         for (const item of state.recent) {
-          const node = el("article", "recent-item");
-          const meta = el("div", "meta-row");
-          meta.append(el("span", "", item.class_name), el("span", "", formatTime(item.created_at, true)));
-          node.append(meta, levelBadge(item.alert_level));
-          if (Number(item.quiet_override) === 1) node.append(el("div", "hint", "禁言时间内确认发送"));
-          node.append(el("p", "", item.content_type === "audio" ? `语音通知（${((item.audio_duration_ms || 0) / 1000).toFixed(1)} 秒）` : item.text), statusBadge(deliveryStatus(item)));
-          list.append(node);
+          const node = el("li", "recent-item");
+          const time = el("time", "", formatTime(item.created_at, true));
+          if (item.created_at) {
+            time.dateTime = new Date(Number(item.created_at)).toISOString();
+            time.title = formatTime(item.created_at);
+          }
+          node.append(el("p", "notice-item-content", item.content_type === "audio" ? `语音通知（${formatVoiceDuration(item.audio_duration_ms / 1000)} 秒）` : item.text), time);
+          const badges = el("div", "notice-badges");
+          badges.append(levelBadge(item.alert_level), statusBadge(deliveryStatus(item)));
+          node.append(badges);
+          if (Number(item.quiet_override) === 1) node.append(el("p", "notice-item-quiet", "禁言时间内确认发送"));
+          items.append(node);
         }
+        list.replaceChildren(el("p", "hint notice-recent-class", state.recent[0].class_name), items);
       }
 
       function renderClasses() {
@@ -1246,7 +1547,7 @@
         if (!container || !isManager()) return;
         const visible = state.classes.filter(item => state.classGradeFilter === "all" || classGrade(item.name) === state.classGradeFilter);
         document.querySelectorAll("#classGradeFilter [data-grade-filter]").forEach(button => button.classList.toggle("active", button.dataset.gradeFilter === state.classGradeFilter));
-        if (!visible.length) return renderEmpty(container, state.classes.length ? "当前年级还没有班级" : "尚未创建班级");
+        if (!visible.length) return renderEmpty(container, state.classes.length ? "当前年级还没有班级" : "尚未创建班级", "grid");
         const table = createTable(["班级", "状态", "教师数", "设备最近连接", "操作"]);
         table.classList.add('classes-table');
         let previousGrade = "";
@@ -1287,112 +1588,212 @@
       }
 
       async function updatePresence() {
+        if (sessionEnding) return;
         const request = ++presenceRequest;
-        const classId = $("targetClass")?.value;
+        const classId = $("targetClass").value;
         const presence = $("presence");
+        const setPresence = (status, label) => {
+          if (presence.dataset.state === status) return;
+          presence.dataset.state = status;
+          const badge = statusBadge(status === "online" ? "enabled" : status, label);
+          badge.id = "presenceLabel";
+          presence.replaceChildren(badge);
+        };
+        if (classId && presence.dataset.classId !== classId) setPresence("checking", "正在检查…");
+        presence.dataset.classId = classId;
         if (!classId) {
-          presence.querySelector("span:last-child").textContent = "无可用班级";
-          presence.querySelector(".dot").classList.remove("online");
-          $("sendButton").disabled = true;
+          setPresence("unavailable", "无可用班级");
           return;
         }
+        const current = () => request === presenceRequest && classId === $("targetClass").value && !sessionEnding;
         try {
           const result = await api(`/api/classes/${encodeURIComponent(classId)}/status`);
-          if (request !== presenceRequest) return;
-          presence.querySelector("span:last-child").textContent = result.online ? "教室在线" : "教室离线";
-          presence.querySelector(".dot").classList.toggle("online", result.online);
-          $("sendButton").disabled = false;
+          if (current()) setPresence(result.online ? "online" : "offline", result.online ? "教室在线" : "教室离线");
         } catch {
-          if (request !== presenceRequest) return;
-          presence.querySelector("span:last-child").textContent = "状态未知";
-          presence.querySelector(".dot").classList.remove("online");
+          if (current()) setPresence("unknown", "状态未知");
+        }
+      }
+
+      async function prepareNotice(event) {
+        event.preventDefault();
+        const target = $("targetClass"), dialog = $("confirmDialog"), text = $("shoutText");
+        if (!target.value || noticePreparing || noticeSending || dialog.open || sessionEnding) return;
+        const errorNode = $("noticeComposeError");
+        errorNode.textContent = "";
+        const voice = isVoiceMode(), alertLevel = selectedAlertLevel();
+        const meta = levelMeta[alertLevel];
+        if (voice && !state.voiceBlob) {
+          errorNode.textContent = state.voiceBusy ? "请先结束录音，试听后再发送。" : "请先录制一段语音。";
+          $("recordButton").focus();
+          return;
+        }
+        if (voice && !meta.sound) {
+          errorNode.textContent = "语音通知请选择“重要”或“紧急”。";
+          return;
+        }
+        if (!voice && !text.value.trim()) {
+          errorNode.textContent = "请输入通知内容。";
+          text.setAttribute("aria-invalid", "true");
+          text.focus();
+          return;
+        }
+        const notice = {
+          values: {classId: target.value, alertLevel, displayDurationSec: Number($("displayDuration").value),
+            ttsSpeed: !voice && meta.sound ? Number($("ttsSpeed").value) : 0, ttsVolume: 1},
+          className: target.selectedOptions[0].textContent,
+          text: voice ? "" : text.value,
+          audio: voice ? state.voiceBlob : null,
+          audioDuration: state.voiceDurationSec,
+          quietPeriod: null,
+        };
+        pendingNotice = notice;
+        noticePreparing = true;
+        updateNoticeSendControl();
+        const current = () => pendingNotice === notice && !sessionEnding && target.value === notice.values.classId && viewVisible("console");
+        try {
+          const schedule = await loadQuietHours({refreshEditor: false});
+          if (!current() || document.querySelector("dialog[open]")) return;
+          notice.quietPeriod = schedule.activePeriod;
+          showSendConfirmation(notice);
+        } catch (error) {
+          if (current()) errorNode.textContent = `无法读取禁言时间：${error.message}`;
+        } finally {
+          if (pendingNotice === notice) {
+            noticePreparing = false;
+            if (!dialog.open) pendingNotice = null;
+            updateNoticeSendControl();
+          }
         }
       }
 
       async function performSend() {
-        const button = $("confirmSend");
-        button.disabled = true;
+        const dialog = $("confirmDialog"), button = $("confirmSend"), notice = pendingNotice;
+        if (!dialog.open || !notice || noticeSending || sessionEnding) return;
+        noticeSending = true;
+        updateNoticeSendControl();
+        button.setAttribute("aria-disabled", "true");
+        button.textContent = "正在发送…";
+        $("confirmSendError").textContent = "";
+        const confirming = () => dialog.open && pendingNotice === notice;
         try {
-          const values = {
-            classId: $("targetClass").value, alertLevel: selectedAlertLevel(),
-            ttsSpeed: Number($("ttsSpeed").value), displayDurationSec: Number($("displayDuration").value), ttsVolume: 1,
-            quietAcknowledged: Boolean(state.pendingQuietPeriod),
-          };
+          const values = {...notice.values, quietAcknowledged: Boolean(notice.quietPeriod)};
           let requestBody;
-          if (isVoiceMode()) {
-            if (!state.voiceBlob) throw new Error("请先录制一段语音。");
+          if (notice.audio) {
             const form = new FormData();
             Object.entries(values).forEach(([key, value]) => form.append(key, String(value)));
-            form.append("audio", state.voiceBlob, "voice.wav");
+            form.append("audio", notice.audio, "voice.wav");
             requestBody = form;
-          } else requestBody = JSON.stringify({ ...values, text: $("shoutText").value });
+          } else requestBody = JSON.stringify({...values, text: notice.text.trim()});
           const result = await api("/api/shouts", { method: "POST", body: requestBody });
-          $("confirmDialog").close();
-          state.pendingQuietPeriod = null;
+          if (sessionEnding) return;
+          const wasConfirming = confirming();
+          if (wasConfirming) dialog.close();
+          clearTimeout(state.deliveryTimer);
           state.selectedShoutId = result.id;
-          state.selectedShoutClassId = $("targetClass").value;
-          state.selectedShoutLevel = selectedAlertLevel();
-          setDelivery(result.status, result.detail || "消息已经进入教室实时通道。", result.status === "sent" ? "等待教室确认" : statusLabels[result.status]);
-          if (navigator.vibrate) navigator.vibrate(60);
-          $("shoutText").value = "";
-          $("charCount").textContent = "0";
-          if (isVoiceMode()) setVoiceBlob(null);
-          state.durationManuallySet = false;
-          updateLevelPresentation(true);
-          await Promise.all([loadHistory(), loadRecent()]);
-          if (result.status === "sent") pollDelivery(0);
+          state.selectedShoutClassId = values.classId;
+          const sameDraft = notice.audio ? state.voiceBlob === notice.audio : $("shoutText").value === notice.text;
+          setDelivery(result.status, result.detail, result.status === "offline" && sameDraft);
+          if (result.status === "sent") {
+            if (sameDraft && notice.audio) setVoiceBlob(null);
+            if (sameDraft && !notice.audio) {
+              $("shoutText").value = "";
+              $("charCount").textContent = "0";
+            }
+            if (wasConfirming) {
+              state.durationManuallySet = false;
+              updateLevelPresentation(true);
+            }
+          }
+          void loadHistory();
+          const recent = values.classId === $("targetClass").value ? loadRecent({refresh: true}) : Promise.resolve();
+          if (result.status === "sent") void recent.then(() => {
+            if (result.id === state.selectedShoutId) void pollDelivery(0);
+          });
         } catch (error) {
-          if (error.data?.code === "quiet_confirmation_required") {
-            state.pendingQuietPeriod = error.data.quietPeriod;
-            showSendConfirmation(error.data.quietPeriod);
-          } else toast(error.message);
-        } finally { button.disabled = false; }
+          if (sessionEnding) return;
+          const period = error.data?.code === "quiet_confirmation_required" && error.data.quietPeriod;
+          if (period && confirming()) {
+            notice.quietPeriod = period;
+            showSendConfirmation(notice);
+            $("cancelNoticeSend").focus();
+          } else {
+            const inDialog = confirming(), feedback = $(inDialog ? "confirmSendError" : "noticeComposeError");
+            feedback.textContent = error instanceof TypeError
+              ? "未能确认发送结果，请先查看通知记录。"
+              : error.message;
+            if (inDialog) feedback.focus();
+          }
+        } finally {
+          noticeSending = false;
+          button.removeAttribute("aria-disabled");
+          if (confirming()) button.textContent = noticeConfirmLabel(notice);
+          updateNoticeSendControl();
+        }
       }
 
-      function showSendConfirmation(quietPeriod) {
-        const option = $("targetClass").selectedOptions[0];
-        const level = selectedAlertLevel();
-        const meta = levelMeta[level] || levelMeta.info;
-        state.selectedLevel = level;
-        state.pendingQuietPeriod = quietPeriod || null;
-        $("confirmTarget").textContent = `目标班级：${option?.textContent || ""}`;
-        $("confirmLevel").textContent = `通知级别：${meta.label}`;
-        $("confirmMode").textContent = `展示方式：${meta.mode}，${$("displayDuration").value} 秒`;
-        $("confirmText").textContent = isVoiceMode() ? `教师原声（${formatVoiceDuration(state.voiceDurationSec)} 秒）` : $("shoutText").value.trim();
-        const warning = $("quietWarning");
-        warning.classList.toggle("hidden", !quietPeriod);
+      function noticeConfirmLabel(notice) {
+        return notice.quietPeriod ? "仍然发送" : "确认发送";
+      }
+
+      function showSendConfirmation(notice) {
+        const dialog = $("confirmDialog");
+        const {alertLevel, displayDurationSec} = notice.values, quietPeriod = notice.quietPeriod;
+        const meta = levelMeta[alertLevel];
+        const mode = notice.audio ? (alertLevel === "urgent" ? "教师原声并突出显示" : "播放教师原声") : meta.mode;
+        $("confirmTarget").textContent = notice.className;
+        $("confirmLevel").textContent = meta.label;
+        $("confirmMode").textContent = `${mode}，${displayDurationSec} 秒`;
+        $("confirmText").textContent = notice.audio ? `教师原声（${formatVoiceDuration(notice.audioDuration)} 秒）` : notice.text.trim();
+        $("quietWarning").classList.toggle("hidden", !quietPeriod);
         if (quietPeriod) {
-          $("quietWarningTitle").textContent = `当前处于禁言时间：${quietPeriod.name}`;
+          $("quietWarningTitle").textContent = `${quietPeriod.name} · ${quietPeriod.startTime}-${quietPeriod.endTime}`;
           $("quietWarningDetail").textContent = meta.sound
-            ? `${quietPeriod.startTime}-${quietPeriod.endTime}。发送后教室会显示通知并播放声音，是否仍然发送？`
-            : `${quietPeriod.startTime}-${quietPeriod.endTime}。发送后悬浮岛会静音展示通知，是否仍然发送？`;
+            ? "若教室在线，通知会在禁言时间内播放声音。"
+            : "若教室在线，通知会在禁言时间内静音展示。";
         }
-        $("confirmTitle").textContent = quietPeriod ? "当前处于禁言时间" : level === "urgent" ? "确认发送紧急通知" : "确认发送通知";
-        $("confirmSend").textContent = quietPeriod ? "仍然发送" : level === "urgent" ? "确认发送紧急通知" : "确认发送";
-        if (!$("confirmDialog").open) $("confirmDialog").showModal();
+        $("confirmTitle").textContent = quietPeriod ? "当前处于禁言时间" : alertLevel === "urgent" ? "确认发送紧急通知" : "确认发送通知";
+        $("confirmImpactText").textContent = meta.sound ? "此通知可能暂停正在展示的低等级通知。" : "此通知会排队静音展示。";
+        dialog.setAttribute("aria-describedby", quietPeriod ? "quietWarningTitle quietWarningDetail confirmImpact" : "confirmImpact");
+        $("confirmSend").textContent = noticeConfirmLabel(notice);
+        $("confirmSendError").textContent = "";
+        if (!dialog.open) dialog.showModal();
       }
 
       async function pollDelivery(attempt) {
         clearTimeout(state.deliveryTimer);
-        if (!state.selectedShoutId || attempt > 120) return;
+        const id = state.selectedShoutId, classId = state.selectedShoutClassId, recentAtStart = recentRequest;
+        if (!id || attempt > 120 || sessionEnding) return;
         try {
-          const data = await api(`/api/history?classId=${encodeURIComponent(state.selectedShoutClassId)}&limit=20`);
-          const item = data.history.find(row => row.id === state.selectedShoutId);
+          const data = await api("/api/history?classId=" + encodeURIComponent(classId) + "&limit=20");
+          if (sessionEnding || id !== state.selectedShoutId) return;
+          const item = data.history.find(row => row.id === id);
           if (item) {
             const result = deliveryStatus(item);
-            setDelivery(result, item.status_detail || "", statusLabels[result]);
-            state.recent = data.history.slice(0, 5);
-            renderRecent();
+            setDelivery(result, item.status_detail);
+            if (classId === $("targetClass").value && recentAtStart === recentRequest && recentLoading === null) {
+              recentClassLoaded = classId; state.recent = data.history.slice(0, 5);
+              renderRecent(); hideRecentFeedback();
+            }
             if (["acknowledged", "failed", "offline"].includes(result)) return;
           }
         } catch { /* Keep the current status and retry. */ }
-        state.deliveryTimer = setTimeout(() => pollDelivery(attempt + 1), 1000);
+        if (!sessionEnding && id === state.selectedShoutId) state.deliveryTimer = setTimeout(() => pollDelivery(attempt + 1), 1000);
       }
 
-      function setDelivery(status, detail, title) {
+      function setDelivery(status, detail, retainedDraft = false) {
         const node = $("deliveryState");
-        node.className = `delivery ${status || ""}`;
-        node.replaceChildren(levelBadge(state.selectedShoutLevel || state.selectedLevel), el("strong", "", title || statusLabels[status] || "状态更新"), el("p", "hint", detail || ""));
+        const message = detail || "";
+        const key = JSON.stringify([state.selectedShoutId, status, message, retainedDraft]);
+        if (node.dataset.delivery === key) return;
+        node.dataset.delivery = key;
+        const badge = statusBadge(status, status === "offline" ? "未送达 · 教室离线" : statusLabels[status] || "状态更新");
+        const details = [];
+        const target = state.classes.find(cls => cls.id === state.selectedShoutClassId);
+        if (target) details.push(el("p", "hint", target.name));
+        if (message) details.push(el("p", "hint", message));
+        if (retainedDraft) details.push(el("p", "hint", "草稿已保留，教室在线后可重新发送。"));
+        $("deliveryBadge").replaceChildren(badge);
+        $("deliveryDetail").replaceChildren(...details);
       }
 
       function configureStaffOptions() {
@@ -1504,18 +1905,82 @@
         } catch (error) { toast(error.message); }
       }
 
+      async function selectView(button) {
+        const view = button.dataset.view;
+        if (button.classList.contains("hidden") || view === "ideas" && !canReviewIdeas()) return false;
+        const active = $("mainNav").querySelector('[aria-current="page"]') || $("mainNav").querySelector('.active');
+        if (button === active) {
+          if (view === 'settings') window.ICeClassSettings?.activate();
+          window.dispatchEvent(new Event('iceclass-view-changed'));
+          return true;
+        }
+        const current = active?.dataset.view;
+        const editor = {reading:window.ICeClassReadingAdmin, homework:window.ICeClassHomeworkAdmin, island:window.ICeClassIslandAdmin,
+          'card-quiz':window.ICeClassCardQuiz, 'self-study':window.ICeClassSelfStudy, ideas:window.ICeClassIdeasAdmin}[current];
+        if (editor && !await editor.canLeave()) return false;
+        if (current === 'console') {
+          cancelNoticePreparation();
+          if ($("confirmDialog").open) $("confirmDialog").close();
+        }
+        if (view !== "ideas") window.ICeClassIdeasAdmin?.suspend();
+        if (view !== 'settings' && location.hash.startsWith('#settings/')) history.replaceState(null,'',location.pathname + location.search);
+        document.querySelectorAll(".nav button").forEach(node => node.classList.toggle("active", node === button));
+        document.querySelectorAll("main > .view").forEach(node => node.classList.add("hidden"));
+        $(`view-${view}`).classList.remove("hidden");
+        if (current === 'classroom-voice') $("classroomVoiceContainer").querySelectorAll("audio").forEach(audio => {
+          pendingVoiceAudio.get(audio)?.abort(); audio.pause();
+        });
+        if (view === 'console') { void updatePresence(); void loadRecent().catch(error => toast(error.message)); }
+        else { finishRecording(); $("voicePreview").pause(); }
+        if (view === 'history') void loadHistory().catch(error => toast(error.message));
+        if (view === 'classroom-voice') void loadClassroomVoice();
+        if (view === 'quiet') void loadQuietHours().catch(error => toast(error.message));
+        if (view === 'ideas') { prepareIdeasAdmin(); window.ICeClassIdeasAdmin?.load().catch(error => toast(error.message)); }
+        if (view === 'homework') window.ICeClassHomeworkAdmin?.load().catch(error => toast(error.message));
+        if (view === 'card-quiz') window.ICeClassCardQuiz?.load().catch(error => toast(error.message));
+        if (view === 'self-study') window.ICeClassSelfStudy?.load().catch(error => toast(error.message));
+        if (view === 'settings') window.ICeClassSettings?.activate();
+        if (view === 'island') void loadIslandEditor().catch(error => toast(error.message));
+        window.dispatchEvent(new Event('iceclass-view-changed'));
+        return true;
+      }
+
       function bindEvents() {
+        $("loginRoles").addEventListener("change", event => {
+          setLoginRole(event.target.value);
+          const url = new URL(location.href);
+          if (loginRole === "student") url.searchParams.set("login", "student");
+          else url.searchParams.delete("login");
+          history.replaceState(history.state, "", url);
+        });
+        $("loginForm").addEventListener("input", event => {
+          if (event.target === $("loginUsername") || event.target === $("loginPassword")) $("loginPassword").removeAttribute("aria-invalid");
+        });
         $("loginForm").addEventListener("submit", async event => {
-          event.preventDefault(); $("loginError").textContent = "";
-          const submit = $("loginSubmit");
+          event.preventDefault();
+          const submit = $("loginSubmit"), form = event.currentTarget, roles = $("loginRoles");
           if (submit.disabled) return;
-          submit.disabled = true; submit.textContent = "正在登录…";
-          $("loginForm").setAttribute("aria-busy", "true");
+          const student = loginRole === "student", errorNode = $("loginError"), label = submit.textContent;
+          const body = JSON.stringify({ username: $("loginUsername").value, password: $("loginPassword").value });
+          errorNode.textContent = "";
+          $("loginNotice").hidden = true;
+          if (student) clearLoginPassword();
+          roles.disabled = submit.disabled = true;
+          submit.textContent = "正在登录…";
+          form.setAttribute("aria-busy", "true");
           try {
-            const result = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ username: $("loginUsername").value, password: $("loginPassword").value }) });
-            await enterApp(result.user);
-          } catch (error) { $("loginError").textContent = error.message; $("loginError").focus(); }
-          finally { submit.disabled = false; submit.textContent = "进入工作台"; $("loginForm").removeAttribute("aria-busy"); }
+            const result = await api(student ? "/api/student/login" : "/api/auth/login", { method: "POST", body });
+            if (student) location.replace("/student");
+            else { clearLoginPassword(); await enterApp(result.user); }
+          } catch (error) {
+            errorNode.textContent = error instanceof TypeError ? "连接未完成，请检查网络后重试。" : error.message;
+            if (student && error.data?.code === "invalid_credentials") $("loginPassword").setAttribute("aria-invalid", "true");
+            errorNode.focus();
+          } finally {
+            roles.disabled = submit.disabled = false;
+            submit.textContent = label;
+            form.removeAttribute("aria-busy");
+          }
         });
         $("bootstrapForm").addEventListener("submit", async event => {
           event.preventDefault(); $("bootstrapError").textContent = "";
@@ -1528,62 +1993,25 @@
         $("logoutButton").addEventListener("click", async event => {
           const button = event.currentTarget;
           if (button.disabled) return;
-          if (window.ICeClassReadingAdmin?.canLeave(() => $("logoutButton").click()) === false) return;
-          if (window.ICeClassIdeasAdmin?.canLogout() === false) return;
-          if (window.ICeClassHomeworkAdmin?.canLeave(() => $("logoutButton").click()) === false) return;
-          if (window.ICeClassSelfStudy?.canLeave(() => $("logoutButton").click()) === false) return;
-          if (window.ICeClassAcknowledgements?.canLogout() === false) return;
-          if (window.ICeClassBanbanQuota?.canLogout() === false) return;
           button.disabled = true;
           button.setAttribute("aria-busy", "true");
-          try { await api("/api/auth/logout", { method: "POST" }); }
-          catch (error) {
-            let signedOut = false;
-            try { signedOut = (await api("/api/session", {cache: "no-store"})).authenticated === false; } catch {}
-            if (!signedOut) { toast("退出未完成，请重试：" + error.message); return; }
+          try {
+            if (!await window.ICeClassUI.confirmLeave('退出账号')) return;
+            try { await api("/api/auth/logout", {method: "POST"}); }
+            catch (error) {
+              let signedOut = false;
+              try { signedOut = (await api("/api/session", {cache: "no-store"})).authenticated === false; } catch {}
+              if (!signedOut) { toast("退出未完成，请重试：" + error.message); return; }
+            }
+            window.dispatchEvent(new Event("iceclass-logout"));
+            window.ICeClassUI.reloadConfirmed();
           } finally { button.disabled = false; button.removeAttribute("aria-busy"); }
-          window.ICeClassAcknowledgements?.discardChanges();
-          window.ICeClassBanbanQuota?.discardChanges();
-          window.ICeClassIdeasAdmin?.destroy();
-          window.ICeClassHomeworkAdmin?.destroy();
-          window.ICeClassSelfStudy?.destroy();
-          window.dispatchEvent(new Event("iceclass-logout"));
-          location.reload();
         });
         $("mainNav").addEventListener("click", event => {
-          const button = event.target.closest("button[data-view]"); if (!button) return;
-          if (button.classList.contains("hidden") || button.dataset.view === "ideas" && !canReviewIdeas()) return;
-          if (button.dataset.view === "homework" && viewVisible("homework")) return;
-          if (button.dataset.view === "self-study" && viewVisible("self-study")) return;
-          if (button.dataset.view !== "reading" && viewVisible("reading") && window.ICeClassReadingAdmin?.canLeave(() => button.click()) === false) {
-            event.stopImmediatePropagation(); return;
-          }
-          if (button.dataset.view !== "self-study" && viewVisible("self-study") && window.ICeClassSelfStudy?.canLeave(() => button.click()) === false) {
-            event.stopImmediatePropagation(); return;
-          }
-          if (button.dataset.view !== "homework" && viewVisible("homework") && window.ICeClassHomeworkAdmin?.canLeave(() => button.click()) === false) {
-            event.stopImmediatePropagation(); return;
-          }
-          if (button.dataset.view !== "ideas" && viewVisible("ideas") && window.ICeClassIdeasAdmin?.canLeave() === false) {
-            event.stopImmediatePropagation(); return;
-          }
-          if (button.dataset.view !== "ideas") window.ICeClassIdeasAdmin?.suspend();
-          if (button.dataset.view !== 'settings' && location.hash.startsWith('#settings/')) history.replaceState(null,'',location.pathname + location.search);
-          document.querySelectorAll(".nav button").forEach(node => node.classList.toggle("active", node === button));
-          document.querySelectorAll("main > .view").forEach(node => node.classList.add("hidden"));
-          $(`view-${button.dataset.view}`).classList.remove("hidden");
-          if (button.dataset.view === 'console') { void updatePresence(); void loadRecent().catch(error => toast(error.message)); }
-          else void finishRecording();
-          if (button.dataset.view === "history") loadHistory().catch(error => toast(error.message));
-          if (button.dataset.view === "classroom-voice") loadClassroomVoice().catch(error => toast(error.message));
-          if (button.dataset.view === "quiet") loadQuietHours().catch(error => toast(error.message));
-          if (button.dataset.view === "ideas") { prepareIdeasAdmin(); window.ICeClassIdeasAdmin?.load().catch(error => toast(error.message)); }
-          if (button.dataset.view === "homework") window.ICeClassHomeworkAdmin?.load().catch(error => toast(error.message));
-          if (button.dataset.view === "self-study") window.ICeClassSelfStudy?.load().catch(error => toast(error.message));
-          if (button.dataset.view === "settings") window.ICeClassSettings?.activate();
-          if (button.dataset.view === "island") void loadIslandEditor().catch(error => toast(error.message));
+          const button = event.target.closest("button[data-view]");
+          if (button) void selectView(button);
         });
-        $("targetClass").addEventListener("change", () => { updatePresence(); loadRecent().catch(error => toast(error.message)); });
+        $("targetClass").addEventListener("change", () => { void updatePresence(); void loadRecent(); });
         $("classGradeFilter").addEventListener("click", event => {
           const button = event.target.closest("[data-grade-filter]");
           if (!button) return;
@@ -1593,15 +2021,29 @@
         });
         $("textModeButton").addEventListener("click", () => setInputMode("text"));
         $("voiceModeButton").addEventListener("click", () => setInputMode("voice"));
-        document.querySelector('.mode-picker').addEventListener('keydown', event => {
+        $('noticeModeTabs').addEventListener('keydown', event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
           const voice = event.key === 'End' || !['Home', 'End'].includes(event.key) && !isVoiceMode();
           setInputMode(voice ? 'voice' : 'text');
           $(voice ? 'voiceModeButton' : 'textModeButton').focus({preventScroll: true});
         });
-        $("recordButton").addEventListener("pointerdown", event => { event.preventDefault(); startRecording(); });
-        ["pointerup", "pointercancel", "pointerleave"].forEach(name => $("recordButton").addEventListener(name, event => { event.preventDefault(); finishRecording(); }));
+        const recordButton = $("recordButton");
+        recordButton.addEventListener("pointerdown", event => {
+          if (event.button !== 0 || !event.isPrimary) return;
+          event.preventDefault();
+          recordButton.focus({preventScroll: true});
+          recordButton.setPointerCapture(event.pointerId);
+          void startRecording();
+        });
+        ["pointerup", "pointercancel", "lostpointercapture"].forEach(name => recordButton.addEventListener(name, event => {
+          if (event.isPrimary) finishRecording();
+        }));
+        // Assistive technology can activate the button without holding a key or pointer.
+        recordButton.addEventListener("click", event => {
+          if (event.detail !== 0) return;
+          if (state.voiceBusy) finishRecording(); else void startRecording(true);
+        });
         $('recordButton').addEventListener('keydown', event => {
           if (![' ', 'Enter'].includes(event.key)) return;
           event.preventDefault(); if (!event.repeat) void startRecording();
@@ -1613,52 +2055,61 @@
         $('recordButton').addEventListener('blur', () => { void finishRecording(); });
         window.addEventListener('blur', () => { void finishRecording(); });
         document.addEventListener('visibilitychange', () => {
-          if (document.hidden) { void finishRecording(); return; }
+          if (document.hidden) { cancelNoticePreparation(); void finishRecording(); return; }
           if (!state.user) return;
           if (viewVisible('console')) { void updatePresence(); void loadRecent().catch(() => {}); }
           if (viewVisible('quiet') || viewVisible('console')) void loadQuietHours({refreshEditor: false}).catch(() => {});
           if (viewVisible('classroom-voice') && !classroomVoiceInUse()) void loadClassroomVoice({background: true}).catch(() => {});
         });
-        $("voicePreview").addEventListener("loadedmetadata", updateVoicePreviewStatus);
-        $("voicePreview").addEventListener("durationchange", updateVoicePreviewStatus);
-        $("voicePreview").addEventListener("ended", updateVoicePreviewStatus);
         $("voicePreview").addEventListener("error", () => {
-          $("voicePreviewStatus").textContent = "浏览器无法解析这段录音，请重新录制。";
+          if (state.voiceBlob) setRecordStatus("试听失败，请重录。", true);
         });
-        $("playVoiceButton").addEventListener("click", playVoicePreview);
-        $("stopVoiceButton").addEventListener("click", stopVoicePreview);
-        $("reRecordButton").addEventListener("click", () => { setVoiceBlob(null); startRecording(); });
-        $("clearVoiceButton").addEventListener("click", () => setVoiceBlob(null));
+        for (const id of ["reRecordButton", "clearVoiceButton"]) $(id).addEventListener("click", () => {
+          setVoiceBlob(null);
+          recordButton.focus({preventScroll: true});
+        });
         document.querySelectorAll('input[name="alertLevel"]').forEach(input => input.addEventListener("change", () => updateLevelPresentation()));
         $("displayDuration").addEventListener("change", () => { state.durationManuallySet = true; });
-        $("historyClass").addEventListener("change", () => loadHistory().catch(error => toast(error.message)));
-        $("refreshHistory").addEventListener("click", () => loadHistory().catch(error => toast(error.message)));
+        $("historyClass").addEventListener("change", () => void loadHistory());
+        $("refreshHistory").addEventListener("click", () => void loadHistory());
+        $("retryRecent").addEventListener("click", () => void loadRecent());
+        $("openNoticeHistory").addEventListener("click", async () => {
+          const filter = $("historyClass");
+          filter.value = $("targetClass").value;
+          const entry = $("mainNav").querySelector('[data-view="history"]');
+          if (await selectView(entry)) filter.focus({preventScroll: true});
+        });
+        $("signInAgain").addEventListener("click", async () => {
+          if (!await window.ICeClassUI.confirmLeave('重新登录')) return;
+          window.dispatchEvent(new Event("iceclass-logout"));
+          window.ICeClassUI.reloadConfirmed();
+        });
         $("exportHistory").addEventListener("click", () => { const classId = $("historyClass").value; location.href = `/api/history/export${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`; });
-        $("classroomVoiceClass").addEventListener("change", () => loadClassroomVoice().catch(error => toast(error.message)));
-        $("refreshClassroomVoice").addEventListener("click", () => loadClassroomVoice().catch(error => toast(error.message)));
+        $("classroomVoiceClass").addEventListener("change", () => void loadClassroomVoice());
+        $("refreshClassroomVoice").addEventListener("click", () => void loadClassroomVoice());
         $("addQuietPeriod").addEventListener("click", () => { $("quietScheduleList").append(createScheduleItem()); setQuietScheduleDirty(); });
         $("quietScheduleList").addEventListener("input", () => setQuietScheduleDirty());
         $("quietScheduleList").addEventListener("change", () => setQuietScheduleDirty());
         $("saveQuietSchedule").addEventListener("click", saveQuietSchedule);
-        $("shoutText").addEventListener("input", () => $("charCount").textContent = String($("shoutText").value.length));
-        document.querySelectorAll(".phrase").forEach(button => button.addEventListener("click", () => { $("shoutText").value = button.textContent; $("shoutText").dispatchEvent(new Event("input")); $("shoutText").focus(); }));
-        $("shoutForm").addEventListener("submit", async event => {
-          event.preventDefault();
-          const level = selectedAlertLevel();
-          if (isVoiceMode() && !state.voiceBlob) return toast("请先录制一段语音。");
-          if (isVoiceMode() && level === "info") return toast("语音通知请选择“重要”或“紧急”。");
-          if (!isVoiceMode() && !$("shoutText").value.trim()) return toast("请输入通知内容。");
-          try {
-            const schedule = await loadQuietHours({ refreshEditor: false });
-            showSendConfirmation(schedule.activePeriod);
-          } catch (error) { toast(`无法读取禁言时间：${error.message}`); }
+        $("shoutForm").addEventListener("input", event => {
+          cancelNoticePreparation();
+          $("noticeComposeError").textContent = "";
+          const text = $("shoutText");
+          if (event.target === text) {
+            text.removeAttribute("aria-invalid");
+            $("charCount").textContent = String(text.value.length);
+          }
         });
+        $("shoutForm").addEventListener("submit", prepareNotice);
         $("confirmSend").addEventListener("click", performSend);
+        $("confirmDialog").addEventListener("close", event => {
+          if (!event.currentTarget.open && !noticePreparing) pendingNotice = null;
+        });
          $("addClassButton").addEventListener("click", () => { $("classForm").reset(); $("classError").textContent = ""; $("classDialog").showModal(); });
          $("batchGrade").addEventListener("change", () => { $("batchEnd").value = $("batchGrade").value === "高一" ? "16" : "14"; });
          $("batchClassButton").addEventListener("click", () => { $("batchError").textContent = ""; $("batchDialog").showModal(); });
          $("allClassesButton").addEventListener("click", async () => {
-           if (!confirm("将创建高一 1-16 班、高二 1-14 班、高三 1-14 班，共 44 个班级。已有班级会跳过，不会删除多余班级或覆盖绑定和记录。继续吗？")) return;
+           if (!await window.ICeClassUI.ask({title:'创建预设班级？', message:'将创建高一 1-16 班、高二 1-14 班、高三 1-14 班，共 44 个班级。已有班级会跳过，原绑定和记录会保留。', acceptLabel:'创建班级'})) return;
            const button = $("allClassesButton");
            button.disabled = true;
            const originalText = button.textContent;
@@ -1723,8 +2174,18 @@
       function createTable(headers) { const table = document.createElement("table"); const head = table.createTHead().insertRow(); headers.forEach(value => { const th = document.createElement("th"); th.scope = "col"; th.textContent = value; head.append(th); }); table.createTBody(); return table; }
       function wrapTable(table, label) { const wrap = el("div", "table-wrap"); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', label); wrap.append(table); return wrap; }
       function addCell(row, value) { const cell = row.insertCell(); cell.textContent = value ?? ""; return cell; }
-      function renderEmpty(container, message) { container.replaceChildren(el("div", "empty", message)); }
-      function statusBadge(status, label) { return el("span", `status ${status || ""}`, label || statusLabels[status] || status); }
+      function renderEmpty(container, message, glyph) {
+        const empty = el("div", glyph ? "empty wb-empty" : "empty");
+        if (glyph) empty.append(window.ICeClassUI.iconNode(glyph));
+        empty.append(message);
+        container.replaceChildren(empty);
+      }
+      function statusBadge(status, label) {
+        const badge = el("span", `status ${status || ""}`);
+        if (statusIcons[status]) badge.append(window.ICeClassUI.iconNode(statusIcons[status]));
+        badge.append(label || statusLabels[status] || status);
+        return badge;
+      }
       function levelBadge(level) { const meta = levelMeta[level] || levelMeta.warning; return el("span", `level-badge ${meta.className}`, meta.label); }
       function actionButton(label, handler) { const button = el("button", "btn", label); button.type = "button"; button.addEventListener("click", handler); return button; }
       function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
@@ -1744,8 +2205,9 @@
         toastTimers.set(node, setTimeout(() => { toastTimers.delete(node); node.remove(); }, 3500));
       }
 
-      window.ICeClass = { state, api, toast, classGrade, loadDevices, refreshManagement: async () => {
-        await Promise.all([loadClasses(), loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
+      window.ICeClass = { state, api, toast, classGrade, loadDevices, selectView, refreshManagement: async () => {
+        await loadClasses();
+        await Promise.all([loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
         window.dispatchEvent(new Event('iceclass-classes-changed'));
       }};
       window.addEventListener("iceclass-users-ready", renderTeachers);
@@ -1755,22 +2217,24 @@
       start();
     })();
   </script>
-  <script nonce="__CSP_NONCE__" src="/ui.js?v=11" defer></script>
-  <script nonce="__CSP_NONCE__" src="/teacher-header.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/homework-admin.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/self-study-admin.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ui.js?v=16" defer></script>
+  <script nonce="__CSP_NONCE__" src="/users.js?v=20261101.3" defer></script>
+  <script nonce="__CSP_NONCE__" src="/teacher-header.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/homework-admin.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/card-quiz-admin.js?v=5" defer></script>
+  <script nonce="__CSP_NONCE__" src="/self-study-admin.js?v=8" defer></script>
   <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=3" defer></script>
-  <script nonce="__CSP_NONCE__" src="/acknowledgements.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-quota.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/acknowledgements.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/banban-quota.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=13" defer></script>
+  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=15" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=11" defer></script>
   <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=5" defer></script>
   <script nonce="__CSP_NONCE__" src="/management.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/account-settings.js?v=2" defer></script>
+  <script nonce="__CSP_NONCE__" src="/account-settings.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=2" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>
   <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=10" defer></script>

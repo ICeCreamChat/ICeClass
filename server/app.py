@@ -42,6 +42,8 @@ from feedback import install_feedback
 from client_diagnostics import install_client_diagnostics, cleanup_client_diagnostics
 from ideas import install_ideas
 from homework import install_homework
+from card_quiz import install as install_card_quiz
+from student_accounts import install as install_student_accounts
 from acknowledgements import install_acknowledgements
 from teacher_capabilities import teacher_action, teacher_read, teacher_manual
 from self_study import install_self_study
@@ -1738,8 +1740,16 @@ async def static_file(request: web.Request) -> web.Response:
         relative = "reading/index.html"
     if relative in {"ideas", "ideas/"}:
         relative = "ideas/index.html"
+    if relative.rstrip("/") == "student":
+        raise web.HTTPFound(location=request.rel_url.with_path("/card-quiz/student.html").with_query(request.rel_url.query))
     if relative in {"homework/classroom", "homework/classroom/"}:
         relative = "homework/classroom/index.html"
+    if relative.rstrip("/") == "card-quiz":
+        relative = "card-quiz/index.html"
+        raise web.HTTPFound(location=request.rel_url.with_path("/" + relative).with_query(request.rel_url.query))
+    elif relative.rstrip("/") in {"card-quiz/phone", "card-quiz/classroom"}:
+        relative = relative.rstrip("/") + ".html"
+        raise web.HTTPFound(location=request.rel_url.with_path("/" + relative).with_query(request.rel_url.query))
     if relative == "favicon.svg":
         target = WEB_ROOT / "favicon.svg"
     elif relative == "index.html":
@@ -1781,6 +1791,13 @@ async def static_file(request: web.Request) -> web.Response:
             "frame-src 'self' blob:; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
         )
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    if relative.startswith("card-quiz/"):
+        response.headers["Content-Security-Policy"] = (
+            f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; style-src 'self' 'nonce-{nonce}'; "
+            "img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; connect-src 'self'; "
+            "worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'"
+        )
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
     return response
 
 
@@ -1813,6 +1830,7 @@ async def cleanup(app: web.Application) -> None:
     ]
     with db.transaction():
         db.run("DELETE FROM sessions WHERE expires_at<=?", (timestamp,))
+        db.run("DELETE FROM student_sessions WHERE expires_at<=?", (timestamp,))
         db.run("DELETE FROM enrollment_codes WHERE expires_at<=?", (timestamp,))
         db.run("DELETE FROM login_failures WHERE window_started_at<?", (timestamp - 86_400_000,))
         db.run(
@@ -1935,6 +1953,8 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_client_diagnostics(app, sys.modules[__name__])
     install_ideas(app, sys.modules[__name__])
     install_homework(app, sys.modules[__name__])
+    card_quiz = install_card_quiz(app, sys.modules[__name__])
+    install_student_accounts(app, sys.modules[__name__], card_quiz)
     install_acknowledgements(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)
     app.on_startup.append(on_startup)

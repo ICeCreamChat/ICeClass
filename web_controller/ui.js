@@ -1,6 +1,25 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  // Names come from the local workbench UI; icons are decorative beside readable labels.
+  const icon = name => `<svg class="wb-icon" aria-hidden="true"><use href="#settings-i-${name}"/></svg>`;
+  function iconNode(name) {
+    const svg = document.createElementNS(svgNS, 'svg'), use = document.createElementNS(svgNS, 'use');
+    svg.setAttribute('class', 'wb-icon');
+    svg.setAttribute('aria-hidden', 'true');
+    use.setAttribute('href', '#settings-i-' + name);
+    svg.append(use);
+    return svg;
+  }
+  function meter(value, max = 1) {
+    if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return '';
+    return `<meter class="wb-meter" aria-hidden="true" max="${max}" value="${Math.min(max, Math.max(0, value))}"></meter>`;
+  }
+  const escapeText = value => String(value).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  function metric(label, value, glyph, {unit = '', bar = '', className = ''} = {}) {
+    return `<div class="wb-metric ${className}"><span class="wb-metric-label">${icon(glyph)}${escapeText(label)}</span><span><strong>${escapeText(value)}</strong>${unit ? ` <small>${escapeText(unit)}</small>` : ''}</span>${bar}</div>`;
+  }
   const mobile = matchMedia('(max-width: 880px)');
   const switchGroups = '.mode-picker, #islandTabs, .ranking-switch, #readingGradeFilter, #classGradeFilter, #userRoleTabs, .island-duty-choices, .island-duty-weeks';
   function clearSwitchHeights() {
@@ -37,24 +56,207 @@
   };
   $('sidebarClose').onclick = () => closeNav(true);
   $('navBackdrop').onclick = () => closeNav(true);
-  document.addEventListener('click', event => {
+  const drafts = new Map();
+  let leavingDocument = false, confirming = false, refreshConsent = null, contextRevision = 0;
+  const dialog = $('workbenchConfirm');
+  const dialogText = $('workbenchConfirmText'), dialogError = $('workbenchConfirmError');
+  const accept = $('workbenchConfirmAccept'), cancel = $('workbenchConfirmCancel'), extra = $('workbenchConfirmExtra');
+  function ask({title, message, acceptLabel = '确认', cancelLabel = '取消', danger = false, additional}) {
+    if (dialog.open || confirming) return Promise.resolve(false);
+    confirming = true;
+    $('workbenchConfirmTitle').textContent = title;
+    dialogText.textContent = message;
+    dialogError.textContent = '';
+    accept.textContent = acceptLabel;
+    accept.classList.toggle('danger', danger);
+    accept.classList.toggle('primary', !danger);
+    cancel.textContent = cancelLabel;
+    extra.hidden = !additional;
+    extra.textContent = additional?.label || '';
+    const controls = [...dialog.querySelectorAll('button')];
+    const onCancel = event => { if (extra.disabled) event.preventDefault(); };
+    return new Promise(resolve => {
+      dialog.addEventListener('cancel', onCancel);
+      dialog.addEventListener('close', () => {
+        dialog.removeEventListener('cancel', onCancel);
+        confirming = false; accept.onclick = extra.onclick = null;
+        resolve(dialog.returnValue === 'accept');
+      }, {once:true});
+      accept.onclick = () => dialog.close('accept');
+      extra.onclick = async () => {
+        controls.forEach(control => { control.disabled = true; });
+        dialog.setAttribute('aria-busy', 'true'); dialogError.textContent = '';
+        try {
+          const error = await additional.run();
+          if (error) dialogError.textContent = error;
+          else dialog.close('accept');
+        } catch (error) { dialogError.textContent = error.message || '保存失败，请重试。'; }
+        finally {
+          controls.forEach(control => { control.disabled = false; });
+          dialog.removeAttribute('aria-busy');
+          if (dialog.open) (extra.hidden ? cancel : extra).focus();
+        }
+      };
+      dialog.returnValue = '';
+      dialog.showModal(); cancel.focus();
+    });
+  }
+  function leaveState({exclude, only} = {}) {
+    const dirty = [], busy = [];
+    for (const [label, read] of drafts) {
+      if (label === exclude || (only && ![].concat(only).includes(label))) continue;
+      const value = read();
+      if (value.dirty) dirty.push(label);
+      if (value.busy) busy.push(label);
+    }
+    return {dirty, busy};
+  }
+  async function confirmLeave(action, {only, exclude, whenClean = false} = {}) {
+    const {dirty, busy} = leaveState({only, exclude});
+    if (busy.length) {
+      window.ICeClass.toast('正在处理：' + busy.join('、') + '。请稍候再试。');
+      return false;
+    }
+    if (!dirty.length && !whenClean) return true;
+    const reading = !window.ICeClass.state.sessionExpired && dirty.includes('早读规则') && window.ICeClassReadingAdmin;
+    const savesAll = reading && dirty.length === 1;
+    const lose = dirty.length ? '未保存或尚未导出的内容：' + dirty.join('、') + '。' : '';
+    if (!await ask({title: action + '？', message: lose + (dirty.length ? '继续后，上述内容将无法恢复。' : '工作台将重新载入。'),
+      acceptLabel: dirty.length ? '放弃并继续' : action, cancelLabel: dirty.length ? '继续编辑' : '取消', danger: Boolean(dirty.length),
+      additional: reading && {label: savesAll ? '保存并继续' : '保存早读规则，放弃其余修改', run: reading.saveBeforeLeave}})) return false;
+    const current = leaveState({only, exclude});
+    if (current.busy.length || current.dirty.some(label => !dirty.includes(label))) {
+      window.ICeClass.toast('页面内容已变化，操作未执行。请重新确认。');
+      return false;
+    }
+    return true;
+  }
+  function reloadConfirmed() {
+    leavingDocument = true;
+    location.reload();
+    // An intercepted or failed navigation must not disable the next unload guard.
+    setTimeout(() => { leavingDocument = false; }, 1000);
+  }
+  window.addEventListener('beforeunload', event => {
+    if (leavingDocument) return;
+    const state = leaveState();
+    if (state.dirty.length || state.busy.length) { event.preventDefault(); event.returnValue = ''; }
+  });
+
+  const pendingFocus = new WeakMap();
+  const keyOf = item => item.id ? '#' + item.id : JSON.stringify([item.tagName, item.name, item.type,
+    [...item.attributes].filter(attr => attr.name.startsWith('data-') && attr.name !== 'data-dirty').map(attr => [attr.name, attr.value])]);
+  const canFocus = item => item?.isConnected && !item.matches(':disabled, [aria-disabled=true]') &&
+    !item.closest('[inert]') && item.getClientRects().length && getComputedStyle(item).visibility !== 'hidden';
+  function preserveFocus(root, update, fallback) {
+    const controls = 'button, input, textarea, select, a[href], summary, [tabindex]';
+    const active = document.activeElement;
+    let saved = active === root ? pendingFocus.get(root) : undefined;
+    if (active !== root && root.contains(active) && active.matches(controls)) {
+      const key = keyOf(active);
+      saved = {key, index: [...root.querySelectorAll(controls)].filter(item => keyOf(item) === key).indexOf(active)};
+    }
+    pendingFocus.delete(root);
+    update();
+    if (!saved || (document.activeElement !== document.body && document.activeElement !== root && document.activeElement !== active)) return;
+    const item = [...root.querySelectorAll(controls)].filter(element => keyOf(element) === saved.key)[saved.index];
+    if (canFocus(item)) item.focus({preventScroll:true});
+    else if (item && item.matches(':disabled, [aria-disabled=true]') && item.getClientRects().length && canFocus(root)) {
+      pendingFocus.set(root, saved); root.focus({preventScroll:true});
+    } else {
+      const next = fallback?.();
+      if (canFocus(next)) next.focus({preventScroll:true});
+      else if (canFocus(root)) root.focus({preventScroll:true});
+    }
+  }
+
+  const menuItems = menu => [...menu.querySelectorAll('[role="menuitem"]')].filter(canFocus);
+  function focusMenu(menu, last = false) { const items = menuItems(menu); (last ? items.at(-1) : items[0])?.focus({preventScroll:true}); }
+  function menuKeys(menu, close) {
+    menu.addEventListener('keydown', event => {
+      if (!['ArrowDown','ArrowUp','Home','End','Escape','Tab'].includes(event.key) || event.defaultPrevented) return;
+      if (event.key === 'Escape' || event.key === 'Tab') {
+        close(true);
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); }
+        return;
+      }
+      const items = menuItems(menu), index = items.indexOf(document.activeElement);
+      if (!items.length) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+        : (index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      items[next].focus({preventScroll:true});
+    });
+  }
+  function bindActionMenu(details) {
+    const trigger = details.querySelector(':scope > summary'), menu = details.querySelector('.action-menu-content');
+    if (!trigger || !menu) return;
+    trigger.setAttribute('aria-haspopup','menu'); trigger.setAttribute('aria-expanded',String(details.open));
+    menu.setAttribute('role','menu');
+    menu.querySelectorAll('button').forEach(item => item.setAttribute('role','menuitem'));
+    const close = (restore = false) => { details.open = false; if (restore && canFocus(trigger)) trigger.focus({preventScroll:true}); };
+    const open = last => { if (!canFocus(trigger)) return; details.open = true; focusMenu(menu, last); };
+    details.addEventListener('toggle', () => trigger.setAttribute('aria-expanded',String(details.open)));
+    trigger.addEventListener('click', event => { event.preventDefault(); if (details.open) close(); else open(false); });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      event.preventDefault(); open(event.key === 'ArrowUp');
+    });
+    menuKeys(menu, close);
+    // Put focus back before a menu item opens a dialog or replaces its row.
+    menu.addEventListener('click', event => { if (event.target.closest('[role=menuitem]')) close(true); }, true);
+  }
+  document.querySelectorAll('details.action-menu').forEach(bindActionMenu);
+  for (const type of ['pointerdown', 'focusin']) document.addEventListener(type, event => {
     document.querySelectorAll('.action-menu[open]').forEach(menu => {
-      if (!menu.contains(event.target) || event.target.closest('.action-menu-content button')) menu.open = false;
+      if (!menu.contains(event.target)) menu.open = false;
     });
   });
-  document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
-    document.querySelectorAll('.action-menu[open]').forEach(menu => {
-      event.preventDefault(); menu.open = false; menu.querySelector('summary').focus();
-    });
+  const clearRefreshConsent = () => { refreshConsent = null; };
+  for (const type of ['input','change','click']) document.addEventListener(type, clearRefreshConsent, true);
+  const invalidateRefreshContext = () => { contextRevision++; clearRefreshConsent(); };
+  window.addEventListener('iceclass-logout', invalidateRefreshContext);
+  window.addEventListener('iceclass-view-changed', invalidateRefreshContext);
+  window.addEventListener('iceclass-session-expired', () => {
+    invalidateRefreshContext();
+    if (dialog.open && !extra.hidden) {
+      if (document.activeElement === extra) cancel.focus();
+      extra.hidden = true;
+    }
   });
+  const sameRefreshContext = context => context.revision === contextRevision && context.url === location.href;
+  async function confirmRefresh(token) {
+    clearRefreshConsent();
+    const context = {token, revision:contextRevision, url:location.href};
+    if (!await confirmLeave('刷新页面', {whenClean:true})) return false;
+    if (!sameRefreshContext(context)) {
+      window.ICeClass.toast('登录状态或页面已变化，刷新未执行。');
+      return false;
+    }
+    refreshConsent = {...context, dirty:leaveState().dirty};
+    return true;
+  }
+  function reloadAfterConfirmation(token) {
+    const consent = refreshConsent;
+    if (!consent || token !== consent.token) return false;
+    clearRefreshConsent();
+    const current = leaveState();
+    if (!sameRefreshContext(consent) || current.busy.length || current.dirty.some(label => !consent.dirty.includes(label))) return false;
+    reloadConfirmed();
+    return true;
+  }
+  window.ICeClassUI = {icon, iconNode, meter, metric, ask, confirmLeave, leaveState, confirmRefresh, reloadAfterConfirmation, reloadConfirmed, preserveFocus, bindActionMenu, menuKeys, focusMenu,
+    registerDraft(label, read) { drafts.set(label, read); }};
+  window.ICeClassUI.registerDraft('禁言时间表', () => ({dirty:window.ICeClass.state.quietScheduleDirty, busy:$('saveQuietSchedule').disabled && window.ICeClass.state.quietScheduleDirty}));
+  window.ICeClassUI.registerDraft('待发送通知', () => ({dirty:Boolean($('shoutText').value.trim() || window.ICeClass.state.voiceBlob),
+    busy:$('confirmSend').getAttribute('aria-disabled') === 'true' || window.ICeClass.state.voiceBusy}));
   mobile.addEventListener('change', () => closeNav());
   document.querySelector('.skip-link').addEventListener('click', event => {
     event.preventDefault(); $('mainContent').focus();
   });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
-    const dialog = [...document.querySelectorAll('dialog[open]')].at(-1);
+    const dialog = event.target.closest?.('dialog[open]') || [...document.querySelectorAll('dialog[open]')].at(-1);
     if (!dialog) return;
     const items = [...dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
       .filter(item => item.tabIndex >= 0 && !item.disabled && item.getClientRects().length && getComputedStyle(item).visibility !== 'hidden');
@@ -82,10 +284,8 @@
       if (button === active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
     });
   }
-  $('mainNav').addEventListener('click', event => {
-    if (!event.target.closest('[data-view]')) return;
-    clearSwitchHeights();
-    syncNavigation();
+  window.addEventListener('iceclass-view-changed', () => {
+    clearSwitchHeights(); syncNavigation();
     if (mobile.matches) { closeNav(); $('mainContent').focus({preventScroll: true}); }
     window.scrollTo({top: 0, behavior: 'instant'});
   });

@@ -27,10 +27,10 @@ internal static class ReadingLocalAssets
                 var stage = root + ".extract-" + Guid.NewGuid().ToString("N");
                 Directory.CreateDirectory(stage);
                 var assembly = typeof(ReadingLocalAssets).Assembly;
-                foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("ICeClass.Local/", StringComparison.Ordinal)))
+                foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("ICeClass.Local/", StringComparison.Ordinal) || n == "ICeClass.Island.banban.portrait.webp"))
                 {
                     token.ThrowIfCancellationRequested();
-                    var relative = name["ICeClass.Local/".Length..].Replace('\\', '/');
+                    var relative = name == "ICeClass.Island.banban.portrait.webp" ? "assets/banban/portrait.webp" : name["ICeClass.Local/".Length..].Replace('\\', '/');
                     var path = Path.GetFullPath(Path.Combine(stage, relative));
                     if (!path.StartsWith(Path.GetFullPath(stage) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                         throw new IOException("活动资源路径无效。");

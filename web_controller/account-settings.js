@@ -72,15 +72,17 @@
     if (password.length < 10 || password.length > 128 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password))
       return invalid('ownNewPassword','新密码需为 10-128 位，同时包含字母和数字。');
     if (password !== $('ownNewPasswordConfirm').value) return invalid('ownNewPasswordConfirm','两次输入的新密码不一致，请重新核对。');
-    if (window.ICeClassBanbanQuota?.canLogout() === false || window.ICeClassAcknowledgements?.canLogout() === false) return;
-    submit.disabled = true; submit.textContent = '正在更新…'; form.setAttribute('aria-busy','true');
+    submit.disabled = true;
     try {
+      if (!await window.ICeClassUI.confirmLeave('更新密码', {exclude:'密码更新'})) return;
+      submit.textContent = '正在更新…'; form.setAttribute('aria-busy','true');
       await api('/api/auth/password', {method:'PUT',body:JSON.stringify({currentPassword:$('currentPassword').value,newPassword:password})});
-      window.ICeClassAcknowledgements?.discardChanges(); window.ICeClassBanbanQuota?.discardChanges();
-      location.reload();
+      window.dispatchEvent(new Event('iceclass-logout'));
+      window.ICeClassUI.reloadConfirmed();
     } catch (error) { $('ownPasswordError').textContent = error instanceof TypeError ? '更新失败，请检查连接后重试。' : error.message; }
     finally { submit.disabled = false; submit.textContent = '更新密码'; form.removeAttribute('aria-busy'); }
   });
+  window.ICeClassUI.registerDraft('密码更新', () => ({busy:$('ownPasswordForm').getAttribute('aria-busy') === 'true'}));
   $('ownPasswordForm').addEventListener('input', event => { event.target.removeAttribute('aria-invalid'); });
 
   const confirmDialog = document.createElement('dialog');
@@ -155,13 +157,23 @@
       const row = node('li','','device-overview'); row.dataset.deviceId = device.id;
       const identity = node('div','','device-copy'); identity.append(node('strong',device.class_name));
       identity.append(node('span',device.verified_at ? '已核实' : '待核实', 'badge ' + (device.verified_at ? 'success' : 'warning')));
-      if (device.class_device_count > 1) identity.append(node('span',`同班 ${device.class_device_count} 台，请核对`,'badge warning'));
-      identity.append(node('p',[device.name,device.computer_name || '等待电脑名称'].join(' · ')),node('p',[device.device_code,device.binding_note].filter(Boolean).join(' · ')));
-      identity.append(node('p',(device.local_addresses || []).join('、') || '尚未上报局域网地址','device-lan'));
+      if (device.class_device_count > 1) identity.append(node('span',`同班 ${device.class_device_count} 台`,'badge warning'));
+      const computer = device.computer_name?.trim();
+      const names = computer && computer.toLowerCase() !== device.name.trim().toLowerCase() ? [device.name, computer] : [device.name];
+      if (!computer) names.push('等待电脑名称');
+      const detailsText = [device.device_code, device.binding_note, (device.local_addresses || []).join('、') || '尚未上报局域网地址'];
+      identity.append(node('p', names.join(' · ')), node('p', detailsText.filter(Boolean).join(' · '), 'device-detail-line'));
       const status = node('div','','device-status');
       const enabled = Number(device.enabled) === 1;
-      status.append(node('span',!enabled ? '已停用' : device.online ? '在线' : '离线', 'badge ' + (!enabled ? 'danger' : device.online ? 'success' : 'neutral')));
-      const footer = node('div','','device-row-footer'), seen = node('div',device.last_seen_at ? new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(device.last_seen_at)).replaceAll('/','-') : '从未连接','device-seen');
+      const connection = node('span', '', 'badge ' + (!enabled ? 'danger' : device.online ? 'success' : 'neutral'));
+      connection.append(icon(!enabled ? 'close' : device.online ? 'check' : 'monitor'), !enabled ? '已停用' : device.online ? '在线' : '离线');
+      status.append(connection);
+      const footer = node('div','','device-row-footer'), seen = node('div','','device-seen');
+      const seenAt = new Date(device.last_seen_at);
+      const seenValue = node(device.last_seen_at ? 'time' : 'span', device.last_seen_at
+        ? new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(seenAt).replaceAll('/','-') : '从未连接', 'device-seen-value');
+      if (device.last_seen_at) seenValue.dateTime = seenAt.toISOString();
+      seen.append(node('span','最近连接：','device-seen-caption'), seenValue);
       const actions = node('div','','device-actions');
       const bind = button('核实 / 改绑', () => { rememberDevice(device.id,'bind'); window.ICeClassAdmin.openDevice(device); },'button quiet small-button');
       bind.dataset.deviceAction = 'bind'; bind.setAttribute('aria-label',`核实或改绑${device.name}`);
@@ -178,9 +190,13 @@
         confirmDialog.querySelector('[role=alert]').textContent = ''; confirmDialog.showModal();
       },'button quiet'));
       menu.append(button('删除设备', () => { rememberDevice(device.id,'more'); window.ICeClassAdmin.openDelete('device',device.id,device.name); },'button quiet danger'));
-      details.append(summary,menu); actions.append(bind,details); footer.append(seen,actions); row.append(identity,status,footer); fragment.append(row);
+      details.append(summary,menu); window.ICeClassUI.bindActionMenu(details); actions.append(bind,details); footer.append(seen,actions); row.append(identity,status,footer); fragment.append(row);
     }
-    if (!filtered.length) fragment.append(node('li',devices.length ? '没有匹配的设备，请调整搜索或筛选。' : '尚未绑定教室电脑。','empty-state'));
+    if (!filtered.length) {
+      const empty = node('li', '', 'empty-state wb-empty');
+      empty.append(window.ICeClassUI.iconNode(devices.length ? 'search' : 'monitor'), devices.length ? '没有匹配的设备' : '尚未绑定教室电脑');
+      fragment.append(empty);
+    }
     container.replaceChildren(fragment);
     setDevicesBusy(devicesBusy);
     pager.hidden = filtered.length <= devicePageSize;

@@ -124,7 +124,17 @@ function host(options = {}) {
   const window = new Events();
   window.location = { origin: 'http://127.0.0.1:8870', href: 'http://127.0.0.1:8870/' };
   window.matchMedia = () => ({ matches: Boolean(options.narrow) });
-  window.confirm = message => { confirmations.push(message); return Boolean(options.confirm?.()); };
+  let draftLabel, readDraft;
+  async function ask(prompt) { confirmations.push(prompt); return Boolean(await options.confirm?.()); }
+  window.ICeClassUI = {
+    ask,
+    iconNode() { return document.createElement('svg'); },
+    registerDraft(label, read) { draftLabel = label; readDraft = read; },
+    async confirmLeave(action, {only}) {
+      assert.equal(only, draftLabel);
+      return !readDraft().dirty || ask({title:action});
+    }
+  };
   if (options.classroom) window.ICeClassVoiceHost = { classroomAccount: true };
   const api = async (url, settings = {}) => {
     calls.push({ url, ...settings });
@@ -162,7 +172,7 @@ function host(options = {}) {
   vm.runInNewContext(source, { window, document, URL, URLSearchParams, Intl, Date, Set, Map, JSON });
   const module = window.ICeClassIdeasAdmin;
   return {
-    module, root, document, window, calls, server, confirmations,
+    module, root, document, window, calls, server, confirmations, draftState: () => readDraft(),
     start: () => module.load(),
     byId: id => document.getElementById(id),
     all: selector => root.querySelectorAll(selector),
@@ -197,27 +207,9 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function logoutHandler(h) {
-  const html = fs.readFileSync(path.join(__dirname, '../web_controller/index.html'), 'utf8');
-  const handler = html.match(/\$\("logoutButton"\)\.addEventListener\("click", async event => \{([\s\S]*?)\r?\n        \}\);/);
-  assert.ok(handler, 'Exercise the actual logout handler from index.html');
-  const requests = [];
-  let reloads = 0;
-  const button = new Element('button');
-  const handlerFunction = vm.runInNewContext(`(async event => {${handler[1]}\n})`, {
-    window: h.window,
-    $: () => button,
-    Event,
-    toast: message => { throw new Error(message); },
-    api: async (url, options) => { requests.push({ url, ...options }); return {}; },
-    location: { reload() { reloads++; } }
-  });
-  return { click: () => handlerFunction({currentTarget: button}), requests, reloads: () => reloads };
-}
-
 test('global app integration renders private text safely, counts, labels, and pagination', async () => {
   const h = host({ items: [idea('one', { title: '<img src=x onerror=alert(1)>', text: '<script>private()</script>' })] });
-  assert.deepEqual(Object.keys(h.module).sort(), ['canLeave', 'canLogout', 'destroy', 'init', 'load', 'suspend']);
+  assert.deepEqual(Object.keys(h.module).sort(), ['canLeave', 'destroy', 'init', 'load', 'suspend']);
   await h.start();
   assert.equal(h.root.getAttribute('aria-label'), '创意计划');
   assert.match(h.text(), /创意计划/);
@@ -233,6 +225,33 @@ test('global app integration renders private text safely, counts, labels, and pa
   assert.equal(action(h, '下一页').disabled, true);
   assert.equal(action(h, '保存评审').disabled, true);
   assert.equal(h.calls[0].url, '/api/ideas/admin?page=1&pageSize=20');
+});
+
+test('the illustration appears only for a successfully loaded, unfiltered empty list', async () => {
+  const firstRead = deferred();
+  let fail = false;
+  const h = host({ items: [], intercept(url) {
+    if (!url.startsWith('/api/ideas/admin?')) return undefined;
+    if (fail) throw new Error('创意暂时读取失败');
+    if (!url.includes('status=')) return firstRead.promise;
+  } });
+  const started = h.start();
+  assert.match(h.text(), /正在加载创意/);
+  assert.equal(h.all('.wb-empty').length, 0);
+  firstRead.resolve({ items: [], total: 0 });
+  await started;
+  assert.equal(h.all('.wb-empty')[0].querySelector('img').src, '/assets/teacher-ideas-empty.webp');
+  assert.match(h.text(), /还没有学生创意/);
+  control(h, 'ideasStatusFilter', 'pending', 'change');
+  await pause();
+  assert.match(h.text(), /没有符合条件的创意/);
+  assert.equal(h.all('.wb-empty').length, 0);
+  fail = true;
+  control(h, 'ideasStatusFilter', '', 'change');
+  await pause();
+  assert.match(h.text(), /创意暂时读取失败/);
+  assert.ok(action(h, '重试'));
+  assert.equal(h.all('.wb-empty').length, 0);
 });
 
 test('only a real superadmin can load private ideas, including explicit init', async () => {
@@ -255,7 +274,7 @@ test('only a real superadmin can load private ideas, including explicit init', a
   } });
   await h.start();
   assert.equal(requested, 2);
-  assert.match(h.text(), /没有符合条件的创意/);
+  assert.match(h.text(), /还没有学生创意/);
 });
 
 test('late defer execution mounts an already-ready app without fetching before navigation', async () => {
@@ -419,7 +438,7 @@ test('409 retains every draft, reloads across class pages without the old status
   assert.equal(h.byId('ideasReply').value, '保留这段回复');
 });
 
-test('selection, filters, pagination and unload protect unsaved edits; navigation keeps the draft', async () => {
+test('selection, filters and pagination protect unsaved edits; navigation keeps the registered draft', async () => {
   let accept = false;
   const h = host({ items: Array.from({ length: 21 }, (_, index) => idea(String(index))), confirm: () => accept });
   await h.start();
@@ -433,58 +452,18 @@ test('selection, filters, pagination and unload protect unsaved edits; navigatio
   action(h, '下一页').click();
   await pause();
   assert.equal(h.calls.length, before);
-  assert.equal(h.window.emit('beforeunload').defaultPrevented, true);
-  assert.equal(h.module.canLeave(), false);
+  assert.equal(h.draftState().dirty, true);
+  assert.equal(await h.module.canLeave(), false);
   accept = true;
-  assert.equal(h.module.canLeave(), true);
-  assert.match(h.confirmations.at(-1), /草稿仍会保留在本页/);
+  assert.equal(await h.module.canLeave(), true);
+  assert.match(h.confirmations.at(-1).message, /草稿仍会保留/);
   h.module.suspend();
   await h.module.load();
   assert.equal(h.byId('ideasReply').value, '未保存的回复', 'Returning to the page preserves the unsaved editor');
   h.all('.ideas-entry')[1].click();
+  await pause();
   assert.equal(h.byId('ideasReply').value, '');
-  assert.equal(h.window.emit('beforeunload').defaultPrevented, false);
-});
-
-test('cancelling logout retains the draft and prevents both logout request and reload', async () => {
-  const h = host({ confirm: () => false });
-  await h.start();
-  control(h, 'ideasReply', '取消退出后继续评审');
-  const original = h.byId('ideasReply');
-  const logout = logoutHandler(h);
-  await logout.click();
-  assert.equal(logout.requests.length, 0);
-  assert.equal(logout.reloads(), 0);
-  assert.equal(h.byId('ideasReply'), original);
-  assert.equal(h.byId('ideasReply').value, '取消退出后继续评审');
-  assert.match(h.confirmations[0], /退出登录将丢弃当前未保存的评审草稿/);
-  assert.match(h.confirmations[0], /无法恢复/);
-  assert.doesNotMatch(h.confirmations[0], /仍会保留/);
-  assert.equal(h.window.emit('beforeunload').defaultPrevented, true);
-});
-
-test('confirming logout explicitly discards the draft and completes the actual logout handler', async () => {
-  const h = host({ confirm: () => true });
-  await h.start();
-  control(h, 'ideasReply', '明确确认丢弃这份草稿');
-  const logout = logoutHandler(h);
-  await logout.click();
-  assert.deepEqual(logout.requests, [{ url: '/api/auth/logout', method: 'POST' }]);
-  assert.equal(logout.reloads(), 1);
-  assert.equal(h.confirmations.length, 1);
-  assert.match(h.confirmations[0], /丢弃.*无法恢复/);
-  assert.equal(h.root.childElementCount, 0);
-  assert.equal(h.window.emit('beforeunload').defaultPrevented, false);
-});
-
-test('logout proceeds without confirmation when there are no unsaved reviews', async () => {
-  const h = host();
-  await h.start();
-  const logout = logoutHandler(h);
-  await logout.click();
-  assert.equal(h.confirmations.length, 0);
-  assert.deepEqual(logout.requests, [{ url: '/api/auth/logout', method: 'POST' }]);
-  assert.equal(logout.reloads(), 1);
+  assert.equal(h.draftState().dirty, false);
 });
 
 test('suspend stops audio and closes the lightbox; destroy invalidates pending responses', async () => {
@@ -505,6 +484,7 @@ test('suspend stops audio and closes the lightbox; destroy invalidates pending r
   assert.equal(audio.paused, true);
   assert.equal(lightbox.open, false);
   h.all('.ideas-entry')[1].click();
+  await pause();
   assert.equal(h.all('.ideas-detail')[0].scrolledIntoView, true, 'Narrow screens bring the selected detail into view');
   delayed = true;
   const pending = h.module.load();
@@ -512,7 +492,7 @@ test('suspend stops audio and closes the lightbox; destroy invalidates pending r
   response.resolve({ items: [idea('late')], total: 1 });
   await pending;
   assert.equal(h.root.childElementCount, 0, 'A late response cannot remount a destroyed session');
-  assert.equal(h.window.emit('beforeunload').defaultPrevented, false);
+  assert.equal(h.draftState().dirty, false);
 });
 
 test('a failed PATCH leaves a retryable draft and a failed list offers recovery', async () => {
@@ -578,11 +558,8 @@ test('editing during a refresh retains the draft and saving blocks a second subm
   submit(h);
   submit(h);
   assert.equal(patches(h).length, 1);
-  assert.equal(h.module.canLeave(), false);
-  const logout = logoutHandler(h);
-  await logout.click();
-  assert.equal(logout.requests.length, 0, 'An in-flight review cannot be interrupted by logout');
-  assert.equal(logout.reloads(), 0);
+  assert.equal(await h.module.canLeave(), false);
+  assert.equal(h.draftState().busy, true, 'An in-flight review is registered with the shared page guard');
   assert.equal(h.confirmations.length, 0);
   assert.equal(h.byId('ideasReply').disabled, true);
   write.resolve({ item: idea('one', { reply: '刷新期间输入', version: 2 }) });

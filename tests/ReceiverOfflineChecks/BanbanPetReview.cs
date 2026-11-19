@@ -191,7 +191,7 @@ internal static class BanbanPetReview
             Call("SetCaption", "已完成任务。", false);
             await Task.Delay(80);
             Check(pet.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "已完成任务。"), "a committed answer can appear next to the companion");
-            var bubble = pet.GetVisualDescendants().OfType<Button>().Single(b => b != button);
+            var bubble = pet.GetVisualDescendants().OfType<Button>().Single(b => b.Content is BanbanSpeechBubble);
             void CaptureCaption(string name, int dpi = 144)
             {
                 var pixels = new PixelSize((int)Math.Ceiling(pet.Width * dpi / 96d), (int)Math.Ceiling(pet.Height * dpi / 96d));

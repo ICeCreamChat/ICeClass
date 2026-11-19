@@ -84,9 +84,10 @@ for(const material of ['glass','white'])test(`Rendered role groups and connectio
     assert.ok(roles.every(r=>r.actionsFit),`${width}px: user action buttons remain inside their cells`);
     await settingsSection(page,'devices');await page.locator('.device-seen').first().waitFor();
     const connections=await page.locator('#devicesContainer .device-seen').evaluateAll(cells=>cells.map(cell=>{
-      const range=document.createRange();range.selectNodeContents(cell);
+      const value=cell.querySelector('.device-seen-value');
+      const range=document.createRange();range.selectNodeContents(value);
       const text=range.getBoundingClientRect(),box=cell.getBoundingClientRect();
-      return {text:cell.textContent,lines:range.getClientRects().length,fits:text.left>=box.left-1&&text.right<=box.right+1};
+      return {text:value.textContent,lines:range.getClientRects().length,fits:text.left>=box.left-1&&text.right<=box.right+1};
     }));
     assert.equal(connections[0].text,'从未连接');assert.match(connections[1].text,/\d{2}:\d{2}/);
     assert.ok(connections.every(c=>c.lines===1&&c.fits),`${width}px: connection labels remain on one line inside their cells`);
@@ -171,12 +172,18 @@ test('Appearance changes synchronize between open teacher tabs',async t=>{
   await second.waitForFunction(()=>document.documentElement.dataset.teacherMaterial==='white');await waitForFilterCount(second,0);
 });
 
-for(const width of [1440,1024,880,390])test(`Native workbench header fits and its menu returns focus at ${width}px`,async t=>{
-  const {page}=await setup(t,{width,native:true});
+for(const width of [1440,1361,1360,1024,881,880,390,320])test(`Native workbench header fits and its menu returns focus at ${width}px`,async t=>{
+  const {page}=await setup(t,{width,native:true,handle:({url,request})=>{
+    if(url.pathname==='/api/session')return {json:{authenticated:true,user:{...fixture(url).user,displayName:'很长的测试教师账号'.repeat(10)}}};
+    return selfStudyFixture({url,request});
+  }});
   assert.equal(await page.evaluate(()=>window.__nativeHeaderVisible),true);
   const boxes=await page.locator('.header-brand,.header-location,.header-actions').evaluateAll(nodes=>nodes.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};}));
   assert.ok(boxes.every(r=>r.left>=0&&r.right<=width), 'Native controls remain in the viewport');
   if(width>880)assert.ok(boxes[0].right<=boxes[1].left&&boxes[1].right<=boxes[2].left,'Desktop header columns never overlap');
+  else assert.ok(boxes[1].top>=Math.max(boxes[0].bottom,boxes[2].bottom),'The location has its own row at narrow widths');
+  const header=await page.locator('.topbar').boundingBox();
+  assert.ok(Math.abs((boxes[1].left+boxes[1].right)/2-(header.x+header.width/2))<=1,'The location is centered within the header, including with a long account name');
   const toggle=page.locator('#headerToolsToggle');await toggle.click();
   await page.locator('#headerToolsMenu:popover-open').waitFor();
   await assertStaticMaterial(page);
@@ -184,17 +191,30 @@ for(const width of [1440,1024,880,390])test(`Native workbench header fits and it
   await page.keyboard.press('Escape');assert.equal(await toggle.evaluate(e=>e===document.activeElement),true);
 });
 
-for(const width of [1440,880,390])for(const material of ['glass','white'])test(`All teacher views keep aligned titles and fit at ${width}px in ${material}`,async t=>{
+for(const width of [1440,881,880,390])for(const material of ['glass','white'])test(`All teacher views keep aligned titles and fit at ${width}px in ${material}`,async t=>{
   const {page}=await setup(t,{width,initial:{version:1,material,reduceTransparency:false}});
   const lefts=[];
-  for(const view of ['reading','homework','ideas','island','console','controls','self-study','history','classroom-voice','quiet','classes','teachers','settings']){
+  for(const view of ['reading','homework','card-quiz','ideas','island','console','controls','self-study','history','classroom-voice','quiet','classes','teachers','settings']){
     await navigate(page,view);
     const heading=page.locator(`#view-${view} h1`).first();await heading.waitFor();
     const metrics=await heading.evaluate(e=>({left:e.getBoundingClientRect().left,size:getComputedStyle(e).fontSize}));
     lefts.push(metrics.left);
-    assert.equal(metrics.size,width<760?'26px':'28px',view+' heading scale');
+    assert.equal(metrics.size,width<=760?'26px':'28px',view+' heading scale');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),view+' fits');
     await assertStaticMaterial(page);
+    if(view==='card-quiz'){
+      await page.locator('.cq-panel').first().waitFor();
+      const panel=await page.locator('.cq-panel').first().evaluate(e=>{const s=getComputedStyle(e);return {padding:s.padding,border:s.borderTopStyle};});
+      assert.ok(parseFloat(panel.padding)>0&&panel.border==='solid','Paper-card panels use the shared workbench surfaces');
+    }
+    if(view==='settings'){
+      const descriptions=['账号与安全','工作台外观','班班次数','教室电脑','应用致谢','客户端日志'];
+      for(const [i,section] of ['account','appearance','quota','devices','thanks','logs'].entries()){
+        await settingsSection(page,section);
+        await page.getByRole('heading',{name:descriptions[i],exact:true}).filter({visible:true}).waitFor();
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Settings '+section+' fits');
+      }
+    }
     if(view==='teachers'&&width===390){
       assert.deepEqual(await page.locator('#userGradeFilter,#userStatusFilter').evaluateAll(nodes=>nodes.map(e=>Math.round(e.getBoundingClientRect().height))),[44,44],'Narrow filter labels never add a second line');
     }
