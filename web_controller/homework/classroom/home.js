@@ -32,7 +32,7 @@
     if(!native)return Promise.reject(new Error('请从教室客户端打开此功能。'));
     const id=++sequence;
     return new Promise((resolve,reject)=>{
-      const timeout=setTimeout(()=>{pending.delete(id);reject(new Error('操作超时，请检查连接后重试。'));},30000);
+      const timeout=setTimeout(()=>{pending.delete(id);reject(new Error('操作超时，请检查连接后重试。'));},action==='workshop'&&value.operation==='install'?300000:30000);
       pending.set(id,{resolve,reject,timeout});
       window.chrome.webview.postMessage({id,action,...value});
     });
@@ -52,6 +52,40 @@
     window.dispatchEvent(new CustomEvent('classroom-view-change',{detail:next}));
   }
   function showDetail(title,content){voicePanel=false;$('detail-title').textContent=title;$('detail-body').innerHTML=content;$('detail-dialog').showModal();}
+  let workshopState,workshopBusy=false;
+  function renderWorkshop(state){
+    workshopState=state;
+    if(!$('workshop-panel'))return;
+    const focused=document.activeElement?.dataset?.workshop;
+    setText($('workshop-version'),state.version?`版本 ${state.version}`:'本机课堂插件');
+    setText($('workshop-status'),state.message);
+    $('workshop-actions').innerHTML=state.installed?
+      `${state.enabled?'<button class="button primary" data-workshop="open">打开视频展台</button>':'<button class="button primary" data-workshop="enable">启用视频展台</button>'}${state.running||state.starting?'<button class="button soft" data-workshop="stop">停止并关闭展台</button>':''}${state.enabled?'<button class="button soft" data-workshop="disable">禁用并停止</button>':''}<button class="button soft" data-workshop="uninstall">卸载并停止</button>`:
+      '<button class="button primary" data-workshop="install">安装插件</button>';
+    $('workshop-actions').querySelectorAll('button').forEach(button=>{button.disabled=(workshopBusy||state.busy)&&button.dataset.workshop!=='stop';});
+    if(focused&&$('detail-dialog').open){const next=$('workshop-actions').querySelector(`[data-workshop="${focused}"]:not([disabled])`)||$('workshop-actions').querySelector('button:not([disabled])');next?.focus({preventScroll:true});}
+  }
+  async function openWorkshop(){
+    const videoAvailable=native&&home?.capabilities?.workshop;
+    const quizAvailable=native&&home?.capabilities?.cardQuiz;
+    showDetail('创意工坊',`
+      <section class="workshop-panel" id="workshop-panel" aria-labelledby="workshop-name">
+        <h3 id="workshop-name">视频展台</h3>
+        <p id="workshop-version">本机课堂插件</p>
+        <p class="workshop-status" id="workshop-status" role="status">${videoAvailable?'正在读取插件…':'请在支持视频展台的 Windows 教室端使用。'}</p>
+        <div class="workshop-actions" id="workshop-actions"></div>
+        <p class="workshop-note">AI 点评使用班班额度，仅保留本次会话。</p>
+      </section>
+      <section class="workshop-panel" aria-labelledby="workshop-quiz-name">
+        <h3 id="workshop-quiz-name">纸卡答题</h3>
+        <p>配合课件随堂收答，也可使用老师准备的题单。</p>
+        ${quizAvailable?'<div class="workshop-actions"><button type="button" class="button primary" data-action="card-quiz">打开纸卡答题</button></div>':'<p>请在支持纸卡答题的 Windows 教室端使用。</p>'}
+      </section>`);
+    if(videoAvailable){
+      try{renderWorkshop(await request('workshop',{operation:'status'}));}
+      catch(error){const status=$('workshop-status');if(status)setText(status,error.message);}
+    }
+  }
   function renderVoice(){
     const button=document.querySelector('[data-action="voice"]');setText(button,voice.recording?'正在留言':voice.sending?'正在发送…':'开始留言');button.disabled=voice.sending;
     setText($('voice-duration'),voice.duration||'最长 30 秒');
@@ -128,11 +162,22 @@
       else if(value.type==='island-state')renderIsland(value.state);
       else if(value.type==='voice-state'){voice=value.state;renderVoice();}
       else if(value.type==='open-management')showView('management');
+      else if(value.type==='workshop-state')renderWorkshop(value.state);
+      else if(value.type==='open-workshop')openWorkshop().catch(error=>notify(error.message));
     });
     window.chrome.webview.postMessage({type:'classroom-ready'});
   }
   window.addEventListener('homework-context',event=>{className=event.detail.className;termLabel=event.detail.term;heading();if(!native){$('connection-text').textContent='已连接平台';}});
   document.addEventListener('click',async event=>{
+    const workshopButton=event.target.closest('button[data-workshop]');
+    if(workshopButton&&!workshopButton.disabled){
+      const operation=workshopButton.dataset.workshop;
+      workshopBusy=true;if(workshopState)renderWorkshop(workshopState);
+      try{renderWorkshop(await request('workshop',{operation}));}
+      catch(error){if($('workshop-status'))setText($('workshop-status'),error.message);}
+      finally{workshopBusy=false;if(workshopState){const message=$('workshop-status')?.textContent;renderWorkshop(workshopState);if(message)setText($('workshop-status'),message);}}
+      return;
+    }
     const control=event.target.closest('[data-action],button[data-material]');if(!control||control.disabled)return;
     if(control.tagName==='A')event.preventDefault();
     if(control.dataset.material){preference.material=control.dataset.material;if(preference.material==='glass')preference.reduceTransparency=false;saveAppearance();return;}
@@ -141,7 +186,7 @@
       if(action==='home'){if(native)showView('home');else window.chrome?.webview?.postMessage('close');}
       else if(action==='management')showView('management');
       else if(action==='close-detail')$('detail-dialog').close();
-      else if(action==='workshop')showDetail('创意工坊',`<h3>纸卡答题</h3><p>配合现有课件随堂收答，也可以使用老师提前准备的题单。</p>${native?'<button class="button primary" data-action="card-quiz">打开纸卡答题</button>':'<p>请在 Windows 教室端打开纸卡答题；教师工作台提供备课、打印和报告。</p>'}`);
+      else if(action==='workshop')await openWorkshop();
       else if(action==='settings')showDetail('教室设置',`<div class="settings-row"><span>教室外观</span><div class="material-switch" role="group" aria-label="教室外观"><button data-material="glass" aria-pressed="${preference.material==='glass'}">液态玻璃</button><button data-material="white" aria-pressed="${preference.material==='white'}">原版白色</button></div></div><label class="settings-row"><span>降低透明度<small>使用更实的底色，让文字更清晰。</small></span><input type="checkbox" id="clear-setting" name="reduce-transparency"${reducedTransparency()?' checked':''}></label><div class="settings-actions"><button class="button soft" data-action="binding">教室绑定与连接</button><button class="button soft" data-action="island">教室浮岛</button></div>`);
       else if(action==='voice'){
         showDetail('语音留言',`<div class="voice-message">

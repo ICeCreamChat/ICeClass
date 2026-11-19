@@ -27,6 +27,8 @@ public sealed partial class App : Application
     private ReadingReminderService? _readingReminders;
     private ClassroomIslandService? _island;
     private SelfStudyMonitor? _selfStudy;
+    private ClassroomWorkshopService? _workshop;
+    private ClassroomMathReview? _mathReview;
     private NativeMenuItem? _islandMenuItem;
     private CancellationTokenSource? _automaticUpdateCancellation;
     private int _updateInProgress;
@@ -54,12 +56,20 @@ public sealed partial class App : Application
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _speech = new SpeechService();
         _receiver = new CloudReceiverService(_speech);
+        ReceiverConfig.TryLoad(out var workshopBinding);
+        var workshopPreview = workshopBinding is not null && ReceiverConfig.IsPreview(workshopBinding);
+        _workshop = new ClassroomWorkshopService(workshopPreview ? Path.Combine(AppContext.BaseDirectory, "Plugins") : null,
+            workshopPreview ? Path.Combine(AppContext.BaseDirectory, "PluginData", "VideoBooth", "data") : null);
+        _mathReview = new ClassroomMathReview(_workshop, () => ReceiverConfig.TryLoad(out var current) ? current : null);
+        _workshop.Changed += () => Dispatcher.UIThread.Post(() => _studentVoiceWindow?.SetWorkshopState(_workshop.Snapshot()));
+        _workshop.ActionRequested += (action, payload) => { if (action == "open_workshop") { ShowStudentVoice(); _studentVoiceWindow?.OpenWorkshop(); } };
         _readingReminders = new ReadingReminderService();
         _island = new ClassroomIslandService(config => ClassroomControlService.OpenReadingAsync(config), ShowStudentVoice);
         _selfStudy = new SelfStudyMonitor(
             token => _island.ShowSelfStudyWarningAsync(token),
             () => _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
-                _creativeIdeasWindow?.IsVisible == true || _cardQuizWindow?.IsBusy == true || ReadingExperience.IsOpen || _speech?.IsBusy == true,
+                _creativeIdeasWindow?.IsVisible == true || _cardQuizWindow?.IsBusy == true ||
+                _workshop?.IsRunning == true || ReadingExperience.IsOpen || _speech?.IsBusy == true,
             () => _island.CancelSelfStudyWarning());
         _selfStudy.FeedbackChanged += _island.UpdateSelfStudyFeedback;
         _selfStudy.SoundLevelChanged += _island.UpdateSelfStudyLevel;
@@ -71,7 +81,10 @@ public sealed partial class App : Application
         _island.HomeStateChanged += state => _studentVoiceWindow?.SetIslandState(state);
         ReadingExperience.Configure(ShowStudentVoice, () => _studentVoiceWindow?.MinimizeToTray());
         _receiver.ConnectionStateChanged += ReceiverOnConnectionStateChanged;
+        _receiver.BindingInvalidated += () => _workshop?.Suspend();
+        _receiver.ComputerStopRequested += () => Dispatcher.UIThread.Post(async () => { if (_workshop is not null) await _workshop.StopDisplayAsync(); });
         _receiver.BindingChanged += (_, binding) => Dispatcher.UIThread.Post(() => {
+            _workshop?.SetBinding(binding);
             ResetClientDiagnosticBinding();
             if (_creativeIdeasWindow is not null && !_creativeIdeasWindow.Matches(binding)) { _creativeIdeasWindow.CloseWithoutPrompt(); _creativeIdeasWindow = null; }
             if (_cardQuizWindow is not null && !_cardQuizWindow.Matches(binding)) { _cardQuizWindow.CloseWithoutPrompt(); _cardQuizWindow = null; }
@@ -91,6 +104,7 @@ public sealed partial class App : Application
 
         if (ReceiverConfig.TryLoad(out var config))
         {
+            _workshop.SetBinding(config);
             ReadingOfflineService.For(config);
             CardQuizService.For(config);
             StartupManager.SetEnabled(config);
@@ -179,9 +193,10 @@ public sealed partial class App : Application
     {
         if (_stopTask is { IsCompleted: false }) return _stopTask;
         _banbanVoiceWindow?.CancelCurrentTask();
-        if (_receiver is null) return Task.CompletedTask;
-        if (!ReceiverConfig.TryLoad(out var binding)) { _receiver.ComputerAgent.Stop(); return Task.CompletedTask; }
-        return _stopTask = _receiver.StopComputerTaskAsync(binding);
+        var stopWorkshop = _workshop?.StopDisplayAsync() ?? Task.CompletedTask;
+        if (_receiver is null) return stopWorkshop;
+        if (!ReceiverConfig.TryLoad(out var binding)) { _receiver.ComputerAgent.Stop(); return stopWorkshop; }
+        return _stopTask = Task.WhenAll(_receiver.StopComputerTaskAsync(binding), stopWorkshop);
     }
 
     private void ShowComputerSettings()
@@ -288,6 +303,7 @@ public sealed partial class App : Application
         _enrollmentWindow.ComputerSettingsRequested += (_, _) => ShowComputerSettings();
         _enrollmentWindow.Saved += async (_, saved) =>
         {
+            _workshop?.SetBinding(saved);
             _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
             _cardQuizWindow?.CloseWithoutPrompt(); _cardQuizWindow = null;
             CardQuizService.For(saved);
@@ -325,7 +341,9 @@ public sealed partial class App : Application
             return;
         }
         _studentVoiceWindow = new StudentVoiceWindow(config, audio => _receiver?.SendStudentVoiceAsync(config, audio) ?? Task.FromException(new InvalidOperationException("教室端尚未启动。")), () => ClassroomControlService.OpenReadingAsync(config), ShowEnrollment, ShowAbout, () => _island?.ShowControls(), CallBanban, ShowCreativeIdeas, acknowledge: sequence => _island?.AcknowledgeHomeNotice(sequence),
-            selfStudy: action => action == "pause" ? _selfStudy?.Pause() : _selfStudy?.View(), openCardQuiz: ShowCardQuiz);
+            selfStudy: action => action == "pause" ? _selfStudy?.Pause() : _selfStudy?.View(),
+            workshop: (operation, owner, binding, token) => _workshop!.HandleAsync(operation, owner, binding, token),
+            openCardQuiz: ShowCardQuiz);
         _studentVoiceWindow.SetConnectionState(_lastConnectionState);
         if (_island?.HomeState is { } homeState) _studentVoiceWindow.SetIslandState(homeState);
         _studentVoiceWindow.Closed += (_, _) => _studentVoiceWindow = null;
@@ -412,6 +430,11 @@ public sealed partial class App : Application
         }
         if (_exitRequested) return;
         if (_cardQuizWindow is { } quiz && !await quiz.PrepareToCloseAsync()) return;
+        if (_workshop is not null)
+        {
+            try { await _workshop.StopAsync(); }
+            catch (Exception error) when (error is not OutOfMemoryException) { AppLog.Error("Stop classroom plugin before exit", error); ShowStudentVoice(); _studentVoiceWindow?.OpenWorkshop(); return; }
+        }
         _exitRequested = true;
         await ReadingExperience.StopAsync();
         _desktop?.TryShutdown();
@@ -420,6 +443,8 @@ public sealed partial class App : Application
     private async Task ShutdownAsync()
     {
         AppLog.ErrorRecorded -= QueueClientError; _clientErrors?.Dispose();
+        _mathReview?.Dispose();
+        if (_workshop is not null) { try { await _workshop.DisposeAsync(); } catch (Exception error) when (error is not OutOfMemoryException) { AppLog.Error("Stop classroom plugin", error); } }
         _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
         _cardQuizWindow?.CloseWithoutPrompt(); _cardQuizWindow = null;
         CardQuizService.Stop();
@@ -454,7 +479,8 @@ public sealed partial class App : Application
     // Wake listening remains active; only conversation, recording and classroom work block downloads.
     private bool VoiceActivityBusy => ReadingExperience.IsOpen ||
         _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
-        _creativeIdeasWindow?.IsVisible == true || _cardQuizWindow?.IsBusy == true || _receiver?.ComputerAgent.IsBusy == true || _stopTask is { IsCompleted: false };
+        _creativeIdeasWindow?.IsVisible == true || _cardQuizWindow?.IsBusy == true || _workshop?.IsRunning == true ||
+        _receiver?.ComputerAgent.IsBusy == true || _stopTask is { IsCompleted: false };
     private bool CanUpdate(bool userInitiated) => !VoiceActivityBusy && _voicePreparation?.IsDownloading != true &&
         (userInitiated || _island?.ScheduleKnown == true && _island.InClass == false);
     private bool CanDownloadUpdate => CanUpdate(false);

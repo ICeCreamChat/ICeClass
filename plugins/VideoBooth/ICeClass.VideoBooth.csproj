@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ICeClass.VideoBooth</AssemblyName>
+    <RootNamespace>ICeClass.VideoBooth</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>视频展台</Product>
+    <Title>视频展台</Title>
+    <Company>ICeClass</Company>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <Compile Remove="tests/**/*.cs" />
+    <EmbeddedResource Include="Assets/app.ico" />
+    <Content Include="licenses/**/*;NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Site/**/*" LogicalName="ICeClass.VideoBooth.Site.%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="ICeClass.VideoBooth.NativeChecks" />
+  </ItemGroup>
+  <Target Name="UseOnlyWinFormsWebView" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup><Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" /></ItemGroup>
+  </Target>
+</Project>

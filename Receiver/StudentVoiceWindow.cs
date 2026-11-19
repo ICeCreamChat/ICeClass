@@ -27,6 +27,7 @@ public sealed class StudentVoiceWindow : Window
     private readonly Action<string>? _openIdeas;
     private readonly Action<long>? _acknowledge;
     private readonly Func<string, object?>? _selfStudy;
+    private readonly Func<string, Window, ReceiverConfig, CancellationToken, Task<object>>? _workshop;
     private readonly ReceiverConfig _config;
     private readonly Grid _surface = new();
     private readonly Border _notice;
@@ -39,7 +40,7 @@ public sealed class StudentVoiceWindow : Window
     private TaskCompletionSource<bool>? _ready, _leaveResponse;
     private Task<bool>? _leaveCheck;
     private Window? _closeDialog;
-    private bool _initialized, _loaded, _failed, _closed, _homeworkBusy, _openManagement;
+    private bool _initialized, _loaded, _failed, _closed, _homeworkBusy, _openManagement, _openWorkshop;
     private int _bindingVersion;
     private string _scope;
     private ReceiverConnectionState _connection = new(false, "正在连接…");
@@ -92,14 +93,15 @@ public sealed class StudentVoiceWindow : Window
 
     public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null,
         Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null,
-        Action<string>? openIdeas = null, Action<long>? acknowledge = null, Func<string, object?>? selfStudy = null, Action? openCardQuiz = null)
+        Action<string>? openIdeas = null, Action<long>? acknowledge = null, Func<string, object?>? selfStudy = null,
+        Func<string, Window, ReceiverConfig, CancellationToken, Task<object>>? workshop = null, Action? openCardQuiz = null)
     {
         ClassroomStyle.Apply(this);
         _config = config; _scope = BindingScope(config); _send = send; _openReading = openReading;
         _openSettings = openSettings; _openAbout = openAbout; _showIsland = showIsland;
         _showBanban = showBanban; _openIdeas = openIdeas; _acknowledge = acknowledge;
         _openCardQuiz = openCardQuiz;
-        _selfStudy = selfStudy;
+        _selfStudy = selfStudy; _workshop = workshop;
         Title = $"ICeClass 班伴 · {config.ClassName}";
         Icon = new WindowIcon(AppIconFactory.CreateStream());
         Width = 1280; Height = 850; MinWidth = 720; MinHeight = 520;
@@ -220,7 +222,8 @@ public sealed class StudentVoiceWindow : Window
         className = _config.ClassName,
         deviceCaption = $"{_config.DeviceName} · 设备编号 {ComputerIdentity.DeviceCode(_config.DeviceId)}",
         connected = _connection.Connected, connectionText = _connection.Text,
-        capabilities = new {reading = _openReading is not null, plan = _openIdeas is not null, banban = _showBanban is not null, cardQuiz = _openCardQuiz is not null},
+        capabilities = new {reading = _openReading is not null, plan = _openIdeas is not null, banban = _showBanban is not null,
+            workshop = _workshop is not null, cardQuiz = _openCardQuiz is not null},
         voice = VoiceState(), island = _islandState ?? ClassroomHomeSnapshot.Empty()}});
     private async Task ReceiveAsync(CoreWebView2 core, CoreWebView2WebMessageReceivedEventArgs args)
     {
@@ -235,6 +238,7 @@ public sealed class StudentVoiceWindow : Window
                     case "classroom-ready":
                         _loaded = true; PublishHome();
                         if (_openManagement) {Post(new {type="open-management"});_openManagement=false;}
+                        if (_openWorkshop) {Post(new {type="open-workshop"});_openWorkshop=false;}
                         _ready?.TrySetResult(true); break;
                     case "homework-activity": _homeworkBusy = message.GetProperty("busy").GetBoolean(); break;
                     case "homework-leave": _leaveResponse?.TrySetResult(message.GetProperty("safe").GetBoolean()); break;
@@ -261,6 +265,11 @@ public sealed class StudentVoiceWindow : Window
                     var operation = message.TryGetProperty("operation", out var op) ? op.GetString() : "status";
                     if (operation is not ("status" or "pause")) throw new ArgumentException("晚自习操作无效。");
                     value = _selfStudy?.Invoke(operation) ?? throw new InvalidOperationException("晚自习服务尚未启动。");
+                    break;
+                case "workshop":
+                    var workshopOperation = message.TryGetProperty("operation", out var wop) ? wop.GetString() ?? "status" : "status";
+                    value = _workshop is null ? throw new InvalidOperationException("请从最新版教室端打开创意工坊。")
+                        : await _workshop(workshopOperation, this, _config, _pageLifetime.Token);
                     break;
                 case "reading": if (_openReading is not null) await _openReading(); break;
                 case "voice": if (!_sending) {if (_recording) FinishRecording();else StartRecording();} break;
@@ -304,6 +313,12 @@ public sealed class StudentVoiceWindow : Window
         _pageLifetime.Dispose(); _pageLifetime = new(); ResetBrowser(); await LoadAsync();
     }
     public void SetConnectionState(ReceiverConnectionState state) {_connection = state;PublishHome();}
+    internal void SetWorkshopState(object state) => Post(new {type="workshop-state",state});
+    internal void OpenWorkshop()
+    {
+        Show(); WindowState = WindowState.Normal; Activate();
+        if (_loaded) Post(new {type="open-workshop"}); else _openWorkshop = true;
+    }
     internal void SetIslandState(ClassroomHomeSnapshot state)
     {
         _islandState = state;

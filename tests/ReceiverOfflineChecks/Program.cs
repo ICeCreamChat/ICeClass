@@ -2,6 +2,10 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using ICeClass.Receiver;
 
+if (args.Length == 4 && args[0] == "--iceclass-pipe" && args[2] == "--data") { await WorkshopLifecycleChecks.FakePluginAsync(args[1]); return; }
+if (args is ["--workshop-checks"]) { WorkshopLifecycleChecks.Run(); return; }
+if (args is ["--workshop-package-checks", var workshopPackage]) { WorkshopLifecycleChecks.Run(workshopPackage); return; }
+if (args is ["--math-dialog-checks"]) { MathDialogChecks.Run(); return; }
 if (args is ["--connection-checks"]) { CloudConnectionChecks.Run(); return; }
 if (args is ["--ribbon-rendering-checks"]) { RibbonRenderingChecks.Run(); return; }
 
