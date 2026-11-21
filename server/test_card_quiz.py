@@ -9,6 +9,7 @@ import subprocess
 from unittest.mock import patch
 
 import app as service
+from card_quiz_events import public_state
 from homework import defaults
 from teacher_capabilities import actions, reads, undeclared_routes
 from test_app import ServerTestCase
@@ -254,6 +255,21 @@ class CardQuizTests(CardQuizHttpCase):
         await self.api('DELETE', '/publications/' + publication['id'])
         self.assertEqual((await self.api('GET', '/device/bootstrap', headers=self.dh))['publications'], [])
         await self.api('GET', '/device/publications/' + publication['id'], status=404, headers=self.dh)
+
+    async def test_mixed_subject_deck_cannot_be_published_but_the_draft_is_retained(self):
+        math = await self.new_question()
+        english = await self.new_question(subjectId='english')
+        questions = [math['id'], english['id']]
+        deck = await self.api('POST', '/decks', {'title': '混合学科', 'questionIds': questions})
+        path = '/decks/' + deck['id']
+        publication = {'revision': deck['revision'], 'classId': self.cid}
+        failure = await self.api('POST', path + '/publish', publication, 400)
+        self.assertIn('同一学科', failure['error'])
+        self.assertEqual((await self.api('GET', '/decks'))['decks'][0]['questionIds'], questions)
+        self.assertEqual((await self.api('GET', '/device/bootstrap', headers=self.dh))['publications'], [])
+        edited = await self.api('PUT', path, {'revision': deck['revision'], 'title': '数学', 'questionIds': [math['id']]})
+        publication['revision'] = edited['revision']
+        self.assertEqual(len((await self.api('POST', path + '/publish', publication))['questions']), 1)
 
     async def test_deck_private_questions_class_scope_and_list_bounds(self):
         saved = await self.new_question()
@@ -579,7 +595,7 @@ class CardQuizTests(CardQuizHttpCase):
             'payload': {'cardNumber': 1, 'option': 'B'}}])
         await self.sync(body, 409)
 
-    async def test_source_switch_is_only_allowed_between_rounds(self):
+    async def test_source_switch_requires_pause_or_a_sealed_round(self):
         await self.initialize()
         body = self.session(ended=False)
         await self.sync(body)
@@ -589,6 +605,40 @@ class CardQuizTests(CardQuizHttpCase):
             'action': 'set_source', 'at': STAMP + 4000,
             'payload': {'source': 'phone', 'sourceId': 'other-source'}}])
         await self.sync(body, 409)
+
+    async def test_paused_round_can_pass_to_phone_and_resume_without_losing_answers(self):
+        await self.initialize()
+        board = self.session(ended=False)
+        await self.sync(board)
+        pair = await self.api('POST', '/device/pair', {'sessionId': 'session-1'}, headers=self.dh)
+        await self.api('POST', '/pair', {'code': pair['code']})
+
+        async def relay(batch, status=200):
+            state = public_state(batch['session'], '高一（1）班')
+            return await self.api('POST', '/device/relay', {'sessionId': 'session-1', 'state': state,
+                                                           'receipts': []}, status, self.dh)
+
+        await relay(board)
+        paused = self.advance(board, 'recover')
+        await self.sync(paused)
+        handoff = self.advance(paused, 'set_source', {'source': 'phone', 'sourceId': pair['pairId']})
+        await relay(handoff, 409)
+        await self.sync(handoff)
+        with patch.object(service, 'now_ms', return_value=service.now_ms() + 1000):
+            await relay(handoff)
+            path = '/pairs/' + pair['pairId'] + '/commands'
+            generation = handoff['session']['generation']
+            resume = self.command(pair, id='resume-same-round', action='resume_round', generation=generation)
+            self.assertEqual((await self.api('POST', path, resume))['status'], 'pending')
+            await self.api('POST', path, {**resume, 'id': 'old-context', 'generation': generation - 1}, 409)
+            live = self.advance(handoff, 'resume_round', id=resume['id'])
+            await self.sync(live)
+            received = self.advance(live, 'answer', {'cardNumber': 3, 'option': 'A'})
+            await self.sync(received)
+            await self.api('POST', path, {**resume, 'id': 'not-paused', 'generation': generation + 1}, 409)
+        self.assertEqual(received['session']['currentRoundId'], 'round-1')
+        self.assertEqual(len(received['session']['questions'][0]['rounds']), 1)
+        self.assertEqual(public_state(received['session'], '')['received'], 3)
 
     async def test_pair_permission_revocation_stops_reads_commands_and_device_forwarding(self):
         pair, state, _ = await self.active_pair()

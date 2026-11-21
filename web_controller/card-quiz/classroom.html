@@ -4,40 +4,53 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>纸卡答题 · ICeClass</title>
-  <link rel="stylesheet" href="../assets/control-focus.css"><link rel="stylesheet" href="classroom.css">
+  <link rel="stylesheet" href="../assets/typography.css">
+  <link rel="stylesheet" href="../assets/classroom-glass.css"><link rel="stylesheet" href="classroom.css"><link rel="stylesheet" href="../assets/control-focus.css">
   <script src="vendor/cv.js" defer></script><script src="vendor/aruco.js" defer></script>
   <script src="vendor/qrcodegen.js" defer></script><script src="model.js" defer></script>
   <script src="journal.js" defer></script><script src="scanner.js" defer></script><script src="classroom-wheel.js" defer></script><script src="classroom.js" defer></script>
 </head>
-<body>
+<body class="classroom-liquid classroom-light-material">
   <main class="quiz-shell">
-    <header class="quiz-header"><div><h1>纸卡答题</h1><p class="muted" id="class-name">创意工坊</p></div><div class="header-actions"><button id="compact" type="button">班班控制窗</button><button id="close" type="button">返回首页</button></div></header>
+    <header class="quiz-header standalone"><div><h1>纸卡答题</h1><p class="muted" id="class-name">创意工坊</p></div></header>
+    <header class="dialog-header" id="pane-header" hidden><h1 id="pane-heading" tabindex="-1"></h1><button type="button" id="pane-back">返回</button></header>
     <p id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true">正在读取本机课堂…</p>
-    <section id="setup" class="surface" aria-labelledby="setup-heading">
-      <h2 id="setup-heading">开始本班课堂</h2>
-      <p id="roster-status">正在准备名单与纸卡…</p>
-      <div class="setup-fields"><label>学科<select id="subject"><option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option><option value="physics">物理</option><option value="chemistry">化学</option><option value="biology">生物</option><option value="politics">政治</option><option value="history">历史</option><option value="geography">地理</option></select></label><label>出题方式<select id="publication"><option value="">配合课件临时出题</option></select></label></div>
-      <div class="actions"><button id="create-session" type="button" class="primary" disabled>开始课堂</button><button id="refresh" type="button">联网刷新</button></div>
+    <section id="setup" data-panes="history" class="surface lg-pane" aria-labelledby="setup-heading">
+      <h2 id="setup-heading" class="standalone" tabindex="-1">开始本班课堂</h2>
+      <p id="roster-status" class="standalone" role="status">正在准备名单与纸卡…</p>
+      <div id="setup-fields" class="setup-fields standalone">
+        <label>出题方式<select id="publication"><option value="">配合课件临时出题</option></select></label>
+        <label id="subject-field">学科<select id="subject"><option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option><option value="physics">物理</option><option value="chemistry">化学</option><option value="biology">生物</option><option value="politics">政治</option><option value="history">历史</option><option value="geography">地理</option></select></label>
+        <label id="first-template-field">首题题型<select id="first-template"></select></label>
+      </div>
+      <div class="actions standalone"><button id="create-session" type="button" class="primary" disabled>开始课堂</button><button id="refresh" type="button">联网刷新</button></div>
       <div id="saved-sessions" class="saved-sessions"></div>
+      <p id="history-empty" hidden>本机没有待同步的课堂。</p>
     </section>
     <section id="workspace" hidden aria-label="当前课堂">
-      <div class="session-bar"><span id="question-number"></span><span id="sync-status" role="status"></span><button id="sync" type="button">同步记录</button></div>
+      <div class="session-bar"><span data-panes="capture question distribution" id="question-number"></span><span data-panes="next" id="next-preview" class="pet-only"></span><span data-panes="summary" id="sync-status" role="status"></span><button data-panes="summary" id="sync" type="button">同步记录</button></div>
       <div class="quiz-columns">
-        <section class="surface question-surface" aria-labelledby="question-heading"><h2 id="question-heading" tabindex="-1"></h2><p class="muted" id="round-kind"></p><p id="question-text" class="question-text"></p><div id="question-image" class="question-image" hidden></div><ol id="options" class="options" type="A"></ol><p id="answer-display" class="answer-display" hidden></p><div id="distribution" class="distribution" aria-label="本轮匿名选项分布"></div></section>
-        <aside class="surface capture-surface" aria-label="收答控制">
-          <div class="capture-count"><strong id="received">0</strong><span id="expected"> / 0 人已收</span></div>
-          <p id="round-status"></p>
-          <div id="multi-capture" class="multi-capture" hidden>
+        <aside class="surface lg-pane capture-surface" aria-label="收答控制">
+          <div data-panes="capture distribution" class="capture-count"><strong id="received">0</strong><span id="expected"> / 0 人已收</span></div>
+          <p data-panes="capture" id="round-status" role="status"></p>
+          <p data-panes="capture" id="capture-progress" class="muted" hidden></p>
+          <div data-panes="capture" class="actions capture-actions"><button id="start" type="button" class="primary">开始收答</button><button id="stop" type="button" disabled>结束本轮</button><button id="pause" type="button" hidden>暂停</button><button id="camera-toggle" type="button" hidden>开启相机</button></div>
+          <div data-panes="capture" id="multi-capture" class="multi-capture" hidden>
             <div class="multi-controls"><label>当前收答项<select id="multi-option" aria-describedby="multi-instruction"></select></label><button id="multi-next" type="button">收下一项</button></div>
             <p id="multi-instruction">A 朝上表示选，B 朝上表示不选。</p><p id="multi-progress" class="muted" role="status" aria-live="polite"></p>
           </div>
-          <video id="camera" muted playsinline aria-label="本机相机预览"></video>
-          <p id="camera-status" class="muted" role="status">视频仅在本机识别。</p>
-          <div class="actions"><button id="start" type="button" class="primary">开始收答</button><button id="stop" type="button" disabled>结束本轮</button><button id="camera-toggle" type="button" hidden>开启相机</button></div>
-          <div class="actions secondary-actions"><button id="source" type="button">使用手机</button><button id="edit" type="button">题目与答案</button><button id="exempt" type="button">本轮免答</button><button id="show-distribution" type="button" disabled>展示分布</button><button id="reveal" type="button">揭晓答案</button></div>
+          <video id="camera" muted playsinline aria-label="本机相机预览" hidden></video>
+          <p data-panes="capture" id="camera-status" class="muted" role="status" hidden>视频仅在本机识别。</p>
+          <div class="actions secondary-actions"><button class="standalone" id="source" type="button">使用手机</button><button data-panes="question distribution" id="edit" type="button">设置题目与答案</button><button data-panes="capture" id="exempt" type="button">核对卡号</button><button class="standalone" id="show-distribution" type="button" aria-expanded="false" aria-controls="distribution" disabled>展示分布</button><button data-panes="question distribution" id="reveal" type="button">揭晓答案</button></div>
+          <div data-panes="next" class="actions next-actions" id="continue-actions"><label class="next-template" id="next-template-field">下一题题型<select id="next-template"></select></label><button id="next" type="button">下一题</button><button id="temporary" type="button">添加临时题</button></div>
         </aside>
+        <section data-panes="question distribution" class="surface lg-pane question-surface" aria-labelledby="question-heading"><h2 data-panes="question" id="question-heading" tabindex="-1"></h2><p class="muted" id="round-kind"></p><p data-panes="question" id="question-text" class="question-text"></p><div data-panes="question" id="question-image" class="question-image" hidden></div><ol data-panes="question" id="options" class="options" type="A"></ol><p id="answer-display" class="answer-display" hidden></p><div data-panes="distribution" id="distribution" class="distribution" aria-label="本轮匿名选项分布"></div></section>
       </div>
-      <footer class="session-actions"><div class="actions"><button id="next" type="button" class="primary">下一题</button><button id="temporary" type="button">添加临时题</button></div><button id="end-session" type="button">结束课堂</button></footer>
+      <ol id="summary-questions" data-panes="summary" hidden aria-label="各题正式作答"></ol>
+      <footer data-panes="summary" class="session-actions">
+        <button class="standalone" id="end-session" type="button">结束课堂</button>
+        <button id="return-setup" type="button" class="primary" hidden>返回开课页</button>
+      </footer>
     </section>
   </main>
   <dialog id="editor" aria-labelledby="editor-heading"><form id="question-form">
@@ -53,6 +66,6 @@
     <footer class="actions"><button type="button" data-dismiss="editor">取消</button><button type="submit" class="primary">保存设置</button></footer>
   </form></dialog>
   <dialog id="pair-dialog" aria-labelledby="pair-heading"><header class="dialog-header"><h2 id="pair-heading">手机接力扫码</h2><button type="button" data-dismiss="pair-dialog">关闭</button></header><div id="pair-qr" class="pair-qr"></div><p>老师用手机扫描，登录教师账号后配对。</p><p class="pair-code" id="pair-code"></p><p id="pair-url" class="muted"></p><p id="pair-status" role="status">配对后在白板确认切换采集来源。</p><div class="actions"><button type="button" id="confirm-phone" class="primary">确认使用此手机</button></div></dialog>
-  <dialog id="exempt-dialog" aria-labelledby="exempt-heading"><header class="dialog-header"><h2 id="exempt-heading">本轮免答卡号</h2><button type="button" data-dismiss="exempt-dialog">关闭</button></header><p>免答不计入本轮应答人数，已收答案保留。</p><div id="exempt-cards" class="exempt-cards"></div></dialog>
+  <dialog id="exempt-dialog" aria-labelledby="exempt-heading"><header class="dialog-header"><h2 id="exempt-heading">本轮卡号</h2><button type="button" data-dismiss="exempt-dialog">关闭</button></header><p id="card-check-scope" class="muted"></p><div id="exempt-cards" class="exempt-cards"></div></dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-heading"><h2 id="confirm-heading"></h2><p id="confirm-description"></p><div class="actions"><button type="button" id="confirm-cancel">取消</button><button type="button" id="confirm-ok" class="primary">确认</button></div></dialog>
 </body></html>

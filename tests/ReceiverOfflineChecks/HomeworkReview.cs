@@ -11,7 +11,7 @@ internal static class HomeworkReview
     {
         if (!ReceiverConfig.TryRead(bindingPath, out var config) || !ReceiverConfig.IsPreview(config))
             throw new InvalidOperationException("Homework review requires an explicit loopback preview binding.");
-        var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
             .AfterSetup(_ => Dispatcher.UIThread.Post(() => Open(config, compact, selfStudy)))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose));
         thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();

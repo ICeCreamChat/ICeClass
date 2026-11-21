@@ -26,7 +26,7 @@
   outline: none;
   box-shadow: none;
 }
-:root :is(.bb-connection-choice, .level-option):has(input:focus-visible),
+:root :is(.bb-connection-choice, .mode-button):has(input:focus-visible),
 .reading-game .radio-options label:focus-within {
   outline: 1px solid var(--focus);
   outline-offset: 2px;
@@ -37,7 +37,7 @@
   :root :focus-visible,
   :root :is(input, textarea, select):where(:not([type=checkbox], [type=radio], [type=range], [type=hidden], [type=button], [type=submit], [type=reset], [type=image])):focus,
   :root :is(.bb-input-box, .search-field, .date-input-label):focus-within,
-  :root :is(.bb-connection-choice, .level-option):has(input:focus-visible),
+  :root :is(.bb-connection-choice, .mode-button):has(input:focus-visible),
   .reading-game .radio-options label:focus-within {
     outline: 2px solid Highlight;
     outline-offset: 2px;

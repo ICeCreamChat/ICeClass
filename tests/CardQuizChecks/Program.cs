@@ -25,6 +25,21 @@ try{
     store.Commit(first);Check(store.Read(id)!["events"]!.AsArray().Count==1,"相同记录重试幂等");
     var conflict=first.DeepClone().AsObject();conflict["session"]!["extra"]="篡改";Refuses(()=>store.Commit(conflict),"同序号不同内容拒绝");
     var gap=Advance(Advance(first));Refuses(()=>store.Commit(gap),"缺少本机前序提交拒绝");
+    var fresh = Journal(Guid.NewGuid().ToString());
+    Refuses(() => store.Commit(Advance(fresh)), "首次提交不能包含作答或跳过出题");
+    var firstQuestion = Advance(fresh, "add_question", new JsonObject
+    {
+        ["type"] = "single", ["options"] = new JsonArray("", "", "", "")
+    });
+    var firstQuestionId = Guid.NewGuid().ToString();
+    firstQuestion["session"]!["currentQuestionId"] = firstQuestionId;
+    firstQuestion["session"]!["questions"] = new JsonArray(new JsonObject
+    {
+        ["id"] = firstQuestionId, ["type"] = "single", ["rounds"] = new JsonArray()
+    });
+    store.Commit(firstQuestion);
+    Check(JsonNode.DeepEquals(reopened.Read(fresh["session"]!["id"]!.GetValue<string>()), firstQuestion),
+        "新课堂和第一题一次落盘并可原样恢复");
     var wrong=Advance(first);wrong["session"]!["classId"]="c2";Refuses(()=>store.Commit(wrong),"改绑后的数据不串入新班");
     var oldEvent=Advance(first);oldEvent["events"]![0]!["action"]="different";Refuses(()=>store.Commit(oldEvent),"已确认事件内容不能改写");
     store.MarkSynced(id,1);var second=Advance(first);store.Commit(second);Check(store.Read(id)!["syncedSeq"]!.GetValue<int>()==1,"旧页面提交不回退后台同步进度");

@@ -156,7 +156,7 @@
   $('userClearFilters').onclick = reset;
   $('userPrevPage').onclick = () => { filters.page--; draw(); };
   $('userNextPage').onclick = () => { filters.page++; draw(); };
-  $('userActionsPopover').addEventListener('toggle', event => menuTrigger?.setAttribute('aria-expanded', String(event.newState === 'open')));
+  $('userActionsPopover').addEventListener('beforetoggle', event => menuTrigger?.setAttribute('aria-expanded', String(event.newState === 'open')));
   window.ICeClassUI.menuKeys($('userActionsPopover'), closeMenu);
   const dismissMenu = () => { const menu = $('userActionsPopover'); if (menu.matches(':popover-open')) closeMenu(menu.contains(document.activeElement)); };
   window.addEventListener('resize', dismissMenu);

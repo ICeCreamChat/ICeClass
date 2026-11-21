@@ -60,7 +60,10 @@ internal static class ClassroomStyle
         Spacing = 10, Children = { Text(title, 17, true), SettingsCard(content) },
     };
     // Unmodified Lucide paths, bundled locally; see Assets/Icons/SOURCE.md.
-    internal static Border IconBadge(string name)
+    internal static Border IconBadge(string name) => new() { Width = 48, Height = 48, Background = DesktopStyle.Brush("#E8F2FF"),
+        CornerRadius = new CornerRadius(12), Child = Icon(name, 26) };
+
+    internal static Viewbox Icon(string name, double size)
     {
         using var stream = typeof(ClassroomStyle).Assembly.GetManifestResourceStream($"ICeClass.Classroom.Icons.{name}.svg")!;
         var canvas = new Canvas { Width = 24, Height = 24 };
@@ -76,7 +79,6 @@ internal static class ClassroomStyle
                 Data = geometry, Stroke = DesktopStyle.Blue, StrokeThickness = 1.8,
                 StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round });
         }
-        return new Border { Width = 48, Height = 48, Background = DesktopStyle.Brush("#E8F2FF"),
-            CornerRadius = new CornerRadius(12), Child = new Viewbox { Width = 26, Height = 26, Child = canvas } };
+        return new Viewbox { Width = size, Height = size, Child = canvas, IsHitTestVisible = false };
     }
 }

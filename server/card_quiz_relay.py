@@ -399,6 +399,8 @@ class RelayHandlers:
                     fail('仅正在收答的多选轮次可以切换收答项。', 409)
                 if not isinstance(option, str) or len(option) != 1 or option not in 'ABCD'[:state['optionCount']]:
                     fail('多选收答项无效。', 409, 'invalid_command')
+            elif body['action'] == 'resume_round' and state['roundStatus'] != 'paused':
+                fail('只有暂停的轮次可以恢复收答。', 409)
             if self.db.one('''SELECT COUNT(*) n FROM card_quiz_commands c JOIN card_quiz_pairs p ON p.id=c.pair_id
                 WHERE p.session_id=? AND c.status='pending' ''', (pair['session_id'],))['n'] >= 128:
                 fail('待确认队列已满（128 条），请等待白板确认。', 429)
@@ -491,7 +493,7 @@ class RelayHandlers:
                 fail('多选切换收答项必须在采集中推进采集代次。', 409)
             if (state['source'], state['sourceId']) != (effective['source'], effective['sourceId']):
                 if effective['roundStatus'] not in (None, 'closed') or state['generation'] <= effective['generation']:
-                    fail('只能在封存轮次后切换来源，并推进采集代次。', 409)
+                    fail('本轮设备切换须先同步已保存的暂停和切换记录。', 409)
             if row['ended_at'] is not None and not state['ended']:
                 fail('已结束课堂不能恢复采集。', 409)
             if previous:
@@ -501,10 +503,15 @@ class RelayHandlers:
                 if state['seq'] < old_state['seq'] or state['generation'] < old_state['generation'] or old_state['ended'] and not state['ended']:
                     fail('匿名课堂状态不能回退。', 409)
                 if (state['source'], state['sourceId']) != (old_state['source'], old_state['sourceId']):
+                    saved = json.loads(row['raw_value'])
+                    same_open_round = (state['roundId'] is not None and state['roundId'] == old_state['roundId']
+                                       and old_state['roundStatus'] != 'closed')
                     if (old_state['roundStatus'] not in (None, 'closed')
-                            and json.loads(row['raw_value'])['seq'] <= old_state['seq']
+                            and saved['seq'] <= old_state['seq']
                             or state['generation'] <= old_state['generation']):
-                        fail('只能在轮次间切换来源，并推进采集代次。', 409)
+                        fail('设备切换须先封存或暂停当前轮次，并推进采集代次。', 409)
+                    if same_open_round and (saved['source'], saved['sourceId']) != (state['source'], state['sourceId']):
+                        fail('本轮设备切换须先同步已保存的切换记录。', 409)
             last_poll = self.db.one('''SELECT MAX(r.polled_at) stamp FROM card_quiz_relay_states r
                 JOIN card_quiz_sessions s ON s.id=r.session_id WHERE s.device_id=?''', (device['id'],))['stamp']
             if last_poll is not None and stamp - last_poll < 750:

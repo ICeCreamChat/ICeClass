@@ -31,42 +31,42 @@ colors:
   warning-ink: "#814810"
 typography:
   headline:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "34px"
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: "-1px"
   title:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "23px"
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: "-.5px"
   dialog-title:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "27px"
     fontWeight: 700
     letterSpacing: "-.7px"
   body:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.6
   label:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "16px"
     fontWeight: 400
   action:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "17px"
     fontWeight: 600
     lineHeight: 1.4
   compact-action:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "16px"
     fontWeight: 600
   student:
-    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif'
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif'
     fontSize: "17px"
     fontWeight: 500
 rounded:

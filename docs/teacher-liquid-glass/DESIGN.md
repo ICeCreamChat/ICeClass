@@ -19,18 +19,18 @@ colors:
   orange: "#825617"
 typography:
   headline:
-    fontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif'
+    fontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif'
     fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.4
     letterSpacing: "-.02em"
   title:
-    fontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif'
+    fontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif'
     fontSize: "20px"
     fontWeight: 600
     lineHeight: 1.5
   body:
-    fontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif'
+    fontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif'
     fontSize: "16px"
     lineHeight: 1.65
   supporting:

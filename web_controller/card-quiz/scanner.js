@@ -9,8 +9,17 @@
     return angle>0?(angle<90?'C':'B'):(angle> -90?'D':'A');
   }
   class Stabilizer{
-    constructor(){this.entries=new Map();this.frame=0;this.conflicts=[];}
-    reset(){this.entries.clear();this.frame=0;this.conflicts=[];}
+    constructor(){this.entries=new Map();this.visible=new Map();this.held=new Map();this.frame=0;this.conflicts=[];}
+    reset(){this.entries.clear();this.visible.clear();this.held.clear();this.frame=0;this.conflicts=[];}
+    cardsInView(){
+      const cards=this.cardsOnHold();
+      for(const [number,card] of this.visible) if(this.frame-card.frame<3) cards.set(number,card.option);
+      return cards;
+    }
+    cardsOnHold(){return new Map([...this.held].map(([number,card])=>[number,card.option]));}
+    waitForNewPresentation(cards){
+      for(const [number,option] of cards || []) this.held.set(number,{option,absent:0});
+    }
     forget(number){this.entries.delete(number);}
     feed(markers,at,optionCount=4){
       this.frame++;this.conflicts=[];const groups=new Map(),results=[];
@@ -21,29 +30,46 @@
         if(!groups.has(number))groups.set(number,[]);
         groups.get(number).push({option,distance:marker.hammingDistance??0});
       }
+      // During a change of item, an unchanged card must leave three fresh frames
+      // or turn to a different stable orientation before it can answer again.
+      for(const [number,card] of this.held){
+        if(groups.has(number)) card.absent=0;
+        else if(++card.absent>=3) this.held.delete(number);
+      }
       for(const [number,reads]of groups){
         let entry=this.entries.get(number);if(!entry){entry={history:[],committed:'',run:'',streak:0,lastFrame:0};this.entries.set(number,entry);}
         const options=new Set(reads.map(x=>x.option).filter(Boolean));
         const option=options.size===1?[...options][0]:'';
+        this.visible.set(number,{option,frame:this.frame});
         if(options.size>1)this.conflicts.push(number);
         if(options.size!==1||reads.some(x=>!x.option)||!'ABCD'.slice(0,optionCount).includes(option)){
           entry.history=[];entry.run='';entry.streak=0;continue;
         }
+        const held=this.held.get(number);
+        if(held&&(!held.option||held.option===option)){entry.history=[];entry.run='';entry.streak=0;continue;}
         const distance=Math.min(...reads.map(x=>x.distance));if(distance>1)continue;
         entry.history=entry.history.filter(x=>this.frame-x.frame<20&&at-x.at<=3000);
         entry.history.push({option,weight:distance===0?2:1,frame:this.frame,at});
         entry.streak=entry.run===option&&entry.lastFrame===this.frame-1?entry.streak+1:1;
         entry.run=option;entry.lastFrame=this.frame;
         const score=entry.history.filter(x=>x.option===option).reduce((sum,x)=>sum+x.weight,0);
-        if(score>=6&&entry.streak>=3&&option!==entry.committed){entry.committed=option;results.push({cardNumber:number,option});entry.history=entry.history.filter(x=>x.option===option);}
+        if(score>=6&&entry.streak>=3&&option!==entry.committed){this.held.delete(number);entry.committed=option;results.push({cardNumber:number,option});entry.history=entry.history.filter(x=>x.option===option);}
       }
       for(const [number,e]of this.entries)if(at-(e.history.at(-1)?.at??0)>10000&&!e.committed)this.entries.delete(number);
       return results;
     }
   }
   class CardQuizScanner{
-    constructor({video,onRead,onStatus=()=>{}}){this.video=video;this.onRead=onRead;this.onStatus=onStatus;this.stabilizer=new Stabilizer();this.optionCount=4;this.running=false;this.opening=0;this.contextKey='';this.contextRevision=0;this.starting=null;}
-    reset(key,optionCount=4){if(this.contextKey!==key||this.optionCount!==optionCount){this.contextKey=key;this.optionCount=optionCount;this.contextRevision++;this.stabilizer.reset();}}
+    constructor({video,onRead,onStatus=()=>{},readTrack=false}){this.video=video;this.onRead=onRead;this.onStatus=onStatus;this.readTrack=readTrack;this.stabilizer=new Stabilizer();this.optionCount=4;this.running=false;this.opening=0;this.contextKey='';this.contextRevision=0;this.starting=null;}
+    reset(key,optionCount=4,presentationKey=key){
+      if(this.contextKey===key&&this.optionCount===optionCount)return;
+      if(this.presentationKey!==presentationKey)this.heldCards=null;
+      else if(this.running)this.heldCards=this.stabilizer.cardsOnHold();
+      this.presentationKey=presentationKey;this.contextKey=key;this.optionCount=optionCount;this.contextRevision++;
+      this.stabilizer.reset();this.stabilizer.waitForNewPresentation(this.heldCards);
+    }
+    cardsInView(){return this.running?this.stabilizer.cardsInView():this.heldCards;}
+    waitForNewPresentation(cards){this.heldCards=cards;}
     async start(){
       if(this.running)return;
       if(this.starting)return this.starting;
@@ -74,24 +100,40 @@
       try{
         this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});
         this.detector=new AR.Detector({dictionaryName:'QCMCAM_4X4_157h3',maxHammingDistance:2});
+        if(this.readTrack && typeof MediaStreamTrackProcessor === 'function')
+          this.reader=new MediaStreamTrackProcessor({track:tracks[0],maxBufferSize:1}).readable.getReader();
       }catch(error){this.stop();throw error;}
       this.running=true;this.lastFrame=null;this.lastFrameAt=performance.now();this.stabilizer.reset();
+      this.stabilizer.waitForNewPresentation(this.heldCards);
       this.onStatus({kind:'ready',message:'相机已开启'});this.tick();
     }
     cameraError(message){
       this.stop();this.onStatus({kind:'error',message});
     }
-    tick(){
+    async tick(){
       if(!this.running)return;const started=performance.now();
+      const reader=this.reader,revision=this.contextRevision;
+      let captured,timeout;
       try{
         const v=this.video;
         if(this.stream.getVideoTracks().some(track=>track.readyState==='ended')){this.cameraError('相机连接已结束，请重新开启相机。');return;}
-        const quality=v.getVideoPlaybackQuality?.(),frame=Number.isFinite(quality?.totalVideoFrames)?quality.totalVideoFrames-(quality.droppedVideoFrames||0):v.currentTime;
-        if(v.readyState>=2&&v.videoWidth&&v.videoHeight&&Number.isFinite(frame)&&frame!==this.lastFrame){
-          this.lastFrame=frame;this.lastFrameAt=started;
-          const scale=Math.min(1,960/v.videoWidth),w=Math.round(v.videoWidth*scale),h=Math.round(v.videoHeight*scale);
+        let source=v,width=v.videoWidth,height=v.videoHeight,frame;
+        if(reader){
+          // A small or covered pet can stop presenting preview frames while its camera is still live.
+          timeout=setTimeout(()=>{if(this.reader===reader)this.cameraError('相机画面已停止更新，请重新开启相机。');},3000);
+          const result=await reader.read(); captured=result.value;
+          if(this.reader!==reader)return;
+          if(result.done){this.cameraError('相机连接已结束，请重新开启相机。');return;}
+          source=captured;width=captured.displayWidth;height=captured.displayHeight;frame=captured.timestamp;
+        }else{
+          const quality=v.getVideoPlaybackQuality?.();
+          frame=Number.isFinite(quality?.totalVideoFrames)?quality.totalVideoFrames-(quality.droppedVideoFrames||0):v.currentTime;
+        }
+        if((captured||v.readyState>=2)&&width&&height&&Number.isFinite(frame)&&frame!==this.lastFrame){
+          this.lastFrame=frame;this.lastFrameAt=performance.now();
+          const scale=Math.min(1,960/width),w=Math.round(width*scale),h=Math.round(height*scale);
           if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
-          this.ctx.drawImage(v,0,0,w,h);const markers=this.detector.detect(this.ctx.getImageData(0,0,w,h));
+          this.ctx.drawImage(source,0,0,w,h);const markers=revision===this.contextRevision?this.detector.detect(this.ctx.getImageData(0,0,w,h)):[];
           const opening=this.opening,context=this.contextRevision,current=()=>this.running&&opening===this.opening&&context===this.contextRevision;
           for(const read of this.stabilizer.feed(markers,Date.now(),this.optionCount))Promise.resolve().then(()=>{if(current())return this.onRead(read);}).catch(error=>{
             if(!current()||this.stabilizer.entries.get(read.cardNumber)?.committed!==read.option)return;
@@ -99,10 +141,20 @@
           });
           if(this.stabilizer.conflicts.length)this.onStatus({kind:'warning',message:`重复卡号方向冲突：${this.stabilizer.conflicts.join('、')}`});
         }else if(started-this.lastFrameAt>=3000){this.cameraError('相机画面已停止更新，请重新开启相机。');return;}
-      }catch(error){this.onStatus({kind:'error',message:'识别未完成，请检查相机或重新开启。'});}
+      }catch(error){
+        if(reader && this.reader!==reader)return;
+        if(reader){this.cameraError('相机画面无法读取，请重新开启相机。');return;}
+        this.onStatus({kind:'error',message:'识别未完成，请检查相机或重新开启。'});
+      }finally{clearTimeout(timeout);captured?.close();}
       if(this.running)this.timer=setTimeout(()=>this.tick(),Math.max(30,180-(performance.now()-started)));
     }
-    stop(){++this.opening;this.starting=null;this.running=false;clearTimeout(this.timer);this.releaseStream?.();this.stream=null;this.video.srcObject=null;this.stabilizer.reset();}
+    stop(){
+      if(this.running)this.heldCards=this.stabilizer.cardsOnHold();
+      ++this.opening;this.starting=null;this.running=false;clearTimeout(this.timer);
+      const reader=this.reader;this.reader=null;
+      if(reader)reader.cancel().catch(()=>{}).finally(()=>reader.releaseLock());
+      this.releaseStream?.();this.stream=null;this.video.srcObject=null;this.stabilizer.reset();
+    }
   }
   CardQuizScanner.Stabilizer=Stabilizer;CardQuizScanner.answerFromCorners=answerFromCorners;
   return CardQuizScanner;

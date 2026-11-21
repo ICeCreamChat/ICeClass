@@ -8,6 +8,21 @@ const marker=(option='A',id=0,hammingDistance=0)=>({id,corners:positions[option]
 function image(matrix){const scale=20,size=matrix.length*scale,data=new Uint8ClampedArray(size*size*4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=(y*size+x)*4;data[i]=data[i+1]=data[i+2]=matrix[Math.floor(y/scale)][Math.floor(x/scale)]?255:0;data[i+3]=255;}return{width:size,height:size,data};}
 const rotate=m=>m[0].map((_,x)=>m.map(row=>row[x]).reverse());
 
+test('换项后留在原位的卡不能沿用，转向和重新举起分别重新计稳',()=>{
+  const stable=new Scanner.Stabilizer();
+  let time=0;
+  const frame=markers=>stable.feed(markers,time+=180,2);
+  const first=[marker('A',0),marker('B',1)];
+  frame(first);frame(first);assert.equal(frame(first).length,2);
+  const previous=stable.cardsInView();
+  stable.reset();stable.waitForNewPresentation(previous);
+  for(let i=0;i<12;i++)assert.deepEqual(frame(first),[]);
+  const turn=[marker('A',0),marker('A',1)];
+  frame(turn);frame(turn);assert.deepEqual(frame(turn),[{cardNumber:2,option:'A'}]);
+  frame([]);frame([]);frame([]);
+  frame(turn);frame(turn);assert.deepEqual(frame(turn),[{cardNumber:1,option:'A'}]);
+});
+
 test('全套 157 张打印图案各方向可还原同一卡号和字母',()=>{
   assert.equal(Cards.capacity,157);const detector=new AR.Detector({dictionaryName:'QCMCAM_4X4_157h3',maxHammingDistance:2});
   for(let number=1;number<=157;number++){let matrix=Cards.matrix(number);for(const option of ['A','D','C','B']){const matches=detector.detect(image(matrix)).filter(m=>m.id===number-1);assert.ok(matches.length,`卡 ${number} 朝向 ${option}`);assert.equal(Scanner.answerFromCorners(matches[0].corners),option);matrix=rotate(matrix);}}
@@ -80,7 +95,7 @@ test('同方向几何重复只计一帧，合并保留较低纠错距离',()=>{
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};}
 async function settled(){for(let i=0;i<8;i++)await Promise.resolve();}
-function camera(t,{getUserMedia,play,onRead}={}){
+function camera(t,{getUserMedia,play,onRead,trackProcessor}={}){
   let now=0,mediaCalls=0,timerId=0;const timers=new Map(),statuses=[],reads=[],streams=[];
   function stream(){
     const track=new EventTarget();Object.assign(track,{kind:'video',readyState:'live',stops:0,stop(){this.stops++;this.readyState='ended';},end(){this.readyState='ended';this.dispatchEvent(new Event('ended'));}});
@@ -89,12 +104,13 @@ function camera(t,{getUserMedia,play,onRead}={}){
   const video={srcObject:null,readyState:0,videoWidth:160,videoHeight:160,currentTime:0,play:play||(()=>Promise.resolve())};
   const ctx={drawImage(){},getImageData:()=>image(Cards.matrix(1))},canvas={width:0,height:0,getContext:()=>ctx};
   const globals={isSecureContext:true,navigator:{mediaDevices:{getUserMedia:()=>{mediaCalls++;return getUserMedia?getUserMedia():Promise.resolve(stream());}}},document:{createElement:()=>canvas}};
+  if(trackProcessor)globals.MediaStreamTrackProcessor=trackProcessor;
   const descriptors=Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   for(const [key,value]of Object.entries(globals))Object.defineProperty(globalThis,key,{value,configurable:true});
   t.mock.method(performance,'now',()=>now);
   t.mock.method(globalThis,'setTimeout',fn=>{timers.set(++timerId,fn);return timerId;});
   t.mock.method(globalThis,'clearTimeout',id=>timers.delete(id));
-  const scanner=new Scanner({video,onRead:onRead||(read=>{reads.push(read);}),onStatus:status=>statuses.push(status)});
+  const scanner=new Scanner({video,readTrack:Boolean(trackProcessor),onRead:onRead||(read=>{reads.push(read);}),onStatus:status=>statuses.push(status)});
   scanner.reset('round-1');
   t.after(()=>{scanner.stop();for(const [key,descriptor]of Object.entries(descriptors)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
   async function frame({option='A',advance=true,elapsed=180}={}){
@@ -103,6 +119,17 @@ function camera(t,{getUserMedia,play,onRead}={}){
   }
   return{scanner,video,stream,streams,statuses,reads,frame,get mediaCalls(){return mediaCalls;}};
 }
+
+test('班班切项关闭摄像头，迟到的视频帧释放且不写入下一项',async t=>{
+  const pending=deferred();let closed=0,cancelled=0,released=0;
+  const reader={read:()=>pending.promise,async cancel(){cancelled++;},releaseLock(){released++;}};
+  class Processor { constructor(){this.readable={getReader:()=>reader};} }
+  const h=camera(t,{trackProcessor:Processor});
+  await h.scanner.start();h.scanner.stop();h.scanner.reset('round-2',2);
+  pending.resolve({value:{timestamp:1,displayWidth:160,displayHeight:160,close(){closed++;}}});await settled();
+  assert.equal(cancelled,1);assert.equal(released,1);assert.equal(closed,1);assert.deepEqual(h.reads,[]);
+  assert.equal(h.scanner.running,false);assert.equal(h.streams[0].track.stops,1);
+});
 
 test('重叠开启共用一次相机申请，停止时唯一视频轨释放',async t=>{
   const opening=deferred(),h=camera(t,{getUserMedia:()=>opening.promise});

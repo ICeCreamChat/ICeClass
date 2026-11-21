@@ -34,7 +34,7 @@ internal static class IdeasBrowserChecks
             {
                 try
                 {
-                    AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+                    AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
                         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(binding, output)))
                         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
                 }

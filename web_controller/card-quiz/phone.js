@@ -4,7 +4,7 @@
   const subjects={chinese:'语文',math:'数学',english:'英语',physics:'物理',chemistry:'化学',biology:'生物',politics:'政治',history:'历史',geography:'地理'};
   let user, pair, state, connected=false, pollTimer, polling=false, failures=0, disposed=false, controlBusy=false, uncertain=0, editQuestionId, editContext, cameraIntent=0, captureKey='';
   const feedback=(message,kind='')=>{$('feedback').textContent=message;$('feedback').className='feedback '+kind;};
-  const scanner=new CardQuizScanner({video:$('camera'),onRead:read=>send('answer',{...read,...(state?.questionType==='multiple'?{targetOption:state.activeOption}:{})}),onStatus:({message})=>$('camera-status').textContent=message});
+  const scanner=new CardQuizScanner({video:$('camera'),onRead:read=>send('answer',{...read,...(state?.questionType==='multiple'?{targetOption:state.activeOption}:{})}),onStatus:({message})=>{$('camera-status').textContent=message;show();}});
   let initialCode=new URLSearchParams(location.search).get('code')||'';
   if(initialCode){$('code').value=initialCode;history.replaceState(null,'',location.pathname);}
   async function api(path,body){
@@ -19,11 +19,12 @@
     $('account').textContent=user?`${user.displayName||user.username} · 教师账号`:'';
     if(!state)return;
     $('class-name').textContent=state.className;
+    $('disconnect').textContent=state.ended?'连接下一堂课':'断开手机';
     const multiple=state.questionType==='multiple';
     $('question-label').textContent=`${subjects[state.subjectId]||state.subjectId} · 第 ${state.questionNumber} 题 · ${state.questionType==='boolean'?'判断（A/B）':multiple?'多选（逐项确认）':state.optionCount+' 选一'}`;
     $('received').textContent=state.received;$('expected').textContent=` / ${state.expected} 人${multiple?'整题完成':'已收'}`;
     const own=connected&&state.source==='phone'&&state.sourceId===pair?.pairId&&!state.ended;
-    const collecting=own&&state.roundStatus==='collecting',between=!state.roundId||state.roundStatus==='closed';
+    const collecting=own&&state.roundStatus==='collecting',paused=state.roundStatus==='paused',between=!state.roundId||state.roundStatus==='closed';
     const nextKey=`${state.sessionId}/${state.roundId}/${state.generation}`;
     if(captureKey&&captureKey!==nextKey)scanner.stop();captureKey=nextKey;
     $('multi-capture').hidden=!multiple;
@@ -33,12 +34,21 @@
       $('multi-next').disabled=!collecting||controlBusy||'ABCD'.indexOf(state.activeOption)>=state.optionCount-1;
       $('multi-progress').textContent=`本项已收 ${state.optionReceived||0} / ${state.expected} 人；切项后请重新开启相机。`;
     }
-    $('connection').textContent=state.ended?'本课堂已结束':!own?'等待白板确认手机来源或恢复连接':collecting?'正在收答，白板保存后确认':state.roundStatus==='paused'?'白板已暂停，请在白板核对并恢复':'已连接，等待开始收答';
-    $('start').disabled=!own||!between||controlBusy||!state.questionId;
-    $('start').textContent=collecting?'正在收答':state.roundId?'重新收答':'开始收答';
+    const remaining=state.expected-(multiple?(state.optionReceived||0):state.received);
+    $('capture-progress').hidden=between||state.ended;
+    $('capture-progress').textContent=!state.expected?'本轮无人须答':remaining?`待收 ${remaining} 人`:multiple?'本项已收齐':'本轮已收齐';
+    $('connection').textContent=state.ended?'本课堂已结束':!own?'等待白板确认手机来源或恢复连接':collecting?'正在收答，白板保存后确认':paused?'已暂停，已收答案保留':'已连接，等待开始收答';
+    $('start').hidden=state.roundStatus==='collecting'||state.ended;
+    $('start').disabled=!own||(!between&&!paused)||controlBusy||!state.questionId;
+    $('start').textContent=paused?'恢复本轮':state.roundId?'重新收答':'开始收答';
+    $('stop').hidden=between||state.ended;
+    $('stop').classList.toggle('primary',collecting);
     $('stop').disabled=!own||between||controlBusy;
+    $('camera-toggle').hidden=!collecting;
     $('camera-toggle').disabled=!collecting||controlBusy;
     $('camera-toggle').textContent=scanner.running?'关闭相机':'开启相机';
+    $('camera').hidden=!collecting||!scanner.running;
+    $('camera-status').hidden=!collecting;
     $('next').disabled=!own||!between||controlBusy;$('reveal').disabled=!own||!between||controlBusy;
     $('submission-status').textContent=pending.size?`${pending.size} 条等待白板确认`:uncertain?`${uncertain} 条状态未确认，请在白板核对；不会自动重发。`:'白板已确认的作答计入上方人数。';
     $('question-edit').disabled=!own||!between||controlBusy||!state.questionId;
@@ -74,7 +84,8 @@
       const query=new URLSearchParams();for(const id of pending.keys())query.append('commandId',id);
       const value=await api('/api/card-quiz/pairs/'+encodeURIComponent(pair.pairId)+(query.size?'?'+query:''));
       if(pair?.pairId!==pairId||disposed)return;
-      state=value.state;connected=value.connected&&!document.hidden;failures=0;
+      if(!state||value.state.seq>=state.seq)state=value.state;
+      connected=value.connected&&!document.hidden;failures=0;
       if(connected&&$('feedback').textContent==='手机已配对，请在白板确认使用此手机。')feedback('已连接白板，请主动开启相机后识别纸卡。');
       for(const receipt of value.receipts||[])settle(receipt.id,receipt);
       const found=new Set((value.receipts||[]).map(r=>r.id));
@@ -120,7 +131,7 @@
   async function control(task){if(controlBusy)return;controlBusy=true;show();try{await task();}catch(error){feedback(error.message,'error');}finally{controlBusy=false;show();}}
   $('login-form').onsubmit=event=>{event.preventDefault();void control(async()=>{const value=await api('/api/auth/login',{username:$('username').value,password:$('password').value});$('password').value='';user=value.user;show();if(initialCode){initialCode='';await claim();}});};
   $('pair-form').onsubmit=event=>{event.preventDefault();void control(claim);};
-  $('start').onclick=()=>void control(async()=>{const intent=++cameraIntent,pairId=pair.pairId,questionId=state.questionId;await send('start_round');if(intent===cameraIntent&&!disposed&&!document.hidden&&connected&&pair?.pairId===pairId&&state.questionId===questionId&&state.sourceId===pairId&&state.roundStatus==='collecting')await scanner.start();});
+  $('start').onclick=()=>void control(async()=>{const intent=++cameraIntent,pairId=pair.pairId,questionId=state.questionId;await send(state.roundStatus==='paused'?'resume_round':'start_round');if(intent===cameraIntent&&!disposed&&!document.hidden&&connected&&pair?.pairId===pairId&&state.questionId===questionId&&state.sourceId===pairId&&state.roundStatus==='collecting')await scanner.start();});
   $('stop').onclick=()=>{cameraIntent++;scanner.stop();void control(()=>send('end_round'));};
   $('camera-toggle').onclick=()=>void control(async()=>{if(scanner.running)scanner.stop();else await scanner.start();});
   function switchMultiOption(option){
@@ -153,7 +164,13 @@
   window.addEventListener('pageshow',event=>{if(event.persisted){disposed=false;if(pair)void poll();}});
   (async()=>{try{
     const value=await api('/api/session');user=value.authenticated?value.user:null;
-    if(user){try{pair=JSON.parse(sessionStorage.getItem('iceclass.cardQuizPair')||'null');}catch{}show();if(pair)await poll();else if(initialCode){initialCode='';await claim();}else feedback('请输入白板上的配对码。');}
-    else{show();feedback('请使用有本班权限的教师账号登录。');}
+    show();
+    if(!user){feedback('请使用有本班权限的教师账号登录。');return;}
+    if(initialCode){
+      initialCode='';sessionStorage.removeItem('iceclass.cardQuizPair');await claim();return;
+    }
+    try{pair=JSON.parse(sessionStorage.getItem('iceclass.cardQuizPair')||'null');}catch{}
+    if(pair){show();await poll();}
+    else feedback('请输入白板上的配对码。');
   }catch(error){show();feedback(error.message,'error');}})();
 })();

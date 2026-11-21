@@ -13,7 +13,7 @@ using NAudio.Wave;
 internal static class NotificationVoiceChecks
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(output)))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 

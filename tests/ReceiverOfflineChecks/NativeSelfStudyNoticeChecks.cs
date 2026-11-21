@@ -22,7 +22,7 @@ internal static class NativeSelfStudyNoticeChecks
     private static void Invoke(object owner, string name, params object[] args) => owner.GetType().GetMethod(name, Private)!.Invoke(owner, args);
     private static IClassicDesktopStyleApplicationLifetime Desktop => (IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!;
 
-    internal static void Run(string output, bool preview = false) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Run(string output, bool preview = false) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => { if (preview) Preview(Path.GetFullPath(output)); else _ = Check(Path.GetFullPath(output)); }))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 

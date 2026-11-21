@@ -13,7 +13,7 @@ using ICeClass.Receiver;
 
 internal static class VisionComputerControlReview
 {
-    internal static void Run(string output, string? binding = null) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Run(string output, string? binding = null) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Review(Path.GetFullPath(output), binding)))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 

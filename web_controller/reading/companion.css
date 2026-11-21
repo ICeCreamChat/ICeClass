@@ -35,7 +35,6 @@ html[data-reading-overlay-open="true"] #reading-session-status { display: none; 
 }
 .home-heading { flex-shrink: 0; margin-top: auto; }
 html[data-desktop-fullscreen="true"] .home-view { padding-top: max(68px, 3.5vh); }
-.home-view { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif; }
 .home-heading .leaf-line { display: none; }
 .reading-eyebrow { display: inline-flex; align-items: center; gap: 9px; color: #2367ab; font-size: clamp(16px, 1.1vw, 20px); font-weight: 600; letter-spacing: .12em; }
 .reading-eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #3a8ce6; box-shadow: 0 0 0 5px #e0edfe; }
@@ -58,7 +57,6 @@ html[data-desktop-fullscreen="true"] .home-view { padding-top: max(68px, 3.5vh);
 .mode-choice:hover .choice-action { background: #0071e3; color: #fff; }
 .home-note { margin: 0 0 auto; color: #596d83; font-size: 15px; line-height: 1.8; }
 /* Keep the classroom shell and its local activity chooser on one type scale. */
-html[data-desktop="true"] .home-view { font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif; }
 html[data-desktop="true"] .reading-eyebrow { font-size: 16px; letter-spacing: .04em; }
 html[data-desktop="true"] .home-heading h1 { font-size: clamp(28px, 2.5vw, 40px); margin: 16px 0 12px; }
 html[data-desktop="true"] .home-heading p { font-size: clamp(16px, 1.15vw, 20px); }
@@ -69,7 +67,7 @@ html[data-desktop="true"] .home-note { font-size: 14px; }
 html[data-desktop="true"] .mode-choice .choice-action { font-size: 16px; }
 #reading-session-status { border-color: #e2e8f0; border-radius: 999px; background: #fffffff0; box-shadow: 0 4px 22px #1d3c6810; font-size: 14px; padding: 7px 16px; }
 
-#reading-touch-hint, #reading-hold-feedback { position: fixed; z-index: 2147483647; left: 50%; transform: translateX(-50%); pointer-events: none; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif; }
+#reading-touch-hint, #reading-hold-feedback { position: fixed; z-index: 2147483647; left: 50%; transform: translateX(-50%); pointer-events: none; user-select: none; font-family: var(--font-ui); }
 #reading-touch-hint { top: max(16px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px); padding: 12px 20px; border: 1px solid #dce7f4; border-radius: 999px; background: #fffffff0; color: #425a77; font-size: 16px; box-shadow: 0 4px 24px #1c3e6a0d; }
 #reading-touch-hint span { color: #337acb; }
 #reading-hold-feedback { bottom: max(64px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: center; gap: 18px; padding: 20px 28px; border: 1px solid #d2e2f7; border-radius: 24px; background: #fffffff5; box-shadow: 0 12px 60px #142d5b24; color: #203751; }

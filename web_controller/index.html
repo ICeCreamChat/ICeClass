@@ -9,8 +9,8 @@
   <link rel="icon" href="/assets/favicon.png?v=5" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/typography.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=22">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=32">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
@@ -26,12 +26,13 @@
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-operations.css?v=5">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/classroom-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/classroom-banban-glass.css">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=19">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=20">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-header.css?v=5">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/account-settings.css?v=8">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-workbench.css?v=6">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-notices.css?v=4">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=1">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=10">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=2">
   <script nonce="__CSP_NONCE__" defer src="/assets/classroom-glass.js?v=5"></script>
 </head>
 <body class="teacher-liquid teacher-clear-header">
@@ -90,20 +91,32 @@
       </div>
       <form id="loginForm" class="hidden" aria-labelledby="loginHeading">
         <header class="auth-intro">
-          <h1 id="loginHeading">欢迎回来</h1>
-          <p id="loginIntro" class="muted">使用学校账号，进入教师工作台。</p>
+          <h1 id="loginHeading">登录班伴</h1>
+          <p class="muted" data-login-role="teacher">使用学校账号登录。</p>
+          <p class="muted" data-login-role="student">使用纸卡上的编号和六位密码。</p>
         </header>
-        <fieldset id="loginRoles" class="auth-roles">
+        <fieldset id="loginRoles" class="mode-picker auth-roles">
           <legend class="sr-only">登录身份</legend>
-          <label class="auth-role"><input id="loginRoleTeacher" class="sr-only" type="radio" name="login-role" value="teacher" checked><span>教师</span></label>
-          <label class="auth-role"><input id="loginRoleStudent" class="sr-only" type="radio" name="login-role" value="student"><span>学生</span></label>
+          <label class="mode-button">
+            <input id="loginRoleTeacher" class="sr-only" type="radio" name="login-role" value="teacher" checked>
+            <svg class="wb-icon" aria-hidden="true"><use href="#settings-i-check"/></svg>
+            <span>教师</span>
+          </label>
+          <label class="mode-button">
+            <input id="loginRoleStudent" class="sr-only" type="radio" name="login-role" value="student">
+            <svg class="wb-icon" aria-hidden="true"><use href="#settings-i-check"/></svg>
+            <span>学生</span>
+          </label>
         </fieldset>
-        <p id="loginNotice" class="auth-notice" role="status" tabindex="-1" hidden></p>
         <div class="field"><label id="loginUsernameLabel" for="loginUsername">用户名</label><input id="loginUsername" name="username" autocomplete="username" spellcheck="false" autocapitalize="none" required maxlength="64" aria-describedby="loginError"></div>
         <div class="field"><label for="loginPassword">密码</label><div class="password-field"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="128" aria-describedby="loginError"><button id="loginPasswordToggle" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false" aria-controls="loginPassword">显示</button></div></div>
-        <p id="loginError" class="form-error" role="alert" tabindex="-1"></p>
         <button id="loginSubmit" class="btn primary block" type="submit">进入工作台</button>
-        <p id="loginHelp" class="hint auth-help" hidden>忘记编号或密码，请联系班主任。</p>
+        <p id="loginError" class="form-error" role="alert" tabindex="-1"></p>
+        <p id="loginNotice" class="hint" role="status" tabindex="-1" hidden></p>
+        <div class="auth-help">
+          <p class="hint" data-login-role="teacher">忘记账号或密码，请联系学校管理员。</p>
+          <p class="hint" data-login-role="student">忘记编号或密码，请联系班主任。</p>
+        </div>
       </form>
 
       <form id="bootstrapForm" class="hidden" aria-labelledby="bootstrapHeading">
@@ -1032,12 +1045,10 @@
         const student = role === "student";
         loginRole = role;
         $(student ? "loginRoleStudent" : "loginRoleTeacher").checked = true;
-        $("loginIntro").textContent = student ? "使用纸卡上的编号和六位密码，进入我的课堂。" : "使用学校账号，进入教师工作台。";
         $("loginUsernameLabel").textContent = student ? "学生编号" : "用户名";
         $("loginSubmit").textContent = student ? "进入我的课堂" : "进入工作台";
         $("loginError").textContent = "";
         $("loginNotice").hidden = true;
-        $("loginHelp").hidden = !student;
         const username = $("loginUsername"), password = $("loginPassword");
         username.value = "";
         clearLoginPassword();

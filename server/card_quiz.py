@@ -356,6 +356,8 @@ class CardQuiz(SessionHandlers, RelayHandlers):
                 questions.append({**q, 'bankId': q['id'], 'bankVersion': q['revision']})
             if not questions:
                 fail('空题单不能发布。')
+            if len({q['subjectId'] for q in questions}) != 1:
+                fail('题单只能发布同一学科的题目，请按学科拆分后再发布。')
             if self.db.one('SELECT COUNT(*) n FROM card_quiz_publications WHERE class_id=? AND withdrawn=0', (cid,))['n'] >= MAX_LIST:
                 fail(f'每班最多 {MAX_LIST} 份可用题单。')
             pid = new_id()

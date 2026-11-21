@@ -37,7 +37,7 @@
   --teacher-banban-surface: #edf7ff;
   --teacher-inset: 24px;
   --teacher-nav-width: 222px;
-  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-synthesis: none;
   font-size: 16px;
   color: var(--text);
@@ -382,18 +382,7 @@
 .teacher-liquid .bb-grade-picks button { color: var(--muted); background: #f7fcff59; font-size: 14px; }
 .teacher-liquid .bb-grade-picks button[aria-pressed=true] { color: #075cad; background: #e6f6ffb5; border-color: #90bde09c; }
 
-/* Login retains its real character and validation; the material matches the workbench. */
-.teacher-liquid .auth-page { background: transparent; --auth-ink: #193c59; --auth-muted: #3e5b72; }
-.teacher-liquid .auth-layout { gap: 30px; max-width: 1220px; background: transparent; box-shadow: none; }
-.teacher-liquid .auth-story { background: transparent; padding: 38px; border-radius: 0; }
-.teacher-liquid .auth-story h2 { font-size: 38px; font-weight: 700; line-height: 1.5; }
-.teacher-liquid .auth-story > p { font-size: 17px; }
-.teacher-liquid .auth-card { border-radius: 28px; margin-top: 0; padding: 36px; --auth-card-padding: 36px; --auth-control-height: 48px; --auth-mascot-width: 110px; }
-.teacher-liquid .auth-card h1 { font-size: 28px; font-weight: 700; }
-.teacher-liquid .auth-card .auth-intro > .muted { font-size: 15px; }
-.teacher-liquid .auth-card .field label { font-size: 15px; color: #34546c; }
-.teacher-liquid .auth-card .btn.block { font-size: 17px; min-height: 48px; }
-.teacher-liquid .auth-features { font-size: 15px; }
+.teacher-liquid .auth-card { --teacher-pane: var(--teacher-overlay); }
 
 /* Local appearance choices use native radios and keep their keyboard behavior. */
 .teacher-liquid .teacher-appearance { margin-bottom: 24px; }
@@ -485,7 +474,6 @@
   .teacher-liquid .nav-backdrop.open { background: #23486240; backdrop-filter: none; }
   .teacher-liquid main { padding: 25px 22px 32px; }
   .teacher-liquid .view-head { align-items: flex-start; flex-wrap: wrap; }
-  .teacher-liquid .auth-layout { gap: 15px; }
   .teacher-liquid .auth-story { padding: 25px; }
 }
 @media (max-width: 760px) {
@@ -514,9 +502,6 @@
   .teacher-liquid .dialog-actions { padding: 16px 22px; gap: 8px; }
   .teacher-liquid .dialog-actions .btn { font-size: 14px; padding: 10px 13px; }
   .teacher-liquid #acknowledgementsPanel { padding: 20px; }
-  .teacher-liquid .auth-layout { display: block; max-width: 480px; }
-  .teacher-liquid .auth-story { display: none; }
-  .teacher-liquid .auth-card { padding: 29px 24px; --auth-card-padding: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .teacher-liquid *, .teacher-liquid *::before, .teacher-liquid *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; scroll-behavior: auto !important; }

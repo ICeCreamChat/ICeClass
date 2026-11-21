@@ -14,7 +14,7 @@ using SkiaSharp;
 
 internal static class BanbanPetMotionReview
 {
-    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Review(Path.GetFullPath(output))))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
@@ -310,7 +310,7 @@ internal static class BanbanPetMotionReview
         }
     }
 
-    internal static void Playground(bool speaking = false, string? actionId = null) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Playground(bool speaking = false, string? actionId = null) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(_ => Dispatcher.UIThread.Post(() =>
         {
             var motion = new BanbanPetMotion();

@@ -23,7 +23,7 @@ internal static class NativeVoiceDialogueReview
         if (manual && !single!.WaitOne(0)) { show!.Set(); return; }
         var activation = manual ? ThreadPool.RegisterWaitForSingleObject(show!, (_, _) => Dispatcher.UIThread.Post(() => _showManual?.Invoke()), null, Timeout.Infinite, false) : null;
         var ui = new Thread(() => AppBuilder.Configure<IslandCheckHost>()
-            .UsePlatformDetect().WithInterFont()
+            .UsePlatformDetect()
             .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Review(binding, Path.GetFullPath(output), manual)))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown));
         ui.SetApartmentState(ApartmentState.STA); ui.Start(); ui.Join();

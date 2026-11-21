@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "server"))
 from aiohttp import ClientSession, CookieJar, web
 import app as service
 from island import defaults
-from preview import create_preview
+from preview import initialize_school
 
 
 async def run(args):
@@ -30,7 +30,9 @@ async def run(args):
     shutil.copytree(args.checks.parent, client, ignore=shutil.ignore_patterns(
         "config.json", "island-settings.json", "IslandData", "ReadingData", "ReadingOffline", "WebView2", "logs", "*.log"))
     assembly = client / args.checks.name
-    application = create_preview(output / "acceptance.db")
+    application = service.create_app(output / "acceptance.db")
+    with application[service.STORE_KEY].transaction():
+        initialize_school(application, service.now_ms())
     online = True
     session = None
     class_id = ""
@@ -76,8 +78,10 @@ async def run(args):
         if action == "state":
             history = await api("GET", "/api/history?classId=" + class_id)
             profile = await api("GET", "/api/island/classes/" + class_id)
+            reading = db.one("SELECT count(*) AS total FROM reading_events WHERE class_id=? AND counted=1", (class_id,))
             state = {"statuses": {row["text"]: "acknowledged" if row.get("acknowledged_at") else row["status"] for row in history["history"]},
                 "ackRevision": next((row["revision"] for row in profile["devices"] if row["id"] == binding["DeviceId"]), 0),
+                "countedReadingEvents": reading["total"],
                 "history": history["history"]}
             (output / "server-state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
             return web.json_response(state)

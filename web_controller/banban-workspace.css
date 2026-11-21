@@ -1,5 +1,5 @@
 /* Banban window layout; character rendering and evidence primitives live in banban.css. */
-.banban-root { --bb-ink: #24384e; --bb-blue: #076bc6; right: 20px; bottom: 18px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 15px; }
+.banban-root { --bb-ink: #24384e; --bb-blue: #076bc6; right: 20px; bottom: 18px; font-family: var(--font-ui); font-size: 15px; }
 .banban-root *, .banban-root *::before, .banban-root *::after { box-sizing: border-box; }
 .banban-root button, .banban-root input, .banban-root select, .banban-root textarea { font-family: inherit; }
 .banban-root button:disabled { cursor: default; opacity: .48; }

@@ -12,13 +12,14 @@ using ICeClass.Receiver;
 
 internal static class NativeRibbonChecks
 {
-    public static void Run(bool light = false) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    public static void Run(bool light = false) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(light)))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
     private static async Task Check(bool light)
     {
-        var output=Path.GetFullPath(light ? "output/island-spacing-20261019/native-light" : "output/island-motion-20261019"); Directory.CreateDirectory(output);
+        var output = Path.GetFullPath(Path.Combine("output", "island-native-review", light ? "ribbon-light" : "ribbon-dark"));
+        Directory.CreateDirectory(output);
         var checks=new List<string>();
         void Assert(bool value,string label) { if(!value) throw new Exception(label); checks.Add(label); Console.WriteLine("PASS "+label); }
         void Capture(Control root,string name)

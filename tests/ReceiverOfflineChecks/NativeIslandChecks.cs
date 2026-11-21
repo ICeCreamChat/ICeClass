@@ -28,12 +28,12 @@ internal static class NativeIslandChecks
     {
         if (!ReceiverConfig.TryRead(bindingPath, out var binding) || !ReceiverConfig.IsPreview(binding))
             throw new InvalidOperationException("Native checks require an explicit localhost review binding.");
-        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont().AfterSetup(builder =>
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().AfterSetup(builder =>
             Dispatcher.UIThread.Post(() => _ = Check(binding))).StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
     }
     private static async Task Check(ReceiverConfig binding)
     {
-        var output = Path.GetFullPath("output/island-full-20261019"); Directory.CreateDirectory(output);
+        var output = Path.GetFullPath("output/island-native-review/profile"); Directory.CreateDirectory(output);
         var checks = new List<string>();
         void Assert(bool value, string label) { if (!value) throw new Exception(label); checks.Add(label); Console.WriteLine("PASS " + label); }
         using var service = new ClassroomIslandService(_ => Task.CompletedTask, () => { });

@@ -11,7 +11,7 @@
     // The six-cell detection square spans 384/480 of the SVG: 144 mm at 180 mm.
     // Keep the dictionary cells unchanged; the 48-unit margin separates labels from the marker.
     for(let y=0;y<8;y++)for(let x=0;x<8;x++)if(!cells[y][x])rects.push(`<rect x="${48+(x-1)*64}" y="${48+(y-1)*64}" width="64" height="64"/>`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="ICeClass 纸卡 ${number}"><rect width="480" height="480" fill="white"/><g fill="black" shape-rendering="crispEdges">${rects.join('')}</g><g fill="black" font-family="Arial,sans-serif" font-size="26" font-weight="bold" text-anchor="middle"><text x="240" y="30">A</text><text x="240" y="30" transform="rotate(90 240 240)">B</text><text x="240" y="30" transform="rotate(180 240 240)">C</text><text x="240" y="30" transform="rotate(270 240 240)">D</text></g></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="ICeClass 纸卡 ${number}"><rect width="480" height="480" fill="white"/><g fill="black" shape-rendering="crispEdges">${rects.join('')}</g><g fill="black" font-family="var(--font-ui, system-ui, sans-serif)" font-size="26" font-weight="bold" text-anchor="middle"><text x="240" y="30">A</text><text x="240" y="30" transform="rotate(90 240 240)">B</text><text x="240" y="30" transform="rotate(180 240 240)">C</text><text x="240" y="30" transform="rotate(270 240 240)">D</text></g></svg>`;
   }
   return{capacity:codes.length,version:'ice-v1',matrix,svg};
 });

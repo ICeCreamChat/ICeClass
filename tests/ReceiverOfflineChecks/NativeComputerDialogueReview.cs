@@ -13,7 +13,7 @@ using ICeClass.Receiver;
 internal static class NativeComputerDialogueReview
 {
     internal static void Run(string binding, string output) => AppBuilder.Configure<IslandCheckHost>()
-        .UsePlatformDetect().WithInterFont()
+        .UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Open(binding, Path.GetFullPath(output))))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 

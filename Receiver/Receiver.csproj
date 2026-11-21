@@ -52,7 +52,6 @@
     <EmbeddedResource Include="..\docs\licenses\WebView2-NOTICE.txt" LogicalName="ICeClass.Notices.WebView2-NOTICE.txt" />
     <PackageReference Include="Avalonia" Version="11.2.5" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.5" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.5" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />

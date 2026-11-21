@@ -27,14 +27,18 @@
     if(!Array.isArray(tags)||tags.length>50||tags.some(t=>!validText(t,80)||!t.trim()))fail('知识点最多 50 个，每个最多 80 字。');
     return{type:value.type,text:text(value.text||'',20000),imageId:value.imageId||null,options:options.map(x=>text(x,2000)),answer,tags:[...new Set(tags.map(t=>t.trim()))]};
   }
-  function createSession(context,subjectId,now=Date.now()){
-    if(!context?.classId||!context.deviceId||!Array.isArray(context.students)||!context.students.length)fail('请先联网准备本班名单和纸卡。');
+  function classRoster(context){
+    if(!context?.classId||!context.deviceId||!Array.isArray(context.students))fail('请联网刷新，读取本班名单和纸卡。');
+    if(!context.students.length)fail('本班还没有学生，请在教师工作台录入名单后刷新。');
     if(context.students.length>157)fail('第一版纸卡最多支持 157 名学生。');
     const ids=new Set(),numbers=new Set();
-    const roster=context.students.map(s=>{
+    return context.students.map(s=>{
       if(typeof s.id!=='string'||!s.id||ids.has(s.id)||!Number.isInteger(s.cardNumber)||s.cardNumber<1||s.cardNumber>157||numbers.has(s.cardNumber))fail('本班纸卡尚未完整分配或卡号重复，请联系名单管理员。');
       ids.add(s.id);numbers.add(s.cardNumber);return{id:s.id,name:text(s.name,40),cardNumber:s.cardNumber};
     });
+  }
+  function createSession(context,subjectId,now=Date.now()){
+    const roster=classRoster(context);
     if(typeof subjectId!=='string'||!subjectId)fail('请选择学科。');
     return{schema:1,id:uid(),classId:context.classId,deviceId:context.deviceId,subjectId,startedAt:now,endedAt:null,seq:0,cardVersion:'ice-v1',rosterRevision:context.rosterRevision||0,cardRevision:context.cardRevision||0,roster,questions:[],currentQuestionId:null,currentRoundId:null,source:'board',sourceId:'board',generation:1};
   }
@@ -85,8 +89,11 @@
       case 'recover':
         s.generation++;if(r&&r.status!=='closed'){r.status='paused';r.generation=s.generation;}break;
       case 'set_source':
-        between();if(!['board','phone'].includes(p.source)||typeof p.sourceId!=='string'||!p.sourceId)fail('采集来源不正确。');
-        s.source=p.source;s.sourceId=p.sourceId;s.generation++;break;
+        if(r?.status==='collecting')fail('请先暂停本轮收答，再切换设备。');
+        if(!['board','phone'].includes(p.source)||typeof p.sourceId!=='string'||!p.sourceId)fail('采集来源不正确。');
+        s.source=p.source;s.sourceId=p.sourceId;s.generation++;
+        if(r?.status==='paused')Object.assign(r,{source:s.source,sourceId:s.sourceId,generation:s.generation});
+        break;
       case 'edit_question':{
         current();between();if(p.revision===undefined?p.expectedSeq!==s.seq:p.revision!==q.revision)fail('题目信息已变化，请重新载入。');
         const value=question({...q,...p});
@@ -127,5 +134,5 @@
     return{sessionId:s.id,className,subjectId:s.subjectId,questionId:q?.id||null,questionNumber:q?s.questions.indexOf(q)+1:0,questionType:q?.type||null,optionCount:q?.options.length||4,roundId:r?.id||null,roundStatus:r?.status||null,source:s.source,sourceId:s.sourceId,generation:s.generation,seq:s.seq,received:counts.received,expected:counts.expected,ended:s.endedAt!==null,
       ...(q?.type==='multiple'?{activeOption:r?.activeOption||null,optionReceived:counts.optionReceived||0}:{})};
   }
-  return{createSession,apply,recover,officialRound,roundSummary,publicState,activeQuestion,activeRound};
+  return{classRoster,createSession,apply,recover,officialRound,roundSummary,publicState,activeQuestion,activeRound,completeAnswer};
 });

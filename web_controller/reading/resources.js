@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const requests = new Map();
-  const revisions = { 'classic.txt': '20261018-ui2', 'rocket.txt': '20261018-ui3' };
+  const revisions = { 'classic.txt': '20261121-type', 'rocket.txt': '20261121-type' };
   async function load(name, json) {
     const key = `${name}:${json}`;
     if (!requests.has(key)) {

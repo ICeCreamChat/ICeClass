@@ -18,7 +18,7 @@ internal static class GeneralComputerControlReview
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start(); thread.Join(); return;
         }
-        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
             .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Capture(Path.GetFullPath(output))))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
     }

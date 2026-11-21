@@ -14,7 +14,7 @@ using ICeClass.Receiver;
 internal static class NativeIslandLayoutReview
 {
     private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
-    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Capture(Path.GetFullPath(output))))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
@@ -22,7 +22,7 @@ internal static class NativeIslandLayoutReview
 
     // Interactive inspection uses the production window with a taskbar entry so
     // Windows accessibility tools can target its transparent backdrop directly.
-    internal static void PreviewMaterial() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void PreviewMaterial() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() =>
         {
             var profile = IslandRibbonChecks.Fixture(); profile.Reminders.Enabled = false;

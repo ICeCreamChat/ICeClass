@@ -19,7 +19,7 @@ internal static class NativeIslandVisibilityChecks
             thread.Start(); thread.Join(); return;
         }
         Directory.CreateDirectory(output);
-        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
             .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(output)))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
     }

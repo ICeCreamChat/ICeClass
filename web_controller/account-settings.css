@@ -251,7 +251,7 @@
 #view-settings .log-time small { display: block; font-size: 12px; color: var(--muted); }
 #view-settings .log-detail { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 #view-settings .log-detail .section-heading { margin-bottom: 14px; }
-#view-settings .log-detail pre { background: #e1ebf4; font-family: Consolas, monospace; font-size: 13px; padding: 20px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 350px; overflow: auto; }
+#view-settings .log-detail pre { background: #e1ebf4; font-family: ui-monospace, monospace; font-size: 13px; padding: 20px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 350px; overflow: auto; }
 html[data-teacher-material=white] #view-settings .surface { border-color: var(--line); box-shadow: 0 6px 24px #24364b06; }
 html[data-teacher-material=white] #view-settings :is(.quota-table-head,.device-table-head,.log-table-head) { background: #f2f5f8; }
 html[data-teacher-material=white] #view-settings .save-strip { background: #f8fafc; }

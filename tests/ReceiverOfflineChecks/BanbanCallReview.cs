@@ -22,7 +22,7 @@ internal static class BanbanCallReview
     {
         if (!ReceiverConfig.TryRead(bindingPath, out var binding) || !ReceiverConfig.IsPreview(binding))
             throw new InvalidOperationException("Calling Banban requires a loopback classroom binding.");
-        var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
             .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(binding, Path.GetFullPath(output))))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown));
         thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();

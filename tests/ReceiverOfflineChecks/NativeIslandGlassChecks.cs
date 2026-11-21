@@ -11,7 +11,7 @@ using SkiaSharp;
 // Render only the island control; no desktop pixels are captured.
 internal static class NativeIslandGlassChecks
 {
-    internal static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    internal static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check()))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 

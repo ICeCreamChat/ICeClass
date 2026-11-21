@@ -93,7 +93,8 @@ internal sealed class CardQuizStore
             var previous = Read(id);
             if (previous is null)
             {
-                if (seq != 0) throw new InvalidDataException("请先保存课堂初始状态。");
+                if (seq != 0 && (seq != 1 || !StartsWithQuestion(s, journal["events"]![0]!)))
+                    throw new InvalidDataException("课堂首次保存须包含初始状态或完整的第一题。");
                 journal["syncedSeq"] = 0; journal["reviewError"] = null;
             }
             else
@@ -133,6 +134,22 @@ internal sealed class CardQuizStore
             Write(SessionPath(id), json); return journal;
         }
     }
+    private static bool StartsWithQuestion(JsonNode session, JsonNode entry)
+    {
+        if (entry["action"]?.GetValue<string>() != "add_question" ||
+            entry["questionId"] is not null || entry["roundId"] is not null ||
+            entry["sourceId"]?.GetValue<string>() != "board" || entry["generation"]?.GetValue<int>() != 1 ||
+            session["questions"] is not JsonArray { Count: 1 } questions ||
+            questions[0] is not JsonObject question || question["rounds"] is not JsonArray { Count: 0 })
+            return false;
+
+        return session["endedAt"] is null && session["currentRoundId"] is null &&
+            session["source"]?.GetValue<string>() == "board" && session["sourceId"]?.GetValue<string>() == "board" &&
+            session["generation"]?.GetValue<int>() == 2 &&
+            Guid.TryParseExact(question["id"]?.GetValue<string>(), "D", out _) &&
+            JsonNode.DeepEquals(session["currentQuestionId"], question["id"]);
+    }
+
     internal void MarkSynced(string id, int through)
     {
         lock (_gate)

@@ -41,7 +41,7 @@ internal static class Program
         var software = args.Contains("--software");
         var output = Path.GetFullPath(args.FirstOrDefault(a => !a.StartsWith('-'))
             ?? $"output/native-animation-{(software ? "software" : "default")}");
-        var builder = AppBuilder.Configure<AnimationHost>().UsePlatformDetect().WithInterFont();
+        var builder = AppBuilder.Configure<AnimationHost>().UsePlatformDetect();
         if (software) builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
         builder.AfterSetup(configured => Dispatcher.UIThread.Post(() =>
         {

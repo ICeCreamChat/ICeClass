@@ -10,7 +10,7 @@ using ICeClass.Receiver;
 internal static class NativeHoldingArmReview
 {
     internal static void Run(string output) => AppBuilder.Configure<IslandCheckHost>()
-        .UsePlatformDetect().WithInterFont()
+        .UsePlatformDetect()
         .AfterSetup(_ => Dispatcher.UIThread.Post(() => Capture(Path.GetFullPath(output))))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 

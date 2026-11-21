@@ -74,7 +74,7 @@ def replay(snapshot, events, *, old=None, wanted=(), class_name='', check_phone=
         if action in ('answer', 'end_round', 'resume_round', 'set_exempt', 'set_multi_option'):
             if r is None or event['roundId'] != r['id']:
                 fail('事件轮次与当时课堂不一致。')
-        if action in ('add_question', 'start_round', 'set_source', 'edit_question', 'reveal'):
+        if action in ('add_question', 'start_round', 'edit_question', 'reveal'):
             if r is not None and r['status'] != 'closed':
                 fail('未结束轮次不能换题、修改题目或切换来源。', 409)
         if action == 'add_question':
@@ -143,12 +143,16 @@ def replay(snapshot, events, *, old=None, wanted=(), class_name='', check_phone=
             if r and r['status'] != 'closed':
                 r.update(status='paused', generation=state['generation'])
         elif action == 'set_source':
+            if r is not None and r['status'] == 'collecting':
+                fail('请先暂停本轮收答，再切换设备。', 409)
             if p.get('source') not in ('board', 'phone'):
                 fail('采集来源无效。')
             source_id = identifier(p.get('sourceId'))
             if p['source'] == 'phone' and check_phone:
                 check_phone(source_id)
             state.update(source=p['source'], sourceId=source_id, generation=state['generation'] + 1)
+            if r is not None and r['status'] == 'paused':
+                r.update(source=state['source'], sourceId=source_id, generation=state['generation'])
         elif action == 'edit_question':
             if 'revision' in p:
                 if type(p['revision']) is not int or p['revision'] != q['revision']:

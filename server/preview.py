@@ -20,7 +20,7 @@ import homework
 import island
 import self_study
 from card_quiz_events import initial_session, replay
-from card_quiz_models import dumps, fingerprint, validate_events, validate_question, validate_session
+from card_quiz_models import dumps, fingerprint, new_id, validate_events, validate_question, validate_session
 from reading import DEFAULT, SHANGHAI, local_day
 
 
@@ -131,11 +131,22 @@ def seed_question_bank(db, room, now):
                (f'{owner}-deck', owner, title, dumps([q['bankId'] for q in values])))
         if owner == ADMIN:
             published = values
-    pid = 'preview-workbench-publication'
+    pid = new_id()
     value = {'id': pid, 'classId': room['id'], 'title': title, 'questions': published}
     db.run('INSERT INTO card_quiz_publications(id,owner_id,class_id,value,created_at) VALUES(?,?,?,?,?)',
            (pid, ADMIN, room['id'], dumps(value), now))
     return published
+
+
+def repair_legacy_demo_publication(connection: sqlite3.Connection) -> None:
+    legacy_id = 'preview-workbench-publication'
+    row = connection.execute('SELECT value FROM card_quiz_publications WHERE id=? AND owner_id=?',
+                             (legacy_id, ADMIN)).fetchone()
+    if row:
+        value = json.loads(row[0])
+        value['id'] = new_id()
+        connection.execute('UPDATE card_quiz_publications SET id=?,value=? WHERE id=?',
+                           (value['id'], dumps(value), legacy_id))
 
 
 def seed_quiz_session(db, room, roster_revision, roster, questions, now):
@@ -416,6 +427,7 @@ def create_preview(database=None):
             now = service.now_ms()
             if not db.one('SELECT 1 FROM users WHERE id=?', (ADMIN,)):
                 initialize_school(app, now)
+            repair_legacy_demo_publication(db.db)
             seed_workbench(app, now)
     except Exception:
         db.close()

@@ -25,10 +25,9 @@ internal sealed class BanbanVoiceWindow : Window
     private readonly DispatcherTimer _connectionTimeout = new() { Interval = TimeSpan.FromSeconds(30) };
     private bool _canClose, _started, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed, _browserFailed;
     internal event Action<string>? VoiceStatusChanged;
-    internal event Action? ClassroomRequested;
-    internal event Action<string>? ClassroomActionRequested;
 
-    internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null)
+    internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null,
+        Func<ClassroomHomeSnapshot?>? timetable = null)
     {
         // The receiver updates its configuration object in place on re-binding.
         // Keep an immutable identity snapshot. The device token stays in native
@@ -38,10 +37,8 @@ internal sealed class BanbanVoiceWindow : Window
         _stopComputer = stopComputer;
         _origin = new Uri(binding.Endpoint.TrimEnd('/') + "/");
         _voice = new BanbanVoiceService(enabled ?? BanbanVoicePreferences.Load());
-        _pet = new BanbanPetWindow(BringForward, StartConversation, () => _voice.CancelTask(), SetVoiceEnabled, petPreferencePath)
+        _pet = new BanbanPetWindow(BringForward, StartConversation, () => _voice.CancelTask(), SetVoiceEnabled, petPreferencePath, _binding, timetable)
             { SpeechOpening = () => _voice.SpeechMouthOpening };
-        _pet.ClassroomRequested += () => ClassroomRequested?.Invoke();
-        _pet.ClassroomActionRequested += action => ClassroomActionRequested?.Invoke(action);
         SystemEvents.SessionSwitch += SessionSwitch;
         SystemEvents.PowerModeChanged += PowerChanged;
         ClassroomStyle.Apply(this);
@@ -355,8 +352,7 @@ internal sealed class BanbanVoiceWindow : Window
     internal void SetInClass(bool value) => _pet.SetInClass(value);
     internal void ShowPet() => _pet.ShowPet(true);
     internal void SetClassroomExpanded(bool value) { if (value) _pet.ShowPet(true); _pet.SetClassroomExpanded(value); }
-    internal void SetClassroomState(CardQuizWheelState state) => _pet.SetClassroomState(state);
-    internal void SetClassroomError(string message) => _pet.SetClassroomError(message);
+    internal CardQuizHost? ClassroomHost => _pet.ClassroomHost;
     internal void BringForward() { Show(); WindowState = WindowState.Normal; Activate(); _browser.FocusPage(); }
     internal void Shutdown() { if (_canClose) return; _canClose = true; _pet.Shutdown(); _stopComputer(); _voice.Dispose(); Close(); }
 }

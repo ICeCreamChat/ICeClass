@@ -18,7 +18,6 @@ public sealed partial class App : Application
     private EnrollmentWindow? _enrollmentWindow;
     private StudentVoiceWindow? _studentVoiceWindow;
     private CreativeIdeasWindow? _creativeIdeasWindow;
-    private CardQuizWindow? _cardQuizWindow;
     private BanbanVoiceWindow? _banbanVoiceWindow;
     private AboutWindow? _aboutWindow;
     private ComputerControlSettingsWindow? _computerSettingsWindow;
@@ -68,7 +67,7 @@ public sealed partial class App : Application
         _selfStudy = new SelfStudyMonitor(
             token => _island.ShowSelfStudyWarningAsync(token),
             () => _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
-                _creativeIdeasWindow?.IsVisible == true || _cardQuizWindow?.IsBusy == true ||
+                _creativeIdeasWindow?.IsVisible == true || _banbanVoiceWindow?.ClassroomHost?.IsBusy == true ||
                 _workshop?.IsRunning == true || ReadingExperience.IsOpen || _speech?.IsBusy == true,
             () => _island.CancelSelfStudyWarning());
         _selfStudy.FeedbackChanged += _island.UpdateSelfStudyFeedback;
@@ -87,7 +86,6 @@ public sealed partial class App : Application
             _workshop?.SetBinding(binding);
             ResetClientDiagnosticBinding();
             if (_creativeIdeasWindow is not null && !_creativeIdeasWindow.Matches(binding)) { _creativeIdeasWindow.CloseWithoutPrompt(); _creativeIdeasWindow = null; }
-            if (_cardQuizWindow is not null && !_cardQuizWindow.Matches(binding)) { _cardQuizWindow.CloseWithoutPrompt(); _cardQuizWindow = null; }
             CardQuizService.For(binding);
             ReadingOfflineService.For(binding); _readingReminders?.Start(binding); _studentVoiceWindow?.SetBinding(binding);
             ReadingExperience.BindingChanged(binding); _island?.SetBinding(binding);
@@ -246,13 +244,7 @@ public sealed partial class App : Application
         if (_banbanVoiceWindow is not null && !_banbanVoiceWindow.Matches(config)) { _banbanVoiceWindow.Shutdown(); _banbanVoiceWindow = null; }
         if (_banbanVoiceWindow is null)
         {
-            var window = new BanbanVoiceWindow(config, () => _receiver?.ComputerAgent.Stop());
-            window.ClassroomRequested += PrepareCardQuizCompanion;
-            window.ClassroomActionRequested += action =>
-            {
-                if (!ReceiverConfig.TryLoad(out var binding)) { ShowEnrollment(); return; }
-                EnsureCardQuiz(binding).ActivateCompanionAction(action);
-            };
+            var window = new BanbanVoiceWindow(config, () => _receiver?.ComputerAgent.Stop(), timetable: () => _island?.HomeState);
             window.SetInClass(_island?.InClass == true);
             _banbanVoiceWindow = window;
             window.Closed += (_, _) => { if (ReferenceEquals(_banbanVoiceWindow, window)) _banbanVoiceWindow = null; };
@@ -305,7 +297,6 @@ public sealed partial class App : Application
         {
             _workshop?.SetBinding(saved);
             _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
-            _cardQuizWindow?.CloseWithoutPrompt(); _cardQuizWindow = null;
             CardQuizService.For(saved);
             ReadingOfflineService.For(saved);
             await ReadingExperience.StopAsync();
@@ -355,42 +346,8 @@ public sealed partial class App : Application
     private void ShowCardQuiz()
     {
         if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
-        EnsureCardQuiz(config).BringForward();
-    }
-
-    private async void PrepareCardQuizCompanion()
-    {
-        if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
-        try
-        {
-            var window = EnsureCardQuiz(config);
-            if (window.CompanionState is { } state) _banbanVoiceWindow?.SetClassroomState(state);
-            await window.StartInBackgroundAsync();
-        }
-        catch (Exception error)
-        { _banbanVoiceWindow?.SetClassroomError("纸卡课堂未能打开，请在工作台重试。"); AppLog.Error("Prepare pet classroom failed", error); }
-    }
-
-    private CardQuizWindow EnsureCardQuiz(ReceiverConfig config)
-    {
-        if (_cardQuizWindow is not null && !_cardQuizWindow.Matches(config)) { _cardQuizWindow.CloseWithoutPrompt(); _cardQuizWindow = null; }
-        if (_cardQuizWindow is null)
-        {
-            var window = new CardQuizWindow(config); _cardQuizWindow = window;
-            window.CompanionStateChanged += state => _banbanVoiceWindow?.SetClassroomState(state);
-            window.CompanionModeRequested += (enabled, expanded) =>
-            {
-                if (enabled && _banbanVoiceWindow is null) StartBanbanVoice(config, true);
-                _banbanVoiceWindow?.SetClassroomExpanded(enabled && expanded);
-            };
-            window.Closed += (_, _) =>
-            {
-                if (!ReferenceEquals(_cardQuizWindow, window)) return;
-                _cardQuizWindow = null;
-                _banbanVoiceWindow?.SetClassroomError("纸卡工作台已关闭，长按可重新打开。");
-            };
-        }
-        return _cardQuizWindow;
+        if (_banbanVoiceWindow is null || !_banbanVoiceWindow.Matches(config)) StartBanbanVoice(config, true);
+        _banbanVoiceWindow?.SetClassroomExpanded(true);
     }
 
     private async void ShowCreativeIdeas(string view)
@@ -429,7 +386,7 @@ public sealed partial class App : Application
             if (!await home.PrepareToLeaveAsync()) return;
         }
         if (_exitRequested) return;
-        if (_cardQuizWindow is { } quiz && !await quiz.PrepareToCloseAsync()) return;
+        if (_banbanVoiceWindow?.ClassroomHost is { } quiz && !await quiz.PrepareToCloseAsync()) return;
         if (_workshop is not null)
         {
             try { await _workshop.StopAsync(); }
@@ -446,7 +403,6 @@ public sealed partial class App : Application
         _mathReview?.Dispose();
         if (_workshop is not null) { try { await _workshop.DisposeAsync(); } catch (Exception error) when (error is not OutOfMemoryException) { AppLog.Error("Stop classroom plugin", error); } }
         _creativeIdeasWindow?.CloseWithoutPrompt(); _creativeIdeasWindow = null;
-        _cardQuizWindow?.CloseWithoutPrompt(); _cardQuizWindow = null;
         CardQuizService.Stop();
         _banbanVoiceWindow?.Shutdown();
         _selfStudy?.Dispose();
@@ -479,7 +435,7 @@ public sealed partial class App : Application
     // Wake listening remains active; only conversation, recording and classroom work block downloads.
     private bool VoiceActivityBusy => ReadingExperience.IsOpen ||
         _banbanVoiceWindow?.IsBusy == true || _studentVoiceWindow?.IsBusy == true ||
-        _creativeIdeasWindow?.IsVisible == true || _cardQuizWindow?.IsBusy == true || _workshop?.IsRunning == true ||
+        _creativeIdeasWindow?.IsVisible == true || _banbanVoiceWindow?.ClassroomHost?.IsBusy == true || _workshop?.IsRunning == true ||
         _receiver?.ComputerAgent.IsBusy == true || _stopTask is { IsCompleted: false };
     private bool CanUpdate(bool userInitiated) => !VoiceActivityBusy && _voicePreparation?.IsDownloading != true &&
         (userInitiated || _island?.ScheduleKnown == true && _island.InClass == false);

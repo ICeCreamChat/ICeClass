@@ -35,8 +35,9 @@ if (args is ["--self-study-scenario-checks", var selfStudyScenarioOutput])
 
 if (args is ["--homework-review", var homeworkBinding]) { HomeworkReview.Run(homeworkBinding); return; }
 if (args is ["--card-quiz-review", var cardQuizBinding]) { CardQuizReview.Run(cardQuizBinding); return; }
-if (args is ["--card-quiz-review", var companionBinding, "--companion"]) { CardQuizReview.Run(companionBinding, companion: true); return; }
+if (args is ["--card-quiz-review", var companionBinding, "--companion"]) { CardQuizReview.Run(companionBinding); return; }
 if (args is ["--card-quiz-wheel-checks", var wheelOutput]) { CardQuizWheelChecks.Run(wheelOutput); return; }
+if (args is ["--card-quiz-wheel-checks", var videoOutput, var twoCardVideo]) { CardQuizWheelChecks.Run(videoOutput, twoCardVideo); return; }
 if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
 if (args is ["--classroom-home-checks"]) { await ClassroomHomeChecks.Run(); return; }
 if (args is ["--classroom-ui-checks", var classroomUiOutput]) { ClassroomUiChecks.Run(classroomUiOutput); return; }

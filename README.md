@@ -11,7 +11,7 @@
 | 组件 | 源码版本 | 技术 |
 | --- | --- | --- |
 | Windows 教室端 | 2.5.17 | .NET 8 / Avalonia / WebView2 |
-| Windows 教师端 | 2.5.15 | .NET 8 / Avalonia / WebView2 |
+| Windows 教师端 | 2.5.17 | .NET 8 / Avalonia / WebView2 |
 | 学校服务 | 2.5.11 | Python / aiohttp / SQLite / WebSocket |
 | 视频展台插件 | 1.0.0 | .NET 10 / Windows Forms / WebView2 |
 
@@ -63,7 +63,9 @@ flowchart LR
 
 ## 纸卡答题与学生课堂分析
 
-在教室端“创意工坊”打开纸卡答题，可用教室摄像头或教师手机收答，支持单选、判断和多选。老师可配合现有课件临时出题，也可在教师工作台准备图文题和题单，课后按班级及知识点查看分析。
+Windows 教室端 2.5.17 支持在 PPT 放映时用班班收答。单击屏幕边缘的班班，在圆环中点“开始课堂”。老师按课件选题型，学生举卡作答。点“结束收答”即可看到各选项的匿名人数分布，再继续下一题。
+
+单选和判断各收一轮。多选逐项收答，使用教室相机时，切到下一项就会自动开始采集。收起班班会暂停，再次展开可从原项继续。教师可在工作台课前组题、课后查看学生作答。
 
 班主任可批量发放学生编号和六位密码，打印带班级、卡号及使用说明的纸卡。学生在统一登录页选择“学生”，登录后可查看本人课堂分析、改密和补印。使用方法见[纸卡答题](docs/纸卡答题.md)。
 
@@ -174,7 +176,7 @@ node --test scripts/test-card-quiz-classroom.cjs scripts/test-card-quiz-phone.cj
 node --test scripts/test-student-accounts-ui.cjs scripts/test-student-accounts.cjs
 dotnet run --project tests/CardQuizChecks -c Release
 dotnet run --project tests/CardQuizServiceChecks -c Release
-dotnet run --project tests/ReceiverOfflineChecks -c Release -p:EmbedVoiceResources=false -- --card-quiz-wheel-checks output/card-quiz-wheel-checks
+dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release -p:EmbedVoiceResources=false -- --card-quiz-wheel-checks output/card-quiz-wheel-checks
 ~~~
 
 网页界面回归另需 Playwright 与 Microsoft Edge。插件的 .NET 10 构建、摄像头授权检查及固定浏览器要求见[插件工程说明](plugins/VideoBooth/README.md)。合成图片、模拟设备和模型契约检查不能代替真实硬件与模型效果验收；完整检查选择见[验收指南](docs/验收指南.md)。

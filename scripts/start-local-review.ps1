@@ -30,22 +30,31 @@ if (-not $reviewResponse -or $reviewResponse.Headers['X-ICeClass-Review'] -ne '2
 
 switch ($Client) {
     'Web' { Start-Process $reviewUrl }
-    'Classroom' {
-        $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-demo-review.exe'
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-spacing-review.exe' }
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-motion-review.exe' }
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-island-review.exe' }
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0-ui-review.exe' }
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { $reviewExecutable = Join-Path $reviewFolder 'ICeClass-2.3.0.exe' }
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { throw '找不到本地教室端验收程序。' }
-        if ($ShoutPreview) { Start-Process -FilePath $reviewExecutable -ArgumentList @('--island-shout-preview') -WorkingDirectory $reviewFolder -WindowStyle Normal }
-        elseif ($IslandDemo) { Start-Process -FilePath $reviewExecutable -ArgumentList @('--island-demo') -WorkingDirectory $reviewFolder -WindowStyle Normal }
-        else { Start-Process -FilePath $reviewExecutable -WorkingDirectory $reviewFolder -WindowStyle Normal }
-    }
-    'Teacher' {
-        $reviewExecutable = Join-Path $reviewRepository 'dist\desktop\ICeClass.Desktop.exe'
-        if (-not (Test-Path -LiteralPath $reviewExecutable)) { throw '请先运行 build-desktop.bat 构建 Windows 教师端。' }
-        $reviewProfile = Join-Path $reviewRepository '.tools\desktop-native-review'
-        Start-Process -FilePath $reviewExecutable -ArgumentList @('--server', $reviewUrl.TrimEnd('/'), '--data-dir', ('"' + $reviewProfile + '"')) -WorkingDirectory $reviewRepository -WindowStyle Hidden
+    default {
+        $reviewSdk = Join-Path $reviewRepository '.tools\desktop-sdk\runtime\dotnet.exe'
+        if ($env:ICECLASS_DOTNET) { $reviewSdk = $env:ICECLASS_DOTNET }
+        elseif (-not (Test-Path -LiteralPath $reviewSdk)) { $reviewSdk = 'dotnet' }
+        if ($Client -eq 'Classroom') {
+            # The portable demo binding and its journals live beside this assembly.
+            $project = 'Receiver\Receiver.csproj'
+            $clientFolder = $reviewFolder
+            $assembly = 'ICeClass.dll'
+            $clientArgs = @()
+            if ($ShoutPreview) { $clientArgs += '--island-shout-preview' }
+            elseif ($IslandDemo) { $clientArgs += '--island-demo' }
+        } else {
+            $project = 'Desktop\ICeClass.Desktop.csproj'
+            $clientFolder = Join-Path $reviewRepository 'output\local-review-build\teacher'
+            $assembly = 'ICeClass.Desktop.dll'
+            $reviewProfile = Join-Path $reviewRepository '.tools\desktop-native-review'
+            $clientArgs = @('--server', $reviewUrl.TrimEnd('/'), '--data-dir', ('"' + $reviewProfile + '"'))
+        }
+        Push-Location -LiteralPath $reviewRepository
+        try {
+            & $reviewSdk build $project -c Release -o $clientFolder --nologo
+            if ($LASTEXITCODE -ne 0) { throw '本地验收客户端构建失败。' }
+        } finally { Pop-Location }
+        $clientDll = Join-Path $clientFolder $assembly
+        Start-Process -FilePath $reviewSdk -ArgumentList (@('"' + $clientDll + '"') + $clientArgs) -WorkingDirectory $clientFolder -WindowStyle Hidden
     }
 }

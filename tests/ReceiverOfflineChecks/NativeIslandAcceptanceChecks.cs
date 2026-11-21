@@ -32,7 +32,7 @@ internal static class NativeIslandAcceptanceChecks
         if (!ReceiverConfig.TryRead(bindingPath, out var binding) || !ReceiverConfig.IsPreview(binding))
             throw new InvalidOperationException("Acceptance checks require an explicit loopback-only binding.");
         Directory.CreateDirectory(output);
-        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
             .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(stage, binding, output)))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
     }
@@ -149,12 +149,32 @@ internal static class NativeIslandAcceptanceChecks
                     response.EnsureSuccessStatusCode();
                     return JsonNode.Parse(await response.Content.ReadAsStringAsync())!.AsObject();
                 }
+                var readingOffline = ReadingOfflineService.For(binding);
+                bool ReadingOnline() => readingOffline.Snapshot()["online"]?.GetValue<bool>() == true;
+                await Until(ReadingOnline, "initial reading rules sync");
                 await Control("offline");
-                await Until(() => !connected && !Sync().Snapshot.Online, "offline connection status");
+                await Until(() => !connected && !Sync().Snapshot.Online && !ReadingOnline(), "offline connection status");
                 Invoke(island, "Refresh");
                 Assert(Sync().Snapshot is { Revision: 1, Revoked: false, Profile.Slots.Count: 2 } && window.IsVisible,
                     "losing HTTP and WebSocket connections preserves the visible cached timetable");
                 Capture(window, Path.Combine(output, "disconnected.png"));
+
+                var offlineWindow = await OpenReadingAsync(binding);
+                Assert(ReadingReady(offlineWindow), "the embedded reading page opens from local assets while the backend is offline");
+                var at = readingOffline.Now;
+                var batch = new
+                {
+                    id = Guid.NewGuid(), sessionId = Guid.NewGuid(), mode = "particle", startedAt = at,
+                    samples = new[] { new { at, volume = 50, active = true } },
+                    events = new[] { new { id = Guid.NewGuid(), at, kind = "badges" } }
+                };
+                var message = JsonSerializer.Serialize(new { type = "reading-local", action = "store", requestId = Guid.NewGuid(), payload = batch });
+                await Field<ReadingBrowser>(offlineWindow, "_browser").Core!.ExecuteScriptAsync($"window.chrome.webview.postMessage({message});");
+                await Until(() => readingOffline.Snapshot()["pendingCount"]?.GetValue<int>() == 1, "offline reading batch saved through the WebView bridge");
+                Assert(!ReadingOnline(), "the synthetic reading event is queued locally before reconnecting");
+                await ReadingExperience.StopAsync();
+                anchor.Activate();
+
                 await Control("online", new { update = true });
                 await Until(() => connected && Sync().Snapshot is { Online: true, Revision: 2 }, "automatic reconnection and revision 2 sync", 40);
                 Assert(Sync().Snapshot.Profile!.Lessons.Any(l => l.Subject == "班会"),
@@ -162,6 +182,7 @@ internal static class NativeIslandAcceptanceChecks
                 await Until(() => File.Exists(Path.Combine(IslandLocalStore.RootFor(binding), "profile.json")), "durable cache");
                 Assert(Sync().Store.Read<JsonObject>("profile.json")?["revision"]?.GetValue<int>() == 2,
                     "the recovered revision is durably cached before delivery is acknowledged");
+                await Until(() => ReadingOnline() && readingOffline.Snapshot()["pendingCount"]?.GetValue<int>() == 0, "reading batch confirmation after reconnect", 40);
 
                 async Task Send(string level, string text) => _ = await Control("shout", new { level, text });
                 string? Active() => Field<QueuedShout?>(island, "_activeShout")?.Data.Text;
@@ -182,6 +203,8 @@ internal static class NativeIslandAcceptanceChecks
                     && state["statuses"]?["验收紧急"]?.GetValue<string>() != "acknowledged",
                     "real server history records explicit confirmations and never treats Escape as human acknowledgement");
                 Assert(state["ackRevision"]?.GetValue<int>() == 2, "the backend records delivery of the recovered configuration revision");
+                Assert(state["countedReadingEvents"]?.GetValue<int>() == 1 && readingOffline.Snapshot()["reviewCount"]?.GetValue<int>() == 0,
+                    "the backend counts the offline reading event and the receiver clears the acknowledged batch");
                 island.Clear();
 
                 anchor.Activate();
@@ -196,12 +219,9 @@ internal static class NativeIslandAcceptanceChecks
                 await Until(() => window.IsVisible, "island restoration after external fullscreen");
                 Assert(window.IsVisible, "the island automatically returns after the external fullscreen window closes");
 
-                await ReadingExperience.OpenAsync(binding);
-                await Until(() => ReadingExperience.IsFullscreen, "reading fullscreen");
+                var reading = await OpenReadingAsync(binding);
                 Assert(!window.IsVisible, "the actual reading window hides the island when it enters fullscreen");
-                var reading = (ReadingCompanionWindow)typeof(ReadingExperience).GetField("_window", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
-                await Until(() => !Field<bool>(reading, "_loading"), "local reading browser readiness", 45);
-                Assert(Field<bool>(reading, "_initialized") && !Field<bool>(reading, "_browserFailed") && !Field<Border>(reading, "_notice").IsVisible,
+                Assert(ReadingReady(reading),
                     "the actual embedded reading browser loads successfully without starting a microphone session: " + Field<TextBlock>(reading, "_errorTitle").Text);
                 reading.WindowState = WindowState.Normal;
                 await Until(() => window.IsVisible, "island restoration on reading exit from fullscreen");
@@ -235,6 +255,18 @@ internal static class NativeIslandAcceptanceChecks
             ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!).Shutdown(Environment.ExitCode);
         }
     }
+
+    private static async Task<ReadingCompanionWindow> OpenReadingAsync(ReceiverConfig binding)
+    {
+        await ReadingExperience.OpenAsync(binding);
+        await Until(() => ReadingExperience.IsFullscreen, "reading fullscreen");
+        var reading = (ReadingCompanionWindow)typeof(ReadingExperience).GetField("_window", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        await Until(() => !Field<bool>(reading, "_loading"), "local reading browser readiness", 45);
+        return reading;
+    }
+
+    private static bool ReadingReady(ReadingCompanionWindow reading) =>
+        Field<bool>(reading, "_initialized") && !Field<bool>(reading, "_browserFailed") && !Field<Border>(reading, "_notice").IsVisible;
 
     private static async Task CheckReadingNavigation(ReadingCompanionWindow reading, Action<bool, string> assert)
     {
@@ -317,7 +349,7 @@ internal static class NativeIslandAcceptanceChecks
 
     public static void FullscreenProbe(string path)
     {
-        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont().AfterSetup(_ => Dispatcher.UIThread.Post(() =>
+        AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().AfterSetup(_ => Dispatcher.UIThread.Post(() =>
         {
             var window = new Window { Title = "ICeClass 全屏课件验收", WindowState = WindowState.FullScreen,
                 Content = new TextBlock { Text = "本地全屏课件验收", FontSize = 32, Margin = new Thickness(48) } };

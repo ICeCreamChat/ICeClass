@@ -12,14 +12,14 @@ using ICeClass.Receiver;
 
 internal static class NativeShoutChecks
 {
-    public static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    public static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check()))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
     private static async Task Check()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
-        var output = Path.GetFullPath(Environment.GetEnvironmentVariable("ICECLASS_SHOUT_CHECK_OUTPUT") ?? "output/island-megaphone-grip-20261021"); Directory.CreateDirectory(output);
+        var output = Path.GetFullPath(Environment.GetEnvironmentVariable("ICECLASS_SHOUT_CHECK_OUTPUT") ?? "output/island-native-review/shout"); Directory.CreateDirectory(output);
         var checks = new List<string>();
         void Assert(bool value, string label) { if (!value) throw new Exception(label); checks.Add(label); Console.WriteLine("PASS " + label); }
         object Field(object target, string name) => target.GetType().GetField(name, flags)!.GetValue(target)!;

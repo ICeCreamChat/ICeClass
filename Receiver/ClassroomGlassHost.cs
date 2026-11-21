@@ -24,6 +24,29 @@ internal sealed class ClassroomGlassHost : Grid
     private bool _opaque;
     private readonly double? _shellRadius;
     private readonly bool _teacher;
+    private static readonly SKColor[] SceneColors = [new(234, 248, 255), new(181, 212, 235), new(211, 234, 248)];
+    private static readonly float[] SceneStops = [0, .7f, 1];
+    private static readonly SKColor[] ClassroomTint = [new(255, 255, 255, 175), new(229, 245, 255, 125)];
+
+    // A shaped floating control needs just the glass tint. Avalonia paints it inside
+    // the control's own rounded bounds, including when Windows scales the pet.
+    internal static IBrush FloatingTint(bool highContrast)
+    {
+        if (highContrast) return Brushes.White;
+        var brush = new LinearGradientBrush { StartPoint = RelativePoint.TopLeft, EndPoint = RelativePoint.BottomRight };
+        for (var i = 0; i < SceneColors.Length; i++)
+        {
+            var t = SceneStops[i];
+            var background = SceneColors[i];
+            var first = ClassroomTint[0]; var last = ClassroomTint[1];
+            var opacity = (first.Alpha + (last.Alpha - first.Alpha) * t) / 255d;
+            byte Channel(byte source, byte start, byte end) =>
+                (byte)Math.Round(source + (start + (end - start) * t - source) * opacity);
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(Channel(background.Red, first.Red, last.Red),
+                Channel(background.Green, first.Green, last.Green), Channel(background.Blue, first.Blue, last.Blue)), t));
+        }
+        return brush;
+    }
 
     private readonly record struct Pane(Rect Bounds, double Radius, bool Primary = false);
 
@@ -100,7 +123,7 @@ internal sealed class ClassroomGlassHost : Grid
                 opaque ? new SKColor[] { SKColors.White, SKColors.White } : pane.Primary
                     ? new SKColor[] { new(230,246,255,181), new(165,213,250,145) }
                     : _teacher ? new SKColor[] { new(255,255,255,151), new(229,245,255,104) }
-                    : new SKColor[] { new(255,255,255,175), new(229,245,255,125) }, (float[]?)null, SKShaderTileMode.Clamp) };
+                    : ClassroomTint, (float[]?)null, SKShaderTileMode.Clamp) };
             canvas.DrawRoundRect(rect, radius, radius, tint);
             using var edge = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1,
                 Color = opaque ? SKColors.DarkSlateGray : new SKColor(255,255,255,220) };
@@ -125,7 +148,7 @@ internal sealed class ClassroomGlassHost : Grid
         using var paint = new SKPaint { IsAntialias = true };
         if (opaque) { canvas.DrawColor(SKColors.White); return; }
         paint.Shader = SKShader.CreateLinearGradient(new SKPoint(0, 0), new SKPoint(w, h),
-            [new SKColor(234,248,255), new SKColor(181,212,235), new SKColor(211,234,248)], [0,.7f,1], SKShaderTileMode.Clamp);
+            SceneColors, SceneStops, SKShaderTileMode.Clamp);
         canvas.DrawRect(0, 0, w, h, paint); paint.Shader.Dispose(); paint.Shader = null;
         paint.Color = new SKColor(248,253,255,90); paint.Style = SKPaintStyle.Stroke; paint.StrokeWidth = Math.Max(40, w * .12f);
         canvas.DrawOval(new SKRect(w*.33f,-h*.85f,w*1.7f,h*.62f),paint);

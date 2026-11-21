@@ -6,22 +6,27 @@ const fs=require('node:fs');
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..','web_controller'),origin='https://school.example';
 let browser;
-before(async()=>{browser=await chromium.launch({headless:true});});
+before(async()=>{browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true});});
 after(async()=>{await browser?.close();});
 const copy=x=>JSON.parse(JSON.stringify(x));
-async function open({unknown=false,status='pending',roundStatus='collecting',questionType='single',optionCount=4}={}){
+async function open({unknown=false,status='pending',roundStatus='collecting',questionType='single',optionCount=4,previousPair=false}={}){
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'}),page=await context.newPage();
-  const fixture={unknown,status,pollStatus:200,commands:[],receipts:[],errors:[],state:{sessionId:'session-1',className:'测试班',subjectId:'math',questionId:'question-1',questionNumber:1,questionType:'single',optionCount:4,roundId:'round-1',roundStatus:'collecting',source:'phone',sourceId:'pair-1',generation:2,seq:3,received:0,expected:2,ended:false}};
+  const fixture={unknown,status,pollStatus:200,commands:[],receipts:[],errors:[],claims:[],state:{sessionId:'session-1',className:'测试班',subjectId:'math',questionId:'question-1',questionNumber:1,questionType:'single',optionCount:4,roundId:'round-1',roundStatus:'collecting',source:'phone',sourceId:'pair-1',generation:2,seq:3,received:0,expected:2,ended:false}};
   fixture.state.roundStatus=roundStatus;
   fixture.state.questionType=questionType;fixture.state.optionCount=optionCount;
   if(questionType==='multiple'){fixture.state.activeOption='A';fixture.state.optionReceived=0;}
   await page.addInitScript(()=>{window.CardQuizScanner=class{constructor(options){window.testScanner=this;this.options=options;this.running=false;}start(){this.running=true;return Promise.resolve();}stop(){this.running=false;}reset(key,count){this.key=key;this.optionCount=count;} };});
+  if(previousPair)await page.addInitScript(()=>sessionStorage.setItem('iceclass.cardQuizPair',JSON.stringify({pairId:'old-pair'})));
   page.on('pageerror',error=>fixture.errors.push(error.message));
   await context.route('**/*',async route=>{
     const url=new URL(route.request().url());assert.equal(url.origin,origin);
     const fulfill=(body,status=200)=>route.fulfill({status,json:body});
     if(url.pathname==='/api/session')return fulfill({authenticated:true,user:{id:'teacher',displayName:'教师',csrfToken:'csrf'}});
-    if(url.pathname==='/api/card-quiz/pair')return fulfill({pairId:'pair-1',classId:'class-1',sessionId:'session-1',expiresAt:Date.now()+3600000});
+    if(url.pathname==='/api/card-quiz/pair'){
+      fixture.claims.push(route.request().postDataJSON().code);
+      return fulfill({pairId:'pair-1',classId:'class-1',sessionId:'session-1',expiresAt:Date.now()+3600000});
+    }
+    if(url.pathname==='/api/card-quiz/pairs/old-pair')return fulfill({error:'旧配对已失效'},403);
     if(url.pathname==='/api/card-quiz/pairs/pair-1'){
       const hold=fixture.holdPoll;fixture.holdPoll=null;if(hold){fixture.pollStarted?.();await hold;}
       if(fixture.pollStatus===0)return route.abort('failed');
@@ -36,10 +41,43 @@ async function open({unknown=false,status='pending',roundStatus='collecting',que
     const file=path.resolve(root,'.'+url.pathname);assert.ok(file.startsWith(root+path.sep));
     return fs.existsSync(file)?route.fulfill({path:file}):route.fulfill({status:404,body:'Not found'});
   });
-  await page.goto(origin+'/card-quiz/phone.html?code=DEMO');await page.locator('#capture:not([hidden])').waitFor();
-  await page.locator(roundStatus==='closed'?'#start:not([disabled])':'#stop:not([disabled])').waitFor();
+  try{
+    await page.goto(origin+'/card-quiz/phone.html?code=DEMO');
+    await page.locator('#capture:not([hidden])').waitFor({timeout:5000});
+    await page.locator(roundStatus==='closed'?'#start:not([disabled])':'#stop:not([disabled])').waitFor({timeout:5000});
+  }
+  catch(error){await context.close();throw error;}
   return{page,context,fixture};
 }
+
+test('扫描新二维码优先配对新课堂，不沿用手机上的旧连接',async()=>{
+  const{context,page,fixture}=await open({previousPair:true});
+  try{
+    assert.deepEqual(fixture.claims,['DEMO']);
+    assert.match(await page.locator('#connection').innerText(),/正在收答/);
+    assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('iceclass.cardQuizPair')).pairId),'pair-1');
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('手机接力可恢复白板暂停的同一轮，确认前不打开相机',async()=>{
+  const {context,page,fixture}=await open({roundStatus:'paused'});
+  try {
+    assert.equal(await page.locator('#start').innerText(),'恢复本轮');
+    assert.equal(await page.locator('#camera').isVisible(),false);
+    await page.locator('#start').click();
+    await page.waitForFunction(()=>document.querySelector('#submission-status').textContent.includes('1 条'));
+    const request=fixture.commands[0];
+    assert.equal(request.action,'resume_round');
+    assert.equal(request.roundId,'round-1');
+    assert.equal(await page.evaluate(()=>testScanner.running),false);
+    fixture.state={...fixture.state,roundStatus:'collecting',generation:3,seq:4,received:1};
+    fixture.receipts=[{id:request.id,status:'confirmed',result:{state:fixture.state,seq:4}}];
+    await page.waitForFunction(()=>testScanner.running);
+    assert.match(await page.locator('#capture-progress').innerText(),/待收 1 人/);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
 
 test('手机多选候选绑定收答项，换项后主动开相机，新题支持多选',async()=>{
   const{page,context,fixture}=await open({questionType:'multiple'});

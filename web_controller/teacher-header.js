@@ -31,9 +31,11 @@
   const ui = window.ICeClassUI;
   for (const [menu, trigger] of menus) {
     let focusLast = false;
-    menu.addEventListener('beforetoggle', event => { if (event.newState === 'open') position(menu, trigger); });
-    menu.addEventListener('toggle', event => {
+    menu.addEventListener('beforetoggle', event => {
       trigger.setAttribute('aria-expanded', String(event.newState === 'open'));
+      if (event.newState === 'open') position(menu, trigger);
+    });
+    menu.addEventListener('toggle', event => {
       if (event.newState === 'open') { ui.focusMenu(menu, focusLast); focusLast = false; }
     });
     trigger.addEventListener('keydown', event => {

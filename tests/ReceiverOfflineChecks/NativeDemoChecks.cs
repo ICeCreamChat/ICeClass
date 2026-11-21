@@ -10,14 +10,14 @@ using ICeClass.Receiver;
 
 internal static class NativeDemoChecks
 {
-    public static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    public static void Run() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check()))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
     private static async Task Check()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
-        var output = Path.GetFullPath("output/island-demo-20261020"); Directory.CreateDirectory(output);
+        var output = Path.GetFullPath("output/island-native-review/demo"); Directory.CreateDirectory(output);
         var checks = new List<string>();
         void Assert(bool condition, string text) { if (!condition) throw new Exception(text); checks.Add(text); Console.WriteLine("PASS " + text); }
         object Field(object target, string name) => target.GetType().GetField(name, flags)!.GetValue(target)!;

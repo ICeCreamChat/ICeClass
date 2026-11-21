@@ -81,7 +81,7 @@ PHONE_REASON = '手机现场配对协议，需要本人登录和配对码，绑�
 IMAGE_REASON = '题目图片由本人选择上传或授权查看，原始文件不传给模型，按作者和班级引用校验权限。'
 ACTIONS = {'add_question', 'start_round', 'answer', 'end_round', 'resume_round', 'set_source',
            'edit_question', 'reveal', 'set_exempt', 'end_session', 'recover', 'set_multi_option'}
-PHONE_ACTIONS = {'answer', 'start_round', 'end_round', 'add_question', 'edit_question', 'reveal', 'set_multi_option'}
+PHONE_ACTIONS = {'answer', 'start_round', 'resume_round', 'end_round', 'add_question', 'edit_question', 'reveal', 'set_multi_option'}
 
 
 class QuizError(ValueError):
@@ -381,10 +381,6 @@ def validate_transition(old, new, events):
     if (old['source'], old['sourceId']) != (new['source'], new['sourceId']):
         if not any(e['action'] == 'set_source' for e in new_events) or new['generation'] <= old['generation']:
             fail('切换来源必须有对应事件并推进采集代次。', 409)
-        for q in old['questions']:
-            for r in q['rounds']:
-                if r['status'] != 'closed' and next(nr for nr in new_questions[q['id']]['rounds'] if nr['id'] == r['id'])['status'] != 'closed':
-                    fail('只能在轮次之间切换采集来源。', 409)
     for q in old['questions']:
         for r in q['rounds']:
             nr = next(nr for nr in new_questions[q['id']]['rounds'] if nr['id'] == r['id'])

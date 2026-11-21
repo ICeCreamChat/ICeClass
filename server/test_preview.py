@@ -6,6 +6,7 @@ from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from uuid import UUID
 
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -66,7 +67,10 @@ class PreviewHttpTest(unittest.IsolatedAsyncioTestCase):
         device = {'Authorization': 'Bearer local-demo-device-1', 'X-ICeClass-Device-Id': self.room['device_id'],
                   'X-ICeClass-Class-Id': cid}
         published = (await self.get('/api/card-quiz/device/bootstrap', headers=device))['publications']
-        deck = await self.get('/api/card-quiz/device/publications/' + published[0]['id'], headers=device)
+        publication_id = published[0]['id']
+        self.assertEqual(str(UUID(publication_id)), publication_id)
+        deck = await self.get('/api/card-quiz/device/publications/' + publication_id, headers=device)
+        self.assertEqual(deck['id'], publication_id)
         self.assertEqual([q['type'] for q in deck['questions']], types)
         self.assertTrue(all(q['id'] == q['bankId'] and q['revision'] == q['bankVersion'] for q in deck['questions']))
         student = await self.sign_in('/api/student/login', '2610101', '260001', 'student')
@@ -113,6 +117,23 @@ class PreviewPersistenceTest(unittest.TestCase):
         folder = TemporaryDirectory(prefix='iceclass-acceptance-')
         self.addCleanup(folder.cleanup)
         self.path = Path(folder.name) / 'demo.db'
+
+    def test_restart_repairs_legacy_publication_without_reseeding(self):
+        legacy_id = 'preview-workbench-publication'
+        with closing(create_preview(self.path)[service.STORE_KEY]) as db:
+            saved = db.one('SELECT * FROM card_quiz_publications')
+            value = json.loads(saved['value'])
+            db.run('UPDATE card_quiz_publications SET id=?,value=? WHERE id=?',
+                   (legacy_id, json.dumps({**value, 'id': legacy_id}), saved['id']))
+            sessions = db.all('SELECT * FROM card_quiz_sessions')
+        with closing(create_preview(self.path)[service.STORE_KEY]) as db:
+            repaired, = db.all('SELECT * FROM card_quiz_publications')
+            self.assertEqual(str(UUID(repaired['id'])), repaired['id'])
+            self.assertEqual(json.loads(repaired['value']), {**value, 'id': repaired['id']})
+            self.assertEqual({**repaired, 'id': saved['id'], 'value': saved['value']}, saved)
+            self.assertEqual(db.all('SELECT * FROM card_quiz_sessions'), sessions)
+        with closing(create_preview(self.path)[service.STORE_KEY]) as db:
+            self.assertEqual(db.all('SELECT * FROM card_quiz_publications'), [repaired])
 
     def test_legacy_demo_keeps_existing_roster_and_presets_an_unused_class(self):
         legacy = service.create_app(self.path)

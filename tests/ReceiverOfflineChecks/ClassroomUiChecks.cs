@@ -14,7 +14,7 @@ internal static class ClassroomUiChecks
 {
     internal static void Run(string output)
     {
-        var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+        var thread = new Thread(() => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
             .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(Path.GetFullPath(output))))
             .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown));
         thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();

@@ -64,7 +64,7 @@
 /* Embedded rabbit and rocket documents retain their videos and game logic. */
 /* Cover the plain CSS state before the deferred optical lenses are attached. */
 .reading-game{--theme-green:#2e84c9;--panel-bg:#f4faff;--shadow:0 8px 24px #2352761a}
-.reading-game body{font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;background:transparent}
+.reading-game body{font-family:var(--font-ui);background:transparent}
 .reading-game #start-overlay{background:#183e5b38}
 .reading-game .modal{background:#183e5b59}
 .reading-game .welcome-card{border-radius:25px;border-color:#b3d0e5;color:#193c59;max-height:calc(100dvh - 32px);overflow:auto}

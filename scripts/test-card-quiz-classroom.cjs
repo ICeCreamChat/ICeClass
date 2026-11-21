@@ -7,15 +7,16 @@ const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..','web_controller');
 const origin='https://cardquiz.iceclass.local';
 let browser;
-before(async()=>{browser=await chromium.launch({headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});});
+before(async()=>{browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});});
 after(async()=>{await browser?.close();});
 const copy=value=>JSON.parse(JSON.stringify(value));
 const Model=require('../web_controller/card-quiz/model.js'),Journal=require('../web_controller/card-quiz/journal.js');
 
-async function open({width=1160,journals=[],failCommit=false,scannerFixture=false,touch=false}={}){
-  const context=await browser.newContext({viewport:{width,height:820},reducedMotion:'reduce',hasTouch:touch}),page=await context.newPage();
-  const fixture={journals:copy(journals),failCommit,commands:[],messages:[],errors:[],synced:0,companion:{enabled:false,expanded:false}};
-  const base={classId:'c1',deviceId:'d1',className:'隔离演示班',context:{classId:'c1',deviceId:'d1',students:[{id:'s1',name:'不应出现在教室报告中的姓名',cardNumber:1},{id:'s2',name:'私密姓名乙',cardNumber:2}],publications:[]},errors:[]};
+async function open({width=1160,height=820,companion=false,journals=[],publications=[],failCommit=false,scannerFixture=false,touch=false}={}){
+  const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce',hasTouch:touch}),page=await context.newPage();
+  const fixture={journals:copy(journals),failCommit,commands:[],messages:[],errors:[],synced:0,pairings:[]};
+  const publicationSummaries=publications.map(({id,title,questions})=>({id,title,questionCount:questions.length,cached:true}));
+  const base={classId:'c1',deviceId:'d1',className:'隔离演示班',context:{classId:'c1',deviceId:'d1',students:[{id:'s1',name:'不应出现在教室报告中的姓名',cardNumber:1},{id:'s2',name:'私密姓名乙',cardNumber:2}],publications:publicationSummaries},errors:[]};
   const load=()=>copy({...base,journals:fixture.journals});
   await page.exposeFunction('__quizNative',async message=>{
     fixture.messages.push(copy(message));
@@ -23,20 +24,23 @@ async function open({width=1160,journals=[],failCommit=false,scannerFixture=fals
     const body=message.body||{};
     switch(message.action){
       case'load':case'bootstrap':return load();
+      case'publication':return {publication:copy(publications.find(publication=>publication.id===body.id))};
       case'commit':{
+        const hold = fixture.holdCommit;
+        if (hold) { fixture.holdCommit = null; fixture.commitStarted(); await hold; }
         if(fixture.failCommit)throw new Error('隔离检查：磁盘不可写');
         const j=copy(body.journal),index=fixture.journals.findIndex(x=>x.session.id===j.session.id);
         if(index>=0)fixture.journals[index]=j;else fixture.journals.push(j);return j;
       }
-      case'sync':fixture.journals.forEach(j=>j.syncedSeq=j.session.seq);return load();
-      case'relay':{const commands=fixture.commands.splice(0);return{commands,pairings:[]};}
-      case'pair':return{pairId:crypto.randomUUID(),code:'482915',url:'https://school.example/card-quiz/phone.html#pair=isolated',expiresAt:Date.now()+300000};
-      case'compact':{
-        const enabled=body.enabled===true,expanded=enabled&&body.expanded===true;
-        fixture.companion={enabled,expanded};
-        await page.evaluate(value=>window.__quizReceive(value),{type:'compact',value:enabled,expanded});return null;
+      case'sync':{
+        if (fixture.holdSync) await fixture.holdSync;
+        if (fixture.failSync) throw new Error('学校服务暂时离线');
+        fixture.journals.forEach(j=>j.syncedSeq=j.session.seq);return load();
       }
-      case'close':return null;
+      case'relay':{const commands=fixture.commands.splice(0);return{commands,pairings:fixture.pairings};}
+      case'pair':
+        fixture.pairId=crypto.randomUUID();
+        return{pairId:fixture.pairId,code:'482915',url:'https://school.example/card-quiz/phone.html#pair=isolated',expiresAt:Date.now()+300000};
       default:throw new Error('未预期的原生操作：'+message.action);
     }
   });
@@ -51,65 +55,215 @@ async function open({width=1160,journals=[],failCommit=false,scannerFixture=fals
   page.on('pageerror',error=>fixture.errors.push(error.message));
   await context.route('**/*',route=>{
     const url=new URL(route.request().url());assert.equal(url.origin,origin,'No external requests');
-    if(scannerFixture&&url.pathname.endsWith('/scanner.js'))return route.fulfill({contentType:'application/javascript',body:`window.CardQuizScanner=class{constructor(options){window.testScanner=this;this.options=options;this.running=false;}start(){this.running=true;return Promise.resolve();}stop(){this.running=false;}reset(key,count){this.key=key;this.optionCount=count;}};`});
+    if(scannerFixture&&url.pathname.endsWith('/scanner.js'))return route.fulfill({contentType:'application/javascript',body:`window.CardQuizScanner=class{constructor(options){window.testScanner=this;this.options=options;this.running=false;this.starts=0;}waitForNewPresentation(){}cardsInView(){return new Map();}start(){this.starts++;this.running=true;return Promise.resolve();}stop(){this.running=false;}reset(key,count){this.key=key;this.optionCount=count;}};`});
     const file=path.resolve(root,'.'+decodeURIComponent(url.pathname));assert.ok(file.startsWith(root+path.sep));
     return fs.existsSync(file)?route.fulfill({path:file}):route.fulfill({status:404,body:'Not found'});
   });
-  await page.goto(origin+'/card-quiz/classroom.html');
-  await page.locator('#create-session:not([disabled])').waitFor();
+  await page.goto(origin+'/card-quiz/classroom.html'+(companion?'#banban':''));
+  await page.locator(journals.some(j=>j.session.endedAt===null)?'[data-resume]':'#create-session:not([disabled])').first().waitFor({state:'attached'});
   return{page,context,fixture};
 }
 async function create(page){await page.locator('#create-session').click();await page.locator('#workspace:not([hidden])').waitFor();await page.locator('#start:not([disabled])').waitFor();}
 async function noOverflow(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No horizontal overflow');}
 
-async function sector(page,id){await page.evaluate(action=>window.__quizReceive({type:'companion-action',action}),id);}
+async function sector(page,action,payload={}){await page.evaluate(value=>window.__quizReceive(value),{type:'companion-action',action,...payload});}
 async function wheel(page){return page.evaluate(()=>window.__quizWheelState);}
+async function startInPet(page,template='single:4'){
+  await sector(page,'setup-start',{selection:{publication:'',subject:'math',template}});
+  await page.waitForFunction(()=>window.__quizWheelState.actions.some(a=>a.id==='collect'&&a.label==='开始收答'&&a.enabled));
+}
+async function waitPanel(page,name){
+  await page.waitForFunction(name=>window.__quizWheelState.panel===name,name);
+}
 
-test('开课前将八个禁用功能发送给原班班，页面不再生成第二个班班，打开入口不创建课堂',async()=>{
+test('开课和首题一并保存，结束后无需等待学校同步即可开下一堂',async()=>{
+  const {page,context,fixture}=await open({width:390,scannerFixture:true});
+  let release;
+  try {
+    await create(page);
+    const first=fixture.journals[0];
+    assert.equal(fixture.messages.filter(m=>m.action==='commit').length,1);
+    assert.equal(first.session.questions.length,1);
+    fixture.holdSync=new Promise(resolve=>release=resolve);
+    await page.locator('#end-session').click();
+    await page.locator('#confirm-ok').click();
+    await page.locator('#return-setup').click();
+    await create(page);
+    assert.equal(fixture.journals.length,2);
+    assert.ok(fixture.journals[0].session.endedAt);
+    assert.equal(fixture.journals[1].session.endedAt,null);
+    release();await noOverflow(page);assert.deepEqual(fixture.errors,[]);
+  }finally{release?.();await context.close();}
+});
+
+test('课件题可直接选题型，窄窗口优先显示收答控制和待收卡号',async()=>{
+  const {page,context,fixture}=await open({width:390,scannerFixture:true});
+  try {
+    await page.locator('#first-template').selectOption('boolean:2');
+    await create(page);
+    assert.equal(fixture.journals[0].session.questions[0].type,'boolean');
+    await page.locator('#start').click();
+    await page.waitForFunction(()=>testScanner.running);
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'A'}));
+    assert.match(await page.locator('#capture-progress').innerText(),/待收 1 人/);
+    await page.locator('#exempt').click();
+    assert.match(await page.locator('#exempt-cards label').filter({hasText:'2 号'}).innerText(),/待收/);
+    assert.doesNotMatch(await page.locator('#exempt-dialog').innerText(),/私密姓名|不应出现在/);
+    await page.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.locator('#stop').click();
+    await page.locator('#next-template').selectOption('single:3');
+    await page.locator('#next').click();
+    await page.locator('#question-number').filter({hasText:'第 2 题'}).waitFor();
+    assert.equal(fixture.journals[0].session.questions[1].options.length,3);
+    await noOverflow(page);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('课堂暂停后可切换设备，同一轮保留已确认的答案',async()=>{
+  const {page,context,fixture}=await open({scannerFixture:true});
+  try {
+    await create(page);
+    await page.locator('#start').click();
+    await page.waitForFunction(()=>testScanner.running);
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'C'}));
+    const first=fixture.journals[0].session.currentRoundId;
+    await page.locator('#pause').click();
+    await page.locator('#source:not([disabled])').click();
+    await page.locator('#pair-dialog[open]').waitFor();
+    assert.equal(await page.evaluate(()=>testScanner.running),false);
+    assert.equal(fixture.journals[0].session.currentRoundId,first);
+    assert.equal(fixture.journals[0].session.questions[0].rounds[0].answers.s1.option,'C');
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('启动轮次等待落盘时最小化不会开启摄像头，恢复窗口后重连手机通道',async()=>{
+  const {page,context,fixture}=await open({scannerFixture:true});
+  const relays=()=>fixture.messages.filter(m=>m.action==='relay').length;
+  const setVisibility=visible=>page.evaluate(visible=>{
+    Object.defineProperty(document,'hidden',{configurable:true,value:!visible});
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.__quizReceive({type:'visibility',visible});
+  },visible);
+  let release;
+  try {
+    await create(page);
+    const started=new Promise(resolve=>fixture.commitStarted=resolve);
+    fixture.holdCommit=new Promise(resolve=>release=resolve);
+    await page.locator('#start').click();await started;
+    await setVisibility(false);release();
+    await page.waitForFunction(()=>document.querySelector('#round-status').textContent.includes('已暂停'));
+    assert.equal(await page.evaluate(()=>testScanner.starts),0);
+    const before=relays();
+    await setVisibility(true);
+    for(let i=0;i<25&&before===relays();i++) await page.waitForTimeout(100);
+    assert.ok(relays()>before,'Returning to the window restarts phone polling');
+    assert.equal(await page.evaluate(()=>testScanner.starts),0);
+    await page.locator('#start').click();
+    await page.waitForFunction(()=>testScanner.running);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{release?.();await context.close();}
+});
+
+test('原班班开课扇区复用开课选项和本机保存，确认前不建课，确认后不要求显示工作台',async()=>{
   const{page,context,fixture}=await open({scannerFixture:true,width:390});
   try{
-    const state=await wheel(page);assert.equal(state.actions.length,8);assert.ok(state.actions.every(action=>!action.enabled));
-    assert.equal(state.progress,'请先开始课堂');assert.equal(await page.locator('#companion,#wheel-toggle').count(),0);
-    await page.locator('#compact').click();await page.waitForFunction(()=>!document.querySelector('#compact').disabled);
-    assert.deepEqual(fixture.companion,{enabled:true,expanded:true});assert.equal(fixture.journals.length,0);
+    const state=await wheel(page);assert.equal(state.actions.length,8);
+    assert.deepEqual(state.actions.filter(action=>action.enabled).map(action=>action.label),['开始课堂']);
+    assert.match(state.setup.roster,/2 张/);assert.equal(await page.locator('#companion,#wheel-toggle').count(),0);
+    assert.ok(state.setup.subjects.some(option=>option.value==='math'));
+    await sector(page,'collect');assert.equal(fixture.journals.length,0);
     assert.equal(fixture.messages.some(message=>['commit','pair','relay'].includes(message.action)),false);
-    await create(page);await page.waitForFunction(()=>window.__quizWheelState.actions.find(a=>a.id==='collect').enabled);
-    assert.deepEqual(fixture.companion,{enabled:true,expanded:true});
-    assert.equal(fixture.journals.length,1);assert.equal(fixture.journals[0].session.questions[0].rounds.length,0);
+
+    await sector(page,'setup-start',{selection:{publication:'',subject:'invalid',template:'boolean:2'}});
+    await page.waitForFunction(()=>window.__quizWheelState.feedback.includes('开课选项已变化'));
+    assert.equal(fixture.journals.length,0);
+    const selection={publication:'',subject:'math',template:'boolean:2'};
+    await sector(page,'setup-start',{selection});await sector(page,'setup-start',{selection});
+    await page.waitForFunction(()=>window.__quizWheelState.actions.find(a=>a.id==='collect').label==='开始收答' && window.__quizWheelState.actions.find(a=>a.id==='collect').enabled);
+    assert.equal((await wheel(page)).setup,null);assert.equal(fixture.messages.some(message=>message.action==='compact'),false);
+    assert.equal(fixture.journals.length,1);assert.equal(fixture.messages.filter(message=>message.action==='commit').length,1);
+    assert.equal(fixture.journals[0].session.subjectId,'math');assert.equal(fixture.journals[0].session.questions[0].type,'boolean');
+    assert.equal(fixture.journals[0].session.questions[0].rounds.length,0);
     assert.equal(await page.evaluate(()=>testScanner.running),false);await noOverflow(page);assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 
-test('原班班的收答操作复用课堂记录，收起后真实模拟视频继续刷新',async()=>{
-  const{page,context,fixture}=await open();
+test('班班恢复未结束课堂，并保留原题与收答',async()=>{
+  const original=await open({scannerFixture:true});
+  let journal;
   try{
-    await create(page);await sector(page,'collect');
+    await create(original.page);
+    await original.page.locator('#start').click();await original.page.locator('#stop:not([disabled])').waitFor();
+    await original.page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'C'}));
+    journal=copy(original.fixture.journals[0]);
+  }finally{await original.context.close();}
+
+  const{page,context,fixture}=await open({scannerFixture:true,journals:[journal]});
+  try{
+    const state=await wheel(page);
+    assert.equal(state.actions.find(action=>action.enabled).label,'恢复课堂');assert.equal(state.setup.canCreate,false);
+    assert.equal(state.setup.recovery.value,journal.session.id);
+    await sector(page,'setup-restore',{sessionId:'stale'});assert.equal(fixture.messages.some(message=>message.action==='commit'),false);
+    await sector(page,'setup-restore',{sessionId:journal.session.id});
+    await page.waitForFunction(()=>window.__quizWheelState.actions.find(a=>a.id==='collect').label==='恢复本轮' && window.__quizWheelState.actions.find(a=>a.id==='collect').enabled);
+    const restored=fixture.journals[0].session;
+    assert.equal(fixture.journals.length,1);assert.equal(restored.id,journal.session.id);
+    assert.equal(restored.questions[0].rounds[0].status,'paused');assert.equal(restored.questions[0].rounds[0].answers.s1.option,'C');
+    assert.equal(await page.evaluate(()=>testScanner.running),false);assert.equal(fixture.messages.some(message=>message.action==='compact'),false);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('班班从已发布题单开课时沿用题单的学科和首题',async()=>{
+  const publication={id:crypto.randomUUID(),title:'演示题单',questions:[{id:crypto.randomUUID(),subjectId:'physics',type:'multiple',options:['甲','乙','丙','丁'],text:'选择正确选项'}]};
+  const {page,context,fixture}=await open({scannerFixture:true,publications:[publication]});
+  try{
+    assert.ok((await wheel(page)).setup.publications.some(option=>option.value===publication.id && option.label.includes(publication.title)));
+    await sector(page,'setup-start',{selection:{publication:publication.id,subject:'math',template:'boolean:2'}});
+    await page.locator('#workspace:not([hidden])').waitFor();
+    const [journal]=fixture.journals;
+    assert.equal(journal.publicationId,publication.id);assert.equal(journal.session.subjectId,'physics');
+    assert.equal(journal.session.questions[0].bankId,publication.questions[0].id);
+    assert.equal(journal.session.questions[0].type,'multiple');assert.equal(fixture.messages.some(message=>message.action==='compact'),false);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('原班班的收答操作保持圆环，相机持续接收模拟视频',async()=>{
+  const{page,context,fixture}=await open({companion:true,width:280,height:280});
+  try{
+    await startInPet(page);await sector(page,'collect');
     await page.waitForFunction(()=>document.querySelector('#camera')?.srcObject?.getVideoTracks()[0]?.readyState==='live');
     await page.waitForTimeout(4200);
-    assert.deepEqual(fixture.companion,{enabled:true,expanded:false});
-    assert.equal(await page.locator('#camera-status').innerText(),'相机已开启');
+    assert.equal((await wheel(page)).panel,'');
+    assert.equal(await page.locator('#camera-status').textContent(),'相机已开启');
     assert.equal(fixture.journals.length,1);assert.equal(fixture.journals[0].session.questions[0].rounds[0].status,'collecting');
     assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 
-test('原班班手机扫码与缺席免答沿用工作台原对话框和真实轮次',async()=>{
-  const{page,context,fixture}=await open({scannerFixture:true});
+test('班班内显示配对码、确认换机、换回本机和按卡号免答',async()=>{
+  const{page,context,fixture}=await open({scannerFixture:true,companion:true,width:280,height:280});
   try{
-    await create(page);await sector(page,'source');await page.locator('#pair-dialog[open]').waitFor();
-    assert.equal(await page.locator('#pair-qr svg').count(),1);assert.equal(fixture.companion.enabled,false);
-    await page.locator('[data-dismiss="pair-dialog"]').click();
-    await sector(page,'collect');await page.locator('#stop:not([disabled])').waitFor();
+    await startInPet(page);await sector(page,'source');await waitPanel(page,'pair-dialog');
+    assert.equal(await page.locator('#pair-qr svg').count(),1);assert.equal(await page.locator('#confirm-phone').isDisabled(),true);
+    fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
+    await page.locator('#confirm-phone:not([disabled])').click();await waitPanel(page,'');
+    assert.equal(fixture.journals[0].session.source,'phone');
+    await sector(page,'source');await page.waitForFunction(()=>window.__quizWheelState.actions.some(a=>a.id==='source'&&a.label==='手机扫码'&&a.enabled));
+    await sector(page,'collect');await page.waitForFunction(()=>testScanner.running);
     await sector(page,'exempt');await page.locator('#exempt-dialog[open]').waitFor();await page.locator('[data-student="s2"]').check();
     await page.waitForFunction(()=>document.querySelector('#expected').textContent.includes('/ 1'));
     assert.deepEqual(fixture.journals[0].session.questions[0].rounds[0].exempt,['s2']);assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 
-test('原班班状态同步收答人数和可用功能，伪造禁用动作不能换题或切换来源',async()=>{
-  const{page,context,fixture}=await open({scannerFixture:true});
+test('收答中的圆环拒绝换题与换机，封存后同窗选择下一题题型',async()=>{
+  const{page,context,fixture}=await open({scannerFixture:true,companion:true,width:280,height:280});
   try{
-    await create(page);await sector(page,'collect');await page.locator('#stop:not([disabled])').waitFor();
+    await startInPet(page);await sector(page,'collect');await page.waitForFunction(()=>testScanner.running);
     await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'C'}));
     const state=await wheel(page);assert.match(state.progress,/1 \/ 2/);
     assert.equal(state.actions.find(a=>a.id==='next').enabled,false);assert.equal(state.actions.find(a=>a.id==='source').enabled,false);
@@ -119,35 +273,96 @@ test('原班班状态同步收答人数和可用功能，伪造禁用动作不�
     await sector(page,'collect');await page.waitForFunction(()=>document.querySelector('#round-status').textContent==='本轮已封存');
     assert.equal(await page.evaluate(()=>testScanner.running),false);
     assert.equal(fixture.journals[0].session.questions[0].rounds[0].answers.s1.option,'C');
-    await sector(page,'next');await page.waitForFunction(()=>document.querySelector('#question-number').textContent.includes('第 2 题'));
+    await sector(page,'next');await waitPanel(page,'next');
+    assert.equal(fixture.journals[0].session.questions.length,1);
+    await page.locator('#next-template').selectOption('boolean:2');await page.locator('#next').click();
+    await page.waitForFunction(()=>document.querySelector('#question-number').textContent.includes('第 2 题'));
+    assert.equal(fixture.journals[0].session.questions[1].type,'boolean');
     assert.equal(fixture.journals.length,1);assert.equal(fixture.journals[0].session.questions.length,2);
     assert.doesNotMatch(JSON.stringify(await wheel(page)),/不应出现在|私密姓名/);assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 
-test('原班班题目设置、分布和结束课堂沿用原窗口，结束仍保留取消与确认',async()=>{
-  const{page,context,fixture}=await open({scannerFixture:true});
+test('原班班查看分布、设置并揭晓答案、取消结课、汇总与离线重试',async()=>{
+  const{page,context,fixture}=await open({scannerFixture:true,companion:true,width:260,height:260});
   try{
-    await create(page);await sector(page,'edit');await page.locator('#editor[open]').waitFor();assert.equal(fixture.companion.enabled,false);
-    await page.locator('#edit-answer').selectOption('B');await page.locator('#question-form [type=submit]').click();await page.locator('#editor').waitFor({state:'hidden'});
-    await sector(page,'collect');await page.locator('#stop:not([disabled])').waitFor();await sector(page,'collect');
-    await page.locator('#show-distribution:not([disabled])').waitFor();await sector(page,'distribution');await page.locator('#distribution:not([hidden])').waitFor();
+    await startInPet(page);await sector(page,'collect');await page.waitForFunction(()=>testScanner.running);
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'A'}));
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:2,option:'B'}));
+    await sector(page,'collect');await page.waitForFunction(()=>!document.querySelector('#show-distribution').disabled);
+    await sector(page,'exempt');await waitPanel(page,'exempt-dialog');
+    assert.equal(await page.locator('#exempt-cards input:disabled').count(),2);
+    await page.keyboard.press('Escape');await waitPanel(page,'');
+    await sector(page,'distribution');await waitPanel(page,'distribution');await noOverflow(page);
+    assert.match(await page.locator('#distribution').innerText(),/A · 1 人/);
+    await page.locator('#edit').click();await waitPanel(page,'editor');await noOverflow(page);
+    await page.locator('#edit-answer').selectOption('B');await page.locator('#question-form [type=submit]').click();await waitPanel(page,'distribution');
+    assert.equal(await page.locator('#answer-display').isVisible(),false);
+    await page.locator('#reveal').click();await page.locator('#answer-display:not([hidden])').waitFor();
+    await page.locator('#pane-back').click();await waitPanel(page,'');
     await sector(page,'end-session');await page.locator('#confirm-dialog[open]').waitFor();await page.locator('#confirm-cancel').click();assert.equal(fixture.journals[0].session.endedAt,null);
-    await sector(page,'end-session');await page.locator('#confirm-ok').click();await page.waitForFunction(()=>document.querySelector('#round-status').textContent==='本课堂已结束');
-    assert.ok(fixture.journals[0].session.endedAt);assert.deepEqual(fixture.errors,[]);
+    fixture.failSync=true;
+    await sector(page,'end-session');await page.locator('#confirm-ok').click();await waitPanel(page,'summary');
+    await page.locator('#feedback').filter({hasText:'学校服务暂时离线'}).waitFor();
+    assert.match(await page.locator('#summary-questions').innerText(),/已答 2 \/ 2 人/);
+    assert.match(await page.locator('#sync-status').innerText(),/待同步/);assert.ok(fixture.journals[0].session.endedAt);
+    await page.locator('#return-setup').click();await waitPanel(page,'');
+    await sector(page,'end-session');await waitPanel(page,'history');await page.locator('[data-resume]').click();await waitPanel(page,'summary');
+    fixture.failSync=false;await page.locator('#sync').click();await page.locator('#sync-status').filter({hasText:'已同步学校服务'}).waitFor();
+    assert.equal(fixture.journals.length,1);assert.equal((await context.pages()).length,1);await noOverflow(page);assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 
-test('原班班多选逐项收答继续复用原按钮，换项停相机，再主动开启',async()=>{
-  const{page,context,fixture}=await open({scannerFixture:true,width:390});
+test('顶部主按钮完成两卡三题，多选一键换项，结课回看匿名记录',async()=>{
+  const {page,context,fixture}=await open({scannerFixture:true,companion:true,width:280,height:280});
+  async function primary(label){
+    await page.waitForFunction(label=>window.__quizWheelState.lesson.label===label && window.__quizWheelState.lesson.enabled,label);
+    const {lesson,setup}=await wheel(page);
+    await sector(page,lesson.primary,{key:lesson.key,selection:setup?.selection,sessionId:setup?.recovery?.value});
+  }
+  async function scan(first,second){
+    await page.waitForFunction(()=>testScanner.running && !window.__quizWheelState.lesson.busy);
+    await page.evaluate(async ([a,b])=>{
+      await testScanner.options.onRead({cardNumber:1,option:a});
+      await testScanner.options.onRead({cardNumber:2,option:b});
+    },[first,second]);
+    await page.waitForFunction(()=>window.__quizWheelState.lesson.missing.length===0);
+  }
+  async function next(type){
+    await primary('下一题');
+    await page.waitForFunction(()=>window.__quizWheelState.lesson.canChooseType && !window.__quizWheelState.lesson.busy);
+    await sector(page,'kind-'+type);
+    await page.waitForFunction(type=>window.__quizWheelState.lesson.kind===type && !window.__quizWheelState.lesson.busy,type);
+  }
+  async function distribution(counts){
+    await primary('结束收答');
+    await page.waitForFunction(()=>window.__quizWheelState.lesson.phase==='result');
+    const state=await wheel(page);
+    assert.deepEqual(state.lesson.counts,counts);
+    assert.equal(state.panel,'');
+    assert.doesNotMatch(JSON.stringify(state),/私密姓名|不应出现在/);
+  }
   try{
-    await create(page);await page.locator('#edit').click();await page.locator('#edit-type').selectOption('multiple');
-    await page.locator('#question-form [type=submit]').click();await page.locator('#editor').waitFor({state:'hidden'});
-    await sector(page,'collect');await page.waitForFunction(()=>window.__quizWheelState.multiple && window.__quizWheelState.multiEnabled);
-    await sector(page,'multi');await page.waitForFunction(()=>document.querySelector('#multi-option').value==='B');
-    assert.equal(await page.evaluate(()=>testScanner.running),false);assert.match((await wheel(page)).status,/收 B 项/);
-    await page.waitForFunction(()=>!document.querySelector('#compact').disabled);await sector(page,'camera');await page.waitForFunction(()=>testScanner.running);
-    assert.equal(fixture.journals.length,1);await noOverflow(page);assert.deepEqual(fixture.errors,[]);
+    await primary('开始课堂');
+    await primary('开始收答');await scan('A','B');await distribution([1,1,0,0]);
+    await next('boolean');await primary('开始收答');await scan('B','A');await distribution([1,1]);
+    await next('multiple');await primary('开始收答');await scan('A','B');
+    const stale=(await wheel(page)).lesson.key;
+    for(const [option,a,b] of [['B','B','A'],['C','A','B'],['D','A','B']]){
+      await primary('收 '+option+' 项');
+      await page.waitForFunction(opt=>window.__quizWheelState.lesson.option===opt && testScanner.running && !window.__quizWheelState.lesson.busy,option);
+      assert.deepEqual((await wheel(page)).lesson.missing,[1,2]);
+      await sector(page,'multi',{key:stale});
+      await scan(a,b);
+    }
+    await distribution([1,1,1,1]);
+    await sector(page,'finish-confirmed',{key:(await wheel(page)).lesson.key});
+    await page.waitForFunction(()=>window.__quizWheelState.lesson.phase==='done' && !window.__quizWheelState.lesson.needsSync);
+    const result=await wheel(page);
+    assert.equal(result.lesson.records.length,3);assert.deepEqual(result.lesson.records[2].counts,[1,1,1,1]);
+    assert.deepEqual(fixture.journals[0].session.questions.map(q=>Object.values(q.rounds[0].answers).map(a=>a.option)),[['A','B'],['B','A'],['ACD','B']]);
+    assert.ok(fixture.journals[0].session.questions.every(q=>!q.revealed));
+    assert.equal((await context.pages()).length,1);assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 test('多选课堂可勾选答案、逐项收答和回改，换项停相机后主动继续且不泄露个人',async()=>{

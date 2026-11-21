@@ -48,8 +48,8 @@ function fixture(url, role = 'superadmin') {
   }
 }
 
-async function open(browser, {role = 'superadmin', width = 1280, authenticated = true, handle} = {}) {
-  const context = await browser.newContext({viewport:{width,height:850},reducedMotion:'reduce'});
+async function open(browser, {role = 'superadmin', width = 1280, height = 850, authenticated = true, handle} = {}) {
+  const context = await browser.newContext({viewport:{width,height},reducedMotion:'reduce'});
   const page = await context.newPage(), requests = [], errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await context.route('**/*', async route => {
@@ -118,6 +118,46 @@ if (require.main === module) {
     assert.equal(await page.locator('#loginSubmit').isEnabled(),true);
     assert.equal(await page.locator('#loginPassword').inputValue(),'fixture-password');
   });
+  for (const [width,height] of [[1280,850],[390,740],[320,560]]) {
+    test(`Login role switching holds the form in place at ${width} × ${height}`, async t => {
+      const {page} = await setup(t,{width,height,authenticated:false,handle:({url,request}) =>
+        url.pathname==='/api/student/login' && request.method()==='POST'
+          ? {status:401,json:{error:'学生编号或密码错误。',code:'invalid_credentials'}}
+          : undefined
+      });
+      const role = page.locator('#loginRoles label');
+      const teacher = page.getByRole('radio',{name:'教师'});
+      const student = page.getByRole('radio',{name:'学生'});
+      const position = selector => page.locator(selector).evaluateAll(elements => elements.map(element =>
+        Math.round((element.getBoundingClientRect().top + window.scrollY) * 2) / 2
+      ));
+      const controls = '.auth-card, #loginHeading, #loginRoles, #loginUsername, #loginPassword, #loginSubmit';
+      const initial = await position(controls);
+      const cardHeight = (await page.locator('.auth-card').boundingBox()).height;
+      await role.nth(1).click();
+      assert.ok(await student.isChecked());
+      assert.deepEqual(await position(controls), initial, 'Mouse switch keeps controls in place');
+      assert.equal((await page.locator('.auth-card').boundingBox()).height, cardHeight);
+      await student.press('ArrowLeft');
+      assert.ok(await teacher.isChecked());
+      assert.deepEqual(await position(controls), initial, 'Keyboard switch keeps controls in place');
+
+      await page.goto(origin + '/?login=student&notice=signed-out');
+      await page.locator('#loginNotice').filter({hasText:'已退出学生账号'}).waitFor();
+      assert.ok(await student.isChecked());
+      assert.deepEqual(await position(controls), initial, 'A logout notice keeps controls in place');
+      await page.locator('#loginUsername').fill('2610901');
+      await page.locator('#loginPassword').fill('123456');
+      await page.locator('#loginSubmit').click();
+      await page.locator('#loginError').filter({hasText:'学生编号或密码错误'}).waitFor();
+      assert.deepEqual(await position(controls), initial, 'An error keeps controls in place');
+      await role.nth(0).click();
+      assert.ok(await teacher.isChecked());
+      assert.equal(await page.locator('#loginError').isVisible(), false);
+      assert.deepEqual(await position(controls), initial, 'Clearing an error keeps controls in place');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    });
+  }
   test('A secondary startup failure keeps the authenticated workbench and account settings usable', async t => {
     const {page} = await setup(t,{handle:({url}) => url.pathname === '/api/devices' ? {status:503,json:{error:'设备读取失败，请重试。'}} : undefined});
     await page.waitForFunction(() => document.querySelector('#authPage:not(.hidden)') || document.querySelector('.toast')?.textContent.includes('设备读取失败'));

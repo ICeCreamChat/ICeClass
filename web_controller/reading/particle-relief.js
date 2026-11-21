@@ -133,9 +133,9 @@
     const model = { points, sprites, complete, surface, flame };
     models.set(image, model); return model;
   }
-  function wordLayer(text, sprites) {
+  function wordLayer(text, sprites, fontFamily) {
     const mask = canvas(256, 112), ctx = mask.getContext('2d', { willReadFrequently: true });
-    ctx.font = '700 82px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+    ctx.font = '700 82px ' + fontFamily;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(text, 128, 57);
     const pixels = ctx.getImageData(0, 0, 256, 112).data, result = canvas(256, 112), out = result.getContext('2d');
     const random = generator(471);
@@ -155,7 +155,8 @@
     view.setAttribute('aria-hidden', 'true'); host.replaceChildren(view);
     const formed = canvas(SIZE), formedCtx = formed.getContext('2d');
     const background = canvas(1), bg = background.getContext('2d', { alpha: false });
-    const words = ['立志', '勤奋', '质朴', '文明'].map(text => wordLayer(text, model.sprites));
+    const fontFamily = getComputedStyle(host).fontFamily;
+    const words = ['立志', '勤奋', '质朴', '文明'].map(text => wordLayer(text, model.sprites, fontFamily));
     let width = 1, height = 1, size = 1, left = 0, top = 0, footerY = 0;
     let progress = 0, energy = 0, landedCount = 0, completeAt = null;
     let frameId = null, previous = 0, nextPaint = 0, paused = false, disposed = false, dirty = true;

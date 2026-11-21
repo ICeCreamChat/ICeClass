@@ -10,13 +10,13 @@ using ICeClass.Receiver;
 
 internal static class NativeTimetableChecks
 {
-    public static void Run(string? output = null) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect().WithInterFont()
+    public static void Run(string? output = null) => AppBuilder.Configure<IslandCheckHost>().UsePlatformDetect()
         .AfterSetup(builder => Dispatcher.UIThread.Post(() => _ = Check(output)))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
 
     private static async Task Check(string? destination)
     {
-        var output = Path.GetFullPath(destination ?? "output/island-full-day-20261020"); Directory.CreateDirectory(output);
+        var output = Path.GetFullPath(destination ?? "output/island-native-review/timetable"); Directory.CreateDirectory(output);
         var checks = new List<string>();
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); checks.Add(label); Console.WriteLine("PASS " + label); }
         var ribbon = new ClassroomIslandRibbon { Light = true, Animate = false, VerticalAlignment = VerticalAlignment.Top };
