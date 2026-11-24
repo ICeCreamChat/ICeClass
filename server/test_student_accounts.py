@@ -319,6 +319,23 @@ class StudentAccountsTests(CardQuizHttpCase):
         self.assertIn(429, statuses)
         await self.student('POST', '/login', {'username': credential['username'], 'password': credential['password']}, status=429)
 
+    async def test_personal_report_keeps_sparse_combinations_and_abstentions(self):
+        created = await self.generate()
+        f = MultipleFixture(self.cid, self.device['deviceId']).start()
+        f.r['noCardPolicy'] = f.events[-1]['noCardPolicy'] = 'abstain'
+        f.answer(1, 'A').target('C').answer(1, 'A').end()
+        await self.sync(f.body())
+        for index, expected, samples in [(0, 'correct', 1), (1, 'abstained', 0)]:
+            auth = await self.signin(created['credentials'][index])
+            _, report = await self.student('GET', '/report', headers=auth)
+            record, = report['records']
+            self.assertEqual((record['status'], record['noCardPolicy']), (expected, 'abstain'))
+            self.assertEqual((report['totals']['samples'], report['totals'][expected]), (samples, 1))
+            if samples:
+                self.assertEqual((record['option'], record['choices']), ('AC', {'A': True, 'C': True}))
+            else:
+                self.assertIsNone(report['totals']['accuracy'])
+
     async def test_personal_multiple_statuses_match_teacher_denominators(self):
         created = await self.generate()
         fixture = MultipleFixture(self.cid, self.device['deviceId']).results().end()

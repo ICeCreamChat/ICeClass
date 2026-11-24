@@ -5,6 +5,7 @@ import base64
 import binascii
 import json
 import math
+import os
 import re
 
 from aiohttp import web
@@ -14,6 +15,7 @@ from card_quiz_models import (DEVICE_REASON, IMAGE_REASON, MAX_BODY, MAX_LIST, M
                               string, unique, validate_question)
 from card_quiz_relay import RelayHandlers
 from card_quiz_sessions import SessionHandlers
+from card_quiz_turn import PreviewTurn
 from teacher_capabilities import teacher_action, teacher_manual, teacher_read
 
 
@@ -21,7 +23,11 @@ class CardQuiz(SessionHandlers, RelayHandlers):
     def __init__(self, app, service):
         self.service = service
         self.db = app[service.STORE_KEY]
+        self.preview_offers = {}
+        self.preview_turn = PreviewTurn(os.environ.get('ICECLASS_VIDEOBOOTH_CONNECT_URL', ''))
         self.db.db.executescript(SCHEMA)
+        if 'scan_key_hash' not in {row['name'] for row in self.db.all('PRAGMA table_info(card_quiz_pairs)')}:
+            self.db.run('ALTER TABLE card_quiz_pairs ADD COLUMN scan_key_hash TEXT')
         if 'rejection_origin' not in {row['name'] for row in self.db.all('PRAGMA table_info(card_quiz_commands)')}:
             self.db.run('ALTER TABLE card_quiz_commands ADD COLUMN rejection_origin TEXT')
 
@@ -416,6 +422,7 @@ class CardQuiz(SessionHandlers, RelayHandlers):
 
 def install(app, service):
     feature = CardQuiz(app, service)
+    app.on_cleanup.append(feature.preview_turn.close)
 
     @web.middleware
     async def errors(request, handler):
@@ -443,7 +450,9 @@ def install(app, service):
         ('GET', '/sessions', feature.list_sessions), ('GET', '/sessions/{id}', feature.get_session),
         ('PUT', '/sessions/{id}', feature.put_session), ('GET', '/report', feature.report), ('GET', '/export', feature.export),
         ('POST', '/device/pair', feature.device_pair), ('POST', '/pair', feature.claim_pair),
+        ('POST', '/scan', feature.claim_scan), ('POST', '/device/pair/cancel', feature.cancel_pair),
         ('GET', '/pairs/{pair_id}', feature.get_pair), ('POST', '/pairs/{pair_id}/commands', feature.post_command),
+        ('POST', '/pairs/{pair_id}/preview', feature.answer_preview),
         ('GET', '/pairs/{pair_id}/commands/{id}', feature.get_command), ('POST', '/device/relay', feature.relay),
         ('POST', '/device/receipt-ids', feature.receipt_ids)]
     for method, path, handler in routes:

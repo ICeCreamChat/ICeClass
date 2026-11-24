@@ -224,6 +224,7 @@ class MultipleModelTests(unittest.TestCase):
                          {'correct': 1, 'wrong': 1, 'incomplete': 1, 'unanswered': 1, 'samples': 2, 'accuracy': .5})
         r = report['questions'][0]['rounds'][0]
         self.assertEqual(r['distribution'], {'A': 1, 'B': 0, 'C': 1})
+        self.assertEqual(r['combinationDistribution'], {'AC': 1, '': 1})
         self.assertEqual([s['status'] for s in r['students']], ['correct', 'wrong', 'incomplete', 'unanswered'])
         self.assertEqual(r['students'][1]['option'], '')
         self.assertEqual(r['students'][2].get('choices'), {'A': True})
@@ -241,6 +242,7 @@ class MultipleModelTests(unittest.TestCase):
         r = summary['questions'][0]['rounds'][0]
         self.assertEqual([s['status'] for s in r['students']], ['practice', 'exempt', 'incomplete', 'unanswered'])
         self.assertEqual((r['incomplete'], r['unanswered'], r['exempt'], r['samples']), (1, 1, 1, 0))
+        self.assertEqual(r['combinationDistribution'], {'AC': 1})
         self.assertEqual((summary['totals']['practice'], summary['totals']['samples']), (4, 0))
 
     def test_four_options_complete_distribution_and_false_partial_export_shape(self):
@@ -254,6 +256,7 @@ class MultipleModelTests(unittest.TestCase):
         replay(validate_session(f.session), f.events)
         report = session_report(f.session)
         self.assertEqual(report['questions'][0]['rounds'][0]['distribution'], {'A': 1, 'B': 2, 'C': 0, 'D': 2})
+        self.assertEqual(report['questions'][0]['rounds'][0]['combinationDistribution'], {'BD': 1, 'ABD': 1})
         self.assertEqual([s['status'] for s in report['questions'][0]['rounds'][0]['students']],
                          ['correct', 'wrong', 'incomplete', 'unanswered'])
 
@@ -439,7 +442,7 @@ class MultipleHttpTests(CardQuizHttpCase):
         await self.api('POST', '/device/relay', {'sessionId': f.session['id'], 'state': changed,
             'receipts': []}, 409, self.dh)
 
-    async def test_actual_js_journal_multiple_sync_has_identical_public_and_partial_report(self):
+    async def test_actual_js_journal_multiple_sync_preserves_declined_options_and_abstentions(self):
         await self.initialize()
         journal = self.journal([
             {'action': 'add_question', 'payload': {**multiple_question(), 'answer': 'CA'}},
@@ -456,8 +459,8 @@ class MultipleHttpTests(CardQuizHttpCase):
         await self.sync(body)
         result = await self.api('GET', '/sessions/session-1')
         self.assertEqual(result['session'], journal['session'])
-        self.assertEqual((result['report']['totals']['correct'], result['report']['totals']['incomplete'],
-                          result['report']['totals']['unanswered']), (1, 1, 2))
+        self.assertEqual((result['report']['totals']['correct'], result['report']['totals']['wrong'],
+                          result['report']['totals']['incomplete'], result['report']['totals']['abstained']), (1, 1, 0, 2))
         command_id = body['events'][-1]['id']
         self.assertEqual(journal['receipts'][command_id]['result']['state'], public_state(journal['session'], ''))
 

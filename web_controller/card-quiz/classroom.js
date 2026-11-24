@@ -16,16 +16,24 @@
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let requestId = 0, data, controller, deck, pair, operation = false, frozen = false, disposed = false;
   let relayTimer, relayRunning = false, relayFailures = 0, syncTimer, editorAdding = false, editorContext, distributionRound = '';
-  let hostVisible = true, suspension, visibilityRevision = 0;
+  let hostVisible = true, suspension, pendingPause, visibilityRevision = 0;
   const companion = location.hash === '#banban';
   document.body.classList.toggle('banban',companion);
-  let pane = '', paneQuestion = null, checkedRound = null;
+  let pane = '', paneQuestion = null, paneOption = null, recordIndex = null, checkedRound = null, historyRecord = null;
+  const cardsPerPage = 6;
+  let cardPage = 0;
+  let cardStates = [], pendingCardsOnly = false, locatedCard = null;
   let pendingStatus = '';
-  const titles = {capture:'收答控制',question:'题目与答案',distribution:'作答分布',next:'下一题',summary:'课堂汇总',history:'待同步课堂'};
+  const titles = {capture:'收答控制',options:'调整收答项',question:'题目与答案',distribution:'作答分布',next:'下一题',summary:'课堂汇总',history:'待同步课堂'};
   const paneNodes = [...document.querySelectorAll('[data-panes]')];
-  function showPane(name) {
+  const disc = companion ? new CardQuizDisc(renderWheel) : null;
+  const discEditor = companion ? new CardQuizDiscEditor(renderWheel) : null;
+  let currentDiscPage = null;
+  function showPane(name, record = null) {
     pane = name;
+    recordIndex = record;
     paneQuestion = question()?.id;
+    paneOption = name === 'options' ? round()?.activeOption : null;
     document.body.dataset.pane = name;
     for (const node of paneNodes) node.classList.toggle('off-pane',!node.dataset.panes.split(' ').includes(name));
     $('pane-header').hidden = !name;
@@ -45,6 +53,12 @@
   }
   function back(dismissAll = false) {
     const dialog = document.querySelector('dialog[open]');
+    if (!dismissAll && currentDiscPage && (dialog?.id === 'editor' ? discEditor : disc).back()) return;
+    if (!dismissAll && dialog?.id === 'exempt-dialog' && returnToCardMap()) return;
+    if (!dismissAll && !dialog && pane === 'summary' && historyRecord && historyRecord === session()?.id) {
+      if (!operation) void run(() => returnToSetup(false, 'history'));
+      return;
+    }
     if (dialog?.id === 'confirm-dialog') $('confirm-cancel').click();
     else if (dialog) dialog.close();
     if (!dialog || dismissAll) showPane('');
@@ -75,53 +89,65 @@
     const expected = counts?.expected ?? 0, received = multi && inRound ? counts.optionReceived : counts?.received ?? 0;
     const option = r?.activeOption || '', next = multi && option ? letters.slice(0,q.options.length)[letters.indexOf(option)+1] : '';
     const kind = kindNames[q?.type] || '';
+    const canChooseType = phase === 'ready' && !!q && !q.bankId && !q.rounds.length && !q.answer && !q.imageId &&
+      !q.text && !q.tags.length && (q.type === 'boolean' || !q.options.some(Boolean)) && !data?.context?.revoked;
     let primary = 'collect', label, enabled, heading, caption = '';
     switch (phase) {
-      case 'home':
+      case 'home': {
         primary = setup?.recovery ? 'setup-restore' : 'setup-start';
-        label = setup?.recovery ? '恢复课堂' : '开始课堂'; heading = '班班课堂';
-        caption = setup?.recovery?.label || (setup?.canCreate ?
-          [data.className,subjects[setup.selection.subject],data.context.students.length+' 人'].filter(Boolean).join(' · ') : setup?.roster || '正在读取课堂…');
+        label = setup?.recovery ? '恢复课堂' : '开始课堂'; heading = data?.className || '班班课堂';
+        const previous = setup?.recovery && unfinishedJournal()?.session;
+        if (previous) {
+          const index = previous.questions.findIndex(item => item.id === previous.currentQuestionId);
+          caption = [subjects[previous.subjectId] || previous.subjectId, index >= 0 ? '第 '+(index+1)+' 题' : ''].filter(Boolean).join(' · ');
+        } else if (setup?.canCreate) {
+          caption = [subjects[setup.selection.subject], data.context.students.length+' 人'].filter(Boolean).join(' · ');
+        } else caption = setup?.roster || '';
         enabled = setup?.recovery || setup?.canCreate; break;
+      }
       case 'ready':
-        heading = '第 '+number+' 题'; label = q ? '开始收答' : '准备第一题';
+        heading = q ? '第 '+number+' 题' : '尚未出题'; label = q ? '开始收答' : '准备第一题';
         if (!q) primary = 'advance';
         enabled = q ? !$('start').disabled : !$('next').disabled;
-        caption = !q ? '' : q.bankId ? '题单 · '+kind+'题' : [data.className,subjects[s.subjectId]].filter(Boolean).join(' · ');
+        if (q && !canChooseType) caption = (q.bankId ? '题单 · ' : '')+kind+'题';
         break;
       case 'paused':
-        heading = '第 '+number+' 题 · '+(multi ? option+' 项暂停' : '已暂停');
+        heading = '第 '+number+' 题'+(multi ? '' : ' · '+kind);
         label = '继续收答'; enabled = !$('start').disabled; break;
       case 'collect':
-        heading = '第 '+number+' 题 · '+(multi ? '收 '+option+' 项' : kind);
+        heading = '第 '+number+' 题'+(multi ? '' : ' · '+kind);
         if (s.source === 'board' && !scanner.running) {
           primary = 'open-camera'; label = '开启相机'; enabled = !$('camera-toggle').disabled;
-        } else if (next) { primary = 'multi'; label = '收 '+next+' 项'; enabled = !$('multi-next').disabled; }
+        } else if (next) { primary = 'multi'; label = '下一项 '+next; enabled = !$('multi-next').disabled; }
         else { label = '结束收答'; enabled = !$('stop').disabled; }
         break;
       case 'result':
-        heading = '第 '+number+' 题 · 选择分布';
-        primary = s.questions.length >= 100 ? 'finish' : 'advance';
-        label = primary === 'finish' ? '结束课堂' : '下一题'; enabled = !$('next').disabled || primary === 'finish';
-        caption = ['已答 '+received,counts.incomplete ? '未完成 '+counts.incomplete : '', '未答 '+counts.unanswered].filter(Boolean).join(' · ');
+        heading = '第 '+number+' 题';
+        if (expected > 0 && received === 0 && !counts.incomplete && !data?.context?.revoked) {
+          primary = 'collect'; label = q.revealed ? '练习' : '重收'; enabled = !$('start').disabled;
+        } else if (s.questions.length >= 100) {
+          primary = 'finish'; label = '结课'; enabled = !$('end-session').disabled;
+        } else {
+          primary = 'advance'; label = '下一题'; enabled = !$('next').disabled;
+        }
+        caption = [counts.incomplete ? '未完成 '+counts.incomplete : '', counts.unanswered ? '未答 '+counts.unanswered : '', counts.abstained ? '弃权 '+counts.abstained : ''].filter(Boolean).join(' · ');
         break;
       case 'done':
         heading = '课堂已结束'; label = '返回班班'; primary = 'return-setup';
         enabled = !$('return-setup').disabled; caption = $('sync-status').textContent;
         break;
     }
-    const canChooseType = phase === 'ready' && !!q && !q.bankId && !q.rounds.length && !q.answer && !q.imageId &&
-      !q.text && !q.tags.length && (q.type === 'boolean' || !q.options.some(Boolean));
     return {phase,heading,caption,primary,label,enabled:Boolean(enabled && !operation && !frozen),number,
-      kind:q?.type || '',option,optionCount:q?.options.length || 0,received,expected,missing,
-      counts:phase==='result' ? Object.values(counts.distribution) : [],canChooseType:canChooseType && !data?.context?.revoked,
+      kind:q?.type || '',option,received,expected,missing,incomplete:counts?.incomplete ?? 0,
+      noCardPolicy:r?.noCardPolicy,abstained:counts?.abstained || 0,
+      bars:phase==='result' ? Model.distributionBars(q.type,counts.distribution) : [],canChooseType,
       busy:operation,questionCount:s?.questions.length || 0,phone:s?.source==='phone',
       needsSync:phase==='done' && (controller.journal.syncedSeq < s.seq || Boolean(controller.journal.reviewError)),
       records:phase!=='done' ? [] : s.questions.map(item => {
         const official = Model.officialRound(item);
         const totals = official && Model.roundSummary(s,official);
-        return {kind:item.type,counts:totals ? Object.values(totals.distribution) : [],received:totals?.received || 0,
-          expected:totals?.expected || 0,unanswered:totals?.unanswered || 0,incomplete:totals?.incomplete || 0};
+        return {kind:item.type,bars:totals ? Model.distributionBars(item.type,totals.distribution) : null,received:totals?.received || 0,
+          expected:totals?.expected || 0,unanswered:totals?.unanswered || 0,incomplete:totals?.incomplete || 0,abstained:totals?.abstained || 0};
       }),
       key:[s?.id,q?.id,s?.generation,phase,primary].join('/')};
   }
@@ -139,30 +165,67 @@
     let status = !s ? '' : ended ? $('sync-status').textContent : $('round-status').textContent;
     if (multiple) {
       const camera = s.source === 'phone' ? '手机收答中' : scanner.running ? '本机相机收答中' : '等待开启相机';
-      status = `收 ${r.activeOption} 项 · 本项 ${summary.optionReceived} / ${summary.expected} 人\nA 朝上选，B 朝上不选\n${camera}`;
+      status = `收 ${r.activeOption} 项 · 本项 ${summary.optionReceived} / ${summary.expected} 人\n${r.noCardPolicy === 'abstain' ? '选才举卡，A 朝上' : 'A 朝上选，B 朝上不选'}\n${camera}`;
     }
     if (active() && notice.classList.contains('warning')) status = notice.textContent;
+    const dialog = document.querySelector('dialog[open]');
+    const panelTitle = dialog?.id === 'confirm-dialog' ? '操作确认' :
+      dialog ? $(dialog.getAttribute('aria-labelledby')).textContent : titles[pane] || '';
+    const onCardMap = dialog?.id === 'exempt-dialog' && !$('card-overview').hidden;
+    const cardHint = onCardMap ? (pendingCardsOnly
+      ? (q?.type === 'multiple' ? r.activeOption + ' 项 · ' : '') + (summary.expected ? '待收 ' + (summary.expected - (q?.type === 'multiple' ? summary.optionReceived : summary.received)) + ' 人' : '全员免答')
+      : q?.type === 'multiple' && captureControls
+      ? `${r.activeOption} 项 · ${summary.optionReceived} / ${summary.expected} 人`
+      : `${r.status === 'closed' ? '已答' : '已收'} ${summary.received} / ${summary.expected} 人`)
+      : r?.status === 'closed' ? '已封存 · 只读' : pendingCardsOnly || frozen || data?.context?.revoked ? '只读' : '点卡号切换免答';
+    let cardPanel = null;
+    if (dialog?.id === 'exempt-dialog' && document.body.classList.contains('in-disc')) {
+      const marks = onCardMap && pendingCardsOnly ? cardStates.filter(card => card.state === 'pending') : cardStates;
+      const grouped = onCardMap && marks.length > 12;
+      const radial = !dialog.querySelector('[role="alert"]');
+      cardPanel = {overview:onCardMap, radial, grouped, pendingOnly:pendingCardsOnly, page:cardPage, pages:Math.ceil(cardStates.length / cardsPerPage),
+        cards:!radial ? [] : onCardMap ? marks : cardStates.slice(cardPage * cardsPerPage, (cardPage + 1) * cardsPerPage),
+        readOnly:pendingCardsOnly || r.status === 'closed' || frozen || !active() || Boolean(data?.context?.revoked), located:locatedCard};
+    }
+    const lesson = companionLesson(s,q,r,summary,setup);
+    const inDisc = companion && document.body.classList.contains('in-disc');
+    const preview = cameraPreview();
+    currentDiscPage = !inDisc ? null : dialog?.id === 'editor' ? discEditor.describe() :
+      disc.describe({pane,dialog,s,q,r,summary,lesson,recordIndex,operation,frozen,revoked:Boolean(data?.context?.revoked),renderDistribution:distributionRows,images:deck?.images,
+        saved:pane === 'history' ? savedJournals() : [],nextQuestion:pane === 'next' ? nextFromDeck() : null});
     wheel.update({
-      hasSession:Boolean(s),setup,lesson:companionLesson(s,q,r,summary,setup),panel:document.querySelector('dialog[open]')?.id || pane,retry:frozen || !data && notice.classList.contains('error'),
+      inDisc,hasSession:Boolean(s),setup,lesson,preview,panel:dialog?.id || pane,panelTitle,cardPanel,discPage:currentDiscPage,
+      panelHint:dialog?.id === 'exempt-dialog' ? (!onCardMap && q?.type === 'multiple' && captureControls ? r.activeOption + ' 项 · ' : '') + cardHint : '',
+      retry:frozen || !data && notice.classList.contains('error'),
       enabled:{collect:setup ? !operation && !frozen : undefined,camera:captureControls && !operation && !frozen && !data?.context?.revoked,
+        pause:collecting && !$('pause').disabled && canCapture(),
+        seal:captureControls && (lesson.phase === 'paused' || lesson.primary !== 'collect') && !$('stop').disabled,
+        options:multiple && !$('multi-option').disabled && canCapture(),
+        source:inDisc ? active() && canCapture() && !operation && !preview : undefined,
+        exempt:inDisc ? lesson.phase === 'result' && !$('exempt').disabled : undefined,
         edit:Boolean(q && active() && !operation),
         'end-session':ended || history ? !operation : undefined},
-      targets:s?{collect:target,camera:$('camera-toggle'),source:$('source'),next:$('next'),
+      targets:s?{collect:target,camera:$('camera-toggle'),pause:$('pause'),seal:$('stop'),source:$('source'),next:$('next'),
         'end-session':$('end-session'),exempt:$('exempt'),edit:$('edit'),distribution:$('show-distribution'),multi:$('multi-next')}:{},
       labels:{collect:collectLabel,camera:openCamera ? '开启相机' : captureControls ? '收答控制' : '本机相机',
-        edit:captureControls ? '查看题目' : '题目答案',
-        source:s?.source==='phone'?'换回本机':'手机扫码','end-session':ended?'课堂汇总':history?'待同步课':'结束课堂'},
+        edit:captureControls ? '查看题目' : inDisc && lesson.phase === 'result' ? '设置与揭晓答案' : '题目答案',
+        source:s?.source==='phone'?'换回本机':'手机扫码','end-session':ended?'课堂汇总':history?'待同步课堂':'结束课堂'},
       progress:setup ? setup.roster : s ? `第 ${s.questions.indexOf(q)+1} 题 · 已收 ${summary.received} / ${summary.expected} 人` : '正在读取纸卡课堂…',
       status:pendingStatus || status,
-      multiple,multiEnabled:multiple && !$('multi-next').disabled,multiLabel:nextOption ? `收 ${nextOption} 项` : '',
+      multiple,multiEnabled:multiple && !$('multi-next').disabled,multiLabel:nextOption ? `下一项 ${nextOption}` : '',
       cameraRunning:scanner.running,feedback:notice.textContent,error:notice.classList.contains('error')
     });
+    const displayTrack = preview?.phone ? (!previewPeer?.follow || previewPeer.liveKey === preview.key ? previewPeer?.track : null) :
+      scanner.stream?.getVideoTracks()[0];
+    liveVideo.set(preview && !preview.folded ? preview.key : null, displayTrack);
   }
   function activateWheel(id) {
     if (id === 'back' || id === 'dismiss') { back(id === 'dismiss'); return; }
     if (operation || disposed || !wheel.actions?.some(action => action.id === id && action.enabled) || document.querySelector('dialog[open]')) return;
     const target = wheel.targets[id];
     if (id === 'end-session' && !active()) { showPane(session() ? 'summary' : 'history'); return; }
+    if (id === 'source') { changeSource(); return; }
+    if (id === 'options') { showPane('options'); return; }
     if (id === 'camera') {
       showPane('capture');
       if (round()?.status === 'collecting' && session().source === 'board' && !scanner.running && !target.disabled) target.click();
@@ -186,18 +249,180 @@
   const session = () => controller?.session, question = () => session() && Model.activeQuestion(session()), round = () => session() && Model.activeRound(session());
   const active = () => Boolean(session() && session().endedAt === null);
   const canCapture = () => hostVisible && !document.hidden && !suspension && !disposed && !data?.context?.revoked && !frozen;
+  const liveVideo = new CardQuizClassroomVideo(native);
+  let previewPeer = null, previewSetup = null, phoneLens = null, foldedPreview = '', nextPeerAt = 0, unsupportedScope = '';
+  let cancelBoardOpen;
+  function previewScope() {
+    const s = session();
+    return companion && document.body.classList.contains('in-disc') && canCapture() && active() && round()?.status === 'collecting'
+      ? [s.id,s.currentRoundId,s.sourceId,question()?.type==='multiple' ? 'multiple' : s.generation].join('/') : '';
+  }
+  function closePreviewPeer() {
+    const peer = previewPeer;
+    previewPeer = null; previewSetup = null;
+    peer?.close();
+  }
+  function cameraPreview() {
+    const scope = previewScope(), s = session(), phone = s?.source === 'phone';
+    const peer = previewPeer;
+    const samePhone = phone && active() && canCapture() && document.body.classList.contains('in-disc') &&
+      peer?.sessionId === s.id && peer.sourceId === s.sourceId;
+    if (previewSetup?.scope !== scope) previewSetup = null;
+    if (peer && (!samePhone || peer.scope !== scope)) {
+      if (!samePhone || !peer.follow) closePreviewPeer();
+      else {
+        clearTimeout(peer.viewTimer);
+        peer.scope = scope; peer.liveKey = ''; peer.viewSent = '';
+        if (!scope) peer.send('rest');
+      }
+    }
+    if (phoneLens?.scope !== scope) phoneLens = null;
+    if (!scope) { foldedPreview = ''; return null; }
+    let key;
+    if (phone) {
+      if (typeof RTCPeerConnection !== 'function' || scope === unsupportedScope) return null;
+      phoneLens ??= {scope,key:scope+'/'+crypto.randomUUID(),hidden:false};
+      if (phoneLens.hidden) return null;
+      key = phoneLens.key;
+      if (peer?.follow && samePhone) {
+        const visible = foldedPreview !== key, stamp = key + '/' + visible;
+        if (peer.viewSent !== stamp) {
+          peer.viewSent = stamp; peer.liveKey = '';
+          peer.send(JSON.stringify({view:key,round:s.currentRoundId,generation:s.generation,visible}));
+          clearTimeout(peer.viewTimer);
+          peer.viewTimer=setTimeout(()=>peer.close(),4000);
+        }
+      }
+    } else {
+      if (!scanner.running && !scanner.starting) { foldedPreview = ''; return null; }
+      key = scope + '/board-' + scanner.opening;
+    }
+    return {key,phone,folded:foldedPreview === key};
+  }
+  function postPreview(view,frame) {
+    if (view && !view.folded && CardQuizPreview.validFrame(frame))
+      native?.postMessage({type:'preview-frame',key:view.key,frame});
+  }
+  function previewSignal() {
+    const scope = previewScope();
+    if (!scope || session().source !== 'phone' || typeof RTCPeerConnection !== 'function' || scope === unsupportedScope) return;
+    if (!previewPeer && performance.now() >= nextPeerAt) {
+      if (previewSetup?.scope !== scope) previewSetup = {scope, id:crypto.randomUUID()};
+      return {id:previewSetup.id, prepare:true};
+    }
+    if (!previewPeer?.offer) return;
+    // Carry the existing connection's offer when the board authorizes the next option.
+    return {id:previewPeer.id, ...(previewPeer.offeredGeneration===session().generation ? {} : {offer:previewPeer.offer}), answered:Boolean(previewPeer.pc.remoteDescription)};
+  }
+  function openPreviewPeer({id, scope}, iceServers, video) {
+    let peer;
+    try {
+      peer = new CardQuizPreview.Peer(id, {
+        gatherAll: nextPeerAt > 0 && !phoneLens?.hidden,
+        onOpen: () => {
+          if (previewPeer !== peer || previewScope() !== scope) return peer.close();
+          nextPeerAt = 0;
+          if (phoneLens?.hidden) phoneLens = null;
+          const view = cameraPreview();
+          if (video) peer.send('follow-rounds?');
+          peer.send('wide'); peer.send(view?.folded ? 'hide' : 'show'); renderWheel();
+        },
+        onTrack: track => {
+          if (previewPeer !== peer) return;
+          peer.track = track; renderWheel();
+        },
+        onMessage: frame => {
+          if (previewPeer !== peer) return;
+          if (frame === 'follow-rounds' && video) { peer.follow = true; renderWheel(); return; }
+          if (!peer.scope || previewScope() !== peer.scope) return;
+          if (frame === 'camera-off') {
+            if (phoneLens) phoneLens.hidden = true;
+            renderWheel(); return;
+          }
+          if (CardQuizPreview.validFrame(frame)) postPreview(cameraPreview(),frame);
+          else if (typeof frame === 'string' && frame.length <= 65536 && frame[0] === '{') {
+            try {
+              const message = JSON.parse(frame);
+              if (peer.follow && message.seen && message.seen === phoneLens?.key) clearTimeout(peer.viewTimer);
+              else if (peer.follow && message.live && message.live === phoneLens?.key && !phoneLens.hidden && foldedPreview !== message.live) {
+                peer.liveKey = message.live; renderWheel();
+              } else if (message.corners) liveVideo.markers(message.corners);
+            } catch { /* Ignore incomplete overlays. */ }
+          }
+        },
+        onClose: () => {
+          clearTimeout(peer.viewTimer);
+          if (previewPeer !== peer) return;
+          if (phoneLens?.scope === peer.scope && !phoneLens.hidden && foldedPreview !== phoneLens.key) phoneLens = null;
+          previewPeer = null; nextPeerAt = performance.now()+1500; renderWheel();
+        }
+      }, iceServers);
+      peer.scope = scope; peer.sessionId = session().id; peer.sourceId = session().sourceId; previewPeer = peer;
+      void peer.describe('offer',undefined,video).then(sdp => { peer.offer = sdp; }).catch(() => peer.close());
+    } catch { nextPeerAt = performance.now()+5000; }
+  }
+  function acceptPreview(signal, sent, generation) {
+    if (sent?.prepare) {
+      if (sent.id !== previewSetup?.id || previewSetup.scope !== previewScope() || signal?.preparing) return;
+      // Older schools reply with needOffer or no preview capability. Try the original LAN offer.
+      openPreviewPeer(previewSetup, signal?.iceServers || [], signal?.video === true);
+      previewSetup = null;
+      return;
+    }
+    const peer = previewPeer;
+    if (!peer || !sent || peer.id !== sent.id || peer.scope !== previewScope()) return;
+    if (signal === undefined) { unsupportedScope = peer.scope; closePreviewPeer(); renderWheel(); return; }
+    if (signal?.id !== peer.id) return;
+    if (signal.needOffer) peer.offeredGeneration = null;
+    else if (sent.offer) peer.offeredGeneration = generation;
+    if (signal.answer && !peer.applying && !peer.pc.remoteDescription) {
+      peer.applying = true;
+      void peer.pc.setRemoteDescription({type:'answer',sdp:signal.answer})
+        .then(() => peer.waitForChannel()).catch(() => peer.close());
+    }
+  }
+  function previewAction(action,key) {
+    const view = cameraPreview();
+    if (!view || key !== view.key) return;
+    if (action === 'preview-stop' && !view.phone && cancelBoardOpen) {
+      scanner.stop(); cancelBoardOpen(false); renderWheel(); return;
+    }
+    if (action === 'preview-fold' || action === 'preview-open') {
+      foldedPreview = action === 'preview-fold' ? key : '';
+      if (!previewPeer?.follow) previewPeer?.send(foldedPreview ? 'hide' : 'show');
+      renderWheel();
+    } else if (!operation && action === 'preview-stop') {
+      if (view.phone) {
+        if (previewPeer?.channel?.readyState === 'open') {
+          phoneLens.hidden = true; previewPeer.send('stop'); renderWheel();
+        } else void run(pauseRound);
+      }
+      else $('camera-toggle').click();
+    } else if (!operation && action === (view.phone ? 'preview-board' : 'preview-phone')) {
+      void changeSource();
+    }
+  }
   const canPrepareRound = () => active() && Boolean(question()) && !operation && !disposed && !data?.context?.revoked && !frozen;
   function command(action,payload = {},s = session()) {
     return {id:crypto.randomUUID(),sessionId:s.id,questionId:s.currentQuestionId,roundId:s.currentRoundId,generation:s.generation,sourceId:s.sourceId,action,payload};
   }
-  const scanner = new CardQuizScanner({video:$('camera'),readTrack:companion,onRead:async read => {
+  const scanner = new CardQuizScanner({video:$('camera'),readTrack:companion,onPreview:(canvas,markers) => {
+    if (liveVideo.run && session()?.source === 'board')
+      liveVideo.markers(markers.map(({corners})=>corners.map(p=>[p.x/canvas.width,p.y/canvas.height])));
+  },onRead:async read => {
     if (data?.context?.revoked) throw new Error('设备授权已失效，采集已停止。');
     if (!active() || !canCapture() || session().source !== 'board' || round()?.status !== 'collecting') return;
     if (!session().roster.some(student => student.cardNumber === read.cardNumber)) return;
     await dispatch(command('answer',{...read,...(question()?.type==='multiple'?{targetOption:round().activeOption}:{})}));
   },onStatus:({message,kind}) => {
-    if (kind === 'error' && !scanner.running) render();
     $('camera-status').textContent = message;
+    if (kind === 'error' && !scanner.running) {
+      if (document.body.classList.contains('in-disc') && !operation && canCapture() && round()?.status === 'collecting' && session().source === 'board') {
+        void run(() => pauseForCameraError(message));
+        return;
+      }
+      render();
+    }
     if (kind === 'error') feedback(message,'error');
   }});
   function newController(journal) {
@@ -226,11 +451,12 @@
     const options = id => [...$(id).options].map(option => ({value:option.value,label:option.text}));
     const unfinished = unfinishedJournal();
     const feedback = $('feedback');
+    const canCreate = !$('create-session').hidden && !$('create-session').disabled;
     return {
       roster:$('roster-status').textContent,publications:options('publication'),subjects:options('subject'),templates:options('first-template'),
       selection:setupSelection(),recovery:unfinished ? {value:unfinished.session.id,label:journalLabel(unfinished)} : null,
-      canCreate:!$('create-session').hidden && !$('create-session').disabled,canRefresh:!$('refresh').disabled,busy:operation,
-      notice:feedback.matches('.warning,.refreshed') ? feedback.textContent : ''
+      canCreate,cardCount:canCreate ? data.context.students.length : null,canRefresh:!$('refresh').disabled,busy:operation,
+      notice:feedback.matches('.warning,.refreshed') ? feedback.textContent : '',refreshed:feedback.matches('.refreshed')
     };
   }
   function renderSetup() {
@@ -240,11 +466,11 @@
     const saved = savedJournals();
     const unfinished = saved.some(j => j.session.endedAt === null);
     let ready = false;
-    if (unfinished) $('roster-status').textContent = '本机有一堂未结束的课，可恢复原题和已收记录。';
+    if (unfinished) $('roster-status').textContent = '上次课堂未结束';
     else if (context?.revoked) $('roster-status').textContent = '本机绑定已失效，请在教室设置中重新绑定。';
     else {
       try {
-        $('roster-status').textContent = `已准备 ${Model.classRoster(context).length} 张本班纸卡。`;
+        $('roster-status').textContent = `本班 ${Model.classRoster(context).length} 张纸卡`;
         ready = true;
       } catch (error) { $('roster-status').textContent = error.message; }
     }
@@ -266,26 +492,82 @@
   function renderCardCheck(r,disabled) {
     if (!$('exempt-dialog').open || !r) return;
     const q = question(), sealed = r.status === 'closed';
+    if (pendingCardsOnly && sealed) {
+      pendingCardsOnly = false;
+      $('exempt-heading').textContent = '本轮卡号';
+    }
     const currentOption = q?.type === 'multiple' && !sealed ? r.activeOption : null;
-    $('card-check-scope').textContent = (currentOption ? `当前收答项 ${currentOption}。` : '') +
-      (r.status === 'closed' ? '本轮已封存，可核对各卡状态。' : '勾选卡号设为本轮免答，已收答案保留。');
-    for (const input of $('exempt-cards').querySelectorAll('input')) {
+    const totals = {received:0, pending:0, unanswered:0, abstained:0, partial:0, exempt:0};
+    const words = {received:'已收', pending:'待收', unanswered:'未答', abstained:'弃权', partial:'未完成', exempt:'免答'};
+    const marks = $('card-map').querySelectorAll('[data-card]');
+    for (const [i,input] of $('exempt-cards').querySelectorAll('input').entries()) {
       const id = input.dataset.student, answer = r.answers[id], exempt = r.exempt.includes(id);
       const choices = answer?.choices || {};
       const received = currentOption ? Object.hasOwn(choices,currentOption) : Boolean(answer);
-      const partial = sealed && received && !Model.completeAnswer(q,answer);
+      const partial = sealed && received && !Model.completeAnswer(q,answer,r);
       const status = input.nextElementSibling.querySelector('.card-check-state');
       if (!operation) input.checked = exempt;
-      input.disabled = disabled || r.status === 'closed';
-      status.dataset.state = exempt ? 'exempt' : received && !partial ? 'received' : 'pending';
-      status.textContent = exempt ? '免答' : partial ? '未完成' : received ? '已收' : sealed ? '未答' : '待收';
+      input.disabled = disabled || sealed || pendingCardsOnly;
+      const missingState = sealed ? (r.noCardPolicy === 'abstain' ? 'abstained' : 'unanswered') : 'pending';
+      const state = exempt ? 'exempt' : partial ? 'partial' : received ? 'received' : missingState;
+      if (marks[i]) marks[i].hidden = pendingCardsOnly && state !== 'pending';
+      totals[state]++;
+      if (status.dataset.state !== state) {
+        status.dataset.state = state;
+        status.textContent = words[state];
+        cardStates[i].state = state;
+        const mark = marks[i];
+        if (mark) {
+          mark.dataset.state = state;
+          mark.title = mark.dataset.card + ' 号 · ' + words[state];
+        }
+      }
     }
+    for (const row of $('card-map').children)
+      row.hidden = pendingCardsOnly && !row.querySelector('[data-card]:not([hidden])');
+    for (const key of $('card-key').children) key.hidden = totals[key.dataset.state] === 0 || pendingCardsOnly && key.dataset.state !== 'pending';
+    const scope = !$('card-overview').hidden
+      ? pendingCardsOnly ? `待收 ${totals.pending} 人。` :
+        Object.entries(totals).filter(([,count]) => count).map(([key,count]) => words[key] + ' ' + count).join('，') + '。点阵可查看卡号。'
+      : sealed ? '本轮已封存，可核对各卡状态。' : pendingCardsOnly || frozen || data?.context?.revoked ? '当前只读，可核对各卡状态。' : '勾选卡号设为本轮免答，已收答案保留。';
+    $('card-check-scope').textContent = (currentOption ? `当前收答项 ${currentOption}。` : '') + scope;
+  }
+  function emptyResult(summary) {
+    if (summary.received) return null;
+    if (!summary.expected) return {label:'全员免答',note:''};
+    if (summary.abstained) return {label:`弃权 ${summary.abstained} 人`,note:''};
+    if (!summary.incomplete) return {label:'无人作答',note:`应答 ${summary.expected} 人`};
+    const note = [`未完成 ${summary.incomplete} 人`, summary.unanswered ? `未答 ${summary.unanswered} 人` : ''].filter(Boolean).join(' · ');
+    return {label:'暂无完整作答',note};
+  }
+  function distributionRows(q, summary, bars = Model.distributionBars(q.type,summary.distribution)) {
+    const empty = companion && emptyResult(summary);
+    if (empty) return `<strong class="distribution-empty">${empty.label}</strong>` +
+      (empty.note ? `<small class="distribution-note">${empty.note}</small>` : '');
+    const most = Math.max(0, ...Object.values(summary.distribution));
+    const options = bars.map(({label,count}) => {
+      const percent = summary.received ? (100 * count / summary.received).toFixed(1) : '';
+      if (!companion) return `<span>${esc(label)} · ${count} 人 · ${percent ? percent+'%' : '暂无作答'}</span>`;
+      const leading = count > 0 && count === most;
+      return `<div class="option-result${leading ? ' leading' : ''}"${leading ? ` role="group" aria-label="${esc(label)}，${count} 人，人数最多"` : ''}><strong>${esc(label)}</strong>
+        <meter aria-hidden="true" min="0" max="${Math.max(1, summary.received)}" value="${count}"></meter>
+        <span>${count} 人</span><small>${percent ? Number(percent)+'%' : ''}</small></div>`;
+    });
+    const notes = [], numberSeparator = companion ? ' ' : ' · ';
+    if (companion) options.unshift(`<div class="distribution-scale" aria-hidden="true"><small><span>0</span><span>${summary.received} 人</span></small></div>`);
+    if (summary.abstained) notes.push(`弃权${numberSeparator}${summary.abstained} 人`);
+    if (q.type === 'multiple' && ((!companion && summary.abstained === undefined) || summary.incomplete)) notes.push(`未完成${numberSeparator}${summary.incomplete} 人`);
+    if ((!companion && summary.abstained === undefined) || summary.unanswered) notes.push(`未答${numberSeparator}${summary.unanswered} 人`);
+    if (companion && notes.length) options.push(`<small class="distribution-note">${notes.join(' · ')}</small>`);
+    else options.push(...notes.map(note => `<span>${note}</span>`));
+    return options.join('');
   }
   function render() {
     const s = session(), q = question(), r = round(), exists = Boolean(s), ended = exists && !active();
     if ($('exempt-dialog').open && r?.id !== checkedRound) $('exempt-dialog').close();
-    if (['question','next','distribution','capture'].includes(pane) &&
+    if (['question','next','distribution','capture','options'].includes(pane) &&
         (q?.id !== paneQuestion || pane === 'capture' && (!r || r.status === 'closed') ||
+         pane === 'options' && (q?.type !== 'multiple' || r?.status !== 'collecting' || r.activeOption !== paneOption) ||
          pane === 'distribution' && distributionRound !== `${s?.id}/${q?.id}/${r?.id}`)) showPane('');
     $('setup').hidden = exists; $('workspace').hidden = !exists;
     $('workspace').classList.toggle('is-ended',ended);
@@ -296,7 +578,8 @@
     const collecting = r?.status === 'collecting', between = !r || r.status === 'closed';
     const readOnly = operation || frozen || ended, disabled = readOnly || data?.context?.revoked;
     const summary = Model.roundSummary(s,r);
-    $('question-number').textContent = q ? `第 ${s.questions.indexOf(q)+1} 题 · 共 ${s.questions.length} 题` : '尚无题目';
+    const questionNumber = s.questions.indexOf(q) + 1;
+    $('question-number').textContent = q ? `第 ${questionNumber} 题` + (companion ? '' : ` · 共 ${s.questions.length} 题`) : '尚无题目';
     $('question-heading').textContent = q ? (q.type === 'boolean' ? '判断题' : q.type === 'multiple' ? `多选题 · ${q.options.length} 个选项` : `${q.options.length} 选一`) : '准备出题';
     $('question-text').textContent = q?.text || '题目请看课件或黑板';
     const image = deck?.images?.[q?.imageId];
@@ -308,8 +591,10 @@
     $('options').hidden = !q?.options.some(Boolean);
     $('options').innerHTML = $('options').hidden ? '' : q.options.map(text=>`<li>${esc(text || '见课件')}</li>`).join('');
     $('round-kind').textContent = r?.purpose === 'practice' ? '讲解后练习 · 不覆盖正式记录' : '正式作答';
-    $('round-kind').hidden = !r;
-    $('received').textContent = summary.received; $('expected').textContent = ` / ${summary.expected} 人${q?.type==='multiple'?'整题完成':'已收'}`;
+    $('round-kind').hidden = !r || companion && r.purpose !== 'practice';
+    $('received').textContent = summary.received;
+    $('expected').textContent = companion && r?.status === 'closed' ? ` / ${summary.expected}` :
+      ` / ${summary.expected} 人${q?.type === 'multiple' && r && !r.noCardPolicy ? '整题完成' : '已举卡'}`;
     const missing = summary.expected - (q?.type==='multiple' ? summary.optionReceived : summary.received);
     $('capture-progress').hidden = !r || r.status === 'closed';
     $('capture-progress').textContent = !summary.expected ? '本轮无人须答' : missing ? `待收 ${missing} 人` : q?.type==='multiple' ? '本项已收齐' : '本轮已收齐';
@@ -319,7 +604,10 @@
       $('multi-option').value = r?.activeOption || 'A';
       $('multi-option').disabled = disabled || !collecting;
       $('multi-next').disabled = disabled || !collecting || letters.indexOf(r?.activeOption)>=q.options.length-1;
-      $('multi-progress').textContent = !r ? '逐项收答，A 朝上选，B 朝上不选。' : `本项已收 ${summary.optionReceived} / ${summary.expected} 人${r.status==='closed'?` · 未完成 ${summary.incomplete} 人`:companion && s.source==='board'?' · 换项时请放下再举卡。':' · 换项后请开启相机。'}`;
+      $('multi-instruction').textContent = !r || r.noCardPolicy === 'abstain' ? '选才举卡，A 朝上。改为不选时举 B。' : 'A 朝上表示选，B 朝上表示不选。';
+      $('multi-progress').textContent = !r ? '' : r.status === 'closed'
+        ? (r.noCardPolicy === 'abstain' ? `弃权 ${summary.abstained} 人` : `未完成 ${summary.incomplete} 人`)
+        : `本项已收 ${summary.optionReceived} / ${summary.expected} 人 · ${companion || s.source === 'phone' ? '换项时放下再举。' : '换项后请开启相机。'}`;
     }
     $('round-status').textContent = ended ? '本课堂已结束' : collecting ? (s.source === 'phone' ? '手机收答中，白板保存后确认' : scanner.running ? '本机相机收答中' : '本轮进行中，相机未开启') : r?.status === 'paused' ? '已暂停，已收答案保留' : r ? '本轮已封存' : '等待开始收答';
     $('start').textContent = r?.status === 'paused' ? '恢复本轮' : r ? (q.revealed ? '讲解后练习' : '重新收答') : '开始收答';
@@ -343,8 +631,7 @@
     $('reveal').textContent = q?.answer ? '揭晓答案' : '已在课件讲解';
     $('show-distribution').hidden = r?.status !== 'closed';
     $('show-distribution').disabled = operation || r?.status !== 'closed';
-    $('next').disabled = disabled || !between;
-    $('temporary').disabled = disabled || !between;
+    $('next').disabled = $('temporary').disabled = disabled || !between || s.questions.length >= 100;
     $('end-session').hidden = ended;
     $('continue-actions').hidden = ended || !between;
     $('end-session').disabled = readOnly;
@@ -363,8 +650,14 @@
     $('show-distribution').textContent = showDistribution ? '收起分布' : '展示分布';
     $('show-distribution').setAttribute('aria-expanded',String(showDistribution));
     $('distribution').hidden = !showDistribution;
-    $('distribution').innerHTML = showDistribution ? Object.entries(summary.distribution).map(([option,count])=>`<span>${option} · ${count} 人 · ${summary.received?(count/summary.received*100).toFixed(1)+'%':'暂无作答'}</span>`).join('') + (q?.type==='multiple'?`<span>未完成 · ${summary.incomplete} 人</span>`:'') + `<span>未答 · ${summary.unanswered} 人</span>` : '';
-    $('sync-status').textContent = controller.journal.reviewError ? '待核对：' + controller.journal.reviewError : controller.journal.syncedSeq >= s.seq ? '已同步学校服务' : `已保存在本机 · ${s.seq-(controller.journal.syncedSeq || 0)} 条待同步`;
+    if (showDistribution) {
+      $('distribution').classList.toggle('multiple', q.type === 'multiple');
+      $('distribution').setAttribute('aria-label', `匿名${q.type === 'multiple' ? '组合' : '选项'}分布，按 ${summary.received} 位完整作答者统计`);
+    }
+    if (!(showDistribution && pane === 'distribution' && document.body.classList.contains('in-disc')))
+      $('distribution').innerHTML = showDistribution ? distributionRows(q, summary) : '';
+    $('sync-status').textContent = controller.journal.reviewError ? '待核对：' + controller.journal.reviewError :
+      controller.journal.syncedSeq >= s.seq ? '已同步学校服务' : '已存本机 · 待同步';
     $('sync').disabled = operation;
     $('summary-questions').hidden = !ended || !companion;
     scanner.reset(`${s.id}/${s.currentRoundId}/${s.generation}`,q?.type==='multiple'?2:q?.options.length || 4,
@@ -382,8 +675,10 @@
     $('summary-questions').innerHTML = s.questions.map((item,index) => {
       const formal = Model.officialRound(item), counts = formal && Model.roundSummary(s,formal);
       const label = {single:'单选',boolean:'判断',multiple:'多选'}[item.type];
-      const result = counts ? `已答 ${counts.received} / ${counts.expected} 人${counts.incomplete ? ` · 未完成 ${counts.incomplete} 人` : ''}` : '无正式收答';
-      const options = counts ? Object.entries(counts.distribution).map(([option,count]) => `${option} ${count} 人`).join(' · ') : '';
+      const empty = counts && emptyResult(counts);
+      const result = !counts ? '无正式收答' : empty ? [empty.label, empty.note].filter(Boolean).join(' · ') :
+        `已答 ${counts.received} / ${counts.expected} 人${counts.abstained ? ` · 弃权 ${counts.abstained} 人` : ''}${counts.incomplete ? ` · 未完成 ${counts.incomplete} 人` : ''}`;
+      const options = counts?.received ? Model.distributionBars(item.type,counts.distribution).map(({label,count}) => `${esc(label)} ${count} 人`).join(' · ') : '';
       const grade = counts?.received ? (counts.correct === null ? '未设标准答案' : `已答正确 ${counts.correct} / ${counts.received} 人`) : '';
       return `<li><strong>第 ${index + 1} 题 · ${label}</strong><span>${result}</span>${grade ? `<span>${grade}</span>` : ''}${options ? `<small>${options}</small>` : ''}</li>`;
     }).join('');
@@ -463,16 +758,55 @@
     const isCurrent = () => controller === current && active() && canCapture() && visibleAt === visibilityRevision;
     const sent = [...relayReceipts.values()];
     try {
-      const value = await request('relay',{sessionId:session().id,state:Model.publicState(session(),data.className),receipts:sent});
+      await current.queue;
+      if (!isCurrent()) return;
+      const preview = previewSignal();
+      const state = Model.publicState(session(),data.className);
+      const value = await request('relay',{sessionId:session().id,state,receipts:sent,preview,retrySuperseded:true});
       if (controller !== current) return;
+      if (Object.hasOwn(value,'supersededSeq')) {
+        await current.queue;
+        if (!isCurrent()) return;
+        if (!Number.isSafeInteger(value.supersededSeq) || value.supersededSeq <= state.seq || value.supersededSeq > session().seq)
+          throw new Error('学校记录与本机进度不一致。');
+        return; // Retry with the saved state and the original, unacknowledged receipts.
+      }
       for (const receipt of sent) relayReceipts.delete(receipt.id);
       if (relayFailures && $('feedback').textContent === relayUnavailable) feedback('');
       relayFailures = 0;
       if (!isCurrent()) return;
-      if (pair) {
+      acceptPreview(value.preview,preview,state.generation);
+      if (pair && $('pair-dialog').open) {
         const ready = value.pairings?.find(p=>p.pairId === pair.pairId)?.claimed === true;
-        $('confirm-phone').disabled = !ready;
-        if (ready) $('pair-status').textContent = '老师已配对，请在白板确认使用此手机。';
+        if (pair.mode === 'scan') {
+          if (pair.seq !== session().seq || Date.now() >= pair.expiresAt) {
+            const stale = pair.seq !== session().seq;
+            cancelScanOffer(pair); pair = null;
+            $('pair-qr').hidden = true;
+            $('pair-qr').replaceChildren();
+            $('pair-status').textContent = stale ? '课堂已变化，请返回后重新扫码。' : '二维码已过期，请返回后重新扫码。';
+          } else if (ready && !operation && !frozen) {
+            const offered = pair;
+            await run(async () => {
+              offered.accepting = true;
+              try {
+                await saveSource('phone', offered.pairId);
+                if (!isCurrent() || pair !== offered || !$('pair-dialog').open) return;
+                if (question() && (!round() || round().status === 'paused')) await startRound();
+                feedback('手机已连接。');
+              } catch(error) {
+                if (session()?.sourceId !== offered.pairId) cancelScanOffer(offered);
+                throw error;
+              } finally {
+                if (pair === offered && $('pair-dialog').open) $('pair-dialog').close();
+              }
+            });
+          }
+        } else {
+          $('confirm-phone').disabled = !ready;
+          if (ready) $('pair-status').textContent = '手机已连接，请确认使用。';
+        }
+        if ($('pair-dialog').open) renderWheel();
       }
       for (const incoming of value.commands || []) {
         if (!isCurrent()) break;
@@ -484,22 +818,67 @@
     } catch (error) {
       if (!isCurrent()) return;
       relayFailures = Math.min(5,relayFailures+1);
+      closePreviewPeer();
       if (session()?.source === 'phone') feedback(relayUnavailable,'warning');
     } finally { relayRunning = false; scheduleRelay(); }
   }
   function qrSvg(text) {
     const qr = qrcodegen.QrCode.encodeText(text,qrcodegen.QrCode.Ecc.MEDIUM), paths = [];
     for(let y=0;y<qr.size;y++) for(let x=0;x<qr.size;x++) if(qr.getModule(x,y)) paths.push(`M${x+4},${y+4}h1v1h-1z`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${qr.size+8} ${qr.size+8}" role="img" aria-label="手机配对二维码"><rect width="100%" height="100%" fill="white"/><path d="${paths.join('')}" fill="black"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${qr.size+8} ${qr.size+8}" role="img" aria-label="手机配对二维码" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="white"/><path d="${paths.join('')}" fill="black"/></svg>`;
+  }
+  function cancelScanOffer(offer) {
+    if (offer?.mode === 'scan')
+      void request('cancel-pair',{sessionId:offer.sessionId,pairId:offer.pairId}).catch(() => {
+        // The board also drops its local offer immediately. An offline invitation expires at the service.
+      });
+  }
+  function releasePair() {
+    if (!pair?.accepting) cancelScanOffer(pair);
+    pair = null;
+  }
+  function phoneAddressIssue(address) {
+    let url;
+    try { url = new URL(address); }
+    catch { return '学校地址无效，请检查白板绑定。'; }
+    const host = url.hostname.replace(/\.$/, '');
+    if (host === 'localhost' || host.endsWith('.localhost') || /^127\.\d+\.\d+\.\d+$/.test(host) || host === '[::1]')
+      return '当前是本机模拟班。请打开学校的「纸卡测试班」扫码。';
+    if (url.protocol !== 'https:' || host === '0.0.0.0' || host === '[::]')
+      return '请将白板连接到学校的 HTTPS 地址，再用手机扫码。';
+    return '';
+  }
+  function showPhoneInvite(offer, message) {
+    pair = offer;
+    const manual = Boolean(offer && offer.mode !== 'scan');
+    $('confirm-phone').hidden = !manual;
+    $('confirm-phone').disabled = true;
+    $('pair-code').hidden = !manual;
+    $('pair-code').textContent = manual ? offer.code : '';
+    $('pair-qr').hidden = !offer;
+    $('pair-qr').innerHTML = offer ? qrSvg(offer.url) : '';
+    $('pair-status').textContent = message || (manual ? '扫码登录后在白板确认。' : '请用手机扫码');
+    openDialog('pair-dialog');
   }
   async function setSource() {
-    scanner.stop();
+    if (!active() || !canCapture()) return;
+    const at = visibilityRevision;
+    if (session().source === 'board' && data.endpoint) {
+      const issue = phoneAddressIssue(data.endpoint);
+      if (issue) { showPhoneInvite(null, issue); return; }
+    }
+    if (round()?.status === 'collecting') await pauseRound();
+    else scanner.stop();
+    if (!active() || !canCapture() || at !== visibilityRevision) return;
     if (session().source === 'phone') { await saveSource('board','board'); pair = null; feedback('已换回本机，可以继续收答。'); return; }
-    pair = await request('pair',{sessionId:session().id});
-    $('confirm-phone').disabled = true;
-    $('pair-code').textContent = pair.code; $('pair-url').textContent = pair.url;
-    $('pair-qr').innerHTML = qrSvg(pair.url); $('pair-status').textContent = '配对码 5 分钟内有效。登录配对后，在白板确认切换。';
-    openDialog('pair-dialog');
+    const current = controller, {id:sessionId,seq} = session();
+    const offer = {...await request('pair',{sessionId}),sessionId,seq};
+    if (controller !== current || !canCapture() || at !== visibilityRevision || seq !== session().seq) {
+      cancelScanOffer(offer); return;
+    }
+    const issue = phoneAddressIssue(offer.url);
+    if (issue) cancelScanOffer(offer);
+    showPhoneInvite(issue ? null : offer, issue);
   }
   async function saveSource(source,sourceId) {
     await dispatch(command('set_source',{source,sourceId}));
@@ -538,8 +917,13 @@
     $('editor-round-note').hidden = adding || Boolean(q.bankId) || !q.rounds.length;
     $('editor-round-note').textContent = q.type==='multiple'?'本题已开始过收答，题型和选项数量已固定；需要更改时请添加临时题。':'本题已有收答轮次；需要改为多选时请添加临时题。';
     $('edit-options').replaceChildren(); editOptions();
-    [...$('edit-options').querySelectorAll('input')].forEach((input,i)=>input.value = q.options[i] || '');
+    [...$('edit-options').querySelectorAll('input')].forEach((input,i) => {
+      // Text inputs strip line breaks from value. Keep the original text for read-only options.
+      if (input.readOnly) input.defaultValue = q.options[i] || '';
+      input.value = q.options[i] || '';
+    });
     setEditorAnswer(q.answer); $('edit-tags').value = q.tags.join('，'); $('editor-error').textContent = '';
+    if (document.body.classList.contains('in-disc')) discEditor.open(adding);
     openDialog('editor');
   }
   function confirm(title,description) {
@@ -557,30 +941,67 @@
   }
   async function openBoardCamera(visibleAt) {
     if (visibleAt === visibilityRevision && canCapture() && session().source === 'board' && round()?.status === 'collecting') {
-      try { await scanner.start(); }
-      catch (error) {
-        if (canCapture() && round()?.status === 'collecting') await pauseRound();
-        feedback('本机相机未开启。可恢复本轮重试，或使用手机继续。' + error.message,'error');
-      }
+      const generation = session().generation;
+      let issue;
+      const cancelled=new Promise(resolve=>{ cancelBoardOpen=resolve; });
+      try {
+        const started=scanner.start(); renderWheel();
+        if (await Promise.race([started.then(()=>true),cancelled]) === false) return;
+      } catch (error) { issue = error.message; }
+      finally { cancelBoardOpen=null; }
+      if (!scanner.running && visibleAt === visibilityRevision && canCapture() && session()?.generation === generation)
+        await pauseForCameraError(issue || $('camera-status').textContent);
     }
+  }
+  async function pauseForCameraError(message) {
+    await pauseRound();
+    feedback('本机相机未开启。可恢复本轮重试，或使用手机继续。' + message,'error');
   }
   async function pauseRound() {
     scanner.stop();
     await dispatch(command('recover'));
     feedback('已暂停本轮。可恢复收答或切换设备。');
   }
-  async function savePause() {
+  async function savePause(retryPause) {
     try {
       if (controller) await controller.queue;
-      if (active() && !frozen && round()?.status === 'collecting') await dispatch(command('recover'));
-      native?.postMessage({type:'suspended',saved:true});
-    } catch (error) { feedback(error.message,'error'); native?.postMessage({type:'suspended',saved:frozen}); }
+      if (frozen) {
+        // Only an explicit exit retries its own pause. Other unconfirmed writes need a journal reload.
+        if (!retryPause || !pendingPause || controller?.pending?.id !== pendingPause.id) return false;
+        await commit(controller,pendingPause);
+        frozen = false;
+        feedback('本轮暂停已保存。');
+      } else if (active() && round()?.status === 'collecting') {
+        pendingPause = command('recover');
+        await dispatch(pendingPause);
+      }
+      pendingPause = null;
+      return true;
+    } catch (error) {
+      const canRetry = pendingPause && controller?.pending?.id === pendingPause.id;
+      feedback(error.message + (canRetry ? '也可再次退出，重试保存本轮暂停。' : ''),'error');
+      return false;
+    }
   }
-  function suspend() {
+  function suspend(retryPause = false) {
     visibilityRevision++;
+    if (pair?.mode === 'scan' && $('pair-dialog').open) {
+      releasePair();
+      $('pair-dialog').close();
+    }
+    closePreviewPeer(); foldedPreview = '';
+    cancelBoardOpen?.(false);
     scanner.stop(); clearTimeout(relayTimer);
-    suspension ??= savePause().finally(() => { suspension = null; render(); });
+    suspension ??= savePause(retryPause).finally(() => { suspension = null; render(); });
     return suspension;
+  }
+  async function confirmSuspend(suspendId) {
+    const paused = await suspend(true);
+    // Opening or restoring a classroom can still be saving a controller not yet displayed.
+    if (paused && operation) feedback('课堂操作尚未完成，请完成后再退出。','warning');
+    const saved = paused && !operation;
+    if (!saved) scheduleRelay();
+    native?.postMessage({type:'suspended',suspendId,saved});
   }
   function updateVisibility() {
     if (!hostVisible || document.hidden) { void suspend(); return; }
@@ -589,7 +1010,7 @@
     else scheduleRelay();
   }
   async function run(task, status = '') {
-    if (operation) return;
+    if (operation || suspension) return;
     operation = true; pendingStatus = status;
     if (active() && !frozen && !data?.context?.revoked && $('feedback').matches('.error,.warning')) feedback('');
     render();
@@ -619,14 +1040,20 @@
   $('refresh').onclick = () => run(refreshSetup);
   $('saved-sessions').onclick = event => {
     const id = event.target.closest('[data-resume]')?.dataset.resume;
-    if (id && !active()) run(async () => { await restore(id); if (companion) showPane(active() ? '' : 'summary'); });
+    if (!id || active()) return;
+    const fromHistory = pane === 'history' && document.body.classList.contains('in-disc');
+    run(async () => {
+      await restore(id);
+      historyRecord = fromHistory && !active() ? id : null;
+      if (companion) showPane(active() ? '' : 'summary');
+    });
   };
   $('start').onclick = () => run(startRound,'正在开始收答…');
   $('stop').onclick = () => { scanner.stop(); run(async()=>{ await dispatch(command('end_round')); feedback('本轮已封存。'); if (pane === 'capture') showPane(''); }); };
   $('pause').onclick = () => run(async () => { await pauseRound(); if (pane === 'capture') showPane(''); });
   $('camera-toggle').onclick = () => run(async()=>{
     if (scanner.running) { scanner.stop(); $('camera-status').textContent = '相机已关闭，已收记录保留。'; }
-    else if (canCapture()) await scanner.start();
+    else await openBoardCamera(visibilityRevision);
   });
   function switchMultiOption(option){
     if(operation || !option || option===round()?.activeOption)return;
@@ -636,15 +1063,19 @@
     return run(async()=>{
       await dispatch(command('set_multi_option',{option}));
       if (autoOpen) scanner.waitForNewPresentation(previousCards);
-      feedback(autoOpen ? `收 ${option} 项，请放下再举卡。` : `收 ${option} 项，请调整卡面后在${session().source==='phone'?'手机':'本机'}开启相机。`);
+      feedback(autoOpen || session().source==='phone' ? `收 ${option} 项，请放下再举卡。` : `收 ${option} 项，请调整卡面后在本机开启相机。`);
       if (autoOpen) await openBoardCamera(visibleAt);
     },'正在切换收答项…');
   }
   $('multi-option').onchange = event => switchMultiOption(event.target.value);
   $('multi-next').onclick = () => switchMultiOption(letters[letters.indexOf(round()?.activeOption)+1]);
-  $('source').onclick = () => run(setSource,session().source === 'board' ? '正在获取配对码…' : '正在换回本机…');
+  function changeSource() {
+    return run(setSource,session().source === 'board' ? '正在获取二维码…' : '正在换回本机…');
+  }
+  $('source').onclick = changeSource;
   $('confirm-phone').onclick = () => run(async()=>{
-    if (!pair || Date.now() >= pair.expiresAt) throw new Error('配对码已过期，请关闭并重新配对。');
+    if (!canCapture() || !pair || pair.sessionId !== session()?.id || pair.seq !== session().seq || Date.now() >= pair.expiresAt)
+      throw new Error('配对已失效，请关闭并重新配对。');
     await saveSource('phone',pair.pairId); $('pair-dialog').close(); feedback('已切换到手机，请在手机上开始或恢复收答。');
   });
   $('edit').onclick = () => openEditor(false); $('temporary').onclick = () => openEditor(true);
@@ -656,7 +1087,8 @@
           s.generation !== editorContext.generation || (!editorAdding && q?.revision !== editorContext.revision)) {
         $('editor-error').textContent = '题目或版本已变化，草稿已保留。请核对当前题目，关闭后重新编辑。'; return;
       }
-      const payload = {type:$('edit-type').value,text:$('edit-text').value,options:[...$('edit-options').querySelectorAll('input')].map(i=>i.value),answer:editorAnswer() || null,tags:$('edit-tags').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean)};
+      const options = [...$('edit-options').querySelectorAll('input')].map(input => input.readOnly ? input.defaultValue : input.value);
+      const payload = {type:$('edit-type').value,text:$('edit-text').value,options,answer:editorAnswer() || null,tags:$('edit-tags').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean)};
       if (!editorAdding) payload.revision = editorContext.revision;
       const value = {...command(editorAdding?'add_question':'edit_question',payload),...editorContext}; delete value.revision;
       const controls = [...$('question-form').querySelectorAll('input,textarea,select,button')].map(node=>[node,node.disabled]);
@@ -669,15 +1101,102 @@
   $('next').onclick = () => run(async()=>{ await dispatch(command('add_question',nextFromDeck() || slideQuestion($('next-template').value))); feedback('新题已准备。'); if (pane) showPane(''); else $('question-heading').focus({preventScroll:true}); });
   $('reveal').onclick = () => run(async()=>{ await dispatch(command('reveal',{external:!question().answer})); feedback('本题已标记讲解；后续重答记为练习。'); });
   $('show-distribution').onclick = () => { const key = `${session().id}/${question()?.id}/${round()?.id}`; distributionRound = distributionRound === key ? '' : key; render(); };
-  $('exempt').onclick = () => {
-    checkedRound = round()?.id;
-    $('exempt-cards').innerHTML = [...session().roster].sort((a,b)=>a.cardNumber-b.cardNumber).map(s=>`<label><input type="checkbox" data-student="${esc(s.id)}" aria-label="${s.cardNumber} 号免答" aria-describedby="card-check-${s.cardNumber}"><span>${s.cardNumber} 号 <small id="card-check-${s.cardNumber}" class="card-check-state"></small></span></label>`).join('');
-    openDialog('exempt-dialog'); renderCardCheck(round(),frozen || !active() || data?.context?.revoked);
+  function showCardPage(index) {
+    const cards = [...$('exempt-cards').children];
+    const pages = Math.max(1, Math.ceil(cards.length / cardsPerPage));
+    cardPage = Math.max(0, Math.min(index, pages - 1));
+    cards.forEach((card, i) => { card.hidden = companion && Math.floor(i / cardsPerPage) !== cardPage; });
+    $('card-pages').hidden = !companion || pages === 1;
+    $('card-page').value = String(cardPage);
+    $('card-prev').disabled = cardPage === 0;
+    $('card-next').disabled = cardPage === pages - 1;
+  }
+  $('card-page').onchange = () => { showCardPage(Number($('card-page').value)); renderWheel(); };
+  function returnToCardMap() {
+    if (!$('card-overview').hidden || !$('card-map').childElementCount) return false;
+    $('card-overview').hidden = false;
+    $('card-details').hidden = true;
+    render();
+    $('card-overview').focus({preventScroll:true});
+    return true;
+  }
+  $('exempt-dialog').addEventListener('cancel',event => {
+    if (returnToCardMap()) event.preventDefault();
+  });
+  function locateCard(i) {
+    if (i == null) i = pendingCardsOnly ? cardStates.findIndex(card => card.state === 'pending') : cardPage * cardsPerPage;
+    const card = $('exempt-cards').children[i];
+    if (!card || $('card-overview').hidden || pendingCardsOnly && cardStates[i].state !== 'pending') return;
+    locatedCard = cardStates[i].number;
+    $('card-overview').hidden = true;
+    $('card-details').hidden = false;
+    showCardPage(Math.floor(i / cardsPerPage));
+    render();
+    (card.firstElementChild.disabled ? card : card.firstElementChild).focus({preventScroll:true});
+  }
+  $('card-overview').onclick = event => {
+    const mark = event.target.closest('[data-index]');
+    if (mark || !event.target.closest('#card-map')) locateCard(mark ? Number(mark.dataset.index) : null);
   };
-  $('exempt-cards').onchange = event => {
-    const {checked,dataset:{student}} = event.target;
-    if (student && active() && !frozen && !data?.context?.revoked && round()?.id === checkedRound && round()?.status !== 'closed')
-      run(()=>dispatch(command('set_exempt',{studentId:student,exempt:checked})));
+  $('card-prev').onclick = () => { showCardPage(cardPage - 1); renderWheel(); if ($('card-prev').disabled) $('card-next').focus(); };
+  $('card-next').onclick = () => { showCardPage(cardPage + 1); renderWheel(); if ($('card-next').disabled) $('card-prev').focus(); };
+  function openCardCheck(pendingOnly = false) {
+    checkedRound = round()?.id;
+    const roster = [...session().roster].sort((a,b)=>a.cardNumber-b.cardNumber);
+    cardStates = roster.map(s => ({number:s.cardNumber, state:''}));
+    pendingCardsOnly = pendingOnly; locatedCard = null;
+    $('exempt-heading').textContent = pendingOnly ? '待收卡号' : '本轮卡号';
+    const overview = companion && (roster.length > cardsPerPage || document.body.classList.contains('in-disc') && roster.length > 0);
+    $('card-overview').hidden = !overview;
+    $('card-details').hidden = overview;
+    const map = $('card-map');
+    map.replaceChildren();
+    $('card-page').replaceChildren();
+    if (overview) {
+      // Group by printed number. A gap in the roster leaves its column empty.
+      const decades = new Set(roster.map(s => Math.floor((s.cardNumber - 1) / 10)));
+      const columns = decades.size > 8 ? 20 : 10;
+      let row, rowStart;
+      for (const [index, {cardNumber}] of roster.entries()) {
+        const offset = (cardNumber - 1) % columns, first = cardNumber - offset;
+        if (first !== rowStart) {
+          rowStart = first;
+          row = document.createElement('span');
+          row.className = 'card-map-row';
+          const label = document.createElement('span');
+          label.className = 'card-row-start'; label.textContent = first;
+          row.append(label); map.append(row);
+        }
+        const dot = document.createElement('span');
+        dot.className = 'card-dot'; dot.dataset.card = cardNumber; dot.dataset.index = index;
+        dot.style.gridColumn = String(offset + 2);
+        row.append(dot);
+      }
+      map.style.setProperty('--columns', columns);
+      map.style.setProperty('--rows', map.childElementCount);
+      map.style.setProperty('--dot-size', columns === 20 ? '6px' : '9px');
+      for (let i = 0; i < roster.length; i += cardsPerPage) {
+        const last = Math.min(i + cardsPerPage, roster.length) - 1;
+        const range = i === last ? String(roster[i].cardNumber) : roster[i].cardNumber + '-' + roster[last].cardNumber;
+        $('card-page').add(new Option(range, String(i / cardsPerPage)));
+      }
+    }
+    $('exempt-cards').innerHTML = roster.map(s=>`<label tabindex="-1"><input type="checkbox" data-student="${esc(s.id)}" aria-label="${s.cardNumber} 号免答" aria-describedby="card-check-${s.cardNumber}"><span>${s.cardNumber} 号 <small id="card-check-${s.cardNumber}" class="card-check-state"></small></span></label>`).join('');
+    showCardPage(0);
+    $('exempt-dialog').showModal();
+    render();
+  }
+  $('exempt').onclick = () => openCardCheck();
+  $('exempt-cards').onchange = async event => {
+    const input = event.target, student = input.dataset.student;
+    if (!student || pendingCardsOnly || !active() || frozen || data?.context?.revoked || round()?.id !== checkedRound || round()?.status === 'closed') return;
+    const focused = document.activeElement === input;
+    await run(() => dispatch(command('set_exempt',{studentId:student,exempt:input.checked})));
+    const dialog = $('exempt-dialog');
+    // Disabling the checkbox during a slow save can move keyboard focus to the document.
+    if (focused && document.hasFocus() && dialog.open && input.isConnected && !input.disabled && !input.closest('[hidden]') &&
+        (document.activeElement === document.body || document.activeElement === dialog))
+      input.focus({preventScroll:true});
   };
   $('end-session').onclick = () => run(async()=>{
     if (!await confirm('结束本课堂？','当前轮次将封存。本机记录保留，联网后同步到学校服务。')) return;
@@ -694,12 +1213,14 @@
       if (controller === ended) feedback('本机记录待同步。' + error.message,'warning');
     });
   }
-  async function returnToSetup(collapse = false) {
+  async function returnToSetup(collapse = false, destination = '') {
     data = await request('load');
     controller = deck = null;
+    historyRecord = null;
     resetSessionControls();
-    if (pane) showPane('');
-    render(); feedback('可以开始下一堂课。'); $('setup-heading').focus();
+    if (pane || destination) showPane(destination);
+    render(); feedback(destination ? '' : '可以开始下一堂课。');
+    if (!destination) $('setup-heading').focus();
     if (collapse) native?.postMessage({type:'collapse'});
   }
   $('return-setup').onclick = () => run(() => returnToSetup());
@@ -707,31 +1228,66 @@
   $('pane-back').onclick = () => back();
   document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('close',() => {
     dialog.querySelector('p[role="alert"]:not(#editor-error)')?.remove();
-    if (dialog.id === 'pair-dialog') pair = null;
+    if (dialog.id === 'pair-dialog' && !dialog.open) releasePair();
     renderWheel();
   }));
   document.addEventListener('keydown',event => {
     if (!companion || event.defaultPrevented) return;
-    if (event.key === 'Escape' && !document.querySelector('dialog[open]') && pane) { event.preventDefault(); back(); }
+    if (event.key === 'Escape' && !event.isComposing && (currentDiscPage || !document.querySelector('dialog[open]') && pane)) { event.preventDefault(); back(); }
     else if (event.key === 'F4' && !event.altKey) { event.preventDefault(); native?.postMessage({type:'collapse'}); }
   });
   document.querySelectorAll('[data-dismiss]').forEach(button=>button.onclick=() => $(button.dataset.dismiss).close());
   document.addEventListener('visibilitychange',updateVisibility);
-  window.addEventListener('pagehide',()=>{disposed=true;scanner.stop();clearTimeout(relayTimer);clearTimeout(syncTimer);});
+  window.addEventListener('pagehide',()=>{disposed=true;liveVideo.stop();closePreviewPeer();scanner.stop();clearTimeout(relayTimer);clearTimeout(syncTimer);});
   if (native) native.addEventListener('message',event=>{
     const value = event.data; if (!value || typeof value !== 'object') return;
     if (value.type === 'response') { const task = pending.get(value.id); if (!task) return; clearTimeout(task.timeout); pending.delete(value.id); value.error ? task.reject(new Error(value.error)) : task.resolve(value.value); }
-    else if (value.type === 'suspend') void suspend();
-    else if (value.type === 'visibility') { hostVisible = value.visible === true; updateVisibility(); }
+    else if (value.type === 'preview-consumed' || value.type === 'preview-buffer-unavailable') liveVideo.acknowledge(value);
+    else if (value.type === 'suspend') void confirmSuspend(value.suspendId);
+    else if (value.type === 'visibility') {
+      document.body.classList.toggle('in-disc', companion && value.nativeDisc === true);
+      hostVisible = value.visible === true; updateVisibility();
+    }
     else if (value.type === 'authorization' && value.revoked) { scanner.stop(); if (data?.context) data.context.revoked = true; render(); feedback(value.message || '设备授权已失效，采集已停止，本机记录保留待核对。','error'); }
     else if (value.type === 'companion-action' && typeof value.action === 'string') {
       const lesson = wheel.lesson;
+      if (!hostVisible || document.hidden || suspension || disposed) return;
+      if (value.action.startsWith('preview-')) { previewAction(value.action,value.key); return; }
       if (value.key && value.key !== lesson?.key) return;
-      if (value.action.startsWith('setup-')) activateSetup(value);
+      if (value.action === 'back' && value.pageKey && value.pageKey !== currentDiscPage?.key) return;
+      if (document.body.classList.contains('in-disc') && (pane || document.querySelector('dialog[open]')) &&
+          !['back','dismiss'].includes(value.action) && !value.action.startsWith('disc-') && !value.action.startsWith('card-')) return;
+      if (value.action.startsWith('disc-')) {
+        const id = value.action.slice(5);
+        if (!hostVisible || disposed || !currentDiscPage || value.pageKey !== currentDiscPage.key ||
+            !currentDiscPage.items.some(item => item.id === id && item.enabled !== false)) return;
+        ($('editor').open ? discEditor : disc).activate(id);
+      }
+      else if (value.action.startsWith('setup-')) activateSetup(value);
+      else if (value.action === 'missing' && !operation && !document.querySelector('dialog[open]') &&
+          ['collect','paused'].includes(lesson?.phase) && !$('exempt').disabled) openCardCheck(true);
+      else if (value.action.startsWith('card-') && !operation && $('exempt-dialog').open && checkedRound === round()?.id) {
+        if (value.action === 'card-scope' && document.body.classList.contains('in-disc') && !$('card-overview').hidden &&
+            ['collect','paused'].includes(lesson.phase)) {
+          pendingCardsOnly = !pendingCardsOnly;
+          locatedCard = null;
+          $('exempt-heading').textContent = pendingCardsOnly ? '待收卡号' : '本轮卡号';
+          render();
+        } else if (value.action === 'card-locate') locateCard(value.cardNumber == null ? null :
+          cardStates.findIndex(card => card.number === value.cardNumber));
+        else if ($('card-overview').hidden && value.action === 'card-toggle' && !operation && !pendingCardsOnly) {
+          const index = cardStates.findIndex(card => card.number === value.cardNumber);
+          const input = $('exempt-cards').children[index]?.querySelector('input');
+          if (Math.floor(index / cardsPerPage) === cardPage && input && !input.disabled) input.click();
+        } else if ($('card-overview').hidden && (value.action === 'card-prev' || value.action === 'card-next')) $(value.action).click();
+      }
       else if (value.action === 'advance' && !operation && !$('next').disabled) $('next').click();
       else if (value.action === 'open-camera' && canCapture() && !operation && round()?.status === 'collecting' && !scanner.running)
         void run(() => openBoardCamera(visibilityRevision));
       else if (value.action === 'finish-confirmed' && active() && !operation && !frozen) void run(() => finishSession(false));
+      else if (value.action === 'record-chart' && lesson?.phase === 'done' && !operation && document.body.classList.contains('in-disc') &&
+          Number.isInteger(value.questionIndex) && lesson.records[value.questionIndex]?.bars?.length)
+        showPane('record-chart', value.questionIndex);
       else if (value.action === 'return-setup' && session()?.endedAt && !$('return-setup').disabled) void run(() => returnToSetup(true));
       else if (value.action === 'sync-now' && lesson?.needsSync && !operation) $('sync').click();
       else if (value.action.startsWith('kind-') && lesson?.canChooseType && !operation && !frozen) {

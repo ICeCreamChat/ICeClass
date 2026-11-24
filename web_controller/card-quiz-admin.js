@@ -8,7 +8,7 @@
   });
   const clone = v => JSON.parse(JSON.stringify(v));
   const subjects = [['chinese','语文'],['math','数学'],['english','英语'],['physics','物理'],['chemistry','化学'],['biology','生物'],['politics','政治'],['history','历史'],['geography','地理']];
-  const names = Object.fromEntries(subjects), statuses = {correct:'正确',wrong:'错误',incomplete:'未完成',unanswered:'未答',exempt:'免答',ungraded:'未判定',practice:'练习'};
+  const names = Object.fromEntries(subjects), statuses = {correct:'正确',wrong:'错误',incomplete:'未完成',unanswered:'未答',abstained:'弃权',exempt:'免答',ungraded:'未判定',practice:'练习'};
   const option = (values,current) => values.map(([value,label])=>`<option value="${esc(value)}"${value===current?' selected':''}>${esc(label)}</option>`).join('');
   const button = (action,text,primary=false,extra='') => `<button type="button" class="btn${primary?' primary':''}" data-cq-action="${action}"${busy?' disabled':''} ${extra}>${text}</button>`;
   const rate = value => value === null || value === undefined ? '未判定' : (value*100).toFixed(1) + '%';
@@ -56,7 +56,7 @@
     }
   }
   function markChanged() { changed=true;const node=root.querySelector('.cq-dirty');if(node)node.textContent='尚未保存';const save=root.querySelector('[data-cq-action^="save-"]');if(save)save.disabled=busy||conflict;if(tab==='cards'){root.querySelectorAll('.cq-account-form input,.cq-account-form select,.cq-account-form button,[data-account-student],#cq-accounts-all,[data-cq-action="reset-accounts"]').forEach(n=>n.disabled=true);} }
-  function table(headings,rows,label) { return `<div class="cq-table-wrap" role="region" aria-label="${esc(label)}" tabindex="0"><table class="cq-table"><thead><tr>${headings.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.join(''):`<tr><td colspan="${headings.length}">暂无记录</td></tr>`}</tbody></table></div>`; }
+  function table(headings,rows,label,tableClass='') { return `<div class="cq-table-wrap" role="region" aria-label="${esc(label)}" tabindex="0"><table class="cq-table ${tableClass}"><thead><tr>${headings.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.join(''):`<tr><td colspan="${headings.length}">暂无记录</td></tr>`}</tbody></table></div>`; }
   function renderCards() {
     if (!cards) return '<p class="cq-empty">请选择班级并载入名单。</p>';
     const canPrint=cards.canEdit&&accounts?.canEdit;
@@ -159,36 +159,49 @@
     return `<section class="cq-panel"><div class="cq-item-head"><h2>我的题单</h2>${button('new-deck','新建题单',true)}</div><div class="cq-list">${decks.map(d=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(d.title)} · ${d.questionIds.length} 题</p><div class="cq-actions">${button('edit-deck','编辑',false,`data-id="${esc(d.id)}"`)}${button('publish','发布到当前班',true,`data-id="${esc(d.id)}"${!cid?' disabled':''}`)}</div></div></article>`).join('')||'<p class="cq-empty">按授课顺序组织题目，再发布固定快照到班级。</p>'}</div></section><section class="cq-panel"><h2>本班已发布题单</h2><p class="cq-note">使用快照不会改动作者的源题；修改源题后需要重新发布。</p>${publications.map(p=>`<details class="cq-item"><summary>${esc(p.title)} · ${p.questions.length} 题</summary><div class="cq-actions">${button('withdraw','撤回此题单',false,`data-id="${esc(p.id)}"`)}</div>${p.questions.map((q,i)=>`<div class="cq-item-head cq-item"><p>${i+1}. ${esc(q.text||'图片题')}</p>${button('copy-publication','另存为我的题目',false,`data-id="${esc(p.id)}" data-question="${i}"`)}</div>`).join('')}</details>`).join('')||'<p class="cq-empty">当前班级暂无已发布题单。</p>'}</section>`;
   }
   function statistics(value,label) {
-    return table([label,'判定样本','正确','错误','未完成','未答','免答','未判定','练习','已答正确率'],value.map(s=>`<tr><td>${esc(s.studentName||s.tag)}</td><td>${s.samples}</td><td>${s.correct}</td><td>${s.wrong}</td><td>${s.incomplete||0}</td><td>${s.unanswered||0}</td><td>${s.exempt||0}</td><td>${s.ungraded||0}</td><td>${s.practice||0}</td><td>${rate(s.accuracy)}</td></tr>`),label+'统计');
+    return table([label,'判定样本','正确','错误','未完成','未答','弃权','免答','未判定','练习','已答正确率'],value.map(s=>`<tr><td>${esc(s.studentName||s.tag)}</td><td>${s.samples}</td><td>${s.correct}</td><td>${s.wrong}</td><td>${s.incomplete||0}</td><td>${s.unanswered||0}</td><td>${s.abstained||0}</td><td>${s.exempt||0}</td><td>${s.ungraded||0}</td><td>${s.practice||0}</td><td>${rate(s.accuracy)}</td></tr>`),label+'统计');
   }
-  const completeAnswer = (student,question) => question?.type==='multiple'?'ABCD'.slice(0,question.options.length).split('').every(letter=>typeof student.choices?.[letter]==='boolean'):student.option!==null&&student.option!==undefined&&student.option!=='';
-  function responseText(student,question) {
+  function responseText(student,question,round) {
+    if (student.status === 'abstained') return '弃权';
+    if (student.status === 'exempt' && student.option == null) return '—';
     if(question?.type!=='multiple')return student.option||'未答';
-    if(completeAnswer(student,question))return student.option||'全不选';
+    if(CardQuizModel.completeAnswer(question,student,round))return student.option||'全不选';
     if(Object.keys(student.choices||{}).length)return 'ABCD'.slice(0,question.options.length).split('').map(letter=>letter+' '+(student.choices[letter]===true?'选':student.choices[letter]===false?'不选':'未答')).join(' · ');
     return '未答';
   }
   function renderDetail() {
     if(editor?.kind==='review')return renderQuestionEditor();
     const s=detail.session, totals=detail.report.totals;
-    return `<section class="cq-panel"><div class="cq-item-head"><h2>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}</h2><div class="cq-actions">${button('close-detail','返回报告')}${s.endedAt?button('claim','认领此课',false):''}</div></div><p class="cq-note">${s.endedAt?'课堂已结束并同步，可以补录题干、标准答案和知识点。':'课堂尚未结束，修订由教室端确认。'}${s.teacherId?' 已认领。':''}</p><div class="cq-summary wb-metrics" role="group" aria-label="本课答题汇总">${ui.metric('判定样本',totals.samples,'clipboard')}${ui.metric('已答正确率',rate(totals.accuracy),'chart',{bar:ui.meter(totals.accuracy)})}${ui.metric('未完成',totals.incomplete||0,'clock')}${ui.metric('未答',totals.unanswered||0,'inbox')}</div>${detail.report.questions.map((q,i)=>{
+    const hasNewRounds = s.questions.some(q => q.rounds?.some(r => r.noCardPolicy === 'abstain'));
+    return `<section class="cq-panel"><div class="cq-item-head"><h2>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}</h2><div class="cq-actions">${button('close-detail','返回报告')}${s.endedAt?button('claim','认领此课',false):''}</div></div><p class="cq-note">${s.endedAt?'课堂已结束并同步，可以补录题干、标准答案和知识点。':'课堂尚未结束，修订由教室端确认。'}${s.teacherId?' 已认领。':''}</p><div class="cq-summary wb-metrics" role="group" aria-label="本课答题汇总">${ui.metric('判定样本',totals.samples,'clipboard')}${ui.metric('已答正确率',rate(totals.accuracy),'chart',{bar:ui.meter(totals.accuracy)})}${!hasNewRounds || totals.incomplete ? ui.metric('未完成',totals.incomplete||0,'clock') : ''}${!hasNewRounds || totals.unanswered ? ui.metric('未答',totals.unanswered||0,'inbox') : ''}${hasNewRounds ? ui.metric('弃权',totals.abstained||0,'inbox') : ''}</div>${detail.report.questions.map((q,i)=>{
       const snapshot=s.questions.find(value=>value.id===q.id), options=snapshot?.options||[];
       return `<article class="cq-item"><div class="cq-item-head"><h3>第 ${i+1} 题</h3><div class="cq-actions">${s.endedAt?button('review-question','课后修订',false,`data-id="${esc(q.id)}"`):''}${button('copy-session','另存为我的题目',false,`data-id="${esc(q.id)}"`)}</div></div><p class="cq-question-preview">${esc(q.text|| (snapshot?.imageId?'图片题':'课件临时题'))}</p>${snapshot?.imageId?`<img class="cq-image" src="/api/card-quiz/images/${encodeURIComponent(snapshot.imageId)}" alt="本题配图">`:''}<ol type="A">${options.map(text=>`<li>${esc(text||'选项无文字')}</li>`).join('')}</ol><p class="cq-note">${q.answer?'标准答案 '+q.answer:'未设置答案'}${q.tags.length?' · '+esc(q.tags.join('、')):''}</p>${q.rounds.map((r,index)=>{
       if(r.status!=='closed')return `<details class="cq-round"><summary>第 ${index+1} 轮 · ${r.purpose==='practice'?'练习':'正式'} · ${r.status==='paused'?'已暂停':'收答中'}</summary><p class="cq-note">本轮尚未封存，结束后显示作答结果。</p></details>`;
-      const multiple=snapshot?.type==='multiple', participants=r.students.filter(x=>x.status!=='exempt'), complete=participants.filter(x=>completeAnswer(x,snapshot));
+      const round=snapshot?.rounds?.find(item=>item.id===r.id);
+      const multiple=snapshot?.type==='multiple', participants=r.students.filter(x=>x.status!=='exempt');
+      const complete=participants.filter(x=>CardQuizModel.completeAnswer(snapshot,x,round));
       const expected=s.roster.length-r.exempt, received=complete.length;
-      const incomplete=multiple?participants.filter(x=>!completeAnswer(x,snapshot)&&Object.keys(x.choices||{}).length).length:0;
-      const counts=options.map((_,index)=>complete.filter(x=>multiple?x.option.includes('ABCD'[index]):x.option==='ABCD'[index]).length), unanswered=Math.max(0,expected-received-incomplete);
-      const distribution=counts.map((n,index)=>`<tr><th scope="row">${'ABCD'[index]}</th><td class="cq-option-text">${esc(options[index]||'选项无文字')}</td><td>${n}</td><td class="cq-proportion">${received?`<span class="wb-meter-track">${ui.meter(n,received)}</span>${rate(n/received)}`:'暂无作答'}</td></tr>`);
-      if(multiple)distribution.push(`<tr><td>未完成</td><td></td><td>${incomplete}</td><td></td></tr>`);
-      distribution.push(`<tr><td>未答</td><td></td><td>${unanswered}</td><td></td></tr>`);
-      return `<details class="cq-round"><summary>第 ${index+1} 轮 · ${r.purpose==='practice'?'练习':'正式'} · 已封存${multiple?' · 未完成 '+incomplete:''}</summary><p class="cq-note">参与 ${received}/${expected}（${expected?(received/expected*100).toFixed(1)+'%':'无应答人数'}） · 已答正确率 ${r.purpose==='practice'?'练习不计入正式正确率':q.answer&&received?(r.correct/received*100).toFixed(1)+'%':'未判定'}</p>${multiple?'<p class="cq-note">多选按完整作答人数计算，各选项百分比相加可超过 100%。未完成不计错。</p>':''}${table(['选项','内容','人数','占已答人数'],distribution,'本轮匿名选项分布')}${table(['学生','作答','状态'],r.students.map(x=>`<tr><td>${esc(x.studentName)}</td><td>${esc(responseText(x,snapshot))}</td><td>${esc(statuses[x.status]||x.status)}</td></tr>`),'本题作答明细')}</details>`;
+      const incomplete=multiple?participants.filter(x=>!CardQuizModel.completeAnswer(snapshot,x,round)&&Object.keys(x.choices||{}).length).length:0;
+      const abstained=r.abstained || 0, unanswered=Math.max(0,expected-received-incomplete-abstained);
+      const bars=multiple ? CardQuizModel.distributionBars('multiple',r.combinationDistribution ?? CardQuizModel.combinationDistribution(complete)) :
+        options.map((_,i)=>({label:'ABCD'[i],count:complete.filter(x=>x.option==='ABCD'[i]).length}));
+      const distribution=bars.map(({label,count},i)=>`<tr${multiple && count === bars[0].count ? ' class="cq-most"' : ''}><th scope="row">${esc(label)}</th>${multiple?'':`<td class="cq-option-text">${esc(options[i]||'选项无文字')}</td>`}<td>${count}</td><td class="cq-proportion">${received?`<span class="wb-meter-track">${ui.meter(count,received)}</span>${rate(count/received)}`:'暂无作答'}</td></tr>`);
+      if(!multiple)distribution.push(`<tr><th scope="row">${round?.noCardPolicy === 'abstain' ? '弃权' : '未答'}</th><td></td><td>${round?.noCardPolicy === 'abstain' ? abstained : unanswered}</td><td></td></tr>`);
+      const headers=multiple?['组合','人数','占已答人数']:['选项','内容','人数','占已答人数'];
+      const chart = distribution.length ? table(headers,distribution,multiple?'本轮匿名组合分布':'本轮匿名选项分布',multiple?'cq-combinations':'')
+        : `<p class="cq-note">${expected===0?'全员免答':abstained===expected?'全员弃权':incomplete?'暂无完整作答':'无人作答'}</p>`;
+      const participation = [`参与 ${received}/${expected}${expected ? '（'+rate(received/expected)+'）' : ''}`];
+      if (multiple) for (const [label,n] of [['未完成',incomplete],['未答',unanswered],['弃权',abstained],['免答',r.exempt]]) {
+        if (n) participation.push(label+' '+n);
+      }
+      participation.push(r.purpose==='practice'?'练习不计入正式正确率':'已答正确率 '+(q.answer && received ? rate(r.correct/received) : '未判定'));
+      return `<details class="cq-round"><summary>第 ${index+1} 轮 · ${r.purpose==='practice'?'练习':'正式'} · 已封存</summary><p class="cq-note">${participation.join(' · ')}</p>${chart}${table(['学生','作答','状态'],r.students.map(x=>`<tr><td>${esc(x.studentName)}</td><td>${esc(responseText(x,snapshot,round))}</td><td>${esc(statuses[x.status]||x.status)}</td></tr>`),'本题作答明细')}</details>`;
     }).join('')}</article>`;}).join('')}</section><section class="cq-panel"><h2>本课学生汇总</h2>${statistics(detail.report.students,'学生')}</section>`;
   }
   function renderReports() {
     if(detail)return renderDetail();
     if(!report)return'<p class="cq-empty">请选择班级查询课堂记录。</p>';
-    return `<section class="cq-panel"><div class="cq-item-head"><h2>课堂记录</h2>${button('export','导出明细 CSV')}</div><div class="cq-list">${[...report.sessions].reverse().map(s=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}<br><small>${s.questionCount} 题 · ${s.endedAt?'已结束':'尚未结束'} · ${s.teacherId?'已认领':'待认领'}</small></p>${button('open-session','查看与修订',false,`data-id="${esc(s.id)}"`)}</div></article>`).join('')||'<p class="cq-empty">本班暂无已同步课堂。</p>'}</div></section><section class="cq-panel"><h2>学生汇总</h2><p class="cq-note">同人、同题、同版本取最近正式作答。未完成、未答、免答、未判定和练习分别展示；未完成和未答不直接计错。</p>${statistics(report.students,'学生')}</section><section class="cq-panel"><h2>知识点表现</h2><p class="cq-note">按手工标签汇总；请结合判定样本数阅读已答正确率。</p>${table(['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','已答正确率'],report.knowledge.map(k=>`<tr><td>${esc(names[k.subjectId]||k.subjectId)}</td><td>${esc(k.tag)}</td><td>${k.questionCount}</td><td>${k.answers}</td><td>${k.samples}</td><td>${k.correct}</td><td>${k.wrong}</td><td>${k.incomplete||0}</td><td>${rate(k.accuracy)}</td></tr>`),'知识点样本与正确率')}</section>`;
+    return `<section class="cq-panel"><div class="cq-item-head"><h2>课堂记录</h2>${button('export','导出明细 CSV')}</div><div class="cq-list">${[...report.sessions].reverse().map(s=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}<br><small>${s.questionCount} 题 · ${s.endedAt?'已结束':'尚未结束'} · ${s.teacherId?'已认领':'待认领'}</small></p>${button('open-session','查看与修订',false,`data-id="${esc(s.id)}"`)}</div></article>`).join('')||'<p class="cq-empty">本班暂无已同步课堂。</p>'}</div></section><section class="cq-panel"><h2>学生汇总</h2><p class="cq-note">同人、同题、同版本取最近的有效正式作答。正确率按已判定的作答计算。</p>${statistics(report.students,'学生')}</section><section class="cq-panel"><h2>知识点表现</h2><p class="cq-note">按手工标签汇总；请结合判定样本数阅读已答正确率。</p>${table(['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','已答正确率'],report.knowledge.map(k=>`<tr><td>${esc(names[k.subjectId]||k.subjectId)}</td><td>${esc(k.tag)}</td><td>${k.questionCount}</td><td>${k.answers}</td><td>${k.samples}</td><td>${k.correct}</td><td>${k.wrong}</td><td>${k.incomplete||0}</td><td>${rate(k.accuracy)}</td></tr>`),'知识点样本与正确率')}</section>`;
   }
   function render() {
     ui.preserveFocus(root, renderContent, () => root.querySelector('[data-cq-tab][aria-pressed="true"]'));

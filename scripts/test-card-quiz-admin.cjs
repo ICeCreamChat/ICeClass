@@ -188,8 +188,11 @@ test('多选报告区分完整空选择、未完成和未答，分布只统计�
   fixture.detail.session.roster=students.map((s,i)=>({id:'s'+i,name:s.studentName,cardNumber:i+1}));
   Object.assign(rq.rounds[0],{students,correct:1,wrong:3,incomplete:1,unanswered:1,exempt:1,ungraded:0});
   await page.locator('[data-cq-tab=reports]').click();await page.locator('[data-cq-action=open-session]').click();await page.locator('.cq-round summary').click();
-  const rows=await page.locator('[aria-label="本轮匿名选项分布"] tbody tr').allTextContents();
-  assert.deepEqual(rows,['A一375.0%','B二125.0%','C三250.0%','D四00.0%','未完成1','未答1']);
+  const rows=await page.locator('[aria-label="本轮匿名组合分布"] tbody tr').allTextContents();
+  assert.deepEqual(rows,['A125.0%','ABC125.0%','AC125.0%','全不选125.0%']);
+  assert.equal(await page.locator('.cq-combinations .cq-most').count(),4);
+  assert.ok(await page.getByRole('region',{name:'本轮匿名组合分布'}).evaluate(node=>node.scrollWidth<=node.clientWidth+1));
+  assert.match(await page.locator('.cq-round > .cq-note').innerText(), /未完成 1 · 未答 1 · 免答 1/);
   const text=await page.locator('.cq-round').innerText();assert.match(text,/参与 4\/6/);assert.match(text,/25\.0%/);
   const detailRows=await page.locator('[aria-label="本题作答明细"] tbody tr').allTextContents();
   assert.match(detailRows[3],/全不选.*全不选.*错误/);
@@ -208,10 +211,44 @@ test('未设标准答案及练习多选的有效空选择仍计完成，部分�
   const{page,fixture}=await setup(t);const q=fixture.detail.session.questions[0],rq=fixture.detail.report.questions[0];
   Object.assign(q,{type:'multiple',options:['一','二'],answer:null});rq.answer=null;
   const students=[{studentName:'空选择',option:'',choices:{A:false,B:false},status:'practice'},{studentName:'未收齐',option:'A',choices:{A:true},status:'incomplete'}];
-  rq.rounds=[{...rq.rounds[0],purpose:'practice',correct:0,wrong:0,ungraded:0,practice:1,incomplete:1,unanswered:0,students}];
+  rq.rounds=[{...rq.rounds[0],purpose:'practice',correct:0,wrong:0,ungraded:0,practice:1,incomplete:1,unanswered:0,combinationDistribution:{'':1},students}];
   await page.locator('[data-cq-tab=reports]').click();await page.locator('[data-cq-action=open-session]').click();await page.locator('.cq-round summary').click();
   assert.match(await page.locator('.cq-round').innerText(),/参与 1\/2/);
-  assert.deepEqual(await page.locator('[aria-label="本轮匿名选项分布"] tbody tr').allTextContents(),['A一00.0%','B二00.0%','未完成1','未答0']);
+  assert.deepEqual(await page.locator('[aria-label="本轮匿名组合分布"] tbody tr').allTextContents(),['全不选1100.0%']);
+});
+
+test('多选轮全员免答时，报告显示状态与个人明细', async t=>{
+  const {page,fixture}=await setup(t);
+  const {session,report}=fixture.detail;
+  session.questions[0].type='multiple';
+  const r=report.questions[0].rounds[0];
+  Object.assign(r,{exempt:2,correct:0,unanswered:0,combinationDistribution:{},
+    students:session.roster.map(s=>({studentName:s.name,option:null,status:'exempt'}))});
+  await page.locator('[data-cq-tab=reports]').click();await page.locator('[data-cq-action=open-session]').click();
+  await page.locator('.cq-round summary').click();
+  assert.ok(await page.getByText('全员免答',{exact:true}).isVisible());
+  assert.equal(await page.getByRole('region',{name:'本轮匿名组合分布'}).count(),0);
+  assert.equal(await page.locator('[aria-label="本题作答明细"] tbody tr').count(),2);
+});
+
+test('新轮次只在 A、C 举卡也显示 AC，弃权和免答在组合外统计',async t=>{
+  const {page,fixture}=await setup(t,390);
+  const {session,report}=fixture.detail, q=session.questions[0], round=report.questions[0].rounds[0];
+  Object.assign(q,{type:'multiple',options:[...'ABCD'],rounds:[{id:round.id,noCardPolicy:'abstain'}]});
+  const students=[
+    {studentName:'甲',option:'AC',choices:{A:true,C:true},status:'correct'},
+    {studentName:'乙',option:'B',choices:{B:true},status:'wrong'},
+    {studentName:'丙',option:null,status:'abstained'}, {studentName:'丁',option:null,status:'exempt'}
+  ];
+  session.roster=students.map((student,i)=>({id:'s'+i,name:student.studentName,cardNumber:i+1}));
+  Object.assign(round,{students,abstained:1,exempt:1,correct:1,wrong:1,incomplete:0,unanswered:0});
+  await page.locator('[data-cq-tab=reports]').click(); await page.locator('[data-cq-action=open-session]').click();
+  await page.locator('.cq-round summary').focus(); await page.keyboard.press('Enter');
+  assert.deepEqual(await page.locator('.cq-combinations tbody tr').allTextContents(),['AC150.0%','B150.0%']);
+  assert.match(await page.locator('.cq-round > .cq-note').innerText(),/参与 2\/3.*弃权 1 · 免答 1/);
+  const rows=await page.locator('[aria-label="本题作答明细"] tbody tr').allTextContents();
+  assert.deepEqual(rows,['甲AC正确','乙B错误','丙弃权弃权','丁—免答']);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
 });
 
 test('学生、知识点与本课汇总保留服务端未完成数，不混入错误或正确率',async t=>{
@@ -219,7 +256,7 @@ test('学生、知识点与本课汇总保留服务端未完成数，不混入�
   fixture.detail.report.totals=totals;fixture.detail.report.students=[{studentName:'学生甲',...totals}];
   fixture.knowledge=[{subjectId:'math',tag:'集合',questionCount:1,answers:7,...totals}];
   await page.locator('[data-cq-tab=reports]').click();await page.locator('[data-cq-action=open-session]').waitFor();
-  assert.deepEqual(await page.locator('[aria-label="学生统计"] tbody tr').first().locator('td').allTextContents(),['学生甲','4','1','3','2','1','0','0','0','25.0%']);
+  assert.deepEqual(await page.locator('[aria-label="学生统计"] tbody tr').first().locator('td').allTextContents(),['学生甲','4','1','3','2','1','0','0','0','0','25.0%']);
   assert.deepEqual(await page.locator('[aria-label="知识点样本与正确率"] tbody tr').first().locator('td').allTextContents(),['数学','集合','1','7','4','1','3','2','25.0%']);
   await page.locator('[data-cq-action=open-session]').click();
   const incomplete = page.locator('.cq-summary .wb-metric').filter({has:page.getByText('未完成',{exact:true})});

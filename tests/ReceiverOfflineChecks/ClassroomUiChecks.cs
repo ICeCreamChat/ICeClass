@@ -26,6 +26,7 @@ internal static class ClassroomUiChecks
         var failures = new List<string>();
         var presentationChecks = 0;
         var windows = new List<Window>();
+        BanbanVoiceWindow? assistant = null;
         void Assert(bool condition, string label) { (condition ? checks : failures).Add(label); }
         async Task Render(Window window, string name, double width, double height)
         {
@@ -56,7 +57,8 @@ internal static class ClassroomUiChecks
             presentationChecks = IslandRibbonChecks.Run() + IslandSpringChecks.Run()
                 + IslandHoldingArmChecks.Run() + IslandDemoChecks.Run();
             var binding = new ReceiverConfig {Endpoint="http://127.0.0.1:1",DeviceId="isolated-ui-test",DeviceToken="fixture",ClassId="test",ClassName="高一（1）班",DeviceName="隔离界面检查"};
-            var home = new StudentVoiceWindow(binding, _ => Task.CompletedTask);
+            assistant = new BanbanVoiceWindow(binding, () => { }, enabled: false, petPreferencePath: Path.Combine(output, "pet-preferences.json"));
+            var home = new StudentVoiceWindow(binding, _ => Task.CompletedTask, openCardQuiz: assistant.TryOpenClassroom);
             Assert(!((Control)home.Content!).GetVisualDescendants().OfType<ReadingBrowser>().Single().IsVisible, "Home browser stays hidden until the ready handshake");
             await Render(home,"home-loading",1280,850);
             var homeBrowser = home.GetVisualDescendants().OfType<ReadingBrowser>().Single();
@@ -64,6 +66,25 @@ internal static class ClassroomUiChecks
             while (!homeBrowser.IsVisible && DateTime.UtcNow < deadline) await Task.Delay(50);
             Assert(homeBrowser.IsVisible && homeBrowser.Core?.Source.Contains("/homework/classroom/index.html") == true,
                 "The real local WebView initializes while hidden and becomes visible after ready");
+            var core = homeBrowser.Core!;
+            const string openQuiz = """document.querySelector('[data-action="card-quiz"]').click()""";
+            await core.ExecuteScriptAsync("""document.querySelector('[data-action="workshop"]').click()""");
+            await core.ExecuteScriptAsync(openQuiz);
+            deadline = DateTime.UtcNow.AddSeconds(5);
+            while (home.IsVisible && DateTime.UtcNow < deadline) await Task.Delay(50);
+            Assert(!home.IsVisible && assistant.CompanionVisible && assistant.ClassroomHost is not null && !assistant.IsVisible,
+                "The workshop hands off to the original Banban classroom and puts the home in the tray");
+            home.Show(); home.WindowState = WindowState.Normal;
+            Assert(await core.ExecuteScriptAsync("document.getElementById('detail-dialog').open") == "true",
+                "Restoring the home preserves the open workshop");
+            assistant.Shutdown();
+            await core.ExecuteScriptAsync(openQuiz);
+            const string handoffError = """document.getElementById('toast').textContent === '班班课堂暂时无法打开，请稍后重试。'""";
+            deadline = DateTime.UtcNow.AddSeconds(5);
+            while (await core.ExecuteScriptAsync(handoffError) != "true" && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+            Assert(home.IsVisible && await core.ExecuteScriptAsync(handoffError) == "true",
+                "An unavailable classroom leaves the workshop visible with feedback");
             home.Close();
             var ideas = new CreativeIdeasWindow(binding);
             Assert(!((Control)ideas.Content!).GetVisualDescendants().OfType<ReadingBrowser>().Single().IsVisible, "Ideas browser stays hidden until navigation succeeds");
@@ -114,6 +135,7 @@ internal static class ClassroomUiChecks
         catch (Exception error) { failures.Add(error.ToString()); }
         finally
         {
+            assistant?.Shutdown();
             foreach (var window in windows.Where(w => w.IsVisible)) window.Close();
             await File.WriteAllTextAsync(Path.Combine(output,"checks.json"),JsonSerializer.Serialize(new {passed=checks.Count,checks,presentationChecks,windowsAnimations=DesktopStyle.AnimationsEnabled(),failures},new JsonSerializerOptions {WriteIndented=true}));
             Console.WriteLine($"{checks.Count} native UI checks and {presentationChecks} island presentation checks passed; {failures.Count} failed.");

@@ -5,10 +5,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>纸卡答题 · ICeClass</title>
   <link rel="stylesheet" href="../assets/typography.css">
-  <link rel="stylesheet" href="../assets/classroom-glass.css"><link rel="stylesheet" href="classroom.css"><link rel="stylesheet" href="../assets/control-focus.css">
+  <link rel="stylesheet" href="../assets/classroom-glass.css"><link rel="stylesheet" href="classroom.css"><link rel="stylesheet" href="classroom-disc.css"><link rel="stylesheet" href="classroom-disc-editor.css"><link rel="stylesheet" href="../assets/control-focus.css">
   <script src="vendor/cv.js" defer></script><script src="vendor/aruco.js" defer></script>
   <script src="vendor/qrcodegen.js" defer></script><script src="model.js" defer></script>
-  <script src="journal.js" defer></script><script src="scanner.js" defer></script><script src="classroom-wheel.js" defer></script><script src="classroom.js" defer></script>
+  <script src="journal.js" defer></script><script src="scanner.js" defer></script><script src="camera-preview.js" defer></script><script src="classroom-video.js" defer></script><script src="classroom-wheel.js" defer></script><script src="classroom-disc.js" defer></script><script src="classroom-disc-editor.js" defer></script><script src="classroom.js" defer></script>
 </head>
 <body class="classroom-liquid classroom-light-material">
   <main class="quiz-shell">
@@ -31,13 +31,13 @@
       <div class="session-bar"><span data-panes="capture question distribution" id="question-number"></span><span data-panes="next" id="next-preview" class="pet-only"></span><span data-panes="summary" id="sync-status" role="status"></span><button data-panes="summary" id="sync" type="button">同步记录</button></div>
       <div class="quiz-columns">
         <aside class="surface lg-pane capture-surface" aria-label="收答控制">
-          <div data-panes="capture distribution" class="capture-count"><strong id="received">0</strong><span id="expected"> / 0 人已收</span></div>
+          <div data-panes="capture distribution" class="capture-count"><span class="dist-count-label">已答 </span><strong id="received">0</strong><span id="expected"> / 0 人已收</span></div>
           <p data-panes="capture" id="round-status" role="status"></p>
           <p data-panes="capture" id="capture-progress" class="muted" hidden></p>
           <div data-panes="capture" class="actions capture-actions"><button id="start" type="button" class="primary">开始收答</button><button id="stop" type="button" disabled>结束本轮</button><button id="pause" type="button" hidden>暂停</button><button id="camera-toggle" type="button" hidden>开启相机</button></div>
           <div data-panes="capture" id="multi-capture" class="multi-capture" hidden>
             <div class="multi-controls"><label>当前收答项<select id="multi-option" aria-describedby="multi-instruction"></select></label><button id="multi-next" type="button">收下一项</button></div>
-            <p id="multi-instruction">A 朝上表示选，B 朝上表示不选。</p><p id="multi-progress" class="muted" role="status" aria-live="polite"></p>
+            <p id="multi-instruction">选才举卡，A 朝上。</p><p id="multi-progress" class="muted" role="status" aria-live="polite"></p>
           </div>
           <video id="camera" muted playsinline aria-label="本机相机预览" hidden></video>
           <p data-panes="capture" id="camera-status" class="muted" role="status" hidden>视频仅在本机识别。</p>
@@ -65,7 +65,32 @@
     <label>知识点（逗号分隔）<input id="edit-tags" maxlength="8049"></label><p id="editor-error" class="error" role="alert"></p>
     <footer class="actions"><button type="button" data-dismiss="editor">取消</button><button type="submit" class="primary">保存设置</button></footer>
   </form></dialog>
-  <dialog id="pair-dialog" aria-labelledby="pair-heading"><header class="dialog-header"><h2 id="pair-heading">手机接力扫码</h2><button type="button" data-dismiss="pair-dialog">关闭</button></header><div id="pair-qr" class="pair-qr"></div><p>老师用手机扫描，登录教师账号后配对。</p><p class="pair-code" id="pair-code"></p><p id="pair-url" class="muted"></p><p id="pair-status" role="status">配对后在白板确认切换采集来源。</p><div class="actions"><button type="button" id="confirm-phone" class="primary">确认使用此手机</button></div></dialog>
-  <dialog id="exempt-dialog" aria-labelledby="exempt-heading"><header class="dialog-header"><h2 id="exempt-heading">本轮卡号</h2><button type="button" data-dismiss="exempt-dialog">关闭</button></header><p id="card-check-scope" class="muted"></p><div id="exempt-cards" class="exempt-cards"></div></dialog>
+  <dialog id="pair-dialog" aria-labelledby="pair-heading">
+    <header class="dialog-header"><h2 id="pair-heading">手机接力扫码</h2><button type="button" data-dismiss="pair-dialog">关闭</button></header>
+    <div id="pair-qr" class="pair-qr" hidden></div>
+    <p class="pair-code" id="pair-code" hidden></p>
+    <p id="pair-status" role="status"></p>
+    <div class="actions"><button type="button" id="confirm-phone" class="primary" hidden>确认使用此手机</button></div>
+  </dialog>
+  <dialog id="exempt-dialog" aria-labelledby="exempt-heading" aria-describedby="card-check-scope">
+    <header class="dialog-header"><h2 id="exempt-heading">本轮卡号</h2><button type="button" data-dismiss="exempt-dialog">关闭</button></header>
+    <p id="card-check-scope" class="muted"></p>
+    <button id="card-overview" type="button" aria-label="查卡号" aria-describedby="card-check-scope" hidden>
+      <span id="card-map" aria-hidden="true"></span>
+      <span id="card-key" aria-hidden="true">
+        <span data-state="received"><i class="card-dot"></i>已收</span>
+        <span data-state="pending"><i class="card-dot"></i>待收</span>
+        <span data-state="abstained"><i class="card-dot"></i>弃权</span>
+        <span data-state="unanswered"><i class="card-dot"></i>未答</span>
+        <span data-state="partial"><i class="card-dot"></i>未完成</span>
+        <span data-state="exempt"><i class="card-dot"></i>免答</span>
+      </span>
+      <span class="card-map-link">查卡号</span>
+    </button>
+    <div id="card-details">
+      <div id="exempt-cards" class="exempt-cards"></div>
+      <nav id="card-pages" aria-label="卡号翻页" hidden><button id="card-prev" type="button" aria-label="上一页卡号">‹</button><select id="card-page" aria-label="跳到卡号段"></select><button id="card-next" type="button" aria-label="下一页卡号">›</button></nav>
+    </div>
+  </dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-heading"><h2 id="confirm-heading"></h2><p id="confirm-description"></p><div class="actions"><button type="button" id="confirm-cancel">取消</button><button type="button" id="confirm-ok" class="primary">确认</button></div></dialog>
 </body></html>

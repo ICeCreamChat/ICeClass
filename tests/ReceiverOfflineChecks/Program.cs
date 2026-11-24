@@ -36,8 +36,21 @@ if (args is ["--self-study-scenario-checks", var selfStudyScenarioOutput])
 if (args is ["--homework-review", var homeworkBinding]) { HomeworkReview.Run(homeworkBinding); return; }
 if (args is ["--card-quiz-review", var cardQuizBinding]) { CardQuizReview.Run(cardQuizBinding); return; }
 if (args is ["--card-quiz-review", var companionBinding, "--companion"]) { CardQuizReview.Run(companionBinding); return; }
+if (args is ["--card-quiz-review", var setupBinding, "--setup"]) { CardQuizReview.Run(setupBinding, openSetup: true); return; }
+if (args is ["--card-quiz-school-test"])
+{
+    try { await CardQuizReview.RunSchoolTestAsync(); }
+    catch (Exception error) { Console.Error.WriteLine(error.Message); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--card-quiz-wheel-checks", var wheelOutput]) { CardQuizWheelChecks.Run(wheelOutput); return; }
+if (args is ["--card-quiz-video-cadence", var cadenceOutput, var cadenceVideo])
+{ CardQuizWheelChecks.Run(cadenceOutput,cadenceVideo,videoCadence:true); return; }
 if (args is ["--card-quiz-wheel-checks", var videoOutput, var twoCardVideo]) { CardQuizWheelChecks.Run(videoOutput, twoCardVideo); return; }
+if (args is ["--card-quiz-lens-review", var lensOutput, var lensVideo])
+{ CardQuizWheelChecks.Run(lensOutput, lensVideo, interactive: true); return; }
+if (args is [("--card-check-small" or "--card-check-review"), var cardOutput, var cardVideo])
+{ CardQuizWheelChecks.Run(cardOutput, cardVideo, smallClass:true, interactive:args[0] == "--card-check-review"); return; }
 if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
 if (args is ["--classroom-home-checks"]) { await ClassroomHomeChecks.Run(); return; }
 if (args is ["--classroom-ui-checks", var classroomUiOutput]) { ClassroomUiChecks.Run(classroomUiOutput); return; }
@@ -246,6 +259,67 @@ if (args is ["--crash-write", var folder])
 Directory.CreateDirectory(root);
 try
 {
+    var installDir = Directory.CreateDirectory(Path.Combine(root, "install")).FullName;
+    var userDir = Path.Combine(root, "user");
+    var bindings = new ReceiverConfigStore(installDir, userDir);
+    var installedPath = Path.Combine(installDir, "config.json");
+    var userPath = Path.Combine(userDir, "config.json");
+    ReceiverConfig TestBinding(string name) => new() {
+        Endpoint = "https://school.invalid", DeviceId = Guid.NewGuid().ToString(), ClassId = Guid.NewGuid().ToString(),
+        ClassName = name, DeviceToken = "offline-test-" + name
+    };
+    var installed = TestBinding("legacy");
+    var userBinding = TestBinding("user");
+    Check(!bindings.CanUseDefaultBinding(installed), "a fresh installation has no default binding to reuse");
+    var originalLegacy = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(installed);
+    File.WriteAllBytes(installedPath, originalLegacy);
+    Check(ReceiverConfig.TryRead(installedPath, out var explicitBinding), "the synthetic classroom binding is readable");
+    explicitBinding.DeviceToken += "-other";
+    Check(bindings.CanUseDefaultBinding(explicitBinding) && !bindings.CanUseDefaultBinding(userBinding) &&
+        !File.Exists(userPath) && File.ReadAllBytes(installedPath).SequenceEqual(originalLegacy),
+        "a matching legacy binding can reuse normal startup without migrating during lookup");
+    bindings.Save(installed);
+    Check(bindings.CanUseDefaultBinding(installed), "matching legacy and user bindings can reuse the default process");
+    bindings.Save(userBinding);
+    var originalUser = File.ReadAllBytes(userPath);
+    Check(!bindings.CanUseDefaultBinding(installed) && !bindings.CanUseDefaultBinding(userBinding) &&
+        File.ReadAllBytes(installedPath).SequenceEqual(originalLegacy) && File.ReadAllBytes(userPath).SequenceEqual(originalUser),
+        "conflicting classroom bindings both stay isolated and both files are preserved byte for byte");
+    Check(bindings.TryLoad(out var loaded) && loaded.DeviceId == installed.DeviceId && !File.Exists(installedPath) &&
+        ReceiverConfig.TryRead(userPath, out var migrated) && migrated.DeviceId == installed.DeviceId &&
+        migrated.ClassId == installed.ClassId && migrated.DeviceToken == installed.DeviceToken, "normal lookup still migrates the legacy binding to the user store");
+    var installedKey = CardQuizService.BindingKey(installed);
+    Check(installedKey != CardQuizService.BindingKey(userBinding), "distinct bindings have separate paper classroom keys");
+    installed.Endpoint += "/";
+    var migratedBytes = File.ReadAllBytes(userPath);
+    Check(bindings.CanUseDefaultBinding(installed) && !bindings.CanUseDefaultBinding(userBinding) &&
+        CardQuizService.BindingKey(installed) == installedKey && File.ReadAllBytes(userPath).SequenceEqual(migratedBytes),
+        "a user binding can be reused with a trailing endpoint slash and keeps its classroom key");
+    Check(CardQuizService.BindingKey(explicitBinding) == installedKey && bindings.CanUseDefaultBinding(explicitBinding) &&
+        bindings.TryLoad(out loaded) && loaded.DeviceToken == installed.DeviceToken,
+        "an explicit file with a different token reuses the user binding and its stored credential");
+    var adjacentBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(explicitBinding);
+    File.WriteAllBytes(installedPath, adjacentBytes);
+    Check(bindings.CanUseDefaultBinding(explicitBinding) && bindings.CanUseDefaultBinding(installed) &&
+        File.ReadAllBytes(installedPath).SequenceEqual(adjacentBytes) && File.ReadAllBytes(userPath).SequenceEqual(migratedBytes),
+        "different tokens for the same binding reuse the default process without changing either file during lookup");
+    Check(bindings.TryLoad(out loaded) && loaded.DeviceToken == explicitBinding.DeviceToken && !File.Exists(installedPath) &&
+        ReceiverConfig.TryRead(userPath, out var saved) && saved.DeviceToken == explicitBinding.DeviceToken,
+        "normal startup still prefers and migrates the adjacent credential for the same classroom");
+
+    var preview = TestBinding("preview");
+    preview.Endpoint = "http://127.0.0.1:19301";
+    var userBeforePreview = File.ReadAllBytes(userPath);
+    bindings.Save(preview);
+    var previewBytes = File.ReadAllBytes(installedPath);
+    Check(bindings.CanUseDefaultBinding(preview) && !bindings.CanUseDefaultBinding(installed) &&
+        bindings.TryLoad(out loaded) && loaded.DeviceId == preview.DeviceId &&
+        File.ReadAllBytes(installedPath).SequenceEqual(previewBytes) && File.ReadAllBytes(userPath).SequenceEqual(userBeforePreview),
+        "an adjacent loopback binding takes precedence and stays separate from the saved classroom");
+    var misplacedPreview = new ReceiverConfigStore(Path.Combine(root, "empty-install"), installDir);
+    Check(!misplacedPreview.CanUseDefaultBinding(preview) && !misplacedPreview.TryLoad(out _),
+        "a loopback binding in the user directory alone is not a default classroom");
+
     var store = new ReadingOutbox(root);
     var shared = ReadingOutbox.Open(Path.Combine(root, "shared"));
     var nextBinding = ReadingOutbox.Open(Path.Combine(root, "shared"));

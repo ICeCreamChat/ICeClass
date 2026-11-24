@@ -101,8 +101,8 @@ internal static class BanbanPetDragChecks
                     : pet.Position.X + (int)Math.Ceiling(pet.Width * screen.Scaling) == screen.WorkingArea.Right),
                     $"{side}/{size}% release snaps to the edge nearest the character after crossing the desktop");
                 Check(talks == 0, $"{side}/{size}% dragging never starts a voice conversation");
-                Check(talk.ContextMenu!.Items.OfType<MenuItem>().Any(i => Equals(i.Header, "大小"))
-                    && !talk.ContextMenu.Items.OfType<MenuItem>().Any(i => Equals(i.Header, "大小…")),
+                Check(pet.PetMenu.Actions.Any(i => i.ActionId == "大小")
+                    && !pet.PetMenu.Actions.Any(i => i.ActionId == "大小…"),
                     "the size menu label has no trailing ellipsis");
                 if (size == 100 && side == Key.Right)
                 {

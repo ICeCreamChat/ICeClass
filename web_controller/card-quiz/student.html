@@ -13,8 +13,8 @@
   <script src="vendor/cv.js" defer></script>
   <script src="vendor/aruco.js" defer></script>
   <script src="cards.js" defer></script>
-  <script src="print-card.js?v=2" defer></script>
-  <script src="student.js?v=2" defer></script>
+  <script src="print-card.js?v=3" defer></script>
+  <script src="student.js?v=3" defer></script>
 </head>
 <body class="student-page">
   <a class="student-skip" href="#student-main">跳到主要内容</a>
@@ -28,7 +28,7 @@
         <div class="student-section-heading"><h2 id="student-analysis-title">个人课堂分析</h2><div class="student-report-tools"><label for="student-subject">学科</label><select id="student-subject"><option value="">全部学科</option><option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option><option value="physics">物理</option><option value="chemistry">化学</option><option value="biology">生物</option><option value="politics">政治</option><option value="history">历史</option><option value="geography">地理</option></select><button type="button" id="student-report-reload">重新载入</button></div></div>
         <p id="student-report-feedback" class="student-feedback" role="status" aria-live="polite" tabindex="-1"></p>
         <div id="student-totals"></div>
-        <p class="student-note student-denominator">正确率 = 正确 / 判定样本（正确 + 错误）。未完成、未答、免答、未判定、练习和已被替代的记录不进入正确率分母。</p>
+        <p class="student-note student-denominator">正确率 = 正确 /（正确 + 错误）。只统计已判定的有效正式作答。</p>
         <div class="student-tabs" role="group" aria-label="个人课堂分析内容"><button type="button" data-student-view="records" aria-pressed="true">作答记录</button><button type="button" data-student-view="wrong" aria-pressed="false">错题回顾</button><button type="button" data-student-view="knowledge" aria-pressed="false">知识点统计</button></div>
         <div id="student-report" aria-busy="false"></div>
       </section>

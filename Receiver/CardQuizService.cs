@@ -34,13 +34,16 @@ internal sealed class CardQuizService : IDisposable
     {
         _config = new ReceiverConfig { Endpoint = ReceiverConfig.NormalizeEndpoint(config.Endpoint), DeviceId = config.DeviceId,
             DeviceToken = config.DeviceToken, ClassId = config.ClassId, ClassName = config.ClassName };
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_config.Endpoint + "\n" + _config.DeviceId + "\n" + _config.ClassId)))[..24];
+        var key = BindingKey(_config);
         var root = ReceiverConfig.IsPreview(config) ? Path.Combine(AppContext.BaseDirectory, "CardQuizData", key) :
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "CardQuiz", key);
         Store = new CardQuizStore(root, _config.ClassId, _config.DeviceId);
         _revoked = Store.LoadCache("context")?["revoked"]?.GetValue<bool>() == true;
         _ = Task.Run(() => RunAsync(_lifetime.Token));
     }
+    internal static string BindingKey(ReceiverConfig config) => Convert.ToHexString(SHA256.HashData(
+        Encoding.UTF8.GetBytes(ReceiverConfig.NormalizeEndpoint(config.Endpoint) + "\n" + config.DeviceId + "\n" + config.ClassId)))[..24];
+
     internal bool Matches(ReceiverConfig config) => _config.Endpoint == ReceiverConfig.NormalizeEndpoint(config.Endpoint) &&
         _config.DeviceId == config.DeviceId && _config.ClassId == config.ClassId && _config.DeviceToken == config.DeviceToken;
     internal static CardQuizService For(ReceiverConfig config)
@@ -325,8 +328,14 @@ internal sealed class CardQuizService : IDisposable
         var journal = Store.Read(sessionId) ?? throw new InvalidDataException("请先在本机建立课堂。");
         if (journal["session"]!["endedAt"] is not null) throw new InvalidOperationException("课堂已经结束。");
         await SyncAsync(false, token);
-        return await SendAsync("device/pair", new JsonObject { ["sessionId"] = sessionId }, token);
+        var pair = await SendAsync("device/pair", new JsonObject { ["sessionId"] = sessionId, ["quickScan"] = true }, token);
+        // The device binding has the public origin, including HTTPS behind the school's reverse proxy.
+        var link = new Uri(pair["url"]!.GetValue<string>(), UriKind.Absolute);
+        pair["url"] = _config.Endpoint + link.PathAndQuery + link.Fragment;
+        return pair;
     }
+    internal Task<JsonObject> CancelPairAsync(string sessionId, string pairId, CancellationToken token) =>
+        SendAsync("device/pair/cancel", new JsonObject { ["sessionId"] = sessionId, ["pairId"] = pairId }, token);
     private async Task RunAsync(CancellationToken token)
     {
         var failures = 0;

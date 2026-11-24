@@ -1,5 +1,6 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory(require('./vendor/aruco.js'));else root.CardQuizScanner=factory(root.ICeCardAR);})(globalThis,function(AR){
   'use strict';
+  const frameSignalMaxAge=1000;
   function answerFromCorners(corners){
     if(!Array.isArray(corners)||corners.length!==4)return'';
     const dx=corners[0].x-corners[2].x,dy=corners[0].y-corners[2].y;
@@ -7,6 +8,11 @@
     const angle=Math.atan2(dy,dx)*180/Math.PI;
     if(Math.abs(angle-Math.round(angle/90)*90)<8)return'';
     return angle>0?(angle<90?'C':'B'):(angle> -90?'D':'A');
+  }
+  function samePixels(previous,current){
+    if(!previous || previous.length!==current.length)return false;
+    for(let i=0;i<current.length;i++)if(previous[i]!==current[i])return false;
+    return true;
   }
   class Stabilizer{
     constructor(){this.entries=new Map();this.visible=new Map();this.held=new Map();this.frame=0;this.conflicts=[];}
@@ -21,6 +27,11 @@
       for(const [number,option] of cards || []) this.held.set(number,{option,absent:0});
     }
     forget(number){this.entries.delete(number);}
+    discardCandidates(){
+      for(const entry of this.entries.values()){
+        entry.history=[];entry.streak=0;
+      }
+    }
     feed(markers,at,optionCount=4){
       this.frame++;this.conflicts=[];const groups=new Map(),results=[];
       for(const merged of markers)for(const marker of merged.observations||[merged]){
@@ -60,7 +71,12 @@
     }
   }
   class CardQuizScanner{
-    constructor({video,onRead,onStatus=()=>{},readTrack=false}){this.video=video;this.onRead=onRead;this.onStatus=onStatus;this.readTrack=readTrack;this.stabilizer=new Stabilizer();this.optionCount=4;this.running=false;this.opening=0;this.contextKey='';this.contextRevision=0;this.starting=null;}
+    constructor({video,onRead,onPreview,onStatus=()=>{},readTrack=false,waitForFrames=false}){
+      this.video=video;this.onRead=onRead;this.onPreview=onPreview;this.onStatus=onStatus;
+      this.readTrack=readTrack;this.waitForFrames=waitForFrames;
+      this.stabilizer=new Stabilizer();this.optionCount=4;this.running=false;this.opening=0;
+      this.contextKey='';this.contextRevision=0;this.starting=null;
+    }
     reset(key,optionCount=4,presentationKey=key){
       if(this.contextKey===key&&this.optionCount===optionCount)return;
       if(this.presentationKey!==presentationKey)this.heldCards=null;
@@ -69,11 +85,15 @@
       this.stabilizer.reset();this.stabilizer.waitForNewPresentation(this.heldCards);
     }
     cardsInView(){return this.running?this.stabilizer.cardsInView():this.heldCards;}
-    waitForNewPresentation(cards){this.heldCards=cards;}
+    waitForNewPresentation(cards){
+      this.heldCards=cards;
+      if(this.running)this.stabilizer.waitForNewPresentation(cards);
+    }
     async start(){
       if(this.running)return;
       if(this.starting)return this.starting;
-      if(!globalThis.isSecureContext||!navigator.mediaDevices?.getUserMedia)throw new Error('摄像头需要 HTTPS 或本机安全页面，请检查访问网址。');
+      if(!globalThis.isSecureContext)throw new Error('摄像头需要 HTTPS 或本机安全页面，请检查访问网址。');
+      if(!navigator.mediaDevices?.getUserMedia)throw new DOMException('当前环境无法访问摄像头。','NotSupportedError');
       const opening=++this.opening,operation=this.open(opening);this.starting=operation;
       try{await operation;}finally{if(this.starting===operation)this.starting=null;}
     }
@@ -95,7 +115,24 @@
       const tracks=stream.getVideoTracks();
       for(const track of tracks)track.addEventListener('ended',ended,{once:true});
       if(!tracks.length||tracks.some(track=>track.readyState==='ended')){ended();return;}
-      try{await this.video.play();}catch(error){if(opening!==this.opening){release();return;}this.stop();throw new Error('相机预览未能打开，请重试。');}
+      this.onStatus({kind:'starting',message:'正在打开相机预览…'});
+      let previewTimer;
+      try{
+        const playback=Promise.resolve(this.video.play());
+        if(this.waitForFrames){
+          // A live camera can deliver its first frame after play() has been pending for several seconds.
+          playback.catch(()=>{
+            if(opening===this.opening)this.cameraError('相机预览未能打开，请重新开启相机。');
+          });
+        }else{
+          await Promise.race([playback,new Promise((_,reject)=>{
+            previewTimer=setTimeout(()=>reject(new Error('preview timeout')),8000);
+          })]);
+        }
+      }catch(error){
+        if(opening!==this.opening){release();return;}
+        this.stop();throw new Error('相机预览未能打开，请重新开启相机。');
+      }finally{clearTimeout(previewTimer);}
       if(opening!==this.opening){release();return;}
       try{
         this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});
@@ -103,12 +140,50 @@
         if(this.readTrack && typeof MediaStreamTrackProcessor === 'function')
           this.reader=new MediaStreamTrackProcessor({track:tracks[0],maxBufferSize:1}).readable.getReader();
       }catch(error){this.stop();throw error;}
-      this.running=true;this.lastFrame=null;this.lastFrameAt=performance.now();this.stabilizer.reset();
+      this.running=true;this.lastFrame=null;this.lastFrameSource=null;this.sawFrameCounter=false;this.frameCounts={};
+      this.waitingForFrames=this.waitForFrames;
+      this.previewStartedAt=this.lastFrameAt=performance.now();this.stabilizer.reset();
       this.stabilizer.waitForNewPresentation(this.heldCards);
-      this.onStatus({kind:'ready',message:'相机已开启'});this.tick();
+      this.onStatus(this.waitingForFrames?{kind:'starting',message:'等待相机画面…'}:{kind:'ready',message:'相机已开启'});
+      this.tick();
     }
     cameraError(message){
       this.stop();this.onStatus({kind:'error',message});
+    }
+    recentFrameCount(kind,value,now){
+      if(!Number.isFinite(value)||value<=0)return null;
+      let sample=this.frameCounts[kind];
+      if(sample?.value!==value){
+        sample={kind,value,changedAt:now};
+        this.frameCounts[kind]=sample;
+      }
+      return now-sample.changedAt<frameSignalMaxAge?sample:null;
+    }
+    previewFrame(video,now){
+      const hasCallback=!this.readTrack && typeof video.requestVideoFrameCallback==='function';
+      if(hasCallback){
+        if(this.frameCallback==null){
+          const opening=this.opening;
+          this.frameCallback=video.requestVideoFrameCallback(()=>{
+            if(opening!==this.opening)return;
+            this.frameCallback=null;
+            this.presentedFrame=(this.presentedFrame??0)+1;
+            this.presentedAt=performance.now();
+          });
+        }
+        if(this.presentedFrame!=null && now-this.presentedAt<frameSignalMaxAge)
+          return {kind:'presented',value:this.presentedFrame};
+      }
+      const quality=video.getVideoPlaybackQuality?.();
+      const decoded=quality?.totalVideoFrames-(quality?.droppedVideoFrames||0);
+      // Either counter can freeze at a positive value on a live camera.
+      const standard=this.recentFrameCount('decoded',decoded,now);
+      const webkit=this.recentFrameCount('webkit',video.webkitDecodedFrameCount,now);
+      if(standard||webkit)return standard||webkit;
+      if(hasCallback && this.presentedFrame==null && now-this.previewStartedAt<frameSignalMaxAge)
+        return {kind:'presented',value:this.presentedFrame};
+      // Without frame metadata, only a changed image can confirm a card.
+      return {kind:'pixels',value:video.currentTime};
     }
     async tick(){
       if(!this.running)return;const started=performance.now();
@@ -116,8 +191,10 @@
       let captured,timeout;
       try{
         const v=this.video;
-        if(this.stream.getVideoTracks().some(track=>track.readyState==='ended')){this.cameraError('相机连接已结束，请重新开启相机。');return;}
-        let source=v,width=v.videoWidth,height=v.videoHeight,frame;
+        const tracks=this.stream.getVideoTracks();
+        if(!tracks.length||tracks.some(track=>track.readyState==='ended')){this.cameraError('相机连接已结束，请重新开启相机。');return;}
+        const muted=this.waitForFrames && tracks.some(track=>track.muted);
+        let source=v,width=v.videoWidth,height=v.videoHeight,frame,frameSource='track';
         if(reader){
           // A small or covered pet can stop presenting preview frames while its camera is still live.
           timeout=setTimeout(()=>{if(this.reader===reader)this.cameraError('相机画面已停止更新，请重新开启相机。');},3000);
@@ -126,31 +203,63 @@
           if(result.done){this.cameraError('相机连接已结束，请重新开启相机。');return;}
           source=captured;width=captured.displayWidth;height=captured.displayHeight;frame=captured.timestamp;
         }else{
-          const quality=v.getVideoPlaybackQuality?.();
-          frame=Number.isFinite(quality?.totalVideoFrames)?quality.totalVideoFrames-(quality.droppedVideoFrames||0):v.currentTime;
+          const sample=this.previewFrame(v,started);
+          frame=sample.value;frameSource=sample.kind;
         }
-        if((captured||v.readyState>=2)&&width&&height&&Number.isFinite(frame)&&frame!==this.lastFrame){
-          this.lastFrame=frame;this.lastFrameAt=performance.now();
+        const byPixels=frameSource==='pixels';
+        const changedSource=this.lastFrameSource!=null && frameSource!==this.lastFrameSource;
+        const advanced=Number.isFinite(frame) && (frame!==this.lastFrame || changedSource);
+        if(!muted&&(captured||v.readyState>=2)&&width&&height&&(byPixels||advanced)){
           const scale=Math.min(1,960/width),w=Math.round(width*scale),h=Math.round(height*scale);
           if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
-          this.ctx.drawImage(source,0,0,w,h);const markers=revision===this.contextRevision?this.detector.detect(this.ctx.getImageData(0,0,w,h)):[];
-          const opening=this.opening,context=this.contextRevision,current=()=>this.running&&opening===this.opening&&context===this.contextRevision;
-          for(const read of this.stabilizer.feed(markers,Date.now(),this.optionCount))Promise.resolve().then(()=>{if(current())return this.onRead(read);}).catch(error=>{
-            if(!current()||this.stabilizer.entries.get(read.cardNumber)?.committed!==read.option)return;
-            this.stabilizer.forget(read.cardNumber);this.onStatus({kind:'error',message:error?.message||'作答提交未完成，请重试。'});
-          });
-          if(this.stabilizer.conflicts.length)this.onStatus({kind:'warning',message:`重复卡号方向冲突：${this.stabilizer.conflicts.join('、')}`});
-        }else if(started-this.lastFrameAt>=3000){this.cameraError('相机画面已停止更新，请重新开启相机。');return;}
+          this.ctx.drawImage(source,0,0,w,h);
+          const image=this.ctx.getImageData(0,0,w,h);
+          const pixels=reader?null:new Uint32Array(image.data.buffer,image.data.byteOffset,image.data.byteLength/4);
+          const fresh=!byPixels || !samePixels(this.lastPixels,pixels);
+          this.lastPixels=pixels;this.lastFrame=frame;this.lastFrameSource=frameSource;
+          if(!byPixels)this.sawFrameCounter=true;
+          if(fresh || (!this.waitForFrames && !this.sawFrameCounter && advanced))this.lastFrameAt=started;
+          if(fresh && this.waitingForFrames){
+            this.waitingForFrames=false;
+            this.onStatus({kind:'ready',message:'相机已开启'});
+          }
+          // Different counters can describe the same frame during a handover.
+          if(fresh && !changedSource && revision===this.contextRevision)this.lastMarkers=this.scanImage(image);
+          if(this.onPreview && started-this.lastFrameAt<1000){
+            try { this.onPreview(this.canvas,this.lastMarkers || []); } catch { /* Preview cannot interrupt recognition. */ }
+          }
+        }
+        if(muted||started-this.lastFrameAt>=3000){
+          if(!this.waitForFrames){this.cameraError('相机画面已停止更新，请重新开启相机。');return;}
+          if(!this.waitingForFrames){
+            this.waitingForFrames=true;this.lastMarkers=null;
+            this.stabilizer.discardCandidates();
+            this.onStatus({kind:'warning',message:'等待相机画面…'});
+          }
+        }
       }catch(error){
         if(reader && this.reader!==reader)return;
         if(reader){this.cameraError('相机画面无法读取，请重新开启相机。');return;}
         this.onStatus({kind:'error',message:'识别未完成，请检查相机或重新开启。'});
       }finally{clearTimeout(timeout);captured?.close();}
-      if(this.running)this.timer=setTimeout(()=>this.tick(),Math.max(30,180-(performance.now()-started)));
+      const interval=this.waitingForFrames?500:180;
+      if(this.running)this.timer=setTimeout(()=>this.tick(),Math.max(30,interval-(performance.now()-started)));
+    }
+    scanImage(image){
+      const markers=this.detector.detect(image);
+      const opening=this.opening,context=this.contextRevision,current=()=>this.running&&opening===this.opening&&context===this.contextRevision;
+      for(const read of this.stabilizer.feed(markers,Date.now(),this.optionCount))Promise.resolve().then(()=>{if(current())return this.onRead(read);}).catch(error=>{
+        if(!current()||this.stabilizer.entries.get(read.cardNumber)?.committed!==read.option)return;
+        this.stabilizer.forget(read.cardNumber);this.onStatus({kind:'error',message:error?.message||'作答提交未完成，请重试。'});
+      });
+      if(this.stabilizer.conflicts.length)this.onStatus({kind:'warning',message:`重复卡号方向冲突：${this.stabilizer.conflicts.join('、')}`});
+      return markers;
     }
     stop(){
       if(this.running)this.heldCards=this.stabilizer.cardsOnHold();
       ++this.opening;this.starting=null;this.running=false;clearTimeout(this.timer);
+      if(this.frameCallback!=null)this.video.cancelVideoFrameCallback?.(this.frameCallback);
+      this.frameCallback=null;this.presentedFrame=null;this.lastPixels=null;this.lastMarkers=null;
       const reader=this.reader;this.reader=null;
       if(reader)reader.cancel().catch(()=>{}).finally(()=>reader.releaseLock());
       this.releaseStream?.();this.stream=null;this.video.srcObject=null;this.stabilizer.reset();

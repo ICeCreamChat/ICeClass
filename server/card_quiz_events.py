@@ -32,9 +32,11 @@ def public_state(session, class_name):
             'questionType': q['type'] if q else None, 'optionCount': len(q['options']) if q else 4,
             'roundId': r['id'] if r else None, 'roundStatus': r['status'] if r else None,
             'source': session['source'], 'sourceId': session['sourceId'], 'generation': session['generation'],
-            'seq': session['seq'], 'received': sum(answer_complete(q, a) for a in answers.values()),
+            'seq': session['seq'], 'received': sum(answer_complete(q, a, r) for a in answers.values()),
             'expected': len(session['roster']) - len(r['exempt']) if r else len(session['roster']),
             'ended': session['endedAt'] is not None}
+    if r and 'noCardPolicy' in r:
+        result['noCardPolicy'] = r['noCardPolicy']
     if q and q['type'] == 'multiple':
         result.update(activeOption=r['activeOption'] if r else None,
                       optionReceived=sum(r['activeOption'] in a['choices'] for a in answers.values()) if r else 0)
@@ -99,6 +101,8 @@ def replay(snapshot, events, *, old=None, wanted=(), class_name='', check_phone=
                        'purpose': 'practice' if q['revealed'] or p.get('practice') is True else 'formal',
                        'source': state['source'], 'sourceId': state['sourceId'], 'generation': state['generation'],
                        'status': 'collecting', 'answers': {}, 'exempt': []}
+            if 'noCardPolicy' in event:
+                created['noCardPolicy'] = event['noCardPolicy']
             if q['type'] == 'multiple':
                 created['activeOption'] = 'A'
             q['rounds'].append(created)

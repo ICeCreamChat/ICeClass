@@ -28,7 +28,10 @@
           throw new Error('题干、选项和知识点的合计内容超过 64 KiB，请缩短后再保存。');
         const at=Date.now(),session=Model.apply(this.session,command,at),journal=clone(this.journal);
         journal.session=session;
-        journal.events.push({seq:session.seq,id:command.id,action:command.action,at,payload:clone(command.payload||{}),questionId:command.questionId||null,roundId:command.roundId||null,generation:command.generation,sourceId:command.sourceId});
+        const event={seq:session.seq,id:command.id,action:command.action,at,payload:clone(command.payload||{}),questionId:command.questionId||null,roundId:command.roundId||null,generation:command.generation,sourceId:command.sourceId};
+        // The board chooses the rule when it opens the round, including for an older phone command.
+        if (command.action === 'start_round') event.noCardPolicy = Model.activeRound(session).noCardPolicy;
+        journal.events.push(event);
         const result={seq:session.seq,state:Model.publicState(session),status:'confirmed'};
         journal.receipts[command.id]={fingerprint,result};
         // A rejected bridge reply can follow a successful durable write. Never recompute this proposal.

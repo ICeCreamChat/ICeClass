@@ -63,20 +63,27 @@ internal static class ClassroomStyle
     internal static Border IconBadge(string name) => new() { Width = 48, Height = 48, Background = DesktopStyle.Brush("#E8F2FF"),
         CornerRadius = new CornerRadius(12), Child = Icon(name, 26) };
 
-    internal static Viewbox Icon(string name, double size)
+    internal static Viewbox Icon(string name, double size) =>
+        ResourceIcon($"ICeClass.Classroom.Icons.{name}.svg", size, DesktopStyle.Blue);
+
+    internal static Viewbox ResourceIcon(string resource, double size, IBrush stroke)
     {
-        using var stream = typeof(ClassroomStyle).Assembly.GetManifestResourceStream($"ICeClass.Classroom.Icons.{name}.svg")!;
+        using var stream = typeof(ClassroomStyle).Assembly.GetManifestResourceStream(resource)!;
         var canvas = new Canvas { Width = 24, Height = 24 };
         foreach (var shape in XDocument.Load(stream).Root!.Elements())
         {
             Geometry? geometry = shape.Name.LocalName switch {
                 "path" => StreamGeometry.Parse(shape.Attribute("d")!.Value),
                 "line" => new LineGeometry(new Point(Number("x1"), Number("y1")), new Point(Number("x2"), Number("y2"))),
+                "circle" => new EllipseGeometry(new Rect(Number("cx") - Number("r"), Number("cy") - Number("r"), 2 * Number("r"), 2 * Number("r"))),
+                "rect" => new RectangleGeometry(new Rect(Number("x"), Number("y"), Number("width"), Number("height")),
+                    Number("rx"), shape.Attribute("ry") == null ? Number("rx") : Number("ry")),
+                "polygon" => StreamGeometry.Parse($"M{shape.Attribute("points")!.Value} Z"),
                 _ => null,
             };
-            double Number(string key) => double.Parse(shape.Attribute(key)!.Value, CultureInfo.InvariantCulture);
+            double Number(string key) => shape.Attribute(key) is { } attribute ? double.Parse(attribute.Value, CultureInfo.InvariantCulture) : 0;
             if (geometry is not null) canvas.Children.Add(new Avalonia.Controls.Shapes.Path {
-                Data = geometry, Stroke = DesktopStyle.Blue, StrokeThickness = 1.8,
+                Data = geometry, Stroke = stroke, StrokeThickness = 1.8,
                 StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round });
         }
         return new Viewbox { Width = size, Height = size, Child = canvas, IsHitTestVisible = false };

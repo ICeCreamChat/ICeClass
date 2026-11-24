@@ -45,6 +45,11 @@ $delivery = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } e
 $classroom = Join-Path $delivery '教室端'
 New-Item -ItemType Directory -Force -Path $classroom | Out-Null
 Copy-Item -LiteralPath $receiver -Destination (Join-Path $classroom 'ICeClass.exe') -Force
+$printDirectory = Join-Path $delivery '纸卡'
+New-Item -ItemType Directory -Path $printDirectory -Force | Out-Null
+foreach ($sheet in @('通用纸卡-1-2.pdf', '通用纸卡-1-40.pdf')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\docs\纸卡\$sheet") -Destination $printDirectory -Force
+}
 # Windows PowerShell 5.1 needs the BOM to display Chinese installer messages.
 [IO.File]::WriteAllText((Join-Path $classroom 'install.ps1'), (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'install-classroom.ps1') -Raw -Encoding UTF8), (New-Object Text.UTF8Encoding($true)))
 [IO.File]::WriteAllText((Join-Path $classroom '安装或升级.cmd'), "@echo off`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)

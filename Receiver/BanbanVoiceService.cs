@@ -465,17 +465,18 @@ internal sealed class BanbanVoiceService : IDisposable
 internal static class BanbanVoicePreferences
 {
     private static string PathName => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "Receiver", "banban-voice.json");
-    internal static bool Load()
+    internal static bool Load(string? path = null)
     {
-        try { return JsonSerializer.Deserialize<Preference>(File.ReadAllText(PathName))?.Enabled == true; }
+        try { return JsonSerializer.Deserialize<Preference>(File.ReadAllText(path ?? PathName))?.Enabled == true; }
         catch { return false; }
     }
-    internal static void Save(bool enabled)
+    internal static void Save(bool enabled, string? path = null)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
-        var temporary = PathName + ".tmp";
+        path ??= PathName;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(new Preference(enabled)), new UTF8Encoding(false));
-        File.Move(temporary, PathName, true);
+        File.Move(temporary, path, true);
     }
     private sealed record Preference(bool Enabled);
 }

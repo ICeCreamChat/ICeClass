@@ -6,8 +6,9 @@ if (-not (Test-Path -LiteralPath $classroomSource) -or -not (Test-Path -LiteralP
     throw '请先完整解压教室端安装包，再运行“安装或升级”。'
 }
 $classroomManifest = Get-Content -LiteralPath $classroomManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$classroomPackage = Get-Item -LiteralPath $classroomSource
 $classroomHash = (Get-FileHash -LiteralPath $classroomSource -Algorithm SHA256).Hash
-if ((Get-Item -LiteralPath $classroomSource).Length -ne $classroomManifest.size -or $classroomHash -ine $classroomManifest.sha256) {
+if ($classroomPackage.Length -ne $classroomManifest.size -or $classroomHash -ine $classroomManifest.sha256) {
     throw '安装文件校验失败，请重新解压或下载完整安装包。'
 }
 # Prefer the existing installation so legacy bindings beside the EXE stay in place.
@@ -40,7 +41,7 @@ $classroomTarget = Join-Path $classroomInstall 'ICeClass.exe'
 $classroomSession = (Get-Process -Id $PID).SessionId
 $classroomRunning = Get-Process -Name ICeClass -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $classroomSession }
 if ($classroomRunning) { throw '请先在教室端托盘菜单点击“退出”，再运行安装或升级。绑定、课表和设置会保留。' }
-if ((Test-Path -LiteralPath $classroomTarget) -and [version](Get-Item -LiteralPath $classroomTarget).VersionInfo.FileVersion -gt [version]$classroomManifest.version) {
+if ((Test-Path -LiteralPath $classroomTarget) -and [version](Get-Item -LiteralPath $classroomTarget).VersionInfo.FileVersion -gt [version]$classroomPackage.VersionInfo.FileVersion) {
     throw '本机已安装更新的版本，本安装包不会将它降级。'
 }
 New-Item -ItemType Directory -Force -Path $classroomInstall | Out-Null

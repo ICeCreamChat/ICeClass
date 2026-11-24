@@ -95,14 +95,16 @@ test('同方向几何重复只计一帧，合并保留较低纠错距离',()=>{
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};}
 async function settled(){for(let i=0;i<8;i++)await Promise.resolve();}
-function camera(t,{getUserMedia,play,onRead,trackProcessor}={}){
+function camera(t,{getUserMedia,play,onRead,trackProcessor,waitForFrames=false}={}){
   let now=0,mediaCalls=0,timerId=0;const timers=new Map(),statuses=[],reads=[],streams=[];
   function stream(){
     const track=new EventTarget();Object.assign(track,{kind:'video',readyState:'live',stops:0,stop(){this.stops++;this.readyState='ended';},end(){this.readyState='ended';this.dispatchEvent(new Event('ended'));}});
     const value={getTracks:()=>[track],getVideoTracks:()=>[track],track};streams.push(value);return value;
   }
   const video={srcObject:null,readyState:0,videoWidth:160,videoHeight:160,currentTime:0,play:play||(()=>Promise.resolve())};
-  const ctx={drawImage(){},getImageData:()=>image(Cards.matrix(1))},canvas={width:0,height:0,getContext:()=>ctx};
+  let frameNumber=0;
+  const ctx={drawImage(){},getImageData(){const sample=image(Cards.matrix(1));sample.data[0]=frameNumber%256;return sample;}};
+  const canvas={width:0,height:0,getContext:()=>ctx};
   const globals={isSecureContext:true,navigator:{mediaDevices:{getUserMedia:()=>{mediaCalls++;return getUserMedia?getUserMedia():Promise.resolve(stream());}}},document:{createElement:()=>canvas}};
   if(trackProcessor)globals.MediaStreamTrackProcessor=trackProcessor;
   const descriptors=Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
@@ -110,11 +112,13 @@ function camera(t,{getUserMedia,play,onRead,trackProcessor}={}){
   t.mock.method(performance,'now',()=>now);
   t.mock.method(globalThis,'setTimeout',fn=>{timers.set(++timerId,fn);return timerId;});
   t.mock.method(globalThis,'clearTimeout',id=>timers.delete(id));
-  const scanner=new Scanner({video,readTrack:Boolean(trackProcessor),onRead:onRead||(read=>{reads.push(read);}),onStatus:status=>statuses.push(status)});
+  const scanner=new Scanner({video,readTrack:Boolean(trackProcessor),waitForFrames,onRead:onRead||(read=>{reads.push(read);}),onStatus:status=>statuses.push(status)});
   scanner.reset('round-1');
   t.after(()=>{scanner.stop();for(const [key,descriptor]of Object.entries(descriptors)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  async function frame({option='A',advance=true,elapsed=180}={}){
-    now+=elapsed;video.readyState=2;if(advance)video.currentTime+=0.18;
+  async function frame({option='A',advance=true,changePixels=advance,elapsed=180}={}){
+    now+=elapsed;video.readyState=2;
+    if(advance)video.currentTime+=0.18;
+    if(changePixels)frameNumber++;
     scanner.detector.detect=()=>[marker(option)];clearTimeout(scanner.timer);scanner.tick();await settled();
   }
   return{scanner,video,stream,streams,statuses,reads,frame,get mediaCalls(){return mediaCalls;}};
@@ -192,7 +196,103 @@ test('保留的视频画面不能反复累计成多帧确认',async t=>{
 });
 test('存在解码帧计数时播放时间推进也不能重复使用同一画面',async t=>{
   const h=camera(t);h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:1});
-  await h.scanner.start();for(let i=0;i<6;i++)await h.frame();assert.deepEqual(h.reads,[]);
+  await h.scanner.start();
+  for(let i=0;i<24;i++)await h.frame({changePixels:false});
+  assert.deepEqual(h.reads,[]);
+  assert.equal(h.scanner.running,false);
+});
+
+for(const counter of ['standard','webkit'])test(counter+' 解码计数停在正数，画面更新时仍可收卡',async t=>{
+  const h=camera(t);
+  if(counter==='standard')h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:1});
+  else h.video.webkitDecodedFrameCount=1;
+  await h.scanner.start();
+  for(let i=0;i<30;i++)await h.frame();
+  assert.equal(h.scanner.running,true);
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+  await h.frame({changePixels:false,elapsed:4000});
+  assert.equal(h.scanner.running,false);
+  assert.equal(h.streams[0].track.stops,1);
+});
+
+test('标准计数停在正数时，WebKit 持续解码的静止纸卡仍可确认',async t=>{
+  const h=camera(t);
+  h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:1});
+  h.video.webkitDecodedFrameCount=0;
+  await h.scanner.start();
+  for(let i=0;i<30;i++){
+    h.video.webkitDecodedFrameCount++;
+    await h.frame({changePixels:false});
+  }
+  assert.equal(h.scanner.running,true);
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+});
+
+test('没有呈现回调且解码计数为零时，活动预览可连续收卡，静止画面不累计作答',async t=>{
+  const h=camera(t);
+  h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:0,droppedVideoFrames:0});
+  await h.scanner.start();
+  const pixels=image(Cards.matrix(1));
+  h.scanner.ctx.getImageData=()=>({...pixels,data:pixels.data.slice()});
+  for(let i=0;i<24;i++)await h.frame();
+  assert.equal(h.scanner.running,true);
+  assert.deepEqual(h.reads,[]);
+  for(let i=1;i<=3;i++){
+    pixels.data[0]=i;
+    await h.frame();
+  }
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+  await h.frame({advance:false,elapsed:4000});
+  assert.equal(h.scanner.running,false);
+});
+
+test('浏览器声明呈现回调但没有通知，递增的解码帧仍可收卡',async t=>{
+  const h=camera(t);
+  let decoded=0;
+  h.video.requestVideoFrameCallback=()=>42;
+  h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:decoded,droppedVideoFrames:0});
+  await h.scanner.start();
+  for(let i=0;i<24;i++){decoded++;await h.frame();}
+  assert.equal(h.scanner.running,true);
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+  await h.frame({advance:false,elapsed:4000});
+  assert.equal(h.scanner.running,false);
+});
+
+test('解码计数一直为零时按实际呈现的新帧收卡；冻结和上次开启的回调不计帧',async t=>{
+  const h=camera(t);
+  let notified, cancelled=0;
+  h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:0});
+  h.video.requestVideoFrameCallback=callback=>{notified=callback;return 42;};
+  h.video.cancelVideoFrameCallback=id=>{assert.equal(id,42);cancelled++;};
+  await h.scanner.start();
+  for(let i=0;i<3;i++){
+    assert.equal(typeof notified,'function');
+    notified(i*180,{presentedFrames:i+1});
+    await h.frame();
+  }
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+  const late=notified;
+  await h.frame({option:'B',advance:false,elapsed:3100});
+  assert.equal(h.scanner.running,false);
+  assert.equal(cancelled,1);
+  await h.scanner.start();
+  for(let i=0;i<4;i++){late(i*180,{presentedFrames:i+4});await h.frame({option:'B'});}
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+});
+
+test('呈现回调中途沉默且计数为零，后续真实变化的画面仍能继续收卡',async t=>{
+  const h=camera(t);
+  let notify;
+  h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:0});
+  h.video.requestVideoFrameCallback=callback=>{notify=callback;return 1;};
+  await h.scanner.start();
+  for(let i=0;i<3;i++){notify();await h.frame();}
+  for(let i=0;i<25;i++)await h.frame({option:'B'});
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'},{cardNumber:1,option:'B'}]);
+  assert.equal(h.scanner.running,true);
+  await h.frame({advance:false,elapsed:3100});
+  assert.equal(h.scanner.running,false);
 });
 test('画面持续冻结后停止采集、释放轨道并清除未确认候选',async t=>{
   const h=camera(t);await h.scanner.start();await h.frame();const stream=h.video.srcObject;
@@ -200,6 +300,51 @@ test('画面持续冻结后停止采集、释放轨道并清除未确认候选',
   assert.equal(h.scanner.running,false);assert.equal(h.video.srcObject,null);assert.equal(stream.track.stops,1);
   assert.equal(h.scanner.stabilizer.entries.size,0);assert.deepEqual(h.reads,[]);
   assert.ok(h.statuses.some(s=>s.kind==='error'&&/相机|画面/.test(s.message)));
+});
+
+test('手机取景中断时保留镜头，恢复后只用新画面确认且不重发已收卡',async t=>{
+  const h=camera(t,{waitForFrames:true});
+  await h.scanner.start();
+  await h.frame();await h.frame();
+  const track=h.streams[0].track;
+  for(let i=0;i<3;i++)await h.frame({changePixels:false,elapsed:4000});
+  assert.equal(h.scanner.running,true);
+  assert.equal(track.stops,0);
+  assert.equal(h.statuses.filter(s=>s.kind==='warning').length,1);
+  await h.frame();await h.frame();
+  assert.deepEqual(h.reads,[]);
+  await h.frame();
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+  assert.equal(h.statuses.at(-1).kind,'ready');
+  track.muted=true;
+  for(let i=0;i<4;i++)await h.frame({option:'B'});
+  assert.equal(h.reads.length,1);
+  assert.equal(h.statuses.at(-1).kind,'warning');
+  track.muted=false;
+  for(let i=0;i<4;i++)await h.frame();
+  assert.equal(h.reads.length,1);
+  assert.equal(h.mediaCalls,1);
+  track.end();
+  assert.equal(h.scanner.running,false);
+  assert.equal(h.video.srcObject,null);
+  assert.equal(h.statuses.at(-1).kind,'error');
+});
+
+test('手机等待首帧时可关闭，上一轮迟到的播放失败不会关闭新镜头',async t=>{
+  const first=deferred(),second=deferred();let calls=0;
+  const h=camera(t,{waitForFrames:true,play:()=>++calls===1?first.promise:second.promise});
+  const started=h.scanner.start();
+  await settled();
+  assert.equal(h.scanner.running,true);
+  h.scanner.stop();await started;
+  await h.scanner.start();
+  first.reject(new Error('旧播放失败'));await settled();
+  assert.equal(h.scanner.running,true);
+  assert.equal(h.streams[1].track.stops,0);
+  second.reject(new Error('当前播放失败'));await settled();
+  assert.equal(h.scanner.running,false);
+  assert.equal(h.streams[1].track.stops,1);
+  assert.match(h.statuses.at(-1).message,/预览/);
 });
 for(const signal of ['event','state'])test('视频轨结束由'+signal+'发现后停止并清空候选',async t=>{
   const h=camera(t);await h.scanner.start();await h.frame();const stream=h.video.srcObject;

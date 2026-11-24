@@ -15,7 +15,7 @@ from teacher_capabilities import teacher_action, teacher_manual, teacher_read
 
 
 def counts(multiple=False):
-    result = dict.fromkeys(('samples', 'correct', 'wrong', 'unanswered', 'exempt', 'ungraded', 'practice'), 0)
+    result = dict.fromkeys(('samples', 'correct', 'wrong', 'unanswered', 'abstained', 'exempt', 'ungraded', 'practice'), 0)
     if multiple:
         result['incomplete'] = 0
     return result
@@ -42,7 +42,9 @@ def observations(session, *, selected=False):
                 a = r['answers'].get(sid)
                 if sid in r['exempt']:
                     status = 'exempt'
-                elif q['type'] == 'multiple' and a is not None and not answer_complete(q, a):
+                elif a is None and r.get('noCardPolicy') == 'abstain':
+                    status = 'abstained'
+                elif q['type'] == 'multiple' and a is not None and not answer_complete(q, a, r):
                     status = 'incomplete'
                 elif q['type'] == 'multiple' and a is None:
                     status = 'unanswered'
@@ -75,6 +77,8 @@ def session_report(session):
             summary = {'id': r['id'], 'purpose': r['purpose'], 'status': r['status'],
                        'startedAt': r['startedAt'], 'endedAt': r['endedAt'], 'students': [],
                        'distribution': {o: 0 for o in 'ABCD'[:len(q['options'])]}, **counts(q['type'] == 'multiple')}
+            if q['type'] == 'multiple':
+                summary['combinationDistribution'] = {}
             lookup[r['id']] = summary
             rounds.append(summary)
         questions.append({'id': q['id'], 'text': q['text'], 'answer': q['answer'], 'tags': q['tags'], 'rounds': rounds})
@@ -84,7 +88,11 @@ def session_report(session):
                                 'option': answer['option'] if answer else None, 'status': status})
         if q['type'] == 'multiple' and answer:
             row['students'][-1]['choices'] = dict(answer['choices'])
-        if answer_complete(q, answer) and status != 'exempt':
+        if answer_complete(q, answer, r) and status != 'exempt':
+            if q['type'] == 'multiple':
+                groups = row['combinationDistribution']
+                groups[answer['option']] = groups.get(answer['option'], 0) + 1
+            # Existing reporting clients read individual option frequencies from this field.
             for option in answer['option']:
                 row['distribution'][option] += 1
         add_count(row, status)
@@ -303,7 +311,7 @@ class SessionHandlers:
                 if r['purpose'] == 'practice':
                     status = 'practice'
                 if status not in ('correct', 'wrong', 'ungraded'):
-                    student[status] += 1
+                    add_count(student, status)
                     continue
                 identity = (q['bankId'], q['bankVersion']) if q['bankId'] is not None else (session['id'], q['id'])
                 key = (row['class_id'], s['id'], session['subjectId'], identity)
@@ -345,9 +353,9 @@ class SessionHandlers:
                 exported += 1
                 if exported > 100000:
                     fail('导出超过 100000 行，请缩小班级或学科范围。')
-                answer_text = answer['option'] if answer else ''
+                answer_text = answer['option'] if answer else '弃权' if status == 'abstained' else ''
                 if q['type'] == 'multiple' and answer:
-                    if answer_complete(q, answer):
+                    if answer_complete(q, answer, r):
                         answer_text = answer['option'] or '全不选'
                     else:
                         answer_text = ' / '.join(o + ':' + ('选' if answer['choices'][o] else '不选')

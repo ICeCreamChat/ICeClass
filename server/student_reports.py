@@ -66,6 +66,8 @@ class StudentReports:
                           'counted': official and status not in ('correct', 'wrong', 'ungraded')}
                 if q['type'] == 'multiple' and answer:
                     record['choices'] = dict(answer['choices'])
+                if 'noCardPolicy' in r:
+                    record['noCardPolicy'] = r['noCardPolicy']
                 records.append(record)
                 if len(records) > 100000:
                     fail('答题记录超过 100000 条，请选择学科后重试。')

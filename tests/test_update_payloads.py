@@ -290,6 +290,7 @@ class UpdatePayloadTests(unittest.TestCase):
         shutil.copyfile(self.project, workspace / "Receiver/Receiver.csproj")
         shutil.copyfile(self.project, workspace / "Desktop/ICeClass.Desktop.csproj")
         shutil.copytree(self.voice, workspace / "Receiver/Assets/Voice")
+        shutil.copytree(ROOT / "docs/纸卡", workspace / "docs/纸卡")
         asr = workspace / 'Receiver/Assets/Voice/Asr'
         asr_files = []
         for name in ('model.int8.onnx', 'tokens.txt'):
@@ -339,6 +340,9 @@ class UpdatePayloadTests(unittest.TestCase):
                 self.assertNotIn(private, archive.read(name))
         for archive_path in (distribution / "release").glob("*.zip"):
             with zipfile.ZipFile(archive_path) as archive:
+                if archive_path.name.endswith(("-classroom.zip", "-classroom-offline.zip", "-windows-x64.zip")) and "desktop" not in archive_path.name:
+                    for sheet in ("通用纸卡-1-2.pdf", "通用纸卡-1-40.pdf"):
+                        self.assertEqual(archive.read("ICeClass/纸卡/" + sheet), (ROOT / "docs/纸卡" / sheet).read_bytes())
                 for name in archive.namelist():
                     self.assertNotIn(Path(name).name.lower(), {"config.json", ".env", "agents.md", "credentials.dpapi", "iceclass.db", "腾讯云api运维.md"})
         with zipfile.ZipFile(distribution / 'release/ICeClass-9.8.7-classroom.zip') as archive:

@@ -1,11 +1,136 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>手机扫码 · ICeClass 纸卡答题</title><link rel="stylesheet" href="../assets/typography.css">
-<link rel="stylesheet" href="../assets/control-focus.css"><link rel="stylesheet" href="phone.css"><script src="vendor/cv.js" defer></script><script src="vendor/aruco.js" defer></script><script src="scanner.js" defer></script><script src="phone.js?v=3" defer></script></head><body>
-  <main class="phone-shell"><header><h1>手机扫码</h1><p id="account" class="muted"></p></header><p id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true">正在检查登录…</p>
-    <section id="login" class="surface" hidden><h2>登录教师账号</h2><form id="login-form"><label>账号<input id="username" autocomplete="username" required maxlength="64"></label><label>密码<input id="password" type="password" autocomplete="current-password" required maxlength="128"></label><button class="primary" type="submit">登录并继续</button></form></section>
-    <section id="pairing" class="surface" hidden><h2>连接教室白板</h2><form id="pair-form"><label>白板上的配对码<input id="code" autocomplete="off" spellcheck="false" maxlength="128" required></label><button type="submit" class="primary">配对本课堂</button></form><p class="muted">请先在教室端开始课堂，再选择使用手机。配对完成后需在白板确认切换。</p></section>
-    <section id="capture" hidden><div class="surface"><div class="capture-heading"><h2 id="class-name"></h2><button id="disconnect" type="button">断开手机</button></div><p id="question-label" class="question-label"></p><p id="connection" role="status"></p><div class="capture-count"><strong id="received">0</strong><span id="expected"> / 0 人已收</span></div>
-      <p id="capture-progress" class="muted" hidden></p>
-      <div class="actions"><button id="start" type="button" class="primary" disabled>开始收答</button><button id="stop" type="button" disabled hidden>结束本轮</button><button id="camera-toggle" type="button" disabled hidden>开启相机</button></div>
-      <div id="multi-capture" class="multi-capture" hidden><div class="multi-controls"><label>当前收答项<select id="multi-option" aria-describedby="multi-instruction"></select></label><button id="multi-next" type="button">收下一项</button></div><p id="multi-instruction">A 朝上表示选，B 朝上表示不选。</p><p id="multi-progress" class="muted" role="status" aria-live="polite"></p></div><video id="camera" muted playsinline aria-label="手机相机预览" hidden></video><p id="camera-status" class="muted" role="status" hidden></p><p id="submission-status" role="status" aria-live="polite"></p></div><section class="surface"><h2>课件控制</h2><div class="question-fields"><label>下一题题型<select id="next-type"><option value="single">单选</option><option value="boolean">判断（A 正确，B 错误）</option><option value="multiple">多选（逐项收答）</option></select></label><label>选项数量<select id="next-count"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select></label></div><div class="actions"><button id="next" type="button" disabled>添加课件临时题</button><button id="reveal" type="button" disabled>本题已在课件讲解</button></div><p class="muted">题单翻题和结束课堂可在白板操作。</p></section></section>
-    <section id="question-settings" class="surface"><h2>本场题目信息</h2><form id="question-form"><label>修改内容<select id="edit-field"><option value="answer">标准答案（A/B/C/D，留空取消）</option><option value="tags">知识点（逗号分隔，留空清除）</option><option value="text">题干（留空清除）</option></select></label><label id="edit-value-label">新的内容<textarea id="edit-value" rows="3" maxlength="40000"></textarea></label><fieldset id="edit-multiple-answer" class="answer-choices" hidden><legend>新的标准答案（可选多个，不选则暂不设置）</legend><div id="edit-multiple-options"></div></fieldset><div class="actions"><button id="question-edit" type="submit" disabled>保存到本场题目</button><button id="edit-reset" type="button">清空重填</button></div></form><p class="muted">仅在轮次之间修改所选内容；设置标准答案不会揭晓。题单翻题和结束课堂请在白板操作。</p></section>
-  </main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>纸卡收答 · 班班课堂</title>
+  <link rel="stylesheet" href="../assets/typography.css">
+  <link rel="stylesheet" href="phone.css?v=3">
+  <link rel="stylesheet" href="../assets/control-focus.css">
+  <script src="vendor/cv.js" defer></script>
+  <script src="vendor/aruco.js" defer></script>
+  <script src="scanner.js?v=6" defer></script>
+  <script src="camera-preview.js?v=4" defer></script>
+  <script src="phone.js?v=14" defer></script>
+</head>
+<body class="relay">
+  <main class="relay-shell">
+    <header class="masthead">
+      <div class="brand">
+        <img src="../assets/banban/portrait.webp" width="44" height="44" alt="班班">
+        <h1>纸卡收答</h1>
+      </div>
+      <span id="account" hidden></span>
+      <span id="connection" class="connection" role="status" hidden></span>
+    </header>
+
+    <p id="feedback" class="feedback" role="status" aria-atomic="true"></p>
+
+    <section id="login" class="sheet entry" hidden>
+      <h2>教师登录</h2>
+      <form id="login-form">
+        <label>账号<input id="username" name="username" autocomplete="username" required maxlength="64"></label>
+        <label>密码<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+        <button class="primary" type="submit">登录并继续</button>
+      </form>
+    </section>
+
+    <section id="pairing" class="sheet entry" hidden>
+      <h2>连接白板</h2>
+      <form id="pair-form">
+        <label>白板配对码<input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="128" required></label>
+        <button type="submit" class="primary">连接课堂</button>
+      </form>
+    </section>
+
+    <section id="capture" hidden>
+      <div id="round" class="sheet round" hidden>
+        <div class="round-summary">
+          <div class="question">
+            <h2 id="question-label"><span id="question-number"></span><span id="question-type"></span></h2>
+            <p id="class-name"></p>
+            <p id="capture-progress" class="tally-note" hidden></p>
+            <p id="multi-progress" class="tally-note" hidden></p>
+          </div>
+          <div id="progress-ring" class="ring" role="progressbar" aria-valuemin="0">
+            <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+              <circle class="rail" cx="50" cy="50" r="45"></circle>
+              <circle id="progress-arc" cx="50" cy="50" r="45" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" hidden></circle>
+            </svg>
+            <div class="ring-center" aria-hidden="true">
+              <div class="ring-count"><strong id="received">0</strong><span id="expected"> / 0</span></div>
+              <span id="ring-label">已收</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="multi-capture" hidden>
+          <fieldset id="multi-option" class="option-strip" disabled>
+            <legend class="sr-only">当前收答项</legend>
+            <button type="button" value="A" aria-label="收 A 项" aria-pressed="false">A</button>
+            <button type="button" value="B" aria-label="收 B 项" aria-pressed="false">B</button>
+            <button type="button" value="C" aria-label="收 C 项" aria-pressed="false">C</button>
+            <button type="button" value="D" aria-label="收 D 项" aria-pressed="false">D</button>
+          </fieldset>
+        </div>
+        <div id="card-guide" class="card-guide" role="img" hidden>
+          <span id="guide-label" aria-hidden="true">字母朝上</span>
+          <span aria-hidden="true"><b>A</b><span id="card-a"></span></span>
+          <span aria-hidden="true"><b>B</b><span id="card-b"></span></span>
+        </div>
+
+        <div id="camera-panel" hidden>
+          <div id="viewfinder" class="viewfinder">
+            <video id="camera" autoplay muted playsinline aria-label="手机相机预览" hidden></video>
+            <div class="camera-idle" id="camera-idle" aria-hidden="true">
+              <span class="glyph scan-glyph"></span><span>对准举起的纸卡</span>
+            </div>
+            <div class="sight-marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <span id="on-board" role="status" hidden>白板可见</span>
+          </div>
+          <p id="camera-status" class="notice" role="status" aria-atomic="true"></p>
+          <p id="preview-status" class="notice" role="status" aria-atomic="true"></p>
+        </div>
+        <div id="round-actions" class="round-actions">
+          <button id="start" type="button" class="primary with-icon play-icon" disabled hidden>开始收答</button>
+          <button id="camera-toggle" type="button" class="with-icon camera-icon" aria-describedby="camera-status" disabled hidden>开启相机</button>
+          <button id="multi-next" type="button" class="with-icon next-icon" disabled hidden>下一项</button>
+          <button id="stop" type="button" class="with-icon stop-icon" disabled hidden>结束收答</button>
+        </div>
+        <p id="submission-status" class="notice" role="status" aria-atomic="true"></p>
+      </div>
+
+      <div id="round-tools" class="sheet tools" hidden>
+        <details id="courseware">
+          <summary><span class="glyph play-icon" aria-hidden="true"></span>课件操作</summary>
+          <div class="tool-body">
+            <div class="question-fields">
+              <label>临时题型<select id="next-type"><option value="single">单选</option><option value="boolean">判断</option><option value="multiple">多选</option></select></label>
+              <label>选项数<select id="next-count"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select></label>
+            </div>
+            <div class="form-actions">
+              <button id="next" type="button" class="primary" disabled>添加临时题</button>
+              <button id="reveal" type="button" disabled>标记已讲解</button>
+            </div>
+            <p class="field-note">题单翻题、结课在白板操作。</p>
+          </div>
+        </details>
+        <details id="question-settings">
+          <summary><span class="glyph edit-icon" aria-hidden="true"></span>编辑本题</summary>
+          <form id="question-form" class="tool-body">
+            <label>修改内容<select id="edit-field"><option value="answer">标准答案</option><option value="tags">知识点</option><option value="text">题干</option></select></label>
+            <label id="edit-value-label"><span id="edit-hint">答案字母，留空清除</span><textarea id="edit-value" rows="2" maxlength="40000"></textarea></label>
+            <fieldset id="edit-multiple-answer" class="answer-choices" hidden><legend>勾选答案，留空清除</legend><div id="edit-multiple-options"></div></fieldset>
+            <div class="form-actions">
+              <button id="question-edit" type="submit" class="primary" disabled>保存本题</button>
+              <button id="edit-reset" type="button">清空重填</button>
+            </div>
+          </form>
+        </details>
+      </div>
+      <footer id="link-actions" class="link-actions"><button id="disconnect" type="button">断开手机</button></footer>
+    </section>
+  </main>
+</body>
+</html>

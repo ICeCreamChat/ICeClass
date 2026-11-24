@@ -294,8 +294,8 @@ internal static class NativeVoiceDialogueReview
             Record("desktop pet starts the shared microphone session while chat stays hidden", assistant.CompanionVisible && !assistant.IsVisible);
             var petCancellations = 0;
             voice.Changed += e => { if (e.Kind == "cancel") Interlocked.Increment(ref petCancellations); };
-            var petStop = talk.ContextMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "停止操作"));
-            petStop.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+            var petStop = companion.PetMenu.Actions.Single(item => item.ActionId == "停止操作");
+            petStop.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             await Until(() => Task.FromResult(Volatile.Read(ref petCancellations) == 1), "Pet stop did not reach the shared cancellation stream", 5);
             Record("desktop pet stop reaches real native and chat cancellation", true);
             voice.Standby();

@@ -1,4 +1,5 @@
 """Card quiz contracts exercised through real HTTP requests and temporary SQLite."""
+import asyncio
 import base64
 import copy
 import csv
@@ -7,6 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 import app as service
 from card_quiz_events import public_state
@@ -162,6 +164,7 @@ const Journal=require(path.join(input.root,'web_controller/card-quiz/journal.js'
         # Switching phones happens between sealed rounds and is saved before relaying.
         body = self.advance(body, 'set_source', {'source': 'phone', 'sourceId': pair['pairId']})
         await self.sync(body)
+        state['noCardPolicy'] = 'abstain'
         await self.api('POST', '/device/relay', {'sessionId': 'session-1', 'state': state, 'receipts': []}, headers=self.dh)
         return pair, state, body
 
@@ -386,7 +389,7 @@ class CardQuizTests(CardQuizHttpCase):
         await self.sync(self.session(exempt=True))
         data = await self.api('GET', '/sessions/session-1')
         totals = data['report']['totals']
-        for key, value in {'samples': 2, 'correct': 1, 'wrong': 1, 'unanswered': 1, 'exempt': 1}.items():
+        for key, value in {'samples': 2, 'correct': 1, 'wrong': 1, 'unanswered': 0, 'abstained': 1, 'exempt': 1}.items():
             self.assertEqual(totals[key], value)
         await self.sync(self.session(sid='practice', purpose='practice'))
         await self.sync(self.session(sid='ungraded', answer=None))
@@ -454,6 +457,90 @@ class CardQuizTests(CardQuizHttpCase):
         await self.api('POST', '/pair', {'code': pair['code']})
         await self.api('POST', '/pair', {'code': pair['code']}, 409)
 
+    async def test_scan_invite_connects_without_a_login_and_only_collects_confirmed_cards(self):
+        await self.initialize()
+        board = self.batch(self.journal([{'action': 'add_question', 'payload': question()}]))
+        await self.sync(board)
+        sid = board['session']['id']
+        offer = await self.api('POST', '/device/pair', {'sessionId': sid, 'quickScan': True}, headers=self.dh)
+        link = urlsplit(offer['url'])
+        self.assertEqual((link.path, link.query), ('/card-quiz/phone.html', ''))
+        invite = {'invite': parse_qs(link.fragment)['scan'][0]}
+        self.assertNotIn('code', offer)
+        self.client.session.cookie_jar.clear()
+        mobile = {'X-ICeClass-Scanner': 'a' * 64}
+        second = {'X-ICeClass-Scanner': 'b' * 64}
+        await self.api('GET', '/sessions', status=401, headers=mobile)
+        await self.api('POST', '/scan', invite, 403, {})
+        claimed = await self.api('POST', '/scan', invite, headers=mobile)
+        self.assertEqual(claimed, await self.api('POST', '/scan', invite, headers=mobile))
+        await self.api('POST', '/scan', invite, 409, second)
+        pid = claimed['pairId']
+        path = '/pairs/' + pid
+        waiting = await self.api('GET', path, headers=mobile)
+        self.assertIsNone(waiting['state'])
+        self.assertFalse(waiting['connected'])
+        self.assertTrue(waiting['boardOnline'])
+        with patch.object(service, 'now_ms', return_value=service.now_ms() + 20000):
+            self.assertFalse((await self.api('GET', path, headers=mobile))['boardOnline'])
+        await self.api('GET', path, status=403, headers=second)
+        board = self.advance(board, 'set_source', {'source': 'phone', 'sourceId': pid})
+        await self.sync(board)
+        board = self.advance(board, 'start_round')
+        await self.sync(board)
+        state = public_state(board['session'], '高一（1）班')
+        relay = {'sessionId': sid, 'state': state, 'receipts': []}
+        stamp = service.now_ms() + 22000
+        with patch.object(service, 'now_ms', return_value=stamp):
+            await self.api('POST', '/device/relay', relay, headers=self.dh)
+            current = await self.api('GET', path, headers=mobile)
+            self.assertTrue(current['connected'])
+            self.assertEqual(current['state']['received'], 0)
+            self.assertNotIn('roster', current['state'])
+            for action in ('start_round', 'end_round', 'edit_question', 'set_multi_option'):
+                await self.api('POST', path + '/commands', {'action': action}, 403, mobile)
+            for number, option in enumerate('AB', 1):
+                cmd = {'id': 'scan-card-' + str(number), 'action': 'answer', 'sessionId': sid, 'sourceId': pid,
+                       'questionId': state['questionId'], 'roundId': state['roundId'], 'generation': state['generation'],
+                       'payload': {'cardNumber': number, 'option': option}}
+                response = await self.api('POST', path + '/commands', cmd, headers=mobile)
+                self.assertEqual(response['status'], 'pending')
+        with patch.object(service, 'now_ms', return_value=stamp + 1500):
+            self.assertEqual((await self.api('GET', path, headers=mobile))['state']['received'], 0)
+            delivery = await self.api('POST', '/device/relay', relay, headers=self.dh)
+        self.assertEqual(len(delivery['commands']), 2)
+        receipts = []
+        for cmd in delivery['commands']:
+            journal = self.journal([{'action': 'answer', 'command': cmd}], base=board['session'])
+            board = self.batch(journal, board['session']['seq'] + 1)
+            await self.sync(board)
+            result = journal['receipts'][cmd['id']]['result']
+            result['state']['className'] = state['className']
+            receipts.append({'id': cmd['id'], 'result': result})
+        with patch.object(service, 'now_ms', return_value=stamp + 3000):
+            await self.api('POST', '/device/relay', {**relay, 'state': public_state(board['session'], state['className']),
+                                                     'receipts': receipts}, headers=self.dh)
+            saved = await self.api('GET', path + '?commandId=scan-card-1&commandId=scan-card-2', headers=mobile)
+            self.assertEqual(saved['state']['received'], 2)
+            self.assertEqual([r['status'] for r in saved['receipts']], ['confirmed', 'confirmed'])
+        for secret in (invite['invite'], mobile['X-ICeClass-Scanner']):
+            self.assertNotIn(secret, '\n'.join(self.db.db.iterdump()))
+
+    async def test_scan_invite_expires_and_closing_whiteboard_invalidates_pending_phone(self):
+        await self.initialize()
+        await self.sync(self.session(ended=False))
+        body = {'sessionId': 'session-1', 'quickScan': True}
+        mobile = {'X-ICeClass-Scanner': 'c' * 64}
+        offer = await self.api('POST', '/device/pair', body, headers=self.dh)
+        invite = {'invite': parse_qs(urlsplit(offer['url']).fragment)['scan'][0]}
+        with patch.object(service, 'now_ms', return_value=offer['expiresAt']):
+            await self.api('POST', '/scan', invite, 410, mobile)
+        await self.api('POST', '/scan', invite, headers=mobile)
+        await self.api('POST', '/device/pair/cancel', {'sessionId': body['sessionId'], 'pairId': offer['pairId']},
+                       headers=self.dh)
+        await self.api('GET', '/pairs/' + offer['pairId'], status=403, headers=mobile)
+        await self.api('POST', '/scan', invite, 410, mobile)
+
     async def test_pair_state_is_anonymous_and_source_must_be_saved_before_commands(self):
         pair, state, _ = await self.active_pair()
         data = await self.api('GET', '/pairs/' + pair['pairId'])
@@ -464,6 +551,145 @@ class CardQuizTests(CardQuizHttpCase):
         await self.api('POST', '/device/relay', {'sessionId': 'session-1', 'state': {**state, 'students': self.students}, 'receipts': []}, 400, self.dh)
         for action in ('recover', 'set_source', 'end_session', 'set_exempt'):
             await self.api('POST', '/pairs/' + pair['pairId'] + '/commands', self.command(pair, action=action), 400)
+
+    async def test_camera_preview_only_signals_current_paired_round_in_memory(self):
+        pair, previous, body = await self.active_pair()
+        body = self.advance(body, 'start_round')
+        await self.sync(body)
+        state = public_state(body['session'], previous['className'])
+        path = '/pairs/' + pair['pairId']
+        relay = {'sessionId': state['sessionId'], 'state': state, 'receipts': []}
+        offer = 'v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=ice-ufrag:fixture-offer\r\n'
+        answer = offer.replace('fixture-offer', 'fixture-answer')
+        signal = {'id': 'connection-1', 'offer': offer}
+        stamp = service.now_ms() + 1200
+        with patch.object(service, 'now_ms', return_value=stamp):
+            ready = await self.api('POST', '/device/relay', {**relay, 'preview': signal}, headers=self.dh)
+            self.assertEqual(ready['preview'], {'id': signal['id']})
+            self.assertEqual((await self.api('GET', path+'?preview=open'))['preview'], signal)
+            await self.api('POST', path+'/preview', {'id': 'previous', 'answer': answer}, 409)
+            await self.api('POST', path+'/preview', {'id': signal['id'], 'answer': 'invalid'}, 400)
+            _, other = await self.account('preview-other', teaching=[self.cid])
+            await self.api('POST', path+'/preview', {'id': signal['id'], 'answer': answer}, 403, other)
+            await self.api('POST', path+'/preview', {'id': signal['id'], 'answer': answer})
+        with patch.object(service, 'now_ms', return_value=stamp+1300):
+            received = await self.api('POST', '/device/relay', {**relay, 'preview': {'id': signal['id']}}, headers=self.dh)
+            self.assertEqual(received['preview']['answer'], answer)
+            self.assertEqual((await self.api('GET', path+'?preview=connection-1'))['preview'], {'id': signal['id']})
+        self.assertNotIn('fixture-offer', '\n'.join(self.db.db.iterdump()))
+        self.assertNotIn('fixture-answer', '\n'.join(self.db.db.iterdump()))
+        sealed = self.advance(body, 'end_round')
+        await self.sync(sealed)
+        with patch.object(service, 'now_ms', return_value=stamp+2600):
+            closed = await self.api('POST', '/device/relay', {**relay, 'state': public_state(sealed['session'], previous['className']),
+                                                              'preview': {'id': 'closed', 'prepare': True}}, headers=self.dh)
+            self.assertNotIn('preview', closed)
+            self.assertNotIn('preview', await self.api('GET', path+'?preview=open'))
+            await self.api('POST', path+'/preview', {'id': signal['id'], 'answer': answer}, 409)
+
+    async def test_camera_preview_bounds_video_offers_and_answers_without_interrupting_relay(self):
+        pair, previous, body = await self.active_pair()
+        body = self.advance(body, 'start_round')
+        await self.sync(body)
+        state = public_state(body['session'], previous['className'])
+        path = '/pairs/' + pair['pairId']
+        base = {'sessionId': state['sessionId'], 'state': state, 'receipts': []}
+        header = 'v=0\r\n'
+        data = 'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n'
+        video = 'm=video 9 UDP/TLS/RTP/SAVPF 96 97\r\n'
+        audio = 'm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n'
+        receive = video + 'a=recvonly\r\n'
+        send = video + 'a=sendonly\r\n'
+        offer = header + receive + data
+
+        with patch.object(service, 'now_ms', return_value=service.now_ms() + 1200) as clock:
+            async def board(key, **signal):
+                clock.return_value += 1100
+                return await self.api('POST', '/device/relay', {**base, 'preview': {'id': key, **signal}}, headers=self.dh)
+
+            ready = await board('media', prepare=True)
+            self.assertEqual(ready['preview'], {'id': 'media', 'iceServers': [], 'video': True})
+            self.assertEqual((await board('media', offer=offer))['preview'], {'id': 'media'})
+            self.assertEqual((await self.api('GET', path+'?preview=open'))['preview'], {'id': 'media', 'offer': offer})
+            for invalid in (data + audio, receive, data + data, receive + receive + data, send + data,
+                            video + data, video + 'a=inactive\r\n' + data, receive + 'a=sendrecv\r\n' + data,
+                            data.replace('webrtc-datachannel', 'other-webrtc-datachannel'), data + 'a=x:' + 'x' * 16384):
+                with self.subTest(offer=invalid[:80]):
+                    result = await board('other', offer=header + invalid)
+                    self.assertIn('commands', result)
+                    self.assertNotIn('preview', result)
+            self.assertNotIn('preview', await board('media', offer=header + send + data))
+            for invalid in (receive + data, video + 'a=sendrecv\r\n' + data, video + data, send + audio + data,
+                            send + send + data, data + send, data, send + data.replace(' 9 ', ' 0 '),
+                            send + data.replace(' 9 ', ' 0 ') + 'a=bundle-only\r\n'):
+                with self.subTest(answer=invalid):
+                    await self.api('POST', path+'/preview', {'id': 'media', 'answer': header + invalid}, 400)
+            answer = header + send + data
+            await self.api('POST', path+'/preview', {'id': 'media', 'answer': answer})
+            await self.api('POST', path+'/preview', {'id': 'media', 'answer': answer})
+            self.assertEqual((await board('media'))['preview']['answer'], answer)
+            await self.api('POST', path+'/preview', {'id': 'media', 'answer': header + video + 'a=inactive\r\n' + data}, 409)
+
+            # The session direction applies until overridden by a media attribute. A bundled
+            # zero-port offer is active, while a phone can decline the video m-line altogether.
+            bundled = header + 'a=recvonly\r\n' + data + video.replace(' 9 ', ' 0 ') + 'a=bundle-only\r\n'
+            for key, video_answer in [('inactive', video + 'a=inactive\r\n'), ('declined', video.replace(' 9 ', ' 0 '))]:
+                self.assertIn('preview', await board(key, offer=bundled))
+                legacy_answer = header + data + video_answer
+                await self.api('POST', path+'/preview', {'id': key, 'answer': legacy_answer})
+                self.assertEqual((await board(key))['preview']['answer'], legacy_answer)
+            self.assertIn('preview', await board('data-only', offer=header + data))
+            await self.api('POST', path+'/preview', {'id': 'data-only', 'answer': header + data + send}, 400)
+            await self.api('POST', path+'/preview', {'id': 'data-only', 'answer': header + data})
+
+    async def test_turn_credentials_only_reach_their_paired_device_without_blocking_answers(self):
+        from card_quiz_turn import PreviewTurn
+        pair, previous, body = await self.active_pair()
+        body = self.advance(body, 'start_round')
+        await self.sync(body)
+        state = public_state(body['session'], previous['className'])
+        path = '/pairs/' + pair['pairId']
+        relay = {'sessionId': state['sessionId'], 'state': state, 'receipts': []}
+        gate = asyncio.Event()
+        issued = {role: [{'urls': ['turn:relay.example'], 'username': role,
+                          'credential': 'private-' + role}] for role in ('board', 'phone')}
+        async def issue():
+            await gate.wait()
+            return issued
+        # Exercise the production pair/round validation and the asynchronous cache through HTTP.
+        handler = next(r.handler for r in self.app.router.routes()
+                       if r.resource.canonical == PREFIX + '/device/relay')
+        turn = handler.__self__.preview_turn
+        turn.endpoint = 'https://relay.example'
+        stamp = service.now_ms() + 1300
+        probe = {'id': 'preview-turn-1', 'prepare': True}
+        with patch.object(PreviewTurn, 'issue', side_effect=issue) as provision:
+            with patch.object(service, 'now_ms', return_value=stamp):
+                waiting = await self.api('POST', '/device/relay', {**relay, 'preview': probe}, headers=self.dh)
+                self.assertTrue(waiting['preview']['preparing'])
+                self.assertNotIn('video', waiting['preview'])
+                self.assertIn('commands', waiting)
+                self.assertNotIn('preview', await self.api('GET', path+'?preview=open'))
+            gate.set()
+            await asyncio.sleep(0)
+            with patch.object(service, 'now_ms', return_value=stamp+1000):
+                board = await self.api('POST', '/device/relay', {**relay, 'preview': probe}, headers=self.dh)
+                self.assertEqual(board['preview']['iceServers'], issued['board'])
+                self.assertIs(board['preview']['video'], True)
+            offer = {'id': probe['id'], 'offer': 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=recvonly\r\n'
+                                                'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n'}
+            with patch.object(service, 'now_ms', return_value=stamp+2000):
+                await self.api('POST', '/device/relay', {**relay, 'preview': offer}, headers=self.dh)
+                phone = await self.api('GET', path+'?preview=open')
+                self.assertEqual(phone['preview']['iceServers'], issued['phone'])
+                self.assertNotIn('private-board', json.dumps(phone))
+            with patch.object(service, 'now_ms', return_value=stamp+3100):
+                self.assertNotIn('iceServers', (await self.api('GET', path+'?preview='+probe['id']))['preview'])
+                _, other = await self.account('other-preview-turn', teaching=[self.cid])
+                await self.api('GET', path+'?preview=open', status=403, headers=other)
+            provision.assert_awaited_once()
+            self.assertNotIn('private-board', '\n'.join(self.db.db.iterdump()))
+            self.assertNotIn('private-phone', '\n'.join(self.db.db.iterdump()))
 
     async def test_relay_waits_for_device_receipt_and_retry_checks_content_before_state(self):
         pair, state, body = await self.active_pair()
@@ -754,7 +980,6 @@ class CardQuizTests(CardQuizHttpCase):
                 self.assertNotIn('__CSP_NONCE__', await response.text())
 
     async def test_generated_pair_link_and_card_aliases_redirect_with_query_preserved(self):
-        from urllib.parse import urlsplit
         await self.initialize()
         await self.sync(self.session(ended=False))
         pair = await self.api('POST', '/device/pair', {'sessionId': 'session-1'}, headers=self.dh)

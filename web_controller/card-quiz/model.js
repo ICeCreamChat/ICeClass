@@ -6,7 +6,12 @@
   const activeQuestion=s=>s.questions.find(q=>q.id===s.currentQuestionId);
   const activeRound=s=>activeQuestion(s)?.rounds.find(r=>r.id===s.currentRoundId);
   const closed=r=>!r||r.status==='closed';
-  const completeAnswer=(q,a)=>Boolean(a)&&(q?.type!=='multiple'||q.options.every((_,i)=>typeof a.choices?.[letters[i]]==='boolean'));
+  function completeAnswer(q, answer, round) {
+    if (!answer) return false;
+    if (q?.type !== 'multiple') return Boolean(answer.option);
+    if (round?.noCardPolicy === 'abstain') return Object.keys(answer.choices || {}).length > 0;
+    return q.options.every((_, i) => typeof answer.choices?.[letters[i]] === 'boolean');
+  }
   function validText(value,max){
     if(typeof value!=='string')return false;let count=0;
     for(const character of value){const code=character.codePointAt(0);if(++count>max||code>=0xd800&&code<=0xdfff)return false;}
@@ -59,7 +64,7 @@
       }
       case 'start_round':{
         current();between();s.generation++;
-        const created={id:uid(),startedAt:now,endedAt:null,purpose:q.revealed||p.practice===true?'practice':'formal',source:s.source,sourceId:s.sourceId,generation:s.generation,status:'collecting',answers:{},exempt:[]};
+        const created={id:uid(),startedAt:now,endedAt:null,purpose:q.revealed||p.practice===true?'practice':'formal',source:s.source,sourceId:s.sourceId,generation:s.generation,status:'collecting',noCardPolicy:'abstain',answers:{},exempt:[]};
         if(q.type==='multiple')created.activeOption='A';
         q.rounds.push(created);s.currentRoundId=created.id;break;
       }
@@ -121,18 +126,35 @@
     return apply(s,{id:uid(),sessionId:s.id,generation:s.generation,sourceId:s.sourceId,action:'recover',payload:{}},now);
   }
   function officialRound(q){return [...q.rounds].reverse().find(r=>r.status==='closed'&&r.purpose==='formal')||null;}
+  function combinationDistribution(completeAnswers){
+    const counts = {};
+    for (const answer of completeAnswers) counts[answer.option] = (counts[answer.option] || 0) + 1;
+    return counts;
+  }
+  function distributionBars(type,distribution){
+    const bars = Object.entries(distribution).map(([key,count]) => ({
+      label:type === 'boolean' ? (key === 'A' ? 'A 对' : 'B 错') : key || '全不选', count
+    }));
+    // Canonical A-D combinations sort alphabetically on ties; 全不选 follows the letters.
+    if (type === 'multiple') bars.sort((a,b) => b.count - a.count || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+    return bars;
+  }
   function roundSummary(s,r){
     const q=s.questions.find(q=>q.rounds.some(item=>item.id===r?.id))||activeQuestion(s);
-    const expected=s.roster.filter(x=>!r?.exempt.includes(x.id)),entries=expected.map(x=>r?.answers[x.id]).filter(Boolean),answers=entries.filter(a=>completeAnswer(q,a));
-    const distribution=Object.fromEntries(letters.slice(0,q?.options.length||4).split('').map(l=>[l,0]));
-    for(const a of answers)for(const option of a.option)if(Object.hasOwn(distribution,option))distribution[option]++;
-    return{expected:expected.length,received:answers.length,unanswered:expected.length-entries.length,correct:q?.answer?answers.filter(a=>a.option===q.answer).length:null,distribution,
+    const expected=s.roster.filter(x=>!r?.exempt.includes(x.id)),entries=expected.map(x=>r?.answers[x.id]).filter(Boolean),answers=entries.filter(a=>completeAnswer(q,a,r));
+    const missing = expected.length - entries.length;
+    const abstained = r?.noCardPolicy === 'abstain' && r.status === 'closed' ? missing : 0;
+    const multi = q?.type === 'multiple';
+    const distribution = multi ? combinationDistribution(answers) : Object.fromEntries(letters.slice(0,q?.options.length||4).split('').map(l=>[l,0]));
+    if (!multi) for (const a of answers) if (Object.hasOwn(distribution,a.option)) distribution[a.option]++;
+    return{expected:expected.length,received:answers.length,unanswered:missing-abstained,...(r?.noCardPolicy === 'abstain' ? {abstained} : {}),correct:q?.answer?answers.filter(a=>a.option===q.answer).length:null,distribution,
       ...(q?.type==='multiple'?{incomplete:entries.length-answers.length,optionReceived:entries.filter(a=>Object.hasOwn(a.choices,r?.activeOption)).length}:{})};
   }
   function publicState(s,className=''){
     const q=activeQuestion(s),r=activeRound(s),counts=roundSummary(s,r);
     return{sessionId:s.id,className,subjectId:s.subjectId,questionId:q?.id||null,questionNumber:q?s.questions.indexOf(q)+1:0,questionType:q?.type||null,optionCount:q?.options.length||4,roundId:r?.id||null,roundStatus:r?.status||null,source:s.source,sourceId:s.sourceId,generation:s.generation,seq:s.seq,received:counts.received,expected:counts.expected,ended:s.endedAt!==null,
+      ...(r?.noCardPolicy ? {noCardPolicy:r.noCardPolicy} : {}),
       ...(q?.type==='multiple'?{activeOption:r?.activeOption||null,optionReceived:counts.optionReceived||0}:{})};
   }
-  return{classRoster,createSession,apply,recover,officialRound,roundSummary,publicState,activeQuestion,activeRound,completeAnswer};
+  return{classRoster,createSession,apply,recover,officialRound,roundSummary,publicState,activeQuestion,activeRound,completeAnswer,combinationDistribution,distributionBars};
 });

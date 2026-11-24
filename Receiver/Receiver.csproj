@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.5.17</Version>
+    <Version>2.5.24</Version>
     <EmbedVoiceResources Condition="'$(EmbedVoiceResources)' == ''">true</EmbedVoiceResources>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
@@ -24,6 +24,9 @@
     <EmbeddedResource Include="..\web_controller\acknowledgements-default.json" LogicalName="ICeClass.About.acknowledgements.json" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\web_controller\assets\banban\icons\chevron-down.svg" LogicalName="ICeClass.Classroom.Icons.chevron-down.svg" />
+    <EmbeddedResource Include="..\web_controller\assets\banban\icons\minimize-2.svg" LogicalName="ICeClass.Classroom.Icons.minimize-2.svg" />
+    <EmbeddedResource Include="..\web_controller\assets\banban\icons\arrow-right.svg;..\web_controller\assets\banban\icons\plus.svg;..\web_controller\assets\banban\icons\settings-2.svg;..\web_controller\assets\banban\icons\maximize-2.svg;..\web_controller\assets\banban\icons\ellipsis.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\About\banban-bow.webp" LogicalName="ICeClass.About.banban-bow.webp" />
     <EmbeddedResource Include="Assets\Banban\*.webp" LogicalName="ICeClass.Island.banban.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Voice\*" Exclude="Assets\Voice\manifest.json" LogicalName="ICeClass.Voice.%(Filename)%(Extension)" Condition="'$(EmbedVoiceResources)' != 'false'" />
@@ -42,6 +45,7 @@
     <EmbeddedResource Include="..\web_controller\reading\**\*" LogicalName="ICeClass.Local/reading/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\homework\classroom\**\*" LogicalName="ICeClass.Local/homework/classroom/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\card-quiz\**\*" LogicalName="ICeClass.Local/card-quiz/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Update="..\web_controller\card-quiz\icons\*.svg" LogicalName="ICeClass.Local/card-quiz/icons/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\*" LogicalName="ICeClass.Local/assets/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\favicon.ico" LogicalName="ICeClass.Local/favicon.ico" />
     <EmbeddedResource Include="..\branding\app.ico" LogicalName="ICeClass.Branding.app.ico" />

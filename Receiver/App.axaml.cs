@@ -51,8 +51,22 @@ public sealed partial class App : Application
         }
 
         _desktop = desktop;
-        InitializeClientDiagnostics();
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        desktop.Exit += async (_, _) => await ShutdownAsync();
+        void OpenPaperClassroom() => Dispatcher.UIThread.Post(() => ShowCardQuiz());
+        if (Program.PaperBinding is { } paperBinding)
+        {
+            var menu = new NativeMenu();
+            var open = new NativeMenuItem { Header = "打开纸卡课堂" };
+            open.Click += (_, _) => OpenPaperClassroom();
+            menu.Items.Add(open);
+            InstallTray(menu, paperBinding.ClassName + " · 纸卡课堂", OpenPaperClassroom);
+            InstanceActivation.Listen(OpenPaperClassroom, openPaperClassroom: OpenPaperClassroom);
+            OpenPaperClassroom();
+            base.OnFrameworkInitializationCompleted();
+            return;
+        }
+        InitializeClientDiagnostics();
         _speech = new SpeechService();
         _receiver = new CloudReceiverService(_speech);
         ReceiverConfig.TryLoad(out var workshopBinding);
@@ -96,9 +110,8 @@ public sealed partial class App : Application
         InitializeVoiceResources();
         DesktopShortcut.EnsureCreated();
         InstanceActivation.Listen(() => Dispatcher.UIThread.Post(ShowStudentVoice),
-            () => Dispatcher.UIThread.Post(() => _island?.PlayDemo()), () => Dispatcher.UIThread.Post(PreviewShout));
+            () => Dispatcher.UIThread.Post(() => _island?.PlayDemo()), () => Dispatcher.UIThread.Post(PreviewShout), OpenPaperClassroom);
         ReceiverUpdateService.ConfirmUpdatedLaunch();
-        desktop.Exit += async (_, _) => await ShutdownAsync();
 
         if (ReceiverConfig.TryLoad(out var config))
         {
@@ -113,7 +126,8 @@ public sealed partial class App : Application
             Dispatcher.UIThread.Post(() => StartBanbanVoice(config, true));
             StartAutomaticUpdates(config);
             // Keep the student entry point visible on classroom screens so nobody has to find the tray menu.
-            if (desktop.Args?.Contains("--island-shout-preview") == true) Dispatcher.UIThread.Post(PreviewShout);
+            if (desktop.Args?.Contains(Program.PaperClassroom) == true) OpenPaperClassroom();
+            else if (desktop.Args?.Contains("--island-shout-preview") == true) Dispatcher.UIThread.Post(PreviewShout);
             else if (desktop.Args?.Contains("--island-demo") == true) Dispatcher.UIThread.Post(() => _island.PlayDemo());
             else if (!(desktop.Args?.Contains("--background") ?? false)) Dispatcher.UIThread.Post(ShowStudentVoice);
         }
@@ -179,12 +193,17 @@ public sealed partial class App : Application
         voiceResources.Click += (_, _) => { ShowEnrollment(); _enrollmentWindow?.RevealVoiceResources(); };
         menu.Items.Add(voiceResources);
         menu.Items.Add(_updateMenuItem);
+        InstallTray(menu, "ICeClass 班伴", ShowStudentVoice);
+    }
+
+    private void InstallTray(NativeMenu menu, string name, Action open)
+    {
         menu.Items.Add(new NativeMenuItemSeparator());
         var exit = new NativeMenuItem { Header = "退出" };
         exit.Click += async (_, _) => await ExitAsync();
         menu.Items.Add(exit);
-        _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = "ICeClass 班伴", Menu = menu, IsVisible = true };
-        _tray.Clicked += (_, _) => ShowStudentVoice();
+        _tray = new TrayIcon { Icon = new WindowIcon(AppIconFactory.CreateStream()), ToolTipText = name, Menu = menu, IsVisible = true };
+        _tray.Clicked += (_, _) => open();
     }
 
     private Task StopCurrentTaskAsync()
@@ -244,7 +263,7 @@ public sealed partial class App : Application
         if (_banbanVoiceWindow is not null && !_banbanVoiceWindow.Matches(config)) { _banbanVoiceWindow.Shutdown(); _banbanVoiceWindow = null; }
         if (_banbanVoiceWindow is null)
         {
-            var window = new BanbanVoiceWindow(config, () => _receiver?.ComputerAgent.Stop(), timetable: () => _island?.HomeState);
+            var window = new BanbanVoiceWindow(config, () => _receiver?.ComputerAgent.Stop(), petPreferencePath: Program.PaperPreferencePath);
             window.SetInClass(_island?.InClass == true);
             _banbanVoiceWindow = window;
             window.Closed += (_, _) => { if (ReferenceEquals(_banbanVoiceWindow, window)) _banbanVoiceWindow = null; };
@@ -343,11 +362,12 @@ public sealed partial class App : Application
         _studentVoiceWindow.Activate();
     }
 
-    private void ShowCardQuiz()
+    private bool ShowCardQuiz()
     {
-        if (!ReceiverConfig.TryLoad(out var config)) { ShowEnrollment(); return; }
+        var config = Program.PaperBinding;
+        if (config is null && !ReceiverConfig.TryLoad(out config)) { ShowEnrollment(); return false; }
         if (_banbanVoiceWindow is null || !_banbanVoiceWindow.Matches(config)) StartBanbanVoice(config, true);
-        _banbanVoiceWindow?.SetClassroomExpanded(true);
+        return _banbanVoiceWindow?.TryOpenClassroom() == true;
     }
 
     private async void ShowCreativeIdeas(string view)

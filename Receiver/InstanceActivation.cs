@@ -1,23 +1,45 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 
 namespace ICeClass.Receiver;
 
 internal static class InstanceActivation
 {
-    private static string PipeName => "ICeClass.Receiver.Activate." + Environment.UserName;
+    internal static string Scope { get; set; } = "";
+    private static string PipeName => "ICeClass.Receiver.Activate." + Environment.UserName + Scope;
     private static readonly CancellationTokenSource Lifetime = new();
 
-    public static void NotifyRunningInstance(bool islandDemo = false, bool shoutPreview = false)
+    // Called on Main's STA thread, which must also release the mutex after the UI exits.
+    internal static bool AcquireOrNotify(Mutex instance, bool islandDemo, bool shoutPreview, bool paperClassroom)
     {
         try
         {
-            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
-            client.Connect(2500); client.WriteByte(shoutPreview ? (byte)3 : islandDemo ? (byte)2 : (byte)1); client.Flush();
+            if (instance.WaitOne(0)) return true;
+            var elapsed = Stopwatch.StartNew();
+            do
+            {
+                try
+                {
+                    using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
+                    client.Connect(250);
+                    client.WriteByte(paperClassroom ? (byte)4 : shoutPreview ? (byte)3 : islandDemo ? (byte)2 : (byte)1);
+                    return false;
+                }
+                catch (Exception error) when (error is TimeoutException or IOException)
+                {
+                    // A new owner may still be starting its listener, or the old one may be exiting.
+                    if (instance.WaitOne(50)) return true;
+                }
+            } while (elapsed.Elapsed < TimeSpan.FromSeconds(10));
+            AppLog.Error("Running receiver did not accept desktop activation within 10 seconds.");
         }
-        catch { /* The first instance may still be starting or shutting down. */ }
+        catch (AbandonedMutexException) { return true; }
+        catch (UnauthorizedAccessException error) { AppLog.Error("Desktop activation access denied", error); }
+        Environment.ExitCode = 1;
+        return false;
     }
 
-    public static void Listen(Action showWindow, Action? playIslandDemo = null, Action? previewShout = null)
+    public static void Listen(Action showWindow, Action? playIslandDemo = null, Action? previewShout = null, Action? openPaperClassroom = null)
     {
         _ = Task.Run(async () =>
         {
@@ -36,6 +58,7 @@ internal static class InstanceActivation
                         if (data[0] == 1) showWindow();
                         else if (data[0] == 2) playIslandDemo?.Invoke();
                         else if (data[0] == 3) previewShout?.Invoke();
+                        else if (data[0] == 4) openPaperClassroom?.Invoke();
                     }
                 }
                 catch (OperationCanceledException) { }

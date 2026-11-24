@@ -13,6 +13,7 @@ namespace ICeClass.Receiver;
 internal sealed class BanbanVoiceWindow : Window
 {
     private readonly ReceiverConfig _binding;
+    private readonly string? _voicePreferencePath;
     private readonly Uri _origin;
     private ReadingBrowser _browser = CreateBrowser();
     private readonly BanbanVoiceService _voice;
@@ -26,8 +27,7 @@ internal sealed class BanbanVoiceWindow : Window
     private bool _canClose, _started, _pageReady, _authorized, _suspended, _pendingConversation, _connectionFailed, _browserFailed;
     internal event Action<string>? VoiceStatusChanged;
 
-    internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null,
-        Func<ClassroomHomeSnapshot?>? timetable = null)
+    internal BanbanVoiceWindow(ReceiverConfig binding, Action stopComputer, bool? enabled = null, string? petPreferencePath = null)
     {
         // The receiver updates its configuration object in place on re-binding.
         // Keep an immutable identity snapshot. The device token stays in native
@@ -36,8 +36,10 @@ internal sealed class BanbanVoiceWindow : Window
             ClassId = binding.ClassId, ClassName = binding.ClassName };
         _stopComputer = stopComputer;
         _origin = new Uri(binding.Endpoint.TrimEnd('/') + "/");
-        _voice = new BanbanVoiceService(enabled ?? BanbanVoicePreferences.Load());
-        _pet = new BanbanPetWindow(BringForward, StartConversation, () => _voice.CancelTask(), SetVoiceEnabled, petPreferencePath, _binding, timetable)
+        _voicePreferencePath = petPreferencePath is null ? null :
+            Path.Combine(Path.GetDirectoryName(Path.GetFullPath(petPreferencePath))!, "banban-voice.json");
+        _voice = new BanbanVoiceService(enabled ?? BanbanVoicePreferences.Load(_voicePreferencePath));
+        _pet = new BanbanPetWindow(BringForward, StartConversation, () => _voice.CancelTask(), SetVoiceEnabled, petPreferencePath, _binding)
             { SpeechOpening = () => _voice.SpeechMouthOpening };
         SystemEvents.SessionSwitch += SessionSwitch;
         SystemEvents.PowerModeChanged += PowerChanged;
@@ -320,7 +322,7 @@ internal sealed class BanbanVoiceWindow : Window
     private void SetVoiceEnabled(bool enabled)
     {
         if (!enabled) { _pendingConversation = false; _pet.SetPreparing(false); }
-        BanbanVoicePreferences.Save(enabled); _voice.SetEnabled(enabled);
+        BanbanVoicePreferences.Save(enabled, _voicePreferencePath); _voice.SetEnabled(enabled);
     }
     internal void StartConversation()
     {
@@ -351,7 +353,13 @@ internal sealed class BanbanVoiceWindow : Window
     internal bool IsBusy => _voice.Busy;
     internal void SetInClass(bool value) => _pet.SetInClass(value);
     internal void ShowPet() => _pet.ShowPet(true);
-    internal void SetClassroomExpanded(bool value) { if (value) _pet.ShowPet(true); _pet.SetClassroomExpanded(value); }
+    internal bool TryOpenClassroom()
+    {
+        if (_canClose || _suspended) return false;
+        _pet.ShowPet(true);
+        _pet.SetClassroomExpanded(true);
+        return _pet.IsVisible && _pet.ClassroomExpanded;
+    }
     internal CardQuizHost? ClassroomHost => _pet.ClassroomHost;
     internal void BringForward() { Show(); WindowState = WindowState.Normal; Activate(); _browser.FocusPage(); }
     internal void Shutdown() { if (_canClose) return; _canClose = true; _pet.Shutdown(); _stopComputer(); _voice.Dispose(); Close(); }

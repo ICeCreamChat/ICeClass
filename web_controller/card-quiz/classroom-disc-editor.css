@@ -1,0 +1,57 @@
+.banban.in-disc #editor[data-editor-step] {
+  padding: 3px 4px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.banban.in-disc #editor[data-editor-step] #question-form {
+  height: 100%;
+  min-width: 0;
+}
+
+.banban.in-disc #editor[data-editor-step] #question-form:not(.disc-columns) {
+  display: flex;
+  flex-direction: column;
+}
+
+.banban.in-disc #editor[data-editor-step] #question-form.disc-columns {
+  display: block;
+}
+
+.banban.in-disc #editor[data-editor-step] #question-form > :not([data-editor-visible]),
+.banban.in-disc #editor[data-editor-step] #edit-options > :not([data-editor-visible]) {
+  display: none;
+}
+
+/* The native title names the field. Its original label still supplies the accessible name. */
+.banban.in-disc #editor[data-editor-step] label[data-editor-visible] {
+  min-width: 0;
+  gap: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.banban.in-disc #editor[data-editor-step] label[data-editor-visible] :is(input, textarea) {
+  padding: 6px 8px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.banban.in-disc #editor[data-editor-step="stem"] label[data-editor-visible] {
+  flex: 1;
+  min-height: 0;
+}
+
+.banban.in-disc #editor[data-editor-step="stem"] #edit-text {
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: auto;
+}
+
+/* Match the disc reader's parked WebView breakpoint before measuring a column. */
+@media (max-width: 40px), (max-height: 24px) {
+  .banban.in-disc #editor[data-editor-step] .disc-viewport:has(> .disc-columns) {
+    display: none;
+  }
+}

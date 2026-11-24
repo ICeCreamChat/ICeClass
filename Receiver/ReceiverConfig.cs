@@ -51,6 +51,8 @@ public sealed class ReceiverConfig
         return Store.TryLoad(out config);
     }
 
+    internal static bool CanUseDefaultBinding(ReceiverConfig requested) => Store.CanUseDefaultBinding(requested);
+
     public static void Save(ReceiverConfig config, bool updateStartup = true)
     {
         Store.Save(config);
@@ -124,6 +126,24 @@ internal sealed class ReceiverConfigStore(string installationDirectory, string u
     private static readonly object Sync = new();
     private string LegacyPath => Path.Combine(installationDirectory, "config.json");
     private string UserPath => Path.Combine(userDataDirectory, "config.json");
+
+    private static bool SameBinding(ReceiverConfig first, ReceiverConfig second) =>
+        ReceiverConfig.NormalizeEndpoint(first.Endpoint) == ReceiverConfig.NormalizeEndpoint(second.Endpoint) &&
+        first.DeviceId == second.DeviceId && first.ClassId == second.ClassId;
+
+    public bool CanUseDefaultBinding(ReceiverConfig requested)
+    {
+        lock (Sync)
+        {
+            if (!ReceiverConfig.TryRead(LegacyPath, out var legacy))
+                return ReceiverConfig.TryRead(UserPath, out var user) && !ReceiverConfig.IsPreview(user) && SameBinding(user, requested);
+
+            if (!SameBinding(legacy, requested)) return false;
+            // Normal startup migrates a non-preview legacy file over the user file.
+            return ReceiverConfig.IsPreview(legacy) || !File.Exists(UserPath) ||
+                (ReceiverConfig.TryRead(UserPath, out var destination) && SameBinding(destination, requested));
+        }
+    }
 
     public bool TryLoad(out ReceiverConfig config)
     {

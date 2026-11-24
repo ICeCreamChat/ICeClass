@@ -24,7 +24,10 @@ def version_from_tag(tag):
 
 
 def asset_names(version):
-    return [f"ICeClass-{version}-{kind}.zip" for kind in PACKAGE_KINDS] + [
+    kinds = PACKAGE_KINDS
+    if tuple(map(int, version.split("."))) >= (2, 5, 5):
+        kinds += ("classroom-offline", "desktop-windows-x64-offline")
+    return [f"ICeClass-{version}-{kind}.zip" for kind in kinds] + [
         f"update-ubuntu-{version}.sh", f"SHA256SUMS-{version}.txt"
     ]
 
@@ -68,29 +71,27 @@ def prepare(source, tag, directory):
     version = validate_source(source, tag)
     commit = source_commit(source, tag)
     names = asset_names(version)
-    for name in names[:4]:
+    *archives, update_script, checksum_file = names
+    for name in archives:
         if not (source / "dist/release" / name).is_file():
             raise ValueError(f"Missing package: {name}")
     if directory.exists() and any(directory.iterdir()):
         raise ValueError("Use an empty directory for release assets.")
     directory.mkdir(parents=True, exist_ok=True)
-    for name in names[:4]:
+    for name in archives:
         shutil.copyfile(source / "dist/release" / name, directory / name)
     # Normalize shell-script newlines when packaging on Windows.
-    (directory / names[4]).write_text(
+    (directory / update_script).write_text(
         (source / "scripts/update-ubuntu.sh").read_text("utf-8-sig"), encoding="utf-8", newline="\n"
     )
-    (directory / names[5]).write_text(
-        "".join(f"{sha256(directory / name)}  {name}\n" for name in names[:5]),
+    (directory / checksum_file).write_text(
+        "".join(f"{sha256(directory / name)}  {name}\n" for name in names[:-1]),
         encoding="utf-8", newline="\n"
     )
     notes = (source / "docs" / f"发布记录-{version}.md").read_text("utf-8-sig")
     introduction = (
         f"{MARKER}\nGitHub Actions 从 `{tag}`（`{commit}`）自动构建并验证。"
-        "教室端、Windows 教师端、完整 Windows 包、服务端包和 Ubuntu 更新脚本见下方附件；"
-        "`SHA256SUMS` 提供文件校验值。\n\n"
-        "> GitHub 发布与学校服务器部署分开进行。本次发布不会升级学校平台或客户端更新源；"
-        "教室电脑收到新版前，需要管理员部署配套服务端和更新包。\n\n---\n\n"
+        "安装包和 Ubuntu 更新脚本见附件。可用 `SHA256SUMS` 核对下载文件。\n\n"
     )
     (directory / "release-notes.md").write_text(introduction + notes, encoding="utf-8", newline="\n")
     metadata = {
@@ -118,8 +119,8 @@ def verify_assets(directory, tag):
         path = directory / asset["name"]
         if path.stat().st_size != asset["size"] or sha256(path) != asset["sha256"]:
             raise ValueError(f"Release asset changed after verification: {path.name}")
-    checksums = "".join(f"{sha256(directory / name)}  {name}\n" for name in names[:5])
-    if (directory / names[5]).read_text("utf-8") != checksums:
+    checksums = "".join(f"{sha256(directory / name)}  {name}\n" for name in names[:-1])
+    if (directory / names[-1]).read_text("utf-8") != checksums:
         raise ValueError("Checksum list does not match release assets.")
     if not (directory / "release-notes.md").read_text("utf-8").startswith(MARKER):
         raise ValueError("Missing generated release notes.")

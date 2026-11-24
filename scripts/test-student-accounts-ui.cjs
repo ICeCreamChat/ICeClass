@@ -208,7 +208,7 @@ test('teacher print GET never resets; explicit confirmation prints one complete,
       overflow:sheet.scrollHeight-sheet.clientHeight,captionFits:caption.bottom<=symbol.top,text:sheet.innerText};
   }));
   assert.equal(dimensions.length,2);
-  for(const d of dimensions){assert.ok(Math.abs(d.blackMm-144)<.1);assert.ok(d.height<=277&&d.overflow<=1);assert.ok(d.captionFits);assert.match(d.text,/班级/);assert.match(d.text,/编号/);assert.match(d.text,/卡号/);assert.match(d.text,/密码/);assert.match(d.text,/单选.*判断/);assert.match(d.text,/多选.*A 选.*B 不选/);assert.match(d.text,/保持稳定.*不要遮挡/);assert.doesNotMatch(d.text,/姓名|学生乙|HYPERLINK/);}
+  for(const d of dimensions){assert.ok(Math.abs(d.blackMm-144)<.1);assert.ok(d.height<=277&&d.overflow<=1);assert.ok(d.captionFits);assert.match(d.text,/班级/);assert.match(d.text,/编号/);assert.match(d.text,/卡号/);assert.match(d.text,/密码/);assert.match(d.text,/单选.*判断/);assert.match(d.text,/多选只在选中项举 A.*改为不选举 B.*整题没举卡记弃权/);assert.match(d.text,/保持稳定.*不要遮挡/);assert.doesNotMatch(d.text,/姓名|学生乙|HYPERLINK/);}
   const pdf=await page.pdf({preferCSSPageSize:true});assert.equal([...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length,2);
   await page.emulateMedia({media:'screen'});await page.locator('#clear').click();assert.equal(await page.locator('.card-sheet').count(),0);assert.equal(await page.locator('#print').isDisabled(),true);
 });

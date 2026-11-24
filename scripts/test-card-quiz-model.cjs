@@ -129,13 +129,14 @@ function multiple(options=['甲','乙','丙','丁'],answer='AC',students=context
   let s=Model.createSession({...context,students},'math',clock);
   s=send(s,'add_question',{type:'multiple',options,answer});return send(s,'start_round');
 }
-test('多选逐项确认只在全部有效项作答后计入整题人数，规范选择集合',()=>{
-  let s=multiple();assert.equal(Model.activeRound(s).activeOption,'A');
+test('旧轮次仍按全部有效项确认，保留原参与率和选择集合',()=>{
+  let s=multiple();delete Model.activeRound(s).noCardPolicy;
+  assert.equal(Model.activeRound(s).activeOption,'A');
   s=send(s,'answer',{cardNumber:1,option:'A',targetOption:'A'});
   let r=Model.activeRound(s),summary=Model.roundSummary(s,r);
   assert.deepEqual(r.answers.s1.choices,{A:true});assert.equal(r.answers.s1.option,'A');
   assert.equal(summary.received,0);assert.equal(summary.incomplete,1);assert.equal(summary.unanswered,1);
-  assert.deepEqual(summary.distribution,{A:0,B:0,C:0,D:0});
+  assert.deepEqual(summary.distribution,{});
   assert.equal(Model.publicState(s).optionReceived,1);assert.equal(Model.publicState(s).activeOption,'A');
   for(const [targetOption,option]of [['B','B'],['C','A'],['D','B']]){
     s=send(s,'set_multi_option',{option:targetOption});s=send(s,'answer',{cardNumber:1,option,targetOption});
@@ -143,9 +144,11 @@ test('多选逐项确认只在全部有效项作答后计入整题人数，规�
   r=Model.activeRound(s);summary=Model.roundSummary(s,r);
   assert.equal(r.answers.s1.option,'AC');assert.deepEqual(r.answers.s1.choices,{A:true,B:false,C:true,D:false});
   assert.equal(summary.received,1);assert.equal(summary.correct,1);assert.equal(summary.incomplete,0);assert.equal(summary.unanswered,1);
-  assert.deepEqual(summary.distribution,{A:1,B:0,C:1,D:0});
+  assert.deepEqual(summary.distribution,{AC:1});
   s=send(s,'set_multi_option',{option:'C'});s=send(s,'answer',{cardNumber:1,option:'B',targetOption:'C'});
   assert.equal(Model.activeRound(s).answers.s1.option,'A');assert.equal(Model.roundSummary(s,Model.activeRound(s)).correct,0);
+  s=send(s,'answer',{cardNumber:1,option:'B',targetOption:'C'});
+  assert.deepEqual(Model.roundSummary(s,Model.activeRound(s)).distribution,{A:1});
 });
 test('多选换项切换代次，旧项迟到、无目标和无效朝向都拒绝且保留原选择',()=>{
   let s=multiple(),old=structuredClone(s);s=send(s,'set_multi_option',{option:'B'});
@@ -157,7 +160,7 @@ test('多选换项切换代次，旧项迟到、无目标和无效朝向都拒�
   s=send(s,'end_round');assert.throws(()=>send(s,'set_multi_option',{option:'C'}));
   assert.throws(()=>send(opened(),'set_multi_option',{option:'B'}));
 });
-test('多选全不选是完整作答，部分作答和免答分别统计，恢复不丢项',()=>{
+test('多选明确举 B 也参与，整题未举待封存，恢复不丢项',()=>{
   const students=[...context.students,{id:'s3',name:'丙',cardNumber:3},{id:'s4',name:'丁',cardNumber:4}];
   let s=multiple(['甲','乙'],'AB',students);
   for(const cardNumber of [1,2,3])s=send(s,'answer',{cardNumber,option:'B',targetOption:'A'});
@@ -165,13 +168,16 @@ test('多选全不选是完整作答，部分作答和免答分别统计，恢�
   s=send(s,'set_exempt',{studentId:'s3',exempt:true});
   let summary=Model.roundSummary(s,Model.activeRound(s));
   assert.equal(Model.activeRound(s).answers.s1.option,'');assert.deepEqual(Model.activeRound(s).answers.s1.choices,{A:false,B:false});
-  assert.equal(summary.expected,3);assert.equal(summary.received,1);assert.equal(summary.correct,0);assert.equal(summary.incomplete,1);assert.equal(summary.unanswered,1);
+  assert.equal(summary.expected,3);assert.equal(summary.received,2);assert.equal(summary.correct,0);assert.equal(summary.incomplete,0);assert.equal(summary.unanswered,1);assert.equal(summary.abstained,0);
+  assert.deepEqual(Model.distributionBars('multiple',summary.distribution),[{label:'全不选',count:2}]);
   assert.equal(Model.publicState(s).optionReceived,1);
   const choices=structuredClone(Model.activeRound(s).answers);s=Model.recover(s,++clock);
   assert.deepEqual(Model.activeRound(s).answers,choices);assert.equal(Model.activeRound(s).activeOption,'B');
   assert.throws(()=>send(s,'set_multi_option',{option:'A'}));s=send(s,'resume_round');
   s=send(s,'answer',{cardNumber:2,option:'A',targetOption:'B'});s=send(s,'end_round');
   assert.equal(Model.roundSummary(s,Model.activeRound(s)).received,2);
+  assert.deepEqual(Model.roundSummary(s,Model.activeRound(s)).distribution,{'':1,B:1});
+  assert.equal(Model.roundSummary(s,Model.activeRound(s)).abstained,1);
   const before=structuredClone(s);assert.throws(()=>send(s,'answer',{cardNumber:2,option:'B',targetOption:'B'}));assert.deepEqual(s,before);
 });
 test('三种题型独立校验，只有多选规范答案组合，旧单选轮次不增加多选字段',()=>{

@@ -1,12 +1,14 @@
 """Bounded, authenticated phone-to-board transport; only the board confirms a command."""
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 import secrets
 from urllib.parse import urlencode
 
 from card_quiz_events import public_state, replay
-from card_quiz_models import (DEVICE_REASON, MAX_EVENTS, PHONE_ACTIONS, PHONE_REASON, array, dumps,
+from card_quiz_models import (DEVICE_REASON, MAX_EVENTS, PHONE_ACTIONS, PHONE_REASON, QuizError, array, dumps,
                               fail, fingerprint, identifier, integer, new_id, obj, string, unique)
 from teacher_capabilities import teacher_manual
 
@@ -66,7 +68,8 @@ def command_receipt_size(command, state):
     result_state.update(className=max((state['className'], '\U0010ffff' * 40), key=native_json_size),
                         questionNumber=100, questionType='multiple', optionCount=4,
                         roundStatus='collecting', seq=MAX_EVENTS, generation=2_147_483_647,
-                        received=300, expected=300, ended=False, activeOption='D', optionReceived=300)
+                        received=300, expected=300, ended=False, activeOption='D', optionReceived=300,
+                        noCardPolicy='abstain')
     # Python's JSON float notation and JS canonical notation may differ. Each
     # numeric leaf can add at most 32 characters; nested JSON string escaping
     # can expand each added character to six bytes in the native encoder.
@@ -84,6 +87,106 @@ def command_receipt_size(command, state):
 
 
 class RelayHandlers:
+    @staticmethod
+    def preview_scope(state):
+        return (state['sessionId'], state['sourceId'], state['roundId'], state['generation'])
+
+    @staticmethod
+    def preview_sdp(value, *, offered_media=None):
+        sdp = string(value, '取景连接参数', 16384)
+        lines = sdp.replace('\r\n', '\n')
+        session, *sections = lines.split('\nm=')
+        if (session.partition('\n')[0] != 'v=0' or '\r' in lines or len(sdp.encode('utf-8')) > 16384
+                or not 1 <= len(sections) <= 2):
+            fail('取景连接参数无效。')
+
+        def direction(attributes, default):
+            values = [line for line in attributes if line in ('a=recvonly', 'a=sendonly', 'a=inactive', 'a=sendrecv')]
+            if len(values) > 1:
+                fail('取景媒体方向不明确。')
+            return values[0] if values else default
+
+        session_direction = direction(session.splitlines(), 'a=sendrecv')
+        answering = offered_media is not None
+        media = []
+        for section in sections:
+            heading, _, body = section.partition('\n')
+            fields = heading.split()
+            if len(fields) < 4 or not re.fullmatch(r'[0-9]{1,5}', fields[1]) or int(fields[1]) > 65535:
+                fail('取景媒体参数无效。')
+            kind, port, transport, *formats = fields
+            attributes = body.split('\n')
+            # A zero port with bundle-only is still offered on the shared ICE transport.
+            rejected = int(port) == 0 and (answering or 'a=bundle-only' not in attributes)
+            if kind == 'application':
+                if (rejected or transport not in ('UDP/DTLS/SCTP', 'TCP/DTLS/SCTP')
+                        or formats != ['webrtc-datachannel']):
+                    fail('取景需要 WebRTC 数据通道。')
+            elif kind == 'video':
+                if (transport not in ('UDP/TLS/RTP/SAVPF', 'TCP/TLS/RTP/SAVPF')
+                        or any(not re.fullmatch(r'[0-9]{1,3}', fmt) or int(fmt) > 127 for fmt in formats)):
+                    fail('取景视频参数无效。')
+                allowed = ('a=sendonly', 'a=inactive') if answering else ('a=recvonly',)
+                video_direction = direction(attributes, session_direction)
+                # Old phones may reject the video m-line and still accept the data channel.
+                if not (answering and rejected) and video_direction not in allowed:
+                    fail('取景视频仅允许手机发送、白板接收。')
+            else:
+                fail('取景媒体类型无效。')
+            media.append(kind)
+        if media.count('application') != 1 or (answering and media != offered_media):
+            fail('取景媒体通道与请求不符。')
+        return sdp, media
+
+    def board_preview(self, state, signal):
+        # Only SDP is exchanged. One expiring offer per classroom, outside its journal and database.
+        sid = state['sessionId']
+        entry = self.preview_offers.get(sid)
+        collecting = state['source'] == 'phone' and state['roundStatus'] == 'collecting' and not state['ended']
+        scope = self.preview_scope(state)
+        if entry and (not collecting or not signal or entry['scope'] != scope):
+            entry['timer'].cancel()
+            del self.preview_offers[sid]
+            entry = None
+        if not collecting or not isinstance(signal, dict):
+            return None
+        key = identifier(signal.get('id'))
+        if signal.get('prepare') is True:
+            servers = self.preview_turn.servers(state['sourceId'], 'board', prepare=True)
+            if servers is None:
+                return {'id': key, 'preparing': True}
+            return {'id': key, 'iceServers': servers, 'video': True}
+        if not entry or entry['id'] != key:
+            if 'offer' not in signal:
+                return {'id': key, 'needOffer': True}
+            offer, media = self.preview_sdp(signal['offer'])
+            if entry:
+                entry['timer'].cancel()
+            entry = self.preview_offers[sid] = {'scope': scope, 'id': key, 'offer': offer, 'media': media, 'answer': None}
+        else:
+            if 'offer' in signal and signal['offer'] != entry['offer']:
+                fail('取景连接参数已变化。', 409)
+            entry['timer'].cancel()
+        entry['timer'] = asyncio.get_running_loop().call_later(CONNECTED_MS / 1000, self.preview_offers.pop, sid, None)
+        result = {'id': key}
+        if entry['answer'] and not signal.get('answered'):
+            result['answer'] = entry['answer']
+        return result
+
+    @teacher_manual(PHONE_REASON)
+    async def answer_preview(self, request):
+        body = await self.body(request, 20 * 1024)
+        pair, state, connected = self.pair_context(request)
+        entry = self.preview_offers.get(pair['session_id'])
+        if (not connected or state['roundStatus'] != 'collecting' or not entry
+                or entry['scope'] != self.preview_scope(state) or entry['id'] != body.get('id')):
+            fail('取景连接已更新。', 409)
+        answer, _ = self.preview_sdp(body.get('answer'), offered_media=entry['media'])
+        if entry['answer'] and entry['answer'] != answer:
+            fail('取景连接已由其他页面接通。', 409)
+        entry['answer'] = answer
+        return self.reply({'id': entry['id']})
+
     def login_hash(self, request):
         token = request.cookies.get('iceclass_session')
         if not token:
@@ -133,7 +236,9 @@ class RelayHandlers:
     @teacher_manual(DEVICE_REASON)
     async def device_pair(self, request):
         device = self.device(request)
-        sid = identifier((await self.body(request)).get('sessionId'))
+        body = await self.body(request)
+        sid = identifier(body.get('sessionId'))
+        quick = body.get('quickScan') is True
         stamp = self.service.now_ms()
         with self.db.transaction():
             row = self.device_session(sid, device, active=True)
@@ -145,16 +250,89 @@ class RelayHandlers:
             for old in self.db.all('SELECT id FROM card_quiz_pairs WHERE device_id=? AND revoked=0', (device['id'],)):
                 self.db.run('UPDATE card_quiz_pairs SET revoked=1 WHERE id=?', (old['id'],))
                 self.reject_pending(old['id'], '设备已更换手机配对。')
-            pid, code = new_id(), secrets.token_hex(6).upper()
+            pid = new_id()
+            code = secrets.token_urlsafe(24) if quick else secrets.token_hex(6).upper()
+            digest = self.service.sha256(('scan:' if quick else '') + code)
             self.db.run('''INSERT INTO card_quiz_pairs(id,code_hash,session_id,class_id,device_id,code_expires_at)
-                VALUES(?,?,?,?,?,?)''', (pid, self.service.sha256(code), sid, device['class_id'], device['id'], stamp + PAIR_CODE_MS))
+                VALUES(?,?,?,?,?,?)''', (pid, digest, sid, device['class_id'], device['id'], stamp + PAIR_CODE_MS))
+        if quick:
+            # The QR secret stays in the fragment, out of HTTP access logs and redirects.
+            return self.reply({'pairId': pid, 'mode': 'scan', 'expiresAt': stamp + PAIR_CODE_MS,
+                               'url': str(request.url.origin()) + '/card-quiz/phone.html#scan=' + code})
         url = str(request.url.origin()) + '/card-quiz/phone/?' + urlencode({'code': code})
         return self.reply({'pairId': pid, 'code': code, 'url': url, 'expiresAt': stamp + PAIR_CODE_MS})
+
+    def scan_key_hash(self, request):
+        key = request.headers.get('X-ICeClass-Scanner', '')
+        if not re.fullmatch(r'[0-9a-f]{64}', key):
+            fail('请用手机重新扫描白板上的二维码。', 403, 'pair_invalid')
+        return self.service.sha256(key)
+
+    @teacher_manual(PHONE_REASON)
+    async def claim_scan(self, request):
+        key_hash = self.scan_key_hash(request)
+        invite = string((await self.body(request, 1024)).get('invite'), '扫码邀请', 128)
+        stamp = self.service.now_ms()
+        with self.db.transaction():
+            pair = self.db.one('SELECT * FROM card_quiz_pairs WHERE code_hash=?',
+                               (self.service.sha256('scan:' + invite),))
+            if not pair or pair['revoked'] or pair['user_id'] is not None:
+                fail('二维码已失效，请重新扫描白板上的新码。', 410, 'pair_invalid')
+            if (pair['code_expires_at'] <= stamp and not pair['activated']
+                    or pair['expires_at'] is not None and pair['expires_at'] <= stamp):
+                fail('二维码已过期，请在白板重新打开扫码。', 410, 'pair_invalid')
+            if pair['scan_key_hash'] and not secrets.compare_digest(pair['scan_key_hash'], key_hash):
+                fail('已有手机连接，请在白板重新打开扫码。', 409, 'pair_invalid')
+            device = self.pair_device(pair)
+            session = self.device_session(pair['session_id'], device, active=True)
+            state, _ = self.effective_state(session)
+            if state['ended']:
+                fail('本堂课已结束。', 409)
+            expires = pair['expires_at'] or stamp + PAIR_SESSION_MS
+            if not pair['scan_key_hash']:
+                self.db.run('UPDATE card_quiz_pairs SET scan_key_hash=?,expires_at=? WHERE id=?',
+                            (key_hash, expires, pair['id']))
+        # Prepare while the board selects this phone; permission and answer collection run independently.
+        self.preview_turn.servers(pair['id'], 'board', prepare=True)
+        return self.reply({'pairId': pair['id'], 'mode': 'scan', 'expiresAt': expires})
+
+    @teacher_manual(DEVICE_REASON)
+    async def cancel_pair(self, request):
+        device = self.device(request)
+        body = await self.body(request, 1024)
+        with self.db.transaction():
+            session = self.device_session(identifier(body.get('sessionId')), device)
+            pid = identifier(body.get('pairId'))
+            state, _ = self.effective_state(session)
+            if state['sourceId'] != pid:
+                self.db.run('''UPDATE card_quiz_pairs SET revoked=1
+                    WHERE id=? AND session_id=? AND device_id=? AND activated=0''',
+                            (pid, session['id'], device['id']))
+        return self.reply({'ok': True})
+
+    def pair_device(self, pair):
+        device = self.db.one('''SELECT d.id,d.class_id FROM devices d JOIN classes c ON c.id=d.class_id
+            WHERE d.id=? AND d.enabled=1 AND d.deleted_at IS NULL AND c.enabled=1''', (pair['device_id'],))
+        if not device or device['class_id'] != pair['class_id']:
+            fail('配对设备已停用或改绑。', 403, 'pair_invalid')
+        return device
+
+    def live_pair(self, pair, stamp):
+        if pair['revoked'] or not pair['expires_at'] or pair['expires_at'] <= stamp:
+            return False
+        if pair['scan_key_hash']:
+            return bool(pair['activated'] or pair['code_expires_at'] > stamp)
+        user = self.db.one('SELECT id,role FROM users WHERE id=? AND enabled=1 AND deleted_at IS NULL', (pair['user_id'],))
+        login = self.db.one('SELECT 1 FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?',
+                            (pair['login_hash'], pair['user_id'], stamp))
+        return bool(user and login and self.service.can_access_class(self.db, user, pair['class_id']))
 
     @teacher_manual(PHONE_REASON)
     async def claim_pair(self, request):
         user = self.staff(request)
         code = string((await self.body(request)).get('code'), '配对码', 128)
+        if not re.fullmatch(r'[0-9A-F]{12}', code):
+            fail('配对码无效。', 404)
         login_hash = self.login_hash(request)
         stamp = self.service.now_ms()
         with self.db.transaction():
@@ -164,11 +342,7 @@ class RelayHandlers:
             self.access(user, pair['class_id'])
             if pair['revoked'] or pair['user_id'] is not None or pair['code_expires_at'] <= stamp:
                 fail('配对码已使用、撤回或过期。', 409)
-            device = self.db.one('''SELECT d.id,d.class_id FROM devices d JOIN classes c ON c.id=d.class_id
-                WHERE d.id=? AND d.enabled=1 AND d.deleted_at IS NULL AND c.enabled=1''', (pair['device_id'],))
-            if not device or device['class_id'] != pair['class_id']:
-                fail('设备已停用或改绑。', 403)
-            self.device_session(pair['session_id'], device, active=True)
+            self.device_session(pair['session_id'], self.pair_device(pair), active=True)
             login = self.db.one('SELECT expires_at FROM sessions WHERE token_hash=?', (login_hash,))
             expires = min(stamp + PAIR_SESSION_MS, login['expires_at'])
             self.db.run('UPDATE card_quiz_pairs SET user_id=?,login_hash=?,expires_at=? WHERE id=?',
@@ -176,20 +350,22 @@ class RelayHandlers:
         return self.reply({'pairId': pair['id'], 'classId': pair['class_id'], 'sessionId': pair['session_id'], 'expiresAt': expires})
 
     def pair_context(self, request):
-        user = self.staff(request)
         pair = self.db.one('SELECT * FROM card_quiz_pairs WHERE id=?', (identifier(request.match_info['pair_id']),))
         if not pair:
             fail('配对不存在。', 404)
-        if pair['user_id'] != user['id'] or pair['login_hash'] != self.login_hash(request):
-            fail('配对仅限领取配对码的本人登录会话。', 403, 'pair_invalid')
-        self.access(user, pair['class_id'])
+        if pair['scan_key_hash']:
+            if not secrets.compare_digest(pair['scan_key_hash'], self.scan_key_hash(request)):
+                fail('请用已扫码的手机连接。', 403, 'pair_invalid')
+            if not pair['activated'] and pair['code_expires_at'] <= self.service.now_ms():
+                fail('本次连接已过期，请重新扫码。', 403, 'pair_invalid')
+        else:
+            user = self.staff(request)
+            if pair['user_id'] != user['id'] or pair['login_hash'] != self.login_hash(request):
+                fail('配对仅限领取配对码的本人登录会话。', 403, 'pair_invalid')
+            self.access(user, pair['class_id'])
         if pair['revoked'] or pair['expires_at'] is None or pair['expires_at'] <= self.service.now_ms():
             fail('配对已撤回或过期。', 403, 'pair_invalid')
-        device = self.db.one('''SELECT d.id,d.class_id FROM devices d JOIN classes c ON c.id=d.class_id
-            WHERE d.id=? AND d.enabled=1 AND d.deleted_at IS NULL AND c.enabled=1''', (pair['device_id'],))
-        if not device or device['class_id'] != pair['class_id']:
-            fail('配对设备已停用或改绑。', 403, 'pair_invalid')
-        session = self.device_session(pair['session_id'], device)
+        session = self.device_session(pair['session_id'], self.pair_device(pair))
         state, relay = self.effective_state(session)
         matches = state['source'] == 'phone' and state['sourceId'] == pair['id']
         if pair['activated'] and not matches:
@@ -205,7 +381,7 @@ class RelayHandlers:
     def historical_pair(self, pair_id, session):
         pair = self.db.one('SELECT * FROM card_quiz_pairs WHERE id=?', (pair_id,))
         if (not pair or pair['session_id'] != session['id'] or pair['device_id'] != session['deviceId']
-                or pair['class_id'] != session['classId'] or pair['user_id'] is None):
+                or pair['class_id'] != session['classId'] or not (pair['user_id'] or pair['scan_key_hash'])):
             fail('历史来源不属于本设备、本班、已领取的课堂配对。', 409)
         return pair
 
@@ -325,6 +501,13 @@ class RelayHandlers:
     async def get_pair(self, request):
         pair, state, connected = self.pair_context(request)
         self.phone_poll(pair)
+        if pair['scan_key_hash'] and state['sourceId'] != pair['id']:
+            if state['ended']:
+                fail('本堂课已结束，请扫描下一堂课的新码。', 410, 'pair_invalid')
+            relay = self.relay_state(pair['session_id'])
+            last_contact = max(pair['code_expires_at'] - PAIR_CODE_MS, relay['last_seen'] if relay else 0)
+            return self.reply({'state': None, 'connected': False, 'boardOnline': self.service.now_ms() - last_contact <= CONNECTED_MS,
+                               'expiresAt': pair['code_expires_at'], 'receipts': []})
         ids = array(request.query.getall('commandId', []), 128, '待确认命令')
         unique([identifier(cid) for cid in ids], '待确认命令')
         receipts = []
@@ -332,7 +515,17 @@ class RelayHandlers:
             command = self.db.one('SELECT * FROM card_quiz_commands WHERE pair_id=? AND id=?', (pair['id'], cid))
             if command:
                 receipts.append({'id': cid, **self.command_result(command)})
-        return self.reply({'state': state, 'connected': connected, 'expiresAt': pair['expires_at'], 'receipts': receipts})
+        result = {'state': state, 'connected': connected, 'expiresAt': pair['expires_at'], 'receipts': receipts}
+        if connected and state['roundStatus'] == 'collecting' and 'preview' in request.query:
+            entry = self.preview_offers.get(pair['session_id'])
+            if entry and entry['scope'] == self.preview_scope(state):
+                result['preview'] = {'id': entry['id']}
+                if request.query['preview'] != entry['id']:
+                    result['preview']['offer'] = entry['offer']
+                    servers = self.preview_turn.servers(pair['id'], 'phone')
+                    if servers:
+                        result['preview']['iceServers'] = servers
+        return self.reply(result)
 
     def command_result(self, row, *, post=False):
         if row['status'] == 'confirmed':
@@ -347,6 +540,8 @@ class RelayHandlers:
     async def post_command(self, request):
         pair, state, connected = self.pair_context(request)
         body = await self.body(request, 16 * 1024)
+        if pair['scan_key_hash'] and body.get('action') != 'answer':
+            fail('扫码手机只负责收答，请在白板操作课堂。', 403)
         cid = identifier(body.get('id'))
         content = fingerprint(body)
         with self.db.transaction():
@@ -420,10 +615,13 @@ class RelayHandlers:
         self.phone_poll(pair)
         return self.reply(self.command_result(row))
 
-    def validate_public(self, value, row, *, historical=False):
+    def validate_public(self, value, row, *, historical=False, min_seq=0):
         obj(value, '匿名课堂状态')
         multi = value.get('questionType') == 'multiple'
-        if set(value) != STATE_KEYS | (MULTIPLE_STATE_KEYS if multi else set()):
+        raised_cards = 'noCardPolicy' in value
+        if raised_cards and (value['noCardPolicy'] != 'abstain' or not value.get('roundId')):
+            fail('匿名状态的未举卡规则无效。')
+        if set(value) != STATE_KEYS | (MULTIPLE_STATE_KEYS if multi else set()) | ({'noCardPolicy'} if raised_cards else set()):
             fail('匿名课堂状态字段不完整或包含不允许公开的内容。')
         room = self.db.one('SELECT name FROM classes WHERE id=?', (row['class_id'],))
         string(value['className'], '班级名称', 40)
@@ -435,11 +633,14 @@ class RelayHandlers:
         integer(value['questionNumber'], '题号', 0, 100)
         integer(value['optionCount'], '选项数量', 0, 4)
         integer(value['generation'], '采集代次')
-        integer(value['seq'], '序号', 0 if historical else row['seq'], MAX_EVENTS)
+        integer(value['seq'], '序号', min_seq, MAX_EVENTS)
         integer(value['expected'], '应答人数', 0, 300)
         integer(value['received'], '已答人数', 0, value['expected'])
         if multi:
-            integer(value['optionReceived'], '当前项已答人数', value['received'], value['expected'])
+            if raised_cards:
+                integer(value['optionReceived'], '当前项已答人数', 0, value['received'])
+            else:
+                integer(value['optionReceived'], '当前项已答人数', value['received'], value['expected'])
             active = value['activeOption']
             if (value['roundId'] is None and (active is not None or value['optionReceived'] != 0 or value['received'] != 0)
                     or value['roundId'] is not None and (not isinstance(active, str) or len(active) != 1
@@ -459,15 +660,10 @@ class RelayHandlers:
                 return value
             pair = self.db.one('SELECT * FROM card_quiz_pairs WHERE id=?', (value['sourceId'],))
             if (not pair or pair['session_id'] != row['id'] or pair['device_id'] != row['device_id']
-                    or pair['class_id'] != row['class_id'] or pair['revoked'] or pair['user_id'] is None
+                    or pair['class_id'] != row['class_id'] or pair['revoked'] or not pair['expires_at']
                     or pair['expires_at'] <= self.service.now_ms()):
                 fail('手机来源未配对、已撤回或过期。', 409, 'pair_invalid')
-            # Permission and the exact login session must also remain live on device polling.
-            user = self.db.one('''SELECT u.id,u.role,ug.grade FROM users u LEFT JOIN user_grades ug ON ug.user_id=u.id
-                WHERE u.id=? AND u.enabled=1 AND u.deleted_at IS NULL''', (pair['user_id'],))
-            login = self.db.one('SELECT 1 FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?',
-                                (pair['login_hash'], pair['user_id'], self.service.now_ms()))
-            if not user or not login or not self.service.can_access_class(self.db, user, row['class_id']):
+            if not self.live_pair(pair, self.service.now_ms()):
                 fail('手机登录或班级授权已撤销。', 403, 'pair_invalid')
         return value if historical else {**value, 'className': room['name']}
 
@@ -479,10 +675,17 @@ class RelayHandlers:
         stamp = self.service.now_ms()
         with self.db.transaction():
             row = self.device_session(sid, device)
-            state = self.validate_public(body.get('state'), row)
+            retry_superseded = body.get('retrySuperseded') is True
+            state = self.validate_public(body.get('state'), row, min_seq=0 if retry_superseded else row['seq'])
             effective, previous = self.effective_state(row)
+            if retry_superseded and state['seq'] < effective['seq']:
+                # A newer sync overtook this poll. Acknowledge neither receipts nor signalling.
+                return self.reply({'supersededSeq': effective['seq']})
             if state['seq'] == effective['seq'] and business_state(state) != business_state(effective):
                 fail('相同序号的匿名状态内容不一致。', 409)
+            if (state['roundId'] is not None and state['roundId'] == effective['roundId']
+                    and state.get('noCardPolicy') != effective.get('noCardPolicy')):
+                fail('当前轮次的未举卡规则不能改变。', 409)
             if (state['seq'] < effective['seq'] or state['generation'] < effective['generation']
                     or effective['ended'] and not state['ended']):
                 fail('匿名课堂状态不能回退。', 409)
@@ -559,12 +762,15 @@ class RelayHandlers:
             commands = self.pending_commands(state, stamp)
         pairings = []
         for pair in self.db.all('SELECT * FROM card_quiz_pairs WHERE session_id=? AND revoked=0', (sid,)):
-            claimed = False
-            if pair['user_id'] is not None and pair['expires_at'] is not None and pair['expires_at'] > stamp:
-                user = self.db.one('SELECT id,role FROM users WHERE id=? AND enabled=1 AND deleted_at IS NULL', (pair['user_id'],))
-                login = self.db.one('SELECT 1 FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?',
-                                    (pair['login_hash'], pair['user_id'], stamp))
-                claimed = bool(user and login and self.service.can_access_class(self.db, user, pair['class_id']))
+            claimed = self.live_pair(pair, stamp)
             pairings.append({'pairId': pair['id'], 'claimed': claimed,
                              'expiresAt': pair['expires_at'] if claimed else pair['code_expires_at']})
-        return self.reply({'commands': commands, 'pairings': pairings})
+        try:
+            preview = self.board_preview(state, body.get('preview'))
+        except QuizError:
+            # Optional signalling must never withhold already committed answer receipts.
+            preview = None
+        result = {'commands': commands, 'pairings': pairings}
+        if preview is not None:
+            result['preview'] = preview
+        return self.reply(result)

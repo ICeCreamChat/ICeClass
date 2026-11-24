@@ -6,7 +6,6 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Primitives.PopupPositioning;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -31,11 +30,11 @@ internal sealed partial class BanbanPetWindow : Window
     private readonly TextBlock _label = ClassroomStyle.Text("你好班班", 13, true);
     private readonly TextBlock _caption = ClassroomStyle.Text("", 14);
     private readonly Border _dot, _pill;
-    private readonly MenuItem _pause;
-    private readonly SizeFlyout _sizeFlyout;
+    internal BanbanPetMenu PetMenu { get; }
+    private readonly BanbanToolSector _pause;
     private readonly Slider _sizeSlider;
-    private readonly TextBlock _sizeValue = ClassroomStyle.Text("", 15, true);
-    private readonly TextBlock _sizeError = ClassroomStyle.Caption("");
+    private readonly TextBlock _sizeValue = BanbanClassroomStyle.Text("", 31, true);
+    private readonly TextBlock _sizeError = BanbanClassroomStyle.Text("", 13);
     private readonly DispatcherTimer _captionTimer, _idleTimer, _dockFrames, _departureFrames;
     private readonly TranslateTransform _departure = new();
     private readonly IslandSpring _dock = new();
@@ -49,18 +48,17 @@ internal sealed partial class BanbanPetWindow : Window
     private int _successes;
     private PixelPoint _pressPoint, _pressPosition;
     private bool IsDragging => _pressed && _dragged;
-    private double Scale => _preference.SizePercent / 100d;
+    private double Scale => _preference.SizePercent / 100d * (_classroomBinding is null ? 1 : .75);
     private double RestWidth => _classroomBinding is null ? Math.Max(44, DockedWidth * Scale) : Math.Max(78,124 * Scale);
     private double CaptionOffset => Math.Max(140, 140 * Scale);
     private double FullWidth => CaptionOffset + 184;
-    private double CompanionHeight => Math.Max(SurfaceHeight, 130 * Scale + 44);
+    private double CompanionHeight => _classroomBinding is null ? Math.Max(SurfaceHeight, 130 * Scale + 44) : Math.Max(128, 130 * Scale + 36);
     internal Func<double>? SpeechOpening { set => _mascot.SpeechOpening = value; }
 
     internal BanbanPetWindow(Action openChat, Action startTalk, Action cancelTask, Action<bool> setEnabled, string? preferencePath = null,
-        ReceiverConfig? classroomBinding = null, Func<ClassroomHomeSnapshot?>? timetable = null)
+        ReceiverConfig? classroomBinding = null)
     {
         _classroomBinding = classroomBinding;
-        _classroomWheel.Timetable = timetable;
         _openChat = openChat; _startTalk = startTalk; _cancelTask = cancelTask; _setEnabled = setEnabled;
         _preferencePath = preferencePath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ICeClass", "Receiver", "banban-pet.json");
         _preference = LoadPreference();
@@ -103,10 +101,18 @@ internal sealed partial class BanbanPetWindow : Window
         _talk.AddHandler(PointerPressedEvent, Pressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         _talk.AddHandler(PointerMovedEvent, Moved, RoutingStrategies.Tunnel, handledEventsToo: true);
         _talk.AddHandler(PointerReleasedEvent, Released, RoutingStrategies.Tunnel, handledEventsToo: true);
-        _talk.PointerCaptureLost += (_, _) =>
+        // Button raises Click inside its release handler. Only suppress the click from this gesture.
+        _talk.AddHandler(PointerReleasedEvent, (_, e) =>
         {
+            if (e.Pointer.IsPrimary && e.InitialPressMouseButton == MouseButton.Left)
+                _dragged = _doubleClick = _longPressed = false;
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        _talk.PointerCaptureLost += (_, e) =>
+        {
+            if (!_pressed || !e.Pointer.IsPrimary) return;
             _holdTimer.Stop(); var dragging = IsDragging; _pressed = false;
             if (dragging) FinishDrag();
+            _dragged = _doubleClick = _longPressed = false;
         };
         _talk.PointerEntered += (_, _) =>
         {
@@ -116,8 +122,6 @@ internal sealed partial class BanbanPetWindow : Window
         };
         AddHandler(KeyDownEvent, (_, e) =>
         {
-            if (_talk.IsKeyboardFocusWithin && e.Key is Key.Space or Key.Enter)
-                _dragged = _doubleClick = _longPressed = false;
             if (!e.Handled && !ClassroomExpanded && !_dismissed && _talk.IsKeyboardFocusWithin) MoveWithKeyboard(_talk, e);
         }, RoutingStrategies.Tunnel);
 
@@ -145,7 +149,7 @@ internal sealed partial class BanbanPetWindow : Window
         {
             _idleTimer.Stop();
             if (ClassroomExpanded) return;
-            if (_pressed || _talk.ContextMenu?.IsOpen == true || _sizeFlyout?.IsOpen == true) { _idleTimer.Start(); return; }
+            if (_pressed || PetMenu?.IsOpen == true) { _idleTimer.Start(); return; }
             _engaged = false; ApplyPresence();
         };
         _dockFrames = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000d / 30) };
@@ -167,32 +171,37 @@ internal sealed partial class BanbanPetWindow : Window
             _talk.Opacity = 1 - progress * progress;
         };
 
-        _pause = new MenuItem { Header = "启用语音" };
-        _pause.Click += (_, _) => _setEnabled(!_enabled);
-        // Consume the touch hold before Avalonia's context menu handler sees it.
-        _talk.ContextRequested += (sender, e) => { if ((_pressed || _longPressed) && e.TryGetPosition(_talk, out _)) e.Handled = true; };
-        _talk.ContextMenu = new ContextMenu { Items = {
-            Item("打开对话", _openChat), Item("停止操作", _cancelTask), _pause,
-            new Separator(), Item("大小", () => Dispatcher.UIThread.Post(ShowSizeControls)),
-            Item("移回桌面右下角", ResetPosition), Item("隐藏班班", HidePet) } };
-        InitializeClassroomWheel();
-
         _sizeSlider = new Slider { Minimum = 25, Maximum = 150, Value = _preference.SizePercent,
             TickFrequency = 1, IsSnapToTickEnabled = true, SmallChange = 1, LargeChange = 25, MinHeight = 40 };
         AutomationProperties.SetName(_sizeSlider, "班班大小");
         AutomationProperties.SetHelpText(_sizeSlider, "25% 到 150%，左右键调整大小。");
         _sizeValue.Text = $"{_preference.SizePercent}%";
-        var sizeHeading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        sizeHeading.Children.Add(ClassroomStyle.Text("班班大小", 15, true));
-        Grid.SetColumn(_sizeValue, 1); sizeHeading.Children.Add(_sizeValue);
-        var limits = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        limits.Children.Add(ClassroomStyle.Caption("25%"));
-        var maximum = ClassroomStyle.Caption("150%"); Grid.SetColumn(maximum, 1); limits.Children.Add(maximum);
-        var reset = ClassroomStyle.Button("恢复默认"); reset.HorizontalAlignment = HorizontalAlignment.Right;
-        reset.Click += (_, _) => { _sizeSlider.Value = DefaultSizePercent; AlignSizeControls(); };
+        _sizeValue.TextAlignment = TextAlignment.Center;
+        _sizeError.TextAlignment = TextAlignment.Center;
         _sizeError.IsVisible = false;
-        _sizeFlyout = new SizeFlyout { Content = new StackPanel { Width = 244, Spacing = 8,
-            Children = { sizeHeading, _sizeSlider, limits, _sizeError, reset } } };
+        AutomationProperties.SetLiveSetting(_sizeError, AutomationLiveSetting.Polite);
+        PetMenu = new BanbanPetMenu(_sizeSlider, _sizeValue, _sizeError,
+            () => { _sizeSlider.Value = DefaultSizePercent; AlignPetMenu(); }, () => _talk.Focus(), _classroomWheel.Progress);
+        if (_classroomBinding is not null)
+            PetMenu.AddAction("课堂功能", "课堂", "book-open", () => SetClassroomExpanded(true), primary: true,
+                visible: () => !ClassroomExpanded);
+        PetMenu.AddAction("打开对话", "对话", "message-circle", _openChat, primary: _classroomBinding is null);
+        PetMenu.AddAction("停止操作", "停止", "square", _cancelTask);
+        _pause = PetMenu.AddAction("启用语音", "开麦", "mic", () => _setEnabled(!_enabled));
+        PetMenu.AddAction("大小", "大小", "maximize-2", () => OpenPetMenu(size: true), opensSize: true);
+        PetMenu.AddAction("移回桌面右下角", "归位", "rotate-ccw", ResetPosition);
+        PetMenu.AddAction("隐藏班班", "隐藏", "eye-off", HidePet);
+        if (_classroomBinding is not null)
+            PetMenu.AddAction("待同步课堂", "待同步", "rotate-ccw", _classroomWheel.OpenPendingHistory,
+                visible: () => ClassroomExpanded && _classroomWheel.HasPendingHistory);
+        _talk.ContextRequested += (sender, e) =>
+        {
+            // Touch and pen drivers may also request a context menu for the same contact.
+            if (!PetMenu.IsOpen && (_classroomBinding is null || !e.TryGetPosition(_talk, out _) || !(_pressed || _longPressed || _dragged)))
+                OpenPetMenu();
+            e.Handled = true;
+        };
+        InitializeClassroomWheel();
         _sizeSlider.PropertyChanged += (_, e) =>
         {
             if (e.Property != RangeBase.ValueProperty) return;
@@ -202,13 +211,12 @@ internal sealed partial class BanbanPetWindow : Window
             _sizeValue.Text = $"{percent}%";
             ResizeSurface(_docked ? RestWidth : FullWidth); ArrangeCompanion(_right); SavePreference();
         };
-        _sizeSlider.AddHandler(PointerReleasedEvent, (_, _) => AlignSizeControls(), RoutingStrategies.Tunnel, handledEventsToo: true);
-        _sizeSlider.AddHandler(KeyDownEvent, (_, _) => Dispatcher.UIThread.Post(AlignSizeControls), RoutingStrategies.Tunnel, handledEventsToo: true);
-        _sizeFlyout.Closed += (_, _) =>
+        _sizeSlider.AddHandler(PointerReleasedEvent, (_, _) => AlignPetMenu(), RoutingStrategies.Tunnel, handledEventsToo: true);
+        _sizeSlider.AddHandler(KeyDownEvent, (_, _) => Dispatcher.UIThread.Post(AlignPetMenu), RoutingStrategies.Tunnel, handledEventsToo: true);
+        PetMenu.Closed += (_, _) =>
         {
-            if (!_shutdown && _engaged && _state is not ("thinking" or "speaking" or "confirming")) _idleTimer.Start();
+            if (!_shutdown && !ClassroomExpanded && _engaged && _state is not ("thinking" or "speaking" or "confirming")) _idleTimer.Start();
         };
-        _sizeFlyout.Opened += (_, _) => Dispatcher.UIThread.Post(() => { if (_sizeFlyout.IsOpen) _sizeSlider.Focus(); });
 
         Win32Properties.AddWndProcHookCallback(this, HitTest);
         Screens.Changed += ScreensChanged;
@@ -225,37 +233,29 @@ internal sealed partial class BanbanPetWindow : Window
         ArrangeCompanion(true);
     }
 
-    private static MenuItem Item(string title, Action action)
+    private void OpenPetMenu(bool size = false, Control? opener = null)
     {
-        var item = new MenuItem { Header = title };
-        item.Click += (_, _) => action();
-        return item;
+        if (_shutdown || _suspended || _dismissed) return;
+        if (size && !ClassroomExpanded) Reveal(false);
+        _idleTimer.Stop();
+        AlignPetMenu();
+        PetMenu.ShowPage(this, size, ClassroomExpanded, opener);
     }
 
-    private void ShowSizeControls()
+    private void AlignPetMenu()
     {
-        if (_shutdown || _suspended) return;
-        if (ClassroomExpanded) SetClassroomExpanded(false);
-        Reveal(false); _idleTimer.Stop();
-        // Keep the panel still while the slider is dragged, then align it to the new size.
-        _sizeFlyout.Placement = PlacementMode.AnchorAndGravity;
-        _sizeFlyout.PlacementAnchor = _right ? PopupAnchor.BottomRight : PopupAnchor.BottomLeft;
-        _sizeFlyout.PlacementGravity = _right ? PopupGravity.TopLeft : PopupGravity.TopRight;
-        AlignSizeControls();
-        _sizeFlyout.ShowAt(this);
-    }
-
-    private void AlignSizeControls() => _sizeFlyout.Align((_right ? -1 : 1)
-        * (Math.Max(68, 68 * Scale) + 58 * Scale + 8));
-
-    private sealed class SizeFlyout : Flyout
-    {
-        internal void Align(double offset)
+        var diameter = BanbanClassroomWheel.Diameter * (ClassroomExpanded ? _wheelScale : 1);
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is not null)
+            diameter = Math.Min(diameter, Math.Min(screen.WorkingArea.Height, screen.WorkingArea.Width) / screen.Scaling);
+        if (ClassroomExpanded)
         {
-            // Flyout copies offsets when shown; update the open popup as well.
-            HorizontalOffset = offset;
-            Popup.HorizontalOffset = offset;
+            var inset = _right ? Width - _wheelOffset.X - diameter : _wheelOffset.X;
+            PetMenu.Align(_right, inset, diameter, Height - _wheelOffset.Y - diameter);
+            return;
         }
+        var petInset = _classroomBinding is not null || _docked ? RestWidth : Math.Max(68, 68 * Scale) + 58 * Scale + 8;
+        PetMenu.Align(_right, petInset, diameter);
     }
 
     internal void ShowPet(bool userInitiated)
@@ -270,13 +270,13 @@ internal sealed partial class BanbanPetWindow : Window
         SetClassroomExpanded(false); _holdTimer.Stop();
         _preference = _preference with { Visible = false };
         _engaged = _preparing = false;
-        _sizeFlyout.Hide(); SavePreference(); _captionTimer.Stop(); _idleTimer.Stop(); _departureFrames.Stop(); _captionButton.IsVisible = false; Hide(); Refresh();
+        PetMenu.Hide(); SavePreference(); _captionTimer.Stop(); _idleTimer.Stop(); _departureFrames.Stop(); _captionButton.IsVisible = false; Hide(); Refresh();
     }
     internal void Suspend(bool value)
     {
         if (value) SetClassroomExpanded(false);
         _suspended = value;
-        if (value) _sizeFlyout.Hide();
+        if (value) PetMenu.Hide();
         if (value) { _engaged = _preparing = false; _captionTimer.Stop(); _idleTimer.Stop(); _captionButton.IsVisible = false; }
         ApplyPresence();
     }
@@ -334,9 +334,9 @@ internal sealed partial class BanbanPetWindow : Window
         if (_dismissed) return;
         _dismissed = true; _engaged = _preparing = false; _pressed = false; _state = "standby";
         _captionTimer.Stop(); _idleTimer.Stop(); _dockFrames.Stop();
-        _talk.ContextMenu?.Close(); _talk.IsHitTestVisible = false;
+        _talk.IsHitTestVisible = false;
         _captionButton.IsVisible = false; _pill.IsVisible = false; RefreshWaveform();
-        _sizeFlyout.Hide();
+        PetMenu.Hide();
         if (!IsVisible || _suspended || !_preference.Visible || !_enabled || !_mascot.Animate) { FinishDeparture(); return; }
         _docked = false; _dock.Snap(0); ResizeSurface(FullWidth); ArrangeCompanion(_right); Refresh();
         _mascot.Play("wave", _right);
@@ -378,7 +378,7 @@ internal sealed partial class BanbanPetWindow : Window
     }
     private void ResizeSurface(double width)
     {
-        if (ClassroomExpanded) { ArrangeClassroomWheel(); return; }
+        if (ClassroomExpanded) { RefitClassroom(); return; }
         if (IsDragging) width = FullWidth;
         var screen = Screens.ScreenFromPoint(new PixelPoint(Position.X + (int)(Width * RenderScaling / 2), Position.Y + (int)(Height * RenderScaling / 2))) ?? Screens.Primary;
         var scale = screen?.Scaling ?? RenderScaling;
@@ -394,7 +394,7 @@ internal sealed partial class BanbanPetWindow : Window
     {
         if (_shutdown) return;
         SetClassroomExpanded(false); _holdTimer.Stop();
-        _shutdown = true; _sizeFlyout.Hide(); SavePreference(); _captionTimer.Stop(); _idleTimer.Stop(); _dockFrames.Stop(); _departureFrames.Stop(); _waveform.Dispose(); _mascot.Present("off", false, false); Close();
+        _shutdown = true; PetMenu.Hide(); SavePreference(); _captionTimer.Stop(); _idleTimer.Stop(); _dockFrames.Stop(); _departureFrames.Stop(); _waveform.Dispose(); _mascot.Present("off", false, false); Close();
     }
 
     internal void Present(BanbanVoiceEvent value)
@@ -474,7 +474,7 @@ internal sealed partial class BanbanPetWindow : Window
 
     private void Refresh()
     {
-        _pill.IsVisible = !_dismissed && (_classroomBinding is not null || !_docked);
+        _pill.IsVisible = !_dismissed && !ClassroomExpanded && (_classroomBinding is not null || !_docked);
         _label.Text = _state switch { "listening" => "我在听", "thinking" => "处理中", "speaking" => "正在说",
             "confirming" => "等您确认", "login" => "点击登录", "connecting" => "准备语音", "error" => "语音需重连",
             "off" => "语音已暂停", _ => "你好班班" };
@@ -488,7 +488,7 @@ internal sealed partial class BanbanPetWindow : Window
         _waveform.IsVisible = listening;
         AutomationProperties.SetItemStatus(_talk, _label.Text);
         _dot.Background = DesktopStyle.Brush(_state is "error" ? "#C56B41" : _enabled ? "#3A91D7" : "#8A99AC");
-        _pause.Header = _enabled ? "暂停语音" : "启用语音";
+        _pause.SetFace(_enabled ? "暂停语音" : "启用语音", _enabled ? "静音" : "开麦", _enabled ? "mic-off" : "mic");
         if (!IsVisible || _suspended) FinishDocking();
         _mascot.Present(_state, _enabled, IsVisible && !_suspended, _docked, _right);
         RefreshWaveform();
@@ -499,19 +499,25 @@ internal sealed partial class BanbanPetWindow : Window
 
     private void Pressed(object? sender, PointerPressedEventArgs e)
     {
+        if (!e.Pointer.IsPrimary) return;
         var properties = e.GetCurrentPoint(_talk).Properties;
-        if (!properties.IsLeftButtonPressed) { if (properties.IsRightButtonPressed) _longPressed = false; return; }
+        if (!properties.IsLeftButtonPressed)
+        {
+            if (properties.IsRightButtonPressed && !_pressed) _longPressed = _dragged = false;
+            return;
+        }
         _pressPoint = this.PointToScreen(e.GetPosition(this)); _pressPosition = Position;
         _pressed = true; _dragged = _longPressed = false; _doubleClick = e.ClickCount == 2;
         if (!_doubleClick && _classroomBinding is not null) _holdTimer.Start();
     }
     private void Moved(object? sender, PointerEventArgs e)
     {
-        if (!_pressed || _longPressed) return;
+        if (!_pressed || !e.Pointer.IsPrimary) return;
         var point = this.PointToScreen(e.GetPosition(this));
         var dx = point.X - _pressPoint.X; var dy = point.Y - _pressPoint.Y;
         if (!_dragged && Math.Abs(dx) + Math.Abs(dy) < 6 * RenderScaling) return;
         _holdTimer.Stop();
+        _longPressed = false;
         if (ClassroomExpanded) { _dragged = true; Position = new PixelPoint(_pressPosition.X + dx, _pressPosition.Y + dy); return; }
         if (!_dragged)
         {
@@ -529,12 +535,12 @@ internal sealed partial class BanbanPetWindow : Window
     }
     private void Released(object? sender, PointerReleasedEventArgs e)
     {
-        if (e.InitialPressMouseButton != MouseButton.Left) return;
+        if (!e.Pointer.IsPrimary || !_pressed || e.InitialPressMouseButton != MouseButton.Left && e.Pointer.Type == PointerType.Mouse) return;
         _holdTimer.Stop();
         var dragging = IsDragging;
         _pressed = false;
-        if (_longPressed) { e.Handled = true; return; }
         if (dragging) FinishDrag();
+        else if (_longPressed) OpenPetMenu();
     }
     private void FinishDrag()
     {
@@ -548,7 +554,7 @@ internal sealed partial class BanbanPetWindow : Window
             if (_wheelOrigin is { } origin)
             {
                 var collapsedWidth = origin.Engaged ? FullWidth : RestWidth;
-                var top = anchor.Y - (int)Math.Round((CompanionHeight - _talk.Height + _mascot.Height/2)*area.Scaling);
+                var top = anchor.Y - (int)Math.Round((CompanionHeight - (130*Scale+36) + 65*Scale)*area.Scaling);
                 _wheelOrigin = (Constrain(new PixelPoint(_right ? area.WorkingArea.Right : area.WorkingArea.X,top),
                     area.WorkingArea,new Size(collapsedWidth,CompanionHeight),area.Scaling),origin.Engaged);
             }
@@ -561,7 +567,6 @@ internal sealed partial class BanbanPetWindow : Window
     }
     private void MoveWithKeyboard(object? sender, KeyEventArgs e)
     {
-        if (e.Key is Key.Space or Key.Enter) { _dragged = _doubleClick = _longPressed = false; return; }
         if (e.Key == Key.Home) { ResetPosition(); e.Handled = true; return; }
         if (e.Key is Key.Left or Key.Right)
         {
@@ -609,6 +614,18 @@ internal sealed partial class BanbanPetWindow : Window
         if (screen is null) return;
         _positioned = true;
         _right = true;
+        if (ClassroomExpanded && _wheelOrigin is { } origin)
+        {
+            var dpi = screen.Scaling;
+            var right = screen.WorkingArea.Right;
+            var bottom = screen.WorkingArea.Bottom - 20;
+            _wheelOrigin = (new PixelPoint(right - (int)Math.Ceiling((origin.Engaged ? FullWidth : RestWidth) * dpi),
+                bottom - (int)Math.Ceiling(CompanionHeight * dpi)), origin.Engaged);
+            var anchor = new PixelPoint(right - (int)Math.Round(RestWidth * dpi / 2),
+                bottom - (int)Math.Round((Math.Max(44, 130 * Scale + 36) - 65 * Scale) * dpi));
+            PositionClassroom(anchor, screen);
+            return;
+        }
         Position = new PixelPoint(screen.WorkingArea.Right - (int)Math.Ceiling(Width * screen.Scaling),
             screen.WorkingArea.Bottom - (int)Math.Ceiling(Height * screen.Scaling) - 20);
         Fit(true); SavePreference();
@@ -616,13 +633,7 @@ internal sealed partial class BanbanPetWindow : Window
     private void ScreensChanged(object? sender, EventArgs e)
     {
         if (!_positioned) return;
-        if (ClassroomExpanded)
-        {
-            var anchor = this.PointToScreen(new Point(Canvas.GetLeft(_talk)+_talk.Width/2, Canvas.GetTop(_talk)+_mascot.Height/2));
-            var display = Screens.ScreenFromPoint(anchor) ?? Screens.Primary;
-            if (display is not null) PositionClassroom(anchor,display);
-            return;
-        }
+        if (ClassroomExpanded) { RefitClassroom(); return; }
         var screen = Screens.ScreenFromPoint(Position);
         if (screen is null) { ResetPosition(); return; }
         if (_preference.Vertical is { } vertical && double.IsFinite(vertical))
@@ -685,6 +696,7 @@ internal sealed partial class BanbanPetWindow : Window
         if (message != 0x0084) return IntPtr.Zero; // WM_NCHITTEST: transparent space must not block the lesson behind it.
         var point = this.PointToClient(new PixelPoint(unchecked((short)(lParam.ToInt64() & 0xffff)), unchecked((short)((lParam.ToInt64() >> 16) & 0xffff))));
         if (ClassroomExpanded && this.TranslatePoint(point,_classroomWheel) is { } local && _classroomWheel.ContainsInteractive(local)) return IntPtr.Zero;
+        if (ClassroomExpanded && _cameraLens.IsVisible && this.TranslatePoint(point,_cameraLens) is { } lens && _cameraLens.ContainsInteractive(lens)) return IntPtr.Zero;
         if (!_dismissed && (_talk.Bounds.Contains(point) || _captionButton.IsVisible && _captionButton.Bounds.Contains(point))) return IntPtr.Zero;
         handled = true; return new IntPtr(-1);
     }

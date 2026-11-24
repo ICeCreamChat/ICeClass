@@ -5,6 +5,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using Avalonia.Input.Raw;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -66,15 +67,36 @@ internal static class BanbanPetSettingsChecks
             await Task.Delay(80);
             foreach (var dpi in new[] { 96, 144, 192 }) Capture("default-" + dpi, dpi);
             var talk = Field<Button>(pet, "_talk");
-            var sizeItem = talk.ContextMenu!.Items.OfType<MenuItem>().SingleOrDefault(i => Equals(i.Header, "大小"));
-            Check(sizeItem is not null, "the pet context menu exposes a discoverable size control");
-            sizeItem!.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            var flyout = pet.PetMenu;
+            using var mouse = new Avalonia.Input.Pointer(Avalonia.Input.Pointer.GetNextFreeId(), PointerType.Mouse, true);
+            var release = new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.RightButtonReleased);
+            talk.RaiseEvent(new PointerReleasedEventArgs(talk, mouse, pet, talk.Bounds.Center, 1, release, KeyModifiers.None, MouseButton.Right));
+            await Task.Delay(100);
+            var actions = flyout.Actions.ToArray();
+            Check(flyout.IsOpen && !flyout.Sizing && actions.Length == 6 && actions.All(a => a.Clip is not null
+                && !string.IsNullOrWhiteSpace(AutomationProperties.GetName(a))), "right click opens six labeled sectors for an unbound companion");
+            var menuFace = (Control)flyout.Content!;
+            var first = actions[0];
+            first.Focus();
+            first.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Right });
+            Check(actions[1].IsFocused, "right arrow advances clockwise from the top sector");
+            var sizeItem = actions.Single(i => i.ActionId == "大小");
+            sizeItem.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Task.Delay(100);
             var slider = Field<Slider>(pet, "_sizeSlider");
-            var flyout = Field<Flyout>(pet, "_sizeFlyout");
-            Check(flyout.IsOpen && slider.Minimum == 25 && slider.Maximum == 150 && slider.Value == 80
+            Check(flyout.IsOpen && flyout.Sizing && slider.IsFocused && slider.Minimum == 25 && slider.Maximum == 150 && slider.Value == 80
                 && !string.IsNullOrWhiteSpace(AutomationProperties.GetName(slider)),
                 "the keyboard-accessible size slider opens at 80% with a 25% to 150% range");
+            slider.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+            Check(flyout.IsOpen && !flyout.Sizing && sizeItem.IsFocused, "Escape returns from size to its sector");
+            sizeItem.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+            Check(!flyout.IsOpen, "Escape dismisses the root menu");
+            talk.Focus();
+            talk.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.F10, KeyModifiers = KeyModifiers.Shift });
+            await Task.Delay(60);
+            Check(flyout.IsOpen && !flyout.Sizing, "Shift+F10 reopens the same wheel");
+            sizeItem.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(60);
             var mascot = Field<BanbanPetMascot>(pet, "_mascot");
             var captionSize = Field<TextBlock>(pet, "_caption").FontSize;
             var labelSize = Field<TextBlock>(pet, "_label").FontSize;
@@ -113,7 +135,7 @@ internal static class BanbanPetSettingsChecks
                 Check(gap >= 0 && gap <= 32 * screen.Scaling, $"{name} keeps the open size panel close to the character without covering it ({gap}px gap)");
             }
             CheckPanelGap("keyboard resizing");
-            var reset = ((Control)flyout.Content!).GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "恢复默认"));
+            var reset = menuFace.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == "恢复默认大小");
             reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(50);
             Check(slider.Value == 80 && Math.Abs(mascot.Width - 92.8) < .01, "restore default returns the live character and slider to 80%");
             CheckPanelGap("restoring the default size");
@@ -199,10 +221,10 @@ internal static class BanbanPetSettingsChecks
             talk.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Home });
             Check(Field<bool>(pet!, "_right") && Field<BanbanPetMascot>(pet!, "_mascot").Width == 174,
                 "position reset returns to the right edge without changing the chosen size");
-            talk.ContextMenu!.Items.OfType<MenuItem>().Single(i => Equals(i.Header, "大小"))
-                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); await Task.Delay(50);
+            pet!.PetMenu.Actions.Single(i => i.ActionId == "大小")
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(50);
             pet!.Present(new("leave"));
-            Check(!Field<Flyout>(pet, "_sizeFlyout").IsOpen && !pet.IsVisible,
+            Check(!pet.PetMenu.IsOpen && !pet.IsVisible,
                 "departure also closes the size panel with reduced motion");
             pet.Shutdown();
             var blockedParent = Path.Combine(output, "blocked-preference-parent");

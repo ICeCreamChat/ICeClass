@@ -83,6 +83,31 @@ class ReleaseChecks(unittest.TestCase):
             release.publish(self.directory, "v2.4.0", "owner/repo")
         gh.assert_not_called()
 
+    def test_offline_installers_are_required_and_checksummed_with_lightweight_packages(self):
+        version = "2.5.24"
+        names = release.asset_names(version)
+        archives = names[:-2]
+        offline = {f"ICeClass-{version}-{kind}-offline.zip" for kind in ("classroom", "desktop-windows-x64")}
+        self.assertEqual(len(archives), 6)
+        self.assertTrue(offline.issubset(archives))
+        for name in archives:
+            if name not in offline:
+                (self.source / "dist/release" / name).write_bytes(name.encode())
+        with patch.object(release, "validate_source", return_value=version), patch.object(
+            release, "source_commit", return_value=self.commit
+        ):
+            with self.assertRaisesRegex(ValueError, "Missing package"):
+                release.prepare(self.source, "v" + version, self.directory)
+            for name in offline:
+                (self.source / "dist/release" / name).write_bytes(name.encode())
+            (self.source / "docs" / f"发布记录-{version}.md").write_text("# 2.5.24", encoding="utf-8")
+            release.prepare(self.source, "v" + version, self.directory)
+        metadata = release.verify_assets(self.directory, "v" + version)
+        self.assertEqual([asset["name"] for asset in metadata["assets"]], names)
+        self.assertEqual((self.directory / names[-1]).read_text().splitlines(), [
+            f"{release.sha256(self.directory / name)}  {name}" for name in names[:-1]
+        ])
+
     def test_moved_tag_blocks_release_creation(self):
         self.prepare()
         with patch.object(release, "gh_json", return_value={"sha": "b" * 40}), patch.object(release, "gh") as gh:

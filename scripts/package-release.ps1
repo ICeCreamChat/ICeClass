@@ -56,6 +56,7 @@ try {
     Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cloud\migrations') -Filter '*.sql' -File |
         Copy-Item -Destination (Join-Path $serverRoot 'cloud\migrations')
     Copy-Item -LiteralPath $receiver -Destination (Join-Path $serverRoot 'receiver_release\ICeClass.exe')
+    Copy-Item -LiteralPath (Join-Path $windowsRoot '纸卡') -Destination (Join-Path $serverRoot 'receiver_release\纸卡') -Recurse
     foreach ($name in @('install.ps1', '安装或升级.cmd', 'program-manifest.json', '一步使用说明.txt')) {
         Copy-Item -LiteralPath (Join-Path $windowsRoot "教室端\$name") -Destination (Join-Path $serverRoot "receiver_release\$name")
     }

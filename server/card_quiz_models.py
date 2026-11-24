@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS card_quiz_pairs (
  session_id TEXT NOT NULL REFERENCES card_quiz_sessions(id) ON DELETE CASCADE,
  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES devices(id), code_expires_at INTEGER NOT NULL,
- user_id TEXT REFERENCES users(id), login_hash TEXT, expires_at INTEGER,
+ user_id TEXT REFERENCES users(id), login_hash TEXT, expires_at INTEGER, scan_key_hash TEXT,
  revoked INTEGER NOT NULL DEFAULT 0, activated INTEGER NOT NULL DEFAULT 0,
  state TEXT, last_seen INTEGER, device_polled_at INTEGER, phone_polled_at INTEGER);
 CREATE INDEX IF NOT EXISTS idx_card_quiz_pair_session ON card_quiz_pairs(session_id);
@@ -77,7 +77,7 @@ MAX_ROUNDS = 100
 MAX_BODY = 8 * 1024 * 1024
 MAX_SYNC_BODY = 32 * 1024 * 1024
 DEVICE_REASON = '教室端专用设备协议，需要设备令牌及当前班级绑定，不能由教师会话代替。'
-PHONE_REASON = '手机现场配对协议，需要本人登录和配对码，绑定当前登录会话及白板已保存的采集来源。'
+PHONE_REASON = '手机须在现场扫描白板邀请并允许相机；旧版配对使用教师登录，收答以白板保存的来源为准。'
 IMAGE_REASON = '题目图片由本人选择上传或授权查看，原始文件不传给模型，按作者和班级引用校验权限。'
 ACTIONS = {'add_question', 'start_round', 'answer', 'end_round', 'resume_round', 'set_source',
            'edit_question', 'reveal', 'set_exempt', 'end_session', 'recover', 'set_multi_option'}
@@ -196,8 +196,9 @@ def choices_option(choices):
     return ''.join(o for o in 'ABCD' if choices.get(o) is True)
 
 
-def answer_complete(question, answer):
+def answer_complete(question, answer, round_value):
     return answer is not None and (question['type'] != 'multiple'
+                                   or round_value.get('noCardPolicy') == 'abstain'
                                    or len(answer['choices']) == len(question['options']))
 
 
@@ -285,6 +286,10 @@ def validate_session(value):
                 fail('免答学生不在课堂名单中。')
             clean['rounds'].append({'id': rid, 'startedAt': started, 'endedAt': ended, 'purpose': purpose,
                                     'status': status, **rs, 'answers': answers, 'exempt': exempt})
+            if 'noCardPolicy' in r:
+                if r['noCardPolicy'] != 'abstain':
+                    fail('轮次未举卡规则无效。')
+                clean['rounds'][-1]['noCardPolicy'] = r['noCardPolicy']
             if multi:
                 clean['rounds'][-1]['activeOption'] = active
             previous_end = ended if ended is not None else started
@@ -341,6 +346,10 @@ def validate_events(events, start, end):
             clean[key] = None if event[key] is None else identifier(event[key])
         clean['generation'] = integer(event.get('generation'), '事件采集代次')
         clean['sourceId'] = identifier(event.get('sourceId'))
+        if 'noCardPolicy' in event:
+            if event['action'] != 'start_round' or event['noCardPolicy'] != 'abstain':
+                fail('未举卡规则只能在开轮时确定。')
+            clean['noCardPolicy'] = event['noCardPolicy']
         if set(event) - set(clean):
             fail('同步事件包含未知字段。')
         cleaned.append(clean)

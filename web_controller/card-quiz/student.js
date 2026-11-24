@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const subjects = {chinese:'语文',math:'数学',english:'英语',physics:'物理',chemistry:'化学',biology:'生物',politics:'政治',history:'历史',geography:'地理'};
-  const statuses = {correct:'正确',wrong:'错误',incomplete:'未完成',unanswered:'未答',exempt:'免答',ungraded:'未判定',practice:'练习'};
+  const statuses = {correct:'正确',wrong:'错误',incomplete:'未完成',unanswered:'未答',abstained:'弃权',exempt:'免答',ungraded:'未判定',practice:'练习'};
   const types = {single:'单选',boolean:'判断',multiple:'多选'};
   const pageSize = 20;
   let student, report, view = 'records', page = 0, busy = false, hasCard = false, lifecycle = 0, sessionCheckPending = false;
@@ -114,9 +114,11 @@
     $(id).focus();
   }
   function answerText(record) {
+    if (record.status === 'abstained') return '弃权';
+    if (record.status === 'exempt' && record.option == null) return '—';
     if (record.type !== 'multiple') return record.option ? record.type === 'boolean' ? record.option === 'A' ? 'A 正确' : 'B 错误' : record.option : '未答';
     const letters = 'ABCD'.slice(0, record.options.length).split(''), choices = record.choices || {};
-    const complete = letters.every(letter => typeof choices[letter] === 'boolean');
+    const complete = record.noCardPolicy === 'abstain' ? Object.keys(choices).length > 0 : letters.every(letter => typeof choices[letter] === 'boolean');
     if (complete) return record.option || '全不选';
     if (Object.keys(choices).length) return letters.map(letter => letter + ' ' + (choices[letter] === true ? '选' : choices[letter] === false ? '不选' : '未答')).join(' · ');
     return '未答';
@@ -149,7 +151,7 @@
     document.querySelectorAll('[data-student-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.studentView === view)));
     if (!report) { $('student-report').innerHTML = '<p class="student-empty">暂无可显示的报告，请重新载入。</p>'; return; }
     const totals = report.totals;
-    $('student-totals').innerHTML = `<dl class="student-totals">${[['samples','判定样本'],['correct','正确'],['wrong','错误'],['accuracy','正确率'],['incomplete','未完成'],['unanswered','未答'],['exempt','免答'],['ungraded','未判定'],['practice','练习']].map(([key,label]) => `<div><dt>${label}</dt><dd>${key === 'accuracy' ? rate(totals.samples ? totals.accuracy : null) : totals[key] || 0}</dd></div>`).join('')}</dl>`;
+    $('student-totals').innerHTML = `<dl class="student-totals">${[['samples','判定样本'],['correct','正确'],['wrong','错误'],['accuracy','正确率'],['incomplete','未完成'],['unanswered','未答'],['abstained','弃权'],['exempt','免答'],['ungraded','未判定'],['practice','练习']].map(([key,label]) => `<div><dt>${label}</dt><dd>${key === 'accuracy' ? rate(totals.samples ? totals.accuracy : null) : totals[key] || 0}</dd></div>`).join('')}</dl>`;
     if (view === 'knowledge') { $('student-report').innerHTML = renderKnowledge(); controls(); return; }
     const all = [...records()].sort((a,b) => b.startedAt - a.startedAt), pages = Math.max(1, Math.ceil(all.length / pageSize));
     page = Math.min(page, pages - 1);

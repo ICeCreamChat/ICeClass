@@ -11,6 +11,60 @@ from test_card_quiz import CardQuizHttpCase, PREFIX, STAMP, question
 
 
 class CardQuizReviewTests(CardQuizHttpCase):
+    async def test_three_question_lesson_counts_raised_cards_after_offline_resume(self):
+        await self.initialize()
+
+        def op(action, **payload):
+            return {'action': action, 'payload': payload}
+
+        first = self.journal([
+            op('add_question', **question(type='multiple', options=list('ABCD'), answer='AC')),
+            op('start_round'), op('set_exempt', studentId='s4', exempt=True),
+            op('answer', cardNumber=1, targetOption='A', option='A'),
+            op('set_multi_option', option='B'), op('recover')])
+        for invalid in ('missing', 'unknown', 'late'):
+            forged = copy.deepcopy(self.batch(first))
+            opening = forged['events'][1]
+            if invalid == 'missing':
+                del opening['noCardPolicy']
+            elif invalid == 'unknown':
+                opening['noCardPolicy'] = 'unknown'
+            else:
+                forged['events'][-1]['noCardPolicy'] = opening.pop('noCardPolicy')
+            with self.subTest(policy=invalid):
+                await self.sync(forged, 400)
+        await self.sync(self.batch(first))
+        before = first['events'][-1]
+        state = {**first['receipts'][before['id']]['result']['state'], 'className': '高一（1）班'}
+        self.assertEqual((state['roundStatus'], state['received'], state['optionReceived']), ('paused', 1, 0))
+        await self.api('POST', '/device/relay', {'sessionId': state['sessionId'], 'state': state,
+                       'receipts': []}, headers=self.dh)
+
+        remaining = [
+            op('resume_round'), op('answer', cardNumber=2, targetOption='B', option='A'),
+            op('set_multi_option', option='C'), op('answer', cardNumber=1, targetOption='C', option='A'),
+            op('set_multi_option', option='D'), op('end_round')]
+        for kind in ('single', 'boolean'):
+            options = ['正确', '错误'] if kind == 'boolean' else ['甲', '乙']
+            remaining.extend([op('add_question', **question(type=kind, options=options)), op('start_round'),
+                              op('set_exempt', studentId='s4', exempt=True), op('answer', cardNumber=1, option='A'),
+                              op('recover'), op('resume_round'), op('answer', cardNumber=3, option='B'),
+                              op('end_round' if kind == 'single' else 'end_session')])
+        rest = self.journal(remaining, base=first['session'], ids=())
+        batch = self.batch(rest, before['seq'] + 1)
+        self.assertEqual(await self.sync(batch), await self.sync(batch))
+        result = await self.api('GET', '/sessions/session-1')
+        rounds = [q['rounds'][0] for q in result['report']['questions']]
+        self.assertEqual(rounds[0]['combinationDistribution'], {'AC': 1, 'B': 1})
+        self.assertEqual(result['session']['questions'][0]['rounds'][0]['answers']['s1']['choices'], {'A': True, 'C': True})
+        for r in rounds:
+            self.assertEqual((r['correct'], r['wrong'], r['samples'], r['abstained'], r['exempt']), (1, 1, 2, 1, 1))
+        self.assertEqual([r['students'][2]['status'] for r in rounds], ['abstained', 'wrong', 'wrong'])
+        self.assertEqual(result['report']['totals']['accuracy'], .5)
+        rows = list(csv.DictReader(io.StringIO((await self.api('GET', '/export?classId=' + self.cid)).decode('utf-8-sig'))))
+        self.assertEqual([row['作答'] for row in rows if row['状态'] == 'abstained'], ['弃权'] * 3)
+        self.assertEqual(rows[0]['作答'], 'AC')
+
     def receipt(self, journal, command_id):
         receipt = copy.deepcopy(journal['receipts'][command_id])
         receipt['id'] = command_id
@@ -49,7 +103,7 @@ class CardQuizReviewTests(CardQuizHttpCase):
         data = await self.api('GET', '/sessions/session-1')
         formal, practice = data['report']['questions'][0]['rounds']
         self.assertEqual((formal['purpose'], formal['exempt'], formal['samples']), ('formal', 0, 1))
-        self.assertEqual((practice['purpose'], practice['exempt'], practice['practice']), ('practice', 1, 3))
+        self.assertEqual((practice['purpose'], practice['exempt'], practice['practice'], practice['abstained']), ('practice', 1, 1, 2))
         self.assertEqual(next(s['status'] for s in practice['students'] if s['studentId'] == 's2'), 'exempt')
         self.assertEqual(practice['distribution'], {'A': 0, 'B': 1})
         self.assertEqual(data['session']['questions'][0]['rounds'], journal['session']['questions'][0]['rounds'])
@@ -57,16 +111,16 @@ class CardQuizReviewTests(CardQuizHttpCase):
         rows = list(csv.DictReader(io.StringIO(exported.decode('utf-8-sig'))))
         self.assertEqual(len(rows), 8)
         self.assertEqual([(r['用途'], r['状态']) for r in rows if r['学生编号'] == 's2'],
-                         [('formal', 'unanswered'), ('practice', 'exempt')])
+                         [('formal', 'abstained'), ('practice', 'exempt')])
         cross = await self.api('GET', '/report?classId=' + self.cid)
         with self.subTest(scope='classroom'):
             totals = data['report']['totals']
-            self.assertEqual((totals['samples'], totals['correct'], totals['unanswered'],
+            self.assertEqual((totals['samples'], totals['correct'], totals['abstained'],
                               totals['exempt'], totals['practice']), (1, 1, 3, 0, 4))
         for scope, report in (('classroom', data['report']), ('cross-session', cross)):
             with self.subTest(scope=scope):
                 student = next(s for s in report['students'] if s['studentId'] == 's2')
-                self.assertEqual((student['unanswered'], student['exempt'], student['practice']), (1, 0, 1))
+                self.assertEqual((student['abstained'], student['exempt'], student['practice']), (1, 0, 1))
         self.assertEqual((cross['knowledge'][0]['answers'], cross['knowledge'][0]['samples']), (1, 1))
 
     async def test_b2_confirmed_original_receipt_retries_with_empty_events_after_rename(self):
@@ -374,7 +428,7 @@ class CardQuizReviewTests(CardQuizHttpCase):
             journal['events'] = body['events'] + journal['events']
             await self.sync(self.batch(journal))
             report = (await self.api('GET', '/sessions/' + sid))['report']
-            self.assertEqual((report['totals']['samples'], report['totals']['unanswered']),
+            self.assertEqual((report['totals']['samples'], report['totals']['abstained']),
                              (1, 3) if partial else (0, 4))
             self.assertEqual(report['questions'][0]['rounds'][0]['samples'], 2)
             self.assertEqual(report['totals']['practice'], 4)
@@ -634,6 +688,25 @@ class CardQuizReviewTests(CardQuizHttpCase):
         await self.sync(body)
         await self.api('GET', '/pairs/' + pair['pairId'], status=403)
         await self.api('POST', '/pairs/' + pair['pairId'] + '/commands', self.command(pair), 403)
+
+    async def test_relay_overtaken_by_sync_retries_original_receipt_without_reopening_round(self):
+        from card_quiz_events import public_state
+        pair, _, _, journal, receipt = await self.execution({'action': 'end_round'})
+        await self.sync(self.batch(journal, 7))
+        latest = public_state(journal['session'], receipt['result']['state']['className'])
+        stale = {'sessionId': latest['sessionId'], 'state': receipt['result']['state'], 'retrySuperseded': True,
+                 'receipts': [{'id': receipt['id'], 'result': receipt['result']}], 'preview': {'id': 'old', 'prepare': True}}
+        command = lambda: self.db.one('SELECT status,result FROM card_quiz_commands WHERE id=?', (receipt['id'],))
+        previous = command()
+        with patch.object(service, 'now_ms', return_value=service.now_ms() + 1000):
+            self.assertEqual(await self.api('POST', '/device/relay', stale, headers=self.dh), {'supersededSeq': latest['seq']})
+            self.assertEqual(command(), previous)
+            self.assertEqual((await self.api('GET', '/pairs/' + pair['pairId']))['state']['roundStatus'], 'closed')
+            await self.api('POST', '/device/relay', {**stale, 'retrySuperseded': False}, 400, self.dh)
+            await self.api('POST', '/device/relay', {**stale, 'state': {**stale['state'], 'seq': -1}}, 400, self.dh)
+            await self.api('POST', '/device/relay', {**stale, 'state': latest}, headers=self.dh)
+        self.assertEqual(json.loads(command()['result']), receipt['result'])
+        self.assertEqual(command()['status'], 'confirmed')
 
     async def test_f5_same_seq_raw_and_relay_contradiction_is_rejected(self):
         pair, state, _ = await self.active_pair()

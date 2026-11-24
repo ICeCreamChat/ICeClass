@@ -19,6 +19,8 @@ var bootstrapStatus = 503; var publications = new JsonArray(); var bootstrapCall
 TaskCompletionSource? holdBootstrap = null, bootstrapStarted = null; var relayStatus = 200;
 var localCommandIds = new HashSet<string>();
 var relayed = new List<JsonObject>();
+JsonObject? invitationRequest = null, cancellationRequest = null;
+const string scanPath = "/card-quiz/phone.html#scan=synthetic-test-invitation";
 var handlers = new List<Task>();
 async Task Handle(HttpListenerContext request) {
     try {
@@ -38,6 +40,14 @@ async Task Handle(HttpListenerContext request) {
             using var reader = new StreamReader(request.Request.InputStream);
             relayed.Add(JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject());
             response = new() { ["commands"] = new JsonArray(), ["pairings"] = new JsonArray() };
+        } else if (request.Request.Url.AbsolutePath.EndsWith("/device/pair")) {
+            using var reader = new StreamReader(request.Request.InputStream);
+            invitationRequest = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
+            response = new() { ["mode"] = "scan", ["pairId"] = "test-pair", ["url"] = "http://upstream.example" + scanPath };
+        } else if (request.Request.Url.AbsolutePath.EndsWith("/device/pair/cancel")) {
+            using var reader = new StreamReader(request.Request.InputStream);
+            cancellationRequest = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
+            response = new() { ["ok"] = true };
         } else if (request.Request.Url.AbsolutePath.EndsWith("/receipt-ids")) {
             using var reader = new StreamReader(request.Request.InputStream);
             var body = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
@@ -89,6 +99,12 @@ try {
     var service = CardQuizService.For(config); await bootstrap.Task.WaitAsync(TimeSpan.FromSeconds(5));
     Check(service.Matches(config) && ReferenceEquals(service, CardQuizService.For(config)), "运行时绑定复用不使用磁盘DPAPI保护副本");
     var sid = Guid.NewGuid().ToString(); var j = Initial(sid); service.Store.Commit(j);
+    var invitation = await service.PairAsync(sid, lifetime.Token);
+    Check(invitationRequest?["quickScan"]?.GetValue<bool>() == true && invitationRequest["sessionId"]?.GetValue<string>() == sid &&
+          invitation["url"]?.GetValue<string>() == endpoint + scanPath, "扫码链接沿用白板绑定地址并保留本堂邀请");
+    await service.CancelPairAsync(sid, "test-pair", lifetime.Token);
+    Check(cancellationRequest?["pairId"]?.GetValue<string>() == "test-pair" && cancellationRequest["sessionId"]?.GetValue<string>() == sid,
+          "取消邀请只提交原课堂和配对编号");
     j = Advance(j, "set_source", Guid.NewGuid().ToString()); service.Store.Commit(j); j = Advance(j, "recover"); service.Store.Commit(j);
     service.Store.SaveCache("receipt-" + sid, new JsonObject { ["seq"] = 0 });
     var cacheRoot = (string)typeof(CardQuizStore).GetField("_root", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(service.Store)!;

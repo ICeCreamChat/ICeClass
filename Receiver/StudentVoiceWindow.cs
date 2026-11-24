@@ -23,7 +23,7 @@ public sealed class StudentVoiceWindow : Window
     private readonly Func<byte[], Task> _send;
     private readonly Func<Task>? _openReading;
     private readonly Action? _openSettings, _openAbout, _showIsland, _showBanban;
-    private readonly Action? _openCardQuiz;
+    private readonly Func<bool>? _openCardQuiz;
     private readonly Action<string>? _openIdeas;
     private readonly Action<long>? _acknowledge;
     private readonly Func<string, object?>? _selfStudy;
@@ -94,7 +94,7 @@ public sealed class StudentVoiceWindow : Window
     public StudentVoiceWindow(ReceiverConfig config, Func<byte[], Task> send, Func<Task>? openReading = null,
         Action? openSettings = null, Action? openAbout = null, Action? showIsland = null, Action? showBanban = null,
         Action<string>? openIdeas = null, Action<long>? acknowledge = null, Func<string, object?>? selfStudy = null,
-        Func<string, Window, ReceiverConfig, CancellationToken, Task<object>>? workshop = null, Action? openCardQuiz = null)
+        Func<string, Window, ReceiverConfig, CancellationToken, Task<object>>? workshop = null, Func<bool>? openCardQuiz = null)
     {
         ClassroomStyle.Apply(this);
         _config = config; _scope = BindingScope(config); _send = send; _openReading = openReading;
@@ -275,7 +275,10 @@ public sealed class StudentVoiceWindow : Window
                 case "voice": if (!_sending) {if (_recording) FinishRecording();else StartRecording();} break;
                 case "cancel-voice": if (_recording) {StopRecorder(); ResetVoice("录音已取消，可以重新开始。");} break;
                 case "plan": _openIdeas?.Invoke("submit"); break;
-                case "card-quiz": _openCardQuiz?.Invoke(); break;
+                case "card-quiz":
+                    if (_openCardQuiz?.Invoke() != true) throw new InvalidOperationException("班班课堂暂时无法打开，请稍后重试。");
+                    MinimizeToTray();
+                    break;
                 case "banban": _showBanban?.Invoke(); break;
                 case "binding": _openSettings?.Invoke(); break;
                 case "about": _openAbout?.Invoke(); break;

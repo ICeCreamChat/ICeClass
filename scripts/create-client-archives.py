@@ -61,6 +61,10 @@ def create_archives(root: Path, output: Path):
                     archive.writestr(prefix + 'program-manifest.json', json.dumps(classroom_manifest if offline else {
                         'version': plan['version'], 'size': core['size'], 'sha256': core['sha256'],
                     }, ensure_ascii=False))
+                    sheets = receiver / '纸卡'
+                    if sheets.is_dir():
+                        for name in ('通用纸卡-1-2.pdf', '通用纸卡-1-40.pdf'):
+                            archive.write(sheets / name, 'ICeClass/纸卡/' + name)
                 else:
                     prefix = 'Windows教师端/'
                     archive.write(teacher_app, prefix + 'ICeClass.Desktop.exe')

@@ -31,9 +31,9 @@ internal static class BanbanPetReview
             pet.ShowPet(true); pet.Present(new("state", State: "standby", Enabled: true));
             pet.PositionChanged += (_, _) => Save();
             var button = pet.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "BanbanPetTalk");
-            var exit = new MenuItem { Header = demonstrate ? "结束演示" : "结束交互验收" };
-            exit.Click += (_, _) => { pet.Shutdown(); ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!).Shutdown(); };
-            button.ContextMenu!.Items.Add(exit); Save();
+            pet.PetMenu.AddAction(demonstrate ? "结束演示" : "结束交互验收", "退出", "square", () =>
+            { pet.Shutdown(); ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!).Shutdown(); });
+            Save();
             if (speechBubble)
             {
                 void Caption(string text)
@@ -44,8 +44,7 @@ internal static class BanbanPetReview
                 }
                 foreach (var (label, text) in new[] { ("短句气泡", "我在，请说。"), ("多行气泡", "等差数列的前 n 项和，等于首项与末项的和乘以项数，再除以二。") })
                 {
-                    var sample = new MenuItem { Header = label };
-                    sample.Click += (_, _) => Caption(text); button.ContextMenu.Items.Insert(0, sample);
+                    pet.PetMenu.AddAction(label, label[..2], "message-circle", () => Caption(text));
                 }
                 Caption("我在，请说。");
                 var display = pet.Screens.ScreenFromWindow(pet) ?? pet.Screens.Primary;
@@ -54,8 +53,7 @@ internal static class BanbanPetReview
             }
             if (sizeControls)
             {
-                button.ContextMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "大小"))
-                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                pet.PetMenu.Actions.Single(item => item.ActionId == "大小").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 return;
             }
             if (!demonstrate) return;
@@ -93,13 +91,11 @@ internal static class BanbanPetReview
                 // Keep the real production scheduler and motion speed; shorten only its quiet gaps for this one-off preview.
                 if (mascot.IdleScheduled && idle.Interval.TotalSeconds > 2) idle.Interval = TimeSpan.FromMilliseconds(1600);
             };
-            var replay = new MenuItem { Header = "再演示一遍", IsEnabled = animationsAllowed };
-            replay.Click += (_, _) =>
+            pet.PetMenu.AddAction("再演示一遍", "重播", "rotate-ccw", () =>
             {
                 observed.Clear(); last = ""; awakened = false; mascot.Animate = true;
                 pet.Title = "班班 · 贴边动作演示"; Record(); timer.Start();
-            };
-            button.ContextMenu!.Items.Insert(button.ContextMenu.Items.Count - 1, replay);
+            }).IsEnabled = animationsAllowed;
             Record(); timer.Start();
         }))
         .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
@@ -120,9 +116,8 @@ internal static class BanbanPetReview
             Check(type is not null, "a native desktop companion is provided by the existing receiver");
             var opens = 0; var talks = 0; var cancels = 0; bool? enabled = null;
             var preference = Path.Combine(output, "pet-preferences.json");
-            pet = (Window)Activator.CreateInstance(type!, BindingFlags.Instance | BindingFlags.NonPublic, null,
-                [new Action(() => opens++), new Action(() => talks++), new Action(() => cancels++),
-                 new Action<bool>(value => enabled = value), preference], null)!;
+            pet = new BanbanPetWindow(() => opens++, () => talks++, () => cancels++,
+                value => enabled = value, preference);
             // Exercise layout and events without covering the user's desktop.
             pet.Opacity = 0;
             void Call(string method, params object[] args) => type!.GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pet, args);
@@ -171,15 +166,15 @@ internal static class BanbanPetReview
             var beforeMove = pet.Position;
             button.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
             Check(pet.Position.Y < beforeMove.Y && talks == 1, "keyboard movement does not trigger conversation");
-            var menu = button.ContextMenu!;
-            var open = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "打开对话"));
-            open.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            var menu = ((BanbanPetWindow)pet).PetMenu;
+            var open = menu.Actions.Single(item => Avalonia.Automation.AutomationProperties.GetName(item) == "打开对话");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(opens == 1, "the companion can open the existing chat");
             Call("Present", new BanbanVoiceEvent("state", "您说，我在听", "listening", true));
             Check(pet.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "我在听"), "listening has a concise visible state");
             Call("Present", new BanbanVoiceEvent("state", "正在处理…", "thinking", true));
-            var stop = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "停止操作"));
-            stop.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            var stop = menu.Actions.Single(item => item.ActionId == "停止操作");
+            stop.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(cancels == 1, "stop reaches the existing operation cancellation callback");
             Call("Present", new BanbanVoiceEvent("state", "班班正在说…", "speaking", true));
             Call("Present", new BanbanVoiceEvent("task-result", State: "failed"));
@@ -243,8 +238,8 @@ internal static class BanbanPetReview
             await Task.Delay(100);
             using (var bitmap = new RenderTargetBitmap(new PixelSize((int)BanbanPetWindow.ExpandedWidth * 2, (int)BanbanPetWindow.SurfaceHeight * 2), new Vector(192, 192)))
             { bitmap.Render((Visual)pet.Content!); bitmap.Save(Path.Combine(output, "companion.png")); }
-            var mute = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "暂停语音"));
-            mute.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            var mute = menu.Actions.Single(item => Avalonia.Automation.AutomationProperties.GetName(item) == "暂停语音");
+            mute.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(enabled == false, "microphone pause reaches the shared voice setting");
             Call("HidePet");
             Check(!pet.IsVisible && !mascot.AnimationRunning && !mascot.IdleScheduled && File.Exists(preference), "hiding persists the companion preference and stops all mascot timers without closing voice");

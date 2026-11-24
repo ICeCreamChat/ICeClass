@@ -18,7 +18,7 @@
       ${window.CardQuizCards.svg(card.cardNumber)}
       <footer class="card-instructions" aria-label="纸卡使用说明">
         <p>单选：所选字母朝上。判断：A 正确，B 错误。</p>
-        <p>多选：按当前收答项，A 选，B 不选；逐项完成。</p>
+        <p>多选只在选中项举 A，改为不选举 B。整题没举卡记弃权。</p>
         <p>举卡保持稳定、卡面平整，手指不要遮挡黑白图案。</p>
         <p>在 ICeClass 登录页选“学生”，用编号和密码登录。请妥善保管纸卡。</p>
       </footer>

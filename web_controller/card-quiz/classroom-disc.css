@@ -1,0 +1,188 @@
+/* The host supplies the sectors, title and Back. Keep the live camera document attached. */
+body.banban.in-disc[data-quiz-disc] {
+  overflow: hidden;
+}
+
+body.banban.in-disc[data-quiz-disc]:not([data-quiz-disc="chart"]) .quiz-shell {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.banban.in-disc[data-quiz-disc] #camera:not([hidden]) {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  visibility: visible;
+  pointer-events: none;
+}
+
+body.banban.in-disc :is(.disc-reader, .disc-record) {
+  display: none;
+}
+
+body.banban.in-disc[data-quiz-disc="reading"] .disc-reader {
+  display: block;
+  position: fixed;
+  inset: 0;
+  padding: 3px 4px;
+  color: var(--classroom-ink);
+  background: var(--panel-bg);
+}
+
+body.banban.in-disc .disc-viewport,
+body.banban.in-disc .disc-columns {
+  width: 100%;
+  height: 100%;
+}
+
+body.banban.in-disc .disc-viewport {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+body.banban.in-disc .disc-columns {
+  column-count: 1;
+  column-gap: 0;
+  column-fill: auto;
+}
+
+body.banban.in-disc .disc-columns p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  orphans: 1;
+  widows: 1;
+}
+
+body.banban.in-disc .disc-columns img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The host parks its WebView at 1 × 1 while a native ring is visible. */
+@media (max-width: 40px), (max-height: 24px) {
+  body.banban.in-disc[data-quiz-disc="reading"] .disc-reader { display: none; }
+}
+
+body.banban.in-disc[data-quiz-disc] :is(#pair-dialog, #confirm-dialog)[open] {
+  padding: 0;
+  overflow: hidden;
+}
+
+body.banban.in-disc[data-quiz-disc] :is(#pair-dialog, #confirm-dialog) > :not(.disc-reader),
+body.banban.in-disc[data-quiz-disc="reading"] #exempt-dialog[open] > :not(.disc-reader) {
+  display: none;
+}
+
+body.banban.in-disc[data-quiz-disc="qr"] #pair-dialog[open] {
+  display: grid;
+  place-items: center;
+}
+
+body.banban.in-disc[data-quiz-disc="qr"] #pair-dialog #pair-qr:not([hidden]) {
+  display: block;
+  width: min(100vw, 100dvh);
+  max-width: 100%;
+  margin: 0;
+  /* The signed invitation SVG already contains its four-module quiet zone. */
+  forced-color-adjust: none;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] .quiz-shell {
+  padding: 0 3px;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] :is(#pane-header, #feedback, #round-kind, .session-bar, .secondary-actions) {
+  display: none;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] #workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] .capture-count {
+  text-align: center;
+  line-height: 17px;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] .capture-count :is(strong, span) {
+  font-size: 14px;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] .question-surface {
+  display: flex;
+  flex-direction: column;
+}
+
+body.banban.in-disc[data-quiz-disc="record"] .disc-record {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+body.banban.in-disc .disc-record-count,
+body.banban.in-disc .disc-record-grade {
+  margin: 0;
+  line-height: 16px;
+  text-align: center;
+}
+
+body.banban.in-disc .disc-record-count {
+  font-size: 14px;
+  color: var(--wheel-accent);
+}
+
+body.banban.in-disc .disc-record-grade {
+  font-size: 12px;
+  color: var(--classroom-muted);
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] .distribution { order: -1; }
+
+body.banban.in-disc:is([data-quiz-disc="chart"], [data-quiz-disc="record"]) .distribution {
+  align-content: center;
+  gap: 1px 4px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 15px;
+}
+
+body.banban.in-disc:is([data-quiz-disc="chart"], [data-quiz-disc="record"]) .distribution-scale small { line-height: 12px; }
+
+body.banban.in-disc:is([data-quiz-disc="chart"], [data-quiz-disc="record"]) .distribution:has(.distribution-empty) {
+  min-height: 65px;
+}
+
+body.banban.in-disc:is([data-quiz-disc="chart"], [data-quiz-disc="record"]) :is(.distribution-note, #answer-display) {
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 14px;
+}
+
+body.banban.in-disc[data-quiz-disc="chart"] #answer-display {
+  font-weight: 700;
+  background: transparent;
+}
