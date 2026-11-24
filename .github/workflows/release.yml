@@ -100,6 +100,10 @@ jobs:
       - name: Prepare and verify bundled offline voice assets
         working-directory: source
         run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and (Test-Path Receiver/Assets/Voice/Speaker/manifest.json)) {
+            python ../tooling/scripts/prepare-banban-speaker.py --tagged-directory Receiver/Assets/Voice/Speaker
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           if (Test-Path scripts/prepare-banban-voice.py) {
             python scripts/prepare-banban-voice.py
           }

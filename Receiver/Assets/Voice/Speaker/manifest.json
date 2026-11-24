@@ -1,6 +1,6 @@
 {
   "version": "campplus-zh-en-20261027",
-  "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+  "source": "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/8be2a75c9ed7a590538b268e46fbb65e1aa9d208/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
   "license": "Apache-2.0",
   "files": [
     {
