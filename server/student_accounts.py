@@ -18,6 +18,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS student_accounts (
  id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
  class_id TEXT NOT NULL REFERENCES classes(id), student_id TEXT NOT NULL,
+ holder_card_number INTEGER CHECK(holder_card_number BETWEEN 1 AND 157),
  revision INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
  UNIQUE(class_id,student_id));
@@ -48,6 +49,11 @@ class StudentAccounts(StudentReports):
     def __init__(self, app, service, quiz):
         self.service, self.quiz, self.db = service, quiz, app[service.STORE_KEY]
         self.db.db.executescript(SCHEMA)
+        with self.db.transaction():
+            if 'holder_card_number' not in {col['name'] for col in self.db.all('PRAGMA table_info(student_accounts)')}:
+                self.db.run('ALTER TABLE student_accounts ADD COLUMN holder_card_number INTEGER CHECK(holder_card_number BETWEEN 1 AND 157)')
+            self.db.run('''CREATE UNIQUE INDEX IF NOT EXISTS idx_student_holder_cards
+                ON student_accounts(class_id,holder_card_number) WHERE holder_card_number IS NOT NULL''')
 
     async def body(self, request):
         return await self.quiz.body(request, 64 * 1024)
@@ -97,7 +103,9 @@ class StudentAccounts(StudentReports):
                              'username': account['username'] if account else None,
                              'accountRevision': account['revision'] if account else None,
                              'activeHere': active})
-        return {'classId': cid, 'className': room['name'], 'classCode': code,
+        number_cards = self.db.all('''SELECT id AS accountId,holder_card_number AS cardNumber FROM student_accounts
+            WHERE class_id=? AND holder_card_number IS NOT NULL ORDER BY holder_card_number''', (cid,))
+        return {'classId': cid, 'className': room['name'], 'classCode': code, 'numberCards': number_cards,
                 'revision': self.class_revision(cid), 'rosterRevision': roster_revision,
                 'cardRevision': card_revision, 'students': students,
                 'canEdit': bool(self.service.can_access_class(self.db, user, cid, include_teaching=False))}
@@ -115,9 +123,75 @@ class StudentAccounts(StudentReports):
 
     def credential(self, account, password):
         cid, sid = account['class_id'], account['student_id']
+        number = account.get('holder_card_number')
         return {'accountId': account['id'], 'username': account['username'], 'password': password,
                 'classId': cid, 'className': self.class_info(cid)['name'], 'studentId': sid,
-                'cardNumber': self.quiz.cards(cid)[1]['bindings'].get(sid)}
+                'cardNumber': number or self.quiz.cards(cid)[1]['bindings'].get(sid),
+                **({'numberCard': True} if number else {})}
+
+    def number_card_prefix(self, cid, class_code):
+        rows = self.db.all('''SELECT DISTINCT class_id,substr(username,1,5) AS prefix FROM student_accounts
+            WHERE holder_card_number IS NOT NULL''')
+        for row in rows:
+            if row['class_id'] == cid:
+                return row['prefix']
+        used = {row['prefix'] for row in rows}
+        start = int(class_code) if class_code else 0
+        for offset in range(10000):
+            digits = f'{(start + offset) % 10000:04d}'
+            prefix = digits[:2] + '0' + digits[2:]  # The third digit of a personal account is its grade (1-3).
+            if prefix not in used:
+                return prefix
+        fail('学校纸卡编号已用完。', 409)
+
+    async def write_number_cards(self, request, *, reset=False):
+        user, cid = self.teacher(request, edit=True)
+        body = await self.body(request)
+        self.check_versions(cid, body)
+        first = integer(body.get('firstNumber'), '起始卡号', 1, 157)
+        last = integer(body.get('lastNumber'), '结束卡号', first, 157)
+        existing = {a['holder_card_number']: a for a in self.db.all('''SELECT * FROM student_accounts
+                    WHERE class_id=? AND holder_card_number BETWEEN ? AND ?''', (cid, first, last))}
+        if reset and len(existing) != last - first + 1:
+            fail('所选号段含未发放的纸卡，请先生成或调整号段。', 409)
+        accounts = [existing[n] if reset else {'id': new_id(), 'class_id': cid, 'student_id': new_id(), 'holder_card_number': n}
+                    for n in range(first, last + 1) if reset or n not in existing]
+        prepared = await self.new_passwords(accounts)
+        with self.db.transaction():
+            user, cid = self.teacher(request, edit=True)
+            self.check_versions(cid, body)
+            prefix = self.number_card_prefix(cid, self.payload(cid, user)['classCode'])
+            now = self.service.now_ms()
+            for account, (_, encoded) in zip(accounts, prepared):
+                if reset:
+                    self.db.run('UPDATE student_accounts SET password_hash=?,revision=revision+1,updated_at=? WHERE id=?',
+                                (encoded, now, account['id']))
+                    self.db.run('DELETE FROM student_sessions WHERE account_id=?', (account['id'],))
+                else:
+                    n = account['holder_card_number']
+                    account['username'] = f'{prefix}{n:03d}'
+                    self.db.run('''INSERT INTO student_accounts
+                        (id,username,password_hash,class_id,student_id,holder_card_number,created_at,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?)''', (account['id'], account['username'], encoded, cid, account['student_id'], n, now, now))
+            if accounts:
+                self.bump(cid)
+                action = 'reset' if reset else 'issue'
+                self.quiz.audit(user, 'student.number_cards.' + action, 'class', cid, f'按号发卡 {first}-{last}，共 {len(accounts)} 张')
+        result = self.payload(cid, user)
+        result['credentials'] = [self.credential(a, p[0]) for a, p in zip(accounts, prepared)]
+        return self.quiz.reply(result)
+
+    @teacher_action('student.number_cards.issue', '为本班通用纸卡生成登录编号和密码', target='class', head_only=True,
+                    fields='revision rosterRevision cardRevision firstNumber lastNumber', workflow='private-result',
+                    impact='仅生成号段内缺失的通用卡账号。密码仅在本次发放表显示。')
+    async def issue_number_cards(self, request):
+        return await self.write_number_cards(request)
+
+    @teacher_action('student.number_cards.reset', '重置所选通用卡密码并补印', target='class', head_only=True,
+                    fields='revision rosterRevision cardRevision firstNumber lastNumber', workflow='private-result',
+                    impact='所选通用卡的旧密码和旧登录会话失效，新密码仅在本次发放表显示。')
+    async def reset_number_cards(self, request):
+        return await self.write_number_cards(request, reset=True)
 
     async def new_passwords(self, accounts):
         def prepare():
@@ -209,7 +283,7 @@ class StudentAccounts(StudentReports):
             self.check_versions(cid, body)
             if sid not in {s['id'] for s in self.quiz.roster(cid)[1]}:
                 fail('目标学生不在当前班级名单中。')
-            account = self.db.one('SELECT * FROM student_accounts WHERE username=? AND enabled=1', (username,))
+            account = self.db.one('SELECT * FROM student_accounts WHERE username=? AND enabled=1 AND holder_card_number IS NULL', (username,))
             if not account:
                 fail('原学生账号不存在。', 404)
             if not self.service.can_access_class(self.db, user, account['class_id'],
@@ -251,10 +325,12 @@ class StudentAccounts(StudentReports):
 
     def public_student(self, account):
         sid, cid = account['student_id'], account['class_id']
-        active = sid in {s['id'] for s in self.quiz.roster(cid)[1]}
+        number = account.get('holder_card_number')
+        active = not number and sid in {s['id'] for s in self.quiz.roster(cid)[1]}
         return {'id': account['id'], 'username': account['username'], 'classId': cid,
                 'className': self.class_info(cid)['name'], 'csrfToken': account['csrf_token'],
-                'cardNumber': self.quiz.cards(cid)[1]['bindings'].get(sid) if active else None}
+                'numberCard': bool(number),
+                'cardNumber': self.quiz.cards(cid)[1]['bindings'].get(sid) if active else number}
 
     def failure_context(self, request, username):
         source = request.headers.get('X-Real-IP') or request.remote or 'unknown'
@@ -333,6 +409,8 @@ class StudentAccounts(StudentReports):
     @teacher_manual(STUDENT_REASON)
     async def change_password(self, request):
         account = self.require_student(request)
+        if account.get('holder_card_number'):
+            fail('通用卡使用纸面固定密码，请联系本班老师换发。', 403)
         body = await self.body(request)
         password = password_value(body.get('newPassword'))
         await self.check_password(request, account, body.get('currentPassword'), account['username'])
@@ -382,6 +460,8 @@ def install(app, service, quiz):
     app.router.add_post(base, feature.create_accounts)
     app.router.add_post(base + '/reset', feature.reset_accounts)
     app.router.add_post(base + '/link', feature.link_account)
+    app.router.add_post(base + '/number-cards', feature.issue_number_cards)
+    app.router.add_post(base + '/number-cards/reset', feature.reset_number_cards)
     for method, path, handler in (
         ('POST', '/login', feature.login), ('GET', '/session', feature.session),
         ('POST', '/logout', feature.logout), ('PUT', '/password', feature.change_password),

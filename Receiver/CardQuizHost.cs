@@ -47,7 +47,7 @@ internal sealed class CardQuizHost : IDisposable
         {
             type = "companion-action", action, sessionId = command.SessionId, key = command.Key, cardNumber = command.CardNumber, pageKey = command.PageKey,
             questionIndex = command.QuestionIndex,
-            selection = command.Selection is { } value ? new { publication = value.Publication, subject = value.Subject, template = value.Template } : null,
+            selection = command.Selection is { } value ? new { publication = value.Publication, subject = value.Subject, template = value.Template, cardMode = value.CardMode } : null,
         });
     }
     internal async Task InitializeAsync()

@@ -83,7 +83,7 @@ class CardQuizHttpCase(ServerTestCase):
     async def new_question(self, *, headers=None, **changes):
         return await self.api('POST', '/questions', {'value': question(**changes)}, headers=headers)
 
-    def journal(self, operations=(), *, base=None, sid='session-1', started=STAMP, ids=()):
+    def journal(self, operations=(), *, base=None, sid='session-1', started=STAMP, ids=(), card_mode='assigned'):
         """Run the actual shared model and durable Journal, including incoming metadata."""
         root = Path(__file__).resolve().parents[1]
         script = r"""
@@ -94,7 +94,7 @@ Object.defineProperty(globalThis,'crypto',{value:{randomUUID:()=>ids.shift()||cr
 const Model=require(path.join(input.root,'web_controller/card-quiz/model.js'));
 const Journal=require(path.join(input.root,'web_controller/card-quiz/journal.js'));
 (async()=>{
-  const session=input.base||Model.createSession(input.context,'math',input.started);
+  const session=input.base||Model.createSession(input.context,'math',input.started,input.cardMode);
   if(!input.base)session.id=input.sid;
   const control=new Journal.Controller(Journal.create(session),async value=>value);
   for(const op of input.operations){
@@ -115,7 +115,7 @@ const Journal=require(path.join(input.root,'web_controller/card-quiz/journal.js'
                    'students': [{**s, 'cardNumber': i} for i, s in enumerate(self.students, 1)]}
         result = subprocess.run(['node', '-e', script], input=json.dumps({
             'root': str(root), 'base': base, 'context': context, 'sid': sid,
-            'started': started, 'operations': operations, 'ids': list(ids)}),
+            'started': started, 'operations': operations, 'ids': list(ids), 'cardMode': card_mode}),
             text=True, encoding='utf-8', capture_output=True, check=True, timeout=20)
         return json.loads(result.stdout)
 
@@ -458,8 +458,7 @@ class CardQuizTests(CardQuizHttpCase):
         await self.api('POST', '/pair', {'code': pair['code']}, 409)
 
     async def test_scan_invite_connects_without_a_login_and_only_collects_confirmed_cards(self):
-        await self.initialize()
-        board = self.batch(self.journal([{'action': 'add_question', 'payload': question()}]))
+        board = self.batch(self.journal([{'action': 'add_question', 'payload': question()}], card_mode='scanned'))
         await self.sync(board)
         sid = board['session']['id']
         offer = await self.api('POST', '/device/pair', {'sessionId': sid, 'quickScan': True}, headers=self.dh)
@@ -496,6 +495,7 @@ class CardQuizTests(CardQuizHttpCase):
             current = await self.api('GET', path, headers=mobile)
             self.assertTrue(current['connected'])
             self.assertEqual(current['state']['received'], 0)
+            self.assertEqual(current['state']['participantCount'], 0)
             self.assertNotIn('roster', current['state'])
             for action in ('start_round', 'end_round', 'edit_question', 'set_multi_option'):
                 await self.api('POST', path + '/commands', {'action': action}, 403, mobile)
@@ -522,6 +522,7 @@ class CardQuizTests(CardQuizHttpCase):
                                                      'receipts': receipts}, headers=self.dh)
             saved = await self.api('GET', path + '?commandId=scan-card-1&commandId=scan-card-2', headers=mobile)
             self.assertEqual(saved['state']['received'], 2)
+            self.assertEqual(saved['state']['participantCount'], 2)
             self.assertEqual([r['status'] for r in saved['receipts']], ['confirmed', 'confirmed'])
         for secret in (invite['invite'], mobile['X-ICeClass-Scanner']):
             self.assertNotIn(secret, '\n'.join(self.db.db.iterdump()))

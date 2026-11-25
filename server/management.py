@@ -175,10 +175,11 @@ class Management:
             if isinstance(user, web.Response): return user
             if not self.service.can_access_class(self.db, user, cid, include_disabled=True):
                 return self.service.json_response({'error': '没有此班级的管理权限。'}, 403)
-            if self.db.one('SELECT 1 FROM student_accounts WHERE class_id=?', (cid,)):
+            if self.db.one('SELECT 1 FROM student_accounts WHERE class_id=? AND holder_card_number IS NULL', (cid,)):
                 return self.service.json_response({
                     'error': '本班仍有关联的学生账号。请先将学生关联到新班级，或停用班级以保留账号和个人历史。'}, 409)
             # A confirmed class deletion removes this class's history, not identities moved elsewhere.
+            self.db.run('DELETE FROM student_accounts WHERE class_id=? AND holder_card_number IS NOT NULL', (cid,))
             self.db.run('DELETE FROM student_account_links WHERE class_id=?', (cid,))
             self.db.run('DELETE FROM student_account_versions WHERE class_id=?', (cid,))
             self.db.run('DELETE FROM card_quiz_sessions WHERE class_id=?', (cid,))

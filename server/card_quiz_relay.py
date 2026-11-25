@@ -586,7 +586,7 @@ class RelayHandlers:
                 if multi and payload.get('targetOption') != state['activeOption']:
                     fail('多选收答项已变化，请刷新后重试。', 409)
                 session = json.loads(self.session_row(pair['session_id'])['raw_value'])
-                if number not in {s['cardNumber'] for s in session['roster']}:
+                if session.get('attendanceMode') != 'scanned' and number not in {s['cardNumber'] for s in session['roster']}:
                     fail('纸卡不在本课堂名单中。')
             elif body['action'] == 'set_multi_option':
                 option = payload.get('option')
@@ -621,7 +621,8 @@ class RelayHandlers:
         raised_cards = 'noCardPolicy' in value
         if raised_cards and (value['noCardPolicy'] != 'abstain' or not value.get('roundId')):
             fail('匿名状态的未举卡规则无效。')
-        if set(value) != STATE_KEYS | (MULTIPLE_STATE_KEYS if multi else set()) | ({'noCardPolicy'} if raised_cards else set()):
+        scanned = json.loads(row['raw_value']).get('attendanceMode') == 'scanned'
+        if set(value) != STATE_KEYS | (MULTIPLE_STATE_KEYS if multi else set()) | ({'noCardPolicy'} if raised_cards else set()) | ({'participantCount'} if scanned else set()):
             fail('匿名课堂状态字段不完整或包含不允许公开的内容。')
         room = self.db.one('SELECT name FROM classes WHERE id=?', (row['class_id'],))
         string(value['className'], '班级名称', 40)
@@ -635,6 +636,8 @@ class RelayHandlers:
         integer(value['generation'], '采集代次')
         integer(value['seq'], '序号', min_seq, MAX_EVENTS)
         integer(value['expected'], '应答人数', 0, 300)
+        if scanned:
+            integer(value['participantCount'], '本节已参与人数', value['expected'], 157)
         integer(value['received'], '已答人数', 0, value['expected'])
         if multi:
             if raised_cards:

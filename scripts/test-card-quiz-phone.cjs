@@ -586,6 +586,25 @@ test('大班多选圆环按当前项计数，封存切回整题，免答显示�
   }finally{await context.close();}
 });
 
+test('手机按卡计人，首题没有收齐提示，第二题区分本轮和本节',async()=>{
+  const {page,context,fixture}=await open({scan:{}});
+  try {
+    fixture.state={...fixture.state,seq:4,noCardPolicy:'abstain',expected:0,received:0,participantCount:0};
+    await page.getByText('等待举卡',{exact:true}).waitFor();
+    fixture.state={...fixture.state,seq:5,received:35,expected:35,participantCount:35};
+    const ring=page.getByRole('status',{name:'已收 35 人'});
+    await ring.waitFor();
+    assert.equal(await ring.getAttribute('aria-valuemax'),null);
+    assert.equal(await page.locator('#progress-arc').evaluate(el=>el.hasAttribute('hidden')),true);
+    assert.equal(await page.locator('#ring-label').innerText(),'已收');
+    fixture.state={...fixture.state,seq:6,questionNumber:2,questionId:'q2',roundId:'r2',participantCount:38,expected:38};
+    await page.getByText('本节已参与 38 人 · 待收 3 人',{exact:true}).waitFor();
+    fixture.state={...fixture.state,seq:7,roundStatus:'closed'};
+    await page.getByText('本节已参与 38 人 · 弃权 3 人',{exact:true}).waitFor();
+    assert.deepEqual(fixture.errors,[]);
+  } finally {await context.close();}
+});
+
 test('手机多选标准答案可勾选组合，未确认保存保留选择和原版本',async()=>{
   const{page,context,fixture}=await open({questionType:'multiple',roundStatus:'closed'});
   try{

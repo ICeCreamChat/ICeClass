@@ -130,6 +130,7 @@ internal static class CardQuizWheelChecks
                     BanbanToolSector[] VisibleTools() => toolGrid.Children.OfType<BanbanToolSector>().Where(b => b.IsEffectivelyVisible).ToArray();
                     BanbanToolSector? Tool(string id) => VisibleTools().SingleOrDefault(b => b.ActionId == id);
                     const string allCards = "查看全班卡号", pendingCards = "只看待收卡号";
+                    const string genericCards = "发卡方式，通用卡 · 随发随扫", personalCards = "发卡方式，个人卡 · 按名单发";
                     bool NoCardFilter() => Find(allCards) == null && Find(pendingCards) == null;
                     async Task<Button> OpenAllCards()
                     {
@@ -507,12 +508,18 @@ internal static class CardQuizWheelChecks
                     await TouchPet(PointerType.Touch); await Primary("开始课堂");
                     Console.WriteLine($"原生窗口缩放 {pet.RenderScaling:P0}，圆环与人物 {pet.Width:0.##} × {pet.Height:0.##} DIP");
                     Check(OnlyPet() && pet.ClassroomExpanded && talks==0 && chats==0 && mascot.AssetsLoaded,"课中单击原人物即展开同窗课堂");
+                    if (videoCadence || smallClass || interactive)
+                    {
+                        Click(ButtonFor("开课设置"));
+                        await Until(() => Find(genericCards)?.IsEnabled == true, "名单已绑定，可选择个人卡验收固定班级");
+                        Click(ButtonFor(genericCards)); Click(ButtonFor("个人卡 · 按名单发"));
+                        Click(ButtonFor("开始课堂")); await Primary("开始收答");
+                    }
                     if (videoCadence)
                     {
                         var host = pet.ClassroomHost!;
                         var camera = Field<BanbanCameraLens>(pet,"_cameraLens");
                         var image = Field<Image>(camera,"_frame");
-                        Click(PrimaryButton()); await Primary("开始收答");
                         var startup = System.Diagnostics.Stopwatch.StartNew();
                         long visibleAt = -1, firstFrameAt = -1;
                         void LensChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -562,7 +569,7 @@ internal static class CardQuizWheelChecks
                     }
                     if (smallClass || interactive)
                     {
-                        Click(PrimaryButton()); await Primary("开始收答"); Click(PrimaryButton()); await Primary("结束收答");
+                        Click(PrimaryButton()); await Primary("结束收答");
                         await Wait("Number(document.getElementById('received').textContent) >= 2");
                         if (!smallClass)
                         {
@@ -685,21 +692,24 @@ internal static class CardQuizWheelChecks
                     wheel.Update(plainSetup);
                     var sourceName = "出题方式，" + setupState.Publications.First().Label;
                     var typeName = "首题题型，" + setupState.Templates.First().Label;
-                    async Task CheckSetupRing(string[] names, string description, bool textOnly = false)
+                    async Task CheckSetupRing(string[] names, string description, bool textOnly = false, double offset = 0)
                     {
                         var angle = Math.Tau / names.Length;
-                        await Until(() => names.Select((name, i) => ArcTarget(ButtonFor(name), angle * i, angle / 2, textOnly: textOnly)).All(hit => hit),
+                        await Until(() => names.Select((name, i) => ArcTarget(ButtonFor(name), angle * (i + offset), angle / 2, textOnly: textOnly)).All(hit => hit),
                             description, () => arcIssue);
                         Check(true, description);
                     }
-                    await CheckSetupRing([sourceName, typeName, "联网刷新", "开始课堂", "返回", "学科，语文"], "设置六块扇面同屏，图文在弧内，44 DIP 触点和分隔缝正确");
+                    await CheckSetupRing([sourceName, genericCards, typeName, "联网刷新", "开始课堂", "返回", "学科，语文"], "发卡方式与开课设置同屏，开课在底部，触控区和图文完整", offset:-0.5);
+                    Check(rosterLabel.Text == "举卡即计人数", "通用卡默认从首题计数");
+                    Click(ButtonFor(genericCards));
+                    Click(ButtonFor("个人卡 · 按名单发"));
                     Check(rosterLabel.Text == "60" && TextClearsArcs(rosterLabel) && Find("查看名单详情") == null,
                         "中心显示已校验的纸卡数，三个设置都无需滚动");
                     Snapshot("native-pet-setup.png");
                     ButtonFor(sourceName).Focus();
                     ButtonFor(sourceName).RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Left });
                     Check(ButtonFor("学科，语文").IsFocused, "设置可用方向键沿圆切换");
-                    Touch(OnRing(83, -Math.PI/3), OnRing(83, -Math.PI/3));
+                    Touch(OnRing(83, -3*Math.PI/7), OnRing(83, -3*Math.PI/7));
                     await CheckSetupRing(setupState.Subjects.Select(o => o.Label).ToArray(), "九门学科可在一圈内直接点选", textOnly: true);
                     Check(ButtonFor("语文").IsFocused && AutomationProperties.GetItemStatus(ButtonFor("语文")) == "已选" &&
                         HitButton(OnRing(0,0)) == ButtonFor("返回"), "学科选择聚焦已选项，圆心整块可返回");
@@ -751,7 +761,7 @@ internal static class CardQuizWheelChecks
                     Click(ButtonFor(longDeck.Label));
                     Check(Find("学科，数学") == null && Find(typeName) == null && ButtonFor("开始课堂").IsEnabled &&
                         ButtonFor("出题方式，" + longDeck.Label).IsFocused, "题单使用自身学科和题型");
-                    await CheckSetupRing(["出题方式，" + longDeck.Label, "联网刷新", "开始课堂", "返回"], "选题单后四个操作等分整圈，仍在圆底开课");
+                    await CheckSetupRing(["出题方式，" + longDeck.Label, personalCards, "联网刷新", "开始课堂", "返回"], "选题单后可选发卡方式，仍在圆底开课", offset:-0.5);
                     Click(ButtonFor("查看题单全名"));
                     Check(await ReadSetupPages() == longDeck.Label, "已选题单圆心可读全名");
                     Click(ButtonFor("返回"));
@@ -768,17 +778,17 @@ internal static class CardQuizWheelChecks
                     Check(ButtonFor("返回").IsFocused && Find("下一页")?.IsEnabled == true &&
                         await ReadSetupPages() == longNotice && ButtonFor("上一页").IsEnabled, "缓存可用时长提示可沿圆弧逐页读完，原文完整");
                     Click(ButtonFor("返回")); Check(ButtonFor("查看提示").IsFocused && ButtonFor("开始课堂").IsEnabled, "提示返回原位后仍可开课");
-                    wheel.Update(plainSetup with { Setup = setupState with { Notice="名单和题单已刷新。", Refreshed=true, CardCount=157 } });
+                    wheel.Update(plainSetup with { Setup = setupState with { Notice="名单和题单已刷新。", Refreshed=true, AssignedCardCount=157 } });
                     pet.UpdateLayout();
                     Check(Find("查看提示") == null && Field<TextBlock>(setup,"_hint").Text == "已刷新" && rosterLabel.Text == "157" &&
                         TextClearsArcs(rosterLabel) && TextClearsArcs(Field<TextBlock>(setup,"_unit")), "刷新成功直接确认，三位数纸卡数量与单位仍在圆心内");
                     wheel.Update(plainSetup with { Setup = setupState with { CanCreate=false, CanRefresh=false, Busy=true } });
                     Check(!ButtonFor("开始课堂").IsEnabled && !ButtonFor("联网刷新").IsEnabled && !ButtonFor("返回").IsEnabled && wheel.BackFromSetup(),
                         "刷新中阻止重复操作");
-                    wheel.Update(plainSetup with { Setup = setupState with { CanCreate=false, CardCount=null, Roster="本班还没有学生", Notice="" } });
-                    Check(!ButtonFor("开始课堂").IsEnabled && ButtonFor("联网刷新").IsEnabled && Field<TextBlock>(setup,"_statusText").Text!.Contains("还没有学生"),
-                        "无可用名单时显示原因并可刷新");
-                    await CheckSetupRing(["查看名单详情", "联网刷新", "开始课堂", "返回"], "无名单可点左右两侧刷新或返回，开课保持禁用");
+                    wheel.Update(plainSetup with { Setup = setupState with { CanCreate=false, CardModes=[], CardCount=null, Roster="请联网刷新，读取本机绑定的班级。", Notice="" } });
+                    Check(!ButtonFor("开始课堂").IsEnabled && ButtonFor("联网刷新").IsEnabled && Field<TextBlock>(setup,"_statusText").Text!.Contains("本机绑定的班级"),
+                        "本机尚无班级缓存时可查看原因并刷新");
+                    await CheckSetupRing(["查看名单详情", "联网刷新", "开始课堂", "返回"], "尚无班级缓存时可刷新或返回，开课保持禁用");
                     var recovery = new CardQuizWheelOption("saved-class", "数学 · 11月22日 08:30");
                     var recoverySetup = plainSetup with { Setup = setupState with { CanCreate=false, CardCount=null, Roster="上次课堂未结束", Recovery=recovery, Notice="" } };
                     wheel.Update(recoverySetup);
@@ -792,6 +802,7 @@ internal static class CardQuizWheelChecks
                     Click(ButtonFor("返回"));
                     Check(ButtonFor("查看错误").IsFocused && ButtonFor("恢复课堂").IsEnabled, "读完恢复错误后回原位，可重试恢复");
                     wheel.Update(plainSetup);
+                    Click(ButtonFor(genericCards)); Click(ButtonFor("个人卡 · 按名单发"));
                     Click(ButtonFor("开始课堂")); await Primary("开始收答");
                     await Wait("document.getElementById('class-name').textContent.includes('数学')");
                     Check(Math.Abs(pet.Height-BanbanClassroomWheel.Diameter)<=1,"进入题目后还原紧凑圆环");
@@ -1116,8 +1127,11 @@ internal static class CardQuizWheelChecks
                     Check(menuProgress.Segment.IsEffectivelyVisible && Math.Abs(menuProgress.Segment.SweepAngle-264)<.01 &&
                         await Read("document.getElementById('camera').srcObject?.active===true"), "更多打开期间相机继续，外圈实时更新到 44/60");
                     SnapshotMenu("native-pet-collect-more.png");
+                    // Restore the actual camera count before returning to live bridge updates.
+                    wheel.Update(liveState);
                     Click(menuCenter);
-                    Check(ButtonFor("更多操作").IsFocused && DiscStayed() && Field<TextBlock>(wheel,"_number").Text=="44",
+                    await Until(() => ButtonFor("更多操作").IsFocused && DiscStayed() &&
+                        Field<TextBlock>(wheel,"_number").Text == liveState.Lesson.Received.ToString(),
                         "圆心返回原题、人数与更多按钮");
                     ShowCount(60,60);
                     Check(track.IsVisible && !progress.IsVisible && Equals(track.Stroke, progress.Stroke) &&
@@ -1125,6 +1139,15 @@ internal static class CardQuizWheelChecks
                     ShowCount(0,0);
                     Check(!track.IsVisible && !progress.IsVisible && Find("全员免答，查看卡号") == collectSectors[1],
                         "全班免答时无进度分母，右侧保留查卡入口");
+                    wheel.Update(liveState with { Lesson = liveState.Lesson with { Number=1, Received=35, Expected=35, ParticipantCount=35, Missing=[] } });
+                    Check(!track.IsVisible && Field<TextBlock>(wheel,"_total").Text == "人已收" && Find("本节已参与 35 人，查看卡号") != null,
+                        "通用卡首题显示实际已收，外圈和卡号入口没有收齐提示");
+                    wheel.Update(liveState with { Lesson = liveState.Lesson with { Number=2, Received=35, Expected=38, ParticipantCount=38, Missing=[33,34,35] } });
+                    pet.UpdateLayout();
+                    var sessionSide = ButtonFor("本节已参与 38 人，待收 3 人，查看卡号");
+                    Check(Field<TextBlock>(wheel,"_number").Text == "35" && Field<TextBlock>(sessionSide,"_caption").Text == "本节" &&
+                        sessionSide.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "38") && FaceFits(sessionSide),
+                        "后续题区分本题 35 与本节 38 人");
                     wheel.Update(liveState);
                     lesson = new Window { Width=600,Height=420,Position=pet.Position,ShowInTaskbar=false,Content=new Border { Background=Brushes.White } };
                     lesson.Show(); lesson.Activate(); await Task.Delay(3400);
@@ -1451,6 +1474,11 @@ internal static class CardQuizWheelChecks
                             child is TextBlock value && value.TextLayout.TextLines.Count == 1 &&
                             value.TextLayout.WidthIncludingTrailingWhitespace <= value.Bounds.Width + .5),
                         "收答中的三位数人数和单位在一行显示");
+                    wheel.Update(collectingState with { Lesson = collectingState.Lesson with { Number=2, Expected=157, Received=120, ParticipantCount=157 } });
+                    pet.UpdateLayout();
+                    Check(FaceFits(Field<BanbanToolSector>(wheel,"_lessonSide")) && FullyVisibleInChart(currentOption) &&
+                        FullyVisibleInChart(countRow) && FullyVisibleInChart(directions) && directions.IsEffectivelyVisible,
+                        "通用卡多选收答同时看清本项、已收人数、举卡方向和本节人数");
                     wheel.Update(collectingState);
                     Click(PrimaryButton()); await Primary("下一项 C"); await Task.Delay(1600);
                     Check(currentOption.Text == "收 B 项" && !directions.IsEffectivelyVisible &&
@@ -1594,6 +1622,9 @@ internal static class CardQuizWheelChecks
                     Check(ButtonFor("返回汇总").IsFocused && ButtonFor("上一题").IsEnabled, "末页禁用下一题后仍可用键盘返回或翻回上一题");
                     Click(ButtonFor("返回汇总")); Check(OnlyPet() && Field<CardQuizWheelState>(wheel,"_state").Lesson.NeedsSync &&
                         note.Text=="已存本机 · 待同步","离线结课在原窗保留同步状态与重试入口");
+                    var emptyContext = store.LoadCache("context")!.AsObject();
+                    emptyContext["students"] = new JsonArray();
+                    store.SaveCache("context", emptyContext);
                     Click(PrimaryButton()); await Until(()=>!pet.ClassroomExpanded,"返回贴边班班");
                     talk.Focus(); talk.RaiseEvent(new KeyEventArgs {RoutedEvent=InputElement.KeyDownEvent,Key=Key.Left});
                     pet.UpdateLayout(); var left=Anchor();
@@ -1601,6 +1632,31 @@ internal static class CardQuizWheelChecks
                     await Until(() => pet.ClassroomExpanded, "拖动过人物后仍可从辅助功能展开班班");
                     await Primary("开始课堂");
                     Check(Math.Abs(Anchor().X-left.X)<=2 && Math.Abs(Anchor().Y-left.Y)<=2 && Canvas.GetLeft(wheel)>0,"左侧停靠时从辅助功能原地向右展开");
+                    if (twoCardVideo != null)
+                    {
+                        Check(Field<CardQuizWheelState>(wheel,"_state").Setup is { CanCreate:true, Roster:"举卡即计人数" },
+                            "已绑定白板读到空名单，可以从原班班开始新课");
+                        Click(PrimaryButton()); await Primary("开始收答");
+                        Click(ButtonFor("判断"));
+                        await Until(() => Field<CardQuizWheelState>(wheel,"_state").Lesson is { Kind:"boolean", Busy:false }, "通用卡判断题就绪");
+                        Click(PrimaryButton()); await Primary("结束收答");
+                        await Until(() => Field<CardQuizWheelState>(wheel,"_state").Lesson is { Received:2, ParticipantCount:2 },
+                            "WebView2 实码从空名单收下两张卡");
+                        Click(PrimaryButton()); await Primary("下一题");
+                        Click(ButtonFor("结课")); await Primary("确认结课"); Click(PrimaryButton()); await Primary("返回班班");
+                        var scannedJournal = store.Load()["journals"]!.AsArray().Single(j => j!["session"]!["attendanceMode"]?.GetValue<string>() == "scanned")!;
+                        var scannedSession = scannedJournal["session"]!;
+                        var scannedRound = scannedSession["questions"]![0]!["rounds"]![0]!;
+                        var scannedAnswers = scannedRound["answers"]!.AsObject();
+                        Check(scannedSession["endedAt"] != null && scannedSession["roster"]!.AsArray().Count == 2 &&
+                            scannedRound["participantCount"]!.GetValue<int>() == 2 && scannedAnswers.Count == 2 &&
+                            scannedAnswers[$"card:{scannedSession["id"]}:1"]?["option"]?.GetValue<string>() == "A" &&
+                            scannedAnswers[$"card:{scannedSession["id"]}:2"]?["option"]?.GetValue<string>() == "B" &&
+                            scannedJournal["events"]!.AsArray().Count(e => e!["action"]!.GetValue<string>() == "answer") == 2,
+                            "原生课堂结课重读本机记录，匿名卡号、两份判断答案和封存人数一致");
+                        Click(PrimaryButton()); await Until(()=>!pet.ClassroomExpanded,"结束通用卡课堂");
+                        pet.SetClassroomExpanded(true); await Primary("开始课堂");
+                    }
                     pet.RaiseEvent(new KeyEventArgs {RoutedEvent=InputElement.KeyDownEvent,Key=Key.Escape});
                     Check(!pet.ClassroomExpanded && pet.GetVisualDescendants().OfType<BanbanPetMascot>().Single()==mascot,"Esc 收起同一个班班");
                     Check(await pet.ClassroomHost!.PrepareToCloseAsync(), "退出仍通过原课堂暂停落盘");

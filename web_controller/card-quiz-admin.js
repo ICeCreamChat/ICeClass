@@ -18,7 +18,7 @@
   let accounts, accountsError = '', accountsConflict = false, credentials = [], accountSelection = new Set();
   const entryYear = String(new Date().getFullYear());
   let accountClassCode = '', accountDraft = newAccountDraft();
-  function newAccountDraft() { return {entryYear,classCode:accountClassCode,studentId:'',username:''}; }
+  function newAccountDraft() { return {entryYear,classCode:accountClassCode,studentId:'',username:'',firstNumber:'1',lastNumber:'60'}; }
   const ui = window.ICeClassUI, draftLabel = '纸卡答题', credentialsLabel = '纸卡学生密码发放表';
   let workEpoch = 0;
   function discard() {
@@ -76,7 +76,13 @@
     const eligible=accounts.students.filter(s=>!s.accountId&&s.cardNumber!=null);
     const unlinked=accounts.students.filter(s=>!s.accountId);
     const rows=accounts.students.map(s=>`<tr><td>${accounts.canEdit&&s.accountId&&s.activeHere?`<input type="checkbox" data-account-student="${esc(s.studentId)}" aria-label="选择${esc(s.name)}的账号 ${esc(s.username)}"${accountSelection.has(s.studentId)?' checked':''}${!writable?' disabled':''}>`:'-'}</td><td>${esc(s.name)}</td><td>${s.cardNumber??'未分配'}</td><td class="cq-account-number">${esc(s.username||(accounts.canEdit?'尚未关联':'仅管理员可查看'))}</td><td>${!accounts.canEdit?'只读':s.accountId?s.activeHere?'当前关联':'保留历史关联':'待生成或关联'}</td></tr>`);
-    return `<section class="cq-panel" aria-labelledby="cq-accounts-title">
+    return `${accounts.canEdit ? `<section class="cq-panel"><h2>按号发通用卡</h2>
+      <p class="cq-note">每张卡有固定编号和密码，可重复发放。持卡人可查本班最近一节通用卡课堂中该号的报告。</p>
+      <form id="cq-number-form" class="cq-account-form" data-account-form="issue-number-cards"><div class="cq-fields">
+        ${[['firstNumber','起始卡号'],['lastNumber','结束卡号']].map(([key,label])=>`<label>${label}<input name="${key}" data-account-field="${key}" type="number" inputmode="numeric" min="1" max="157" step="1" autocomplete="off" required value="${esc(accountDraft[key])}"${!writable?' disabled':''}></label>`).join('')}
+      </div><div class="cq-actions"><button type="submit" class="btn primary"${!writable?' disabled':''}>生成缺失号卡</button>
+      ${(accounts.numberCards||[]).length?button('reset-number-cards','补印所选号段（重置密码）',false,!writable?'disabled':''):''}</div></form></section>`:''}
+    <section class="cq-panel" aria-labelledby="cq-accounts-title">
       <h2 id="cq-accounts-title">学生账号</h2>
       <p class="cq-note">编号长期保留，升班、转班或换卡不重新生成。密码为独立六位数字，生成和重置时仅返回一次。</p>
       ${accountsConflict?'<p class="cq-note cq-error" role="alert">名单、卡号或账号版本已变化。请重新载入核对后再操作。</p>':''}
@@ -84,7 +90,7 @@
       <div class="cq-account-tools">${accounts.canEdit?`<label class="cq-choice"><input type="checkbox" id="cq-accounts-all"${available.length&&available.every(s=>accountSelection.has(s.studentId))?' checked':''}${!writable||!available.length?' disabled':''}><span>选择本班已关联账号</span></label><div class="cq-actions"><span id="cq-selected-count">已选 ${accountSelection.size} 人</span>${button('reset-accounts','重置所选密码',false,!writable||!accountSelection.size?'disabled':'')}</div>`:''}</div>
       ${table(['选择','学生','卡号','编号（学生账号）','关联状态'],rows,'本班学生账号')}
       ${accounts.canEdit&&unlinked.length?`<details class="cq-link-account"><summary>转班或升班：关联已有账号</summary><p class="cq-note">明确选择本班学生并输入其原账号编号，不按姓名或卡号猜测身份。需要同时管理原班与本班；关联后保留原历史，密码不变。</p><form id="cq-link-form" class="cq-account-form" data-account-form="link-account"><div class="cq-fields"><label>本班学生<select name="studentId" data-account-field="studentId" required${!writable?' disabled':''}><option value="">请选择学生</option>${option(unlinked.map(s=>[s.studentId,s.name+' · '+(s.cardNumber==null?'未分配卡号':s.cardNumber+' 号卡')]),accountDraft.studentId)}</select></label><label>原学生账号编号<input name="username" data-account-field="username" inputmode="numeric" pattern="[0-9]+" maxlength="32" autocomplete="off" required value="${esc(accountDraft.username)}"${!writable?' disabled':''}></label></div><button type="submit" class="btn" data-cq-action="link-account"${!writable?' disabled':''}>关联原账号并保留历史</button></form></details>`:''}
-    </section>${credentials.length?`<section class="cq-panel cq-credentials" aria-labelledby="cq-credentials-title"><div class="cq-item-head"><h2 tabindex="-1" id="cq-credentials-title">本次发放表 · ${credentials.length} 人</h2><div class="cq-actions">${button('print-issued','打印本次纸卡',true,credentials.some(c=>c.cardNumber!=null)?'':'disabled')}${button('download-credentials','下载发放表 CSV')}${button('clear-credentials','清除本次密码')}</div></div><p class="cq-note">有卡号的学生可直接打印本次密码。离开后无法找回，请在发放完毕后清除。</p>${table(['学生','班级','编号','卡号','六位密码'],credentials.map(c=>`<tr><td>${esc(accounts.students.find(s=>s.studentId===c.studentId)?.name||'')}</td><td>${esc(c.className)}</td><td>${esc(c.username)}</td><td>${c.cardNumber??'未分配'}</td><td class="cq-password">${esc(c.password)}</td></tr>`),'本次一次性账号密码发放表')}</section>`:''}`;
+    </section>${credentials.length?`<section class="cq-panel cq-credentials" aria-labelledby="cq-credentials-title"><div class="cq-item-head"><h2 tabindex="-1" id="cq-credentials-title">本次发放表 · ${credentials.length} ${credentials[0]?.numberCard?'张':'人'}</h2><div class="cq-actions">${button('print-issued','打印本次纸卡',true,credentials.some(c=>c.cardNumber!=null)?'':'disabled')}${button('download-credentials','下载发放表 CSV')}${button('clear-credentials','清除本次密码')}</div></div><p class="cq-note">有卡号的学生可直接打印本次密码。离开后无法找回，请在发放完毕后清除。</p>${table(['学生','班级','编号','卡号','六位密码'],credentials.map(c=>`<tr><td>${esc(accounts.students.find(s=>s.studentId===c.studentId)?.name||(c.numberCard?c.cardNumber+' 号卡':''))}</td><td>${esc(c.className)}</td><td>${esc(c.username)}</td><td>${c.cardNumber??'未分配'}</td><td class="cq-password">${esc(c.password)}</td></tr>`),'本次一次性账号密码发放表')}</section>`:''}`;
   }
   function syncAccountSelection() {
     const all=root.querySelector('#cq-accounts-all'), count=root.querySelector('#cq-selected-count');
@@ -113,7 +119,8 @@
     const batch=credentials.filter(card=>card.cardNumber!=null).sort((a,b)=>a.cardNumber-b.cardNumber);
     if(!batch.length)return;
     const current=accounts.students;
-    if(changed || batch.some(card=>card.classId!==cid || !current.some(s=>s.activeHere && s.accountId===card.accountId && s.cardNumber===card.cardNumber))){
+    const matches=card=>card.numberCard ? accounts.numberCards?.some(s=>s.accountId===card.accountId && s.cardNumber===card.cardNumber) : current.some(s=>s.activeHere && s.accountId===card.accountId && s.cardNumber===card.cardNumber);
+    if(changed || batch.some(card=>card.classId!==cid || !matches(card))){
       notify('卡号已变化，请先核对名单，再为对应学生打印。',true);return;
     }
     panel.querySelector('.cq-issued-frame')?.remove();
@@ -143,23 +150,27 @@
     if(action==='clear-credentials'){credentials=[];render();notify('本次密码已从页面清除。');return;}
     if(!accounts?.canEdit){notify('只有名单管理员可以管理学生账号。',true);return;}
     if(changed||accountsConflict||conflict){notify('请先保存卡号，或重新载入核对版本后再管理账号。',true);return;}
-    const form=root.querySelector(action==='generate-accounts'?'#cq-generate-form':action==='link-account'?'#cq-link-form':'[data-no-form]');
+    const numberCards=action==='issue-number-cards'||action==='reset-number-cards';
+    const form=root.querySelector(numberCards?'#cq-number-form':action==='generate-accounts'?'#cq-generate-form':action==='link-account'?'#cq-link-form':'[data-no-form]');
     if(form&&!form.reportValidity())return;
     const versions=accountVersions(), classAt=cid, userAt=owner, generationAt=generation;
-    const body=action==='generate-accounts'?{...versions,entryYear:Number(accountDraft.entryYear),classCode:accountDraft.classCode}:
+    const body=numberCards?{...versions,firstNumber:Number(accountDraft.firstNumber),lastNumber:Number(accountDraft.lastNumber)}:action==='generate-accounts'?{...versions,entryYear:Number(accountDraft.entryYear),classCode:accountDraft.classCode}:
       action==='reset-accounts'?{...versions,studentIds:[...accountSelection]}:{...versions,studentId:accountDraft.studentId,username:accountDraft.username.trim()};
+    if(numberCards && body.lastNumber < body.firstNumber){notify('结束卡号须大于或等于起始卡号。',true);form.elements.lastNumber.focus();return;}
     if(action==='reset-accounts'&&!body.studentIds.length)return;
     void work(async()=>{
       if(credentials.length)throw new Error('请先发放并清除本次密码，再执行新的账号操作。');
+      if(action==='reset-number-cards'&&!await confirm('换发通用卡密码？',`将重置 ${body.firstNumber}-${body.lastNumber} 号卡的密码，并注销这些卡的旧登录。请用新打印的纸卡替换旧卡。`,'重置并补印',true))return;
       if(action==='reset-accounts'&&!await confirm('重置所选学生密码？',`将重置 ${body.studentIds.length} 人的六位密码，旧密码和旧学生会话立即失效。新密码仅本次返回，请下载发放。`, '重置密码', true))return;
       if(action==='link-account'&&!await confirm('关联已有学生账号？',`将 ${accounts.students.find(s=>s.studentId===body.studentId)?.name||'所选学生'} 关联到原账号 ${body.username}。原班与本班权限由服务端核验，历史保留，密码不变。`, '关联账号'))return;
-      const data=await api('/classes/'+encodeURIComponent(classAt)+'/students'+(action==='reset-accounts'?'/reset':action==='link-account'?'/link':''),'POST',body);
+      const data=await api('/classes/'+encodeURIComponent(classAt)+'/students'+(numberCards?(action==='reset-number-cards'?'/number-cards/reset':'/number-cards'):action==='reset-accounts'?'/reset':action==='link-account'?'/link':''),'POST',body);
       if(generationAt!==generation||classAt!==cid||userAt!==owner||userAt!==app()?.state.user?.id||app()?.state.sessionExpired)return;
       const issued=data.credentials||[];
       accounts={...data};delete accounts.credentials;
       credentials=issued;accountSelection=new Set();accountsConflict=false;accountsError='';
       if(action==='link-account')accountDraft.studentId=accountDraft.username='';
       if(action==='generate-accounts'){accountDraft.entryYear=entryYear;accountDraft.classCode=accountClassCode;}
+      if(numberCards){notify(issued.length?`已准备 ${issued.length} 张通用卡，可打印本次纸卡。`:'这段卡号都已发放，可继续使用原纸卡。');return;}
       notify(action==='generate-accounts'?`已生成 ${issued.length} 个账号，可打印本次纸卡或下载发放表。`:action==='reset-accounts'?`已重置 ${issued.length} 人的密码，旧密码已失效，请发放新密码。`:'原账号已关联，原历史和密码已保留。');
     },true);
   }
@@ -262,7 +273,7 @@
       const missed = student.wrongQuestionNumbers;
       const other = ['abstained','exempt','ungraded','incomplete','unanswered'].filter(key => student[key])
         .map(key => statuses[key] + ' ' + student[key]).join('、');
-      return `<tr><td>${esc(student.studentName)}${card == null ? '' : ' · ' + card + ' 号'}</td>
+      return `<tr><td>${esc(student.studentName)}${card == null || detail.session.attendanceMode === 'scanned' ? '' : ' · ' + card + ' 号'}</td>
         <td>${student.samples ? student.correct + ' / ' + student.samples : '暂无判定样本'}</td><td>${student.wrong}</td>
         <td>${missed.length ? '第 ' + missed.join('、') + ' 题' : '—'}</td><td>${other || '—'}</td></tr>`;
     });
@@ -281,7 +292,7 @@
       const round=snapshot?.rounds?.find(item=>item.id===r.id);
       const multiple=snapshot?.type==='multiple', participants=r.students.filter(x=>x.status!=='exempt');
       const complete=participants.filter(x=>CardQuizModel.completeAnswer(snapshot,x,round));
-      const expected=s.roster.length-r.exempt, received=complete.length;
+      const expected=(s.attendanceMode === 'scanned' ? r.students.length : s.roster.length)-r.exempt, received=complete.length;
       const incomplete=multiple?participants.filter(x=>!CardQuizModel.completeAnswer(snapshot,x,round)&&Object.keys(x.choices||{}).length).length:0;
       const abstained=r.abstained || 0, unanswered=Math.max(0,expected-received-incomplete-abstained);
       const bars=multiple ? CardQuizModel.distributionBars('multiple',r.combinationDistribution ?? CardQuizModel.combinationDistribution(complete)) :
@@ -290,8 +301,10 @@
       if(!multiple)distribution.push(`<tr><th scope="row">${round?.noCardPolicy === 'abstain' ? '弃权' : '未答'}</th><td></td><td>${round?.noCardPolicy === 'abstain' ? abstained : unanswered}</td><td></td></tr>`);
       const headers=multiple?['组合','人数','占已答人数']:['选项','内容','人数','占已答人数'];
       const chart = distribution.length ? table(headers,distribution,multiple?'本轮匿名组合分布':'本轮匿名选项分布',multiple?'cq-combinations':'')
-        : `<p class="cq-note">${expected===0?'全员免答':abstained===expected?'全员弃权':incomplete?'暂无完整作答':'无人作答'}</p>`;
-      const participation = [`参与 ${received}/${expected}${expected ? '（'+rate(received/expected)+'）' : ''}`];
+        : `<p class="cq-note">${!r.students.length?'本轮未收到卡':expected===0?'全员免答':abstained===expected?'全员弃权':incomplete?'暂无完整作答':'无人作答'}</p>`;
+      const participation = [s.attendanceMode === 'scanned' ? `本题已答 ${received} 人 · 截至本轮已参与 ${r.students.length} 人` :
+        `参与 ${received}/${expected}${expected ? '（'+rate(received/expected)+'）' : ''}`];
+      if (!multiple && r.exempt) participation.push('免答 '+r.exempt);
       if (multiple) for (const [label,n] of [['未完成',incomplete],['未答',unanswered],['弃权',abstained],['免答',r.exempt]]) {
         if (n) participation.push(label+' '+n);
       }
@@ -519,7 +532,7 @@
         return;
       }
     }
-    if(['generate-accounts','reset-accounts','link-account','print-issued','download-credentials','clear-credentials'].includes(action)){event.preventDefault();accountAction(action);return;}
+    if(['generate-accounts','reset-accounts','issue-number-cards','reset-number-cards','link-account','print-issued','download-credentials','clear-credentials'].includes(action)){event.preventDefault();accountAction(action);return;}
     if(action==='retry-accounts'){await work(readAccounts);return;}
     if(action==='reload'){if(await allowReplace('重新载入纸卡答题')&&await work(()=>fetchTab({replace:true})))notify('已重新载入。');return;}
     if(action==='cancel-editor'){await afterLeave(async()=>{editor=undefined;render();},'关闭编辑');return;}

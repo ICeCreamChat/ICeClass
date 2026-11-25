@@ -214,6 +214,11 @@ def validate_session(value):
     result['endedAt'] = None if value.get('endedAt') is None else timestamp(value['endedAt'])
     if result['endedAt'] is not None and result['endedAt'] < result['startedAt']:
         fail('课堂结束时间早于开始时间。')
+    scanned = 'attendanceMode' in value
+    if scanned:
+        if value['attendanceMode'] != 'scanned':
+            fail('课堂人数统计方式无效。')
+        result['attendanceMode'] = 'scanned'
     roster = []
     for student in array(value.get('roster'), 300, '课堂名单'):
         obj(student, '学生')
@@ -286,6 +291,11 @@ def validate_session(value):
                 fail('免答学生不在课堂名单中。')
             clean['rounds'].append({'id': rid, 'startedAt': started, 'endedAt': ended, 'purpose': purpose,
                                     'status': status, **rs, 'answers': answers, 'exempt': exempt})
+            if scanned:
+                size = integer(r.get('participantCount'), '本轮已参与人数', 0, len(roster))
+                clean['rounds'][-1]['participantCount'] = size
+            elif 'participantCount' in r:
+                fail('名单课堂不能更改应答范围。')
             if 'noCardPolicy' in r:
                 if r['noCardPolicy'] != 'abstain':
                     fail('轮次未举卡规则无效。')
@@ -360,9 +370,14 @@ def validate_events(events, start, end):
 def validate_transition(old, new, events):
     if not old:
         return
-    for key in ('id', 'classId', 'deviceId', 'subjectId', 'startedAt', 'cardVersion', 'roster'):
+    for key in ('id', 'classId', 'deviceId', 'subjectId', 'startedAt', 'cardVersion'):
         if old[key] != new[key]:
             fail('课堂身份或初始名单不能被后续同步替换。', 409)
+    if old.get('attendanceMode') != new.get('attendanceMode'):
+        fail('已开始课堂不能切换发卡方式。', 409)
+    existing = new['roster'][:len(old['roster'])] if old.get('attendanceMode') == 'scanned' else new['roster']
+    if existing != old['roster']:
+        fail('已保存的课堂名单不能替换。', 409)
     if old['endedAt'] is not None:
         fail('已结束课堂不能上传更高序号。', 409)
     if new['generation'] < old['generation']:

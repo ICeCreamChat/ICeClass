@@ -251,6 +251,20 @@ test('新轮次只在 A、C 举卡也显示 AC，弃权和免答在组合外统�
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
 });
 
+test('通用卡报告按封存时的人数展示，后来举卡的号码不进早先的轮次',async t=>{
+  const {page,fixture}=await setup(t,390);
+  const {session,report}=fixture.detail, round=report.questions[0].rounds[0];
+  session.attendanceMode='scanned';
+  session.roster=[1,47].map(n=>({id:'card:session1:'+n,name:n+' 号卡',cardNumber:n}));
+  session.questions[0].rounds=[{id:round.id,noCardPolicy:'abstain',participantCount:1}];
+  Object.assign(round,{unanswered:0,abstained:0,students:[{studentId:session.roster[0].id,studentName:'1 号卡',option:'A',status:'correct'}]});
+  await page.locator('[data-cq-tab=reports]').click();
+  await page.locator('[data-cq-action=open-session]').click();
+  await page.locator('.cq-round summary').press('Enter');
+  assert.equal(await page.locator('.cq-round > .cq-note').innerText(),'本题已答 1 人 · 截至本轮已参与 1 人 · 已答正确率 100.0%');
+  assert.deepEqual(await page.locator('[aria-label="本题作答明细"] tbody tr').allTextContents(),['1 号卡A正确']);
+});
+
 test('学生、知识点与本课汇总保留服务端未完成数，不混入错误或正确率',async t=>{
   const{page,fixture}=await setup(t,390),totals={samples:4,correct:1,wrong:3,incomplete:2,unanswered:1,exempt:0,ungraded:0,practice:0,accuracy:.25};
   fixture.detail.report.totals=totals;fixture.detail.report.students=[{studentName:'学生甲',...totals}];

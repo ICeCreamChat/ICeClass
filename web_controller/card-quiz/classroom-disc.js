@@ -211,7 +211,7 @@
         choice('collect-' + option.value.toLowerCase(), option.value, '收 ' + option.value + ' 项，' + (r.noCardPolicy === 'abstain' ? '选才举卡，A 朝上' : 'A 朝上选，B 朝上不选'),
           'circle-dot', () => selectOption(select, option), () => this.writable && ready(select) && ready(option)));
       return this.page('ring', '第 ' + lesson.number + ' 题', items, {
-        value: '收 ' + r.activeOption, hint: '已收 ' + lesson.received + '/' + lesson.expected
+        value: '收 ' + r.activeOption, hint: '已收 ' + lesson.received + (lesson.participantCount === undefined ? '/' + lesson.expected : ' 人')
       });
     }
 
@@ -389,7 +389,7 @@
         if (counts) {
           const participation = document.createElement('p');
           participation.className = 'disc-record-count';
-          participation.textContent = '已答 ' + counts.received + ' / ' + counts.expected + ' 人';
+          participation.textContent = '已答 ' + counts.received + (counts.participantCount === undefined ? ' / ' + counts.expected : '') + ' 人';
           chart.setAttribute('aria-label', '匿名分布，按 ' + counts.received + ' 位完整作答者统计');
           chart.innerHTML = renderDistribution(q, counts, page.rows);
           this.record.append(participation, chart);

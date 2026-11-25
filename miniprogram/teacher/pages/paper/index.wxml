@@ -102,16 +102,16 @@
         <view class="muted">{{round.contribution}}</view>
         <view wx:if="{{!round.closed}}" class="status">本轮尚未封存，结束后显示作答结果与统计。</view>
         <block wx:if="{{round.closed}}">
-          <view class="status">完整作答 / 应答人数：{{round.participationText}}</view>
+          <view class="status">{{round.scanned ? '' : '完整作答 / 应答人数：'}}{{round.participationText}}</view>
           <view class="report-metrics">
             <view wx:for="{{round.metrics}}" wx:key="key" class="report-metric">
               <view class="muted">{{item.label}}</view><text class="report-value">{{item.value}}</text>
             </view>
           </view>
           <view class="section-heading report-heading">选项分布</view>
-          <view wx:if="{{question.multiple}}" class="muted">多选按完整作答人数计算，各选项占比相加可超过 100%。未完成不计错。</view>
+          <view wx:if="{{question.multiple && !round.combinations}}" class="muted">各选项占比按完整作答人数计算。</view>
           <view wx:for="{{round.distribution}}" wx:key="letter" class="report-item">
-            <view class="row-title">{{item.letter}} · {{item.text}}</view>
+            <view class="row-title">{{item.letter}}{{item.text ? ' · ' + item.text : ''}}</view>
             <view class="row-meta">{{item.count}} 人 · 占完整作答 {{item.percent}}</view>
           </view>
           <view class="section-heading report-heading">本轮学生作答</view>

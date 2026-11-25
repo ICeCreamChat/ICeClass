@@ -1,4 +1,7 @@
 """Single-lesson knowledge evidence through the device, teacher and student HTTP handlers."""
+import copy
+import csv
+import io
 import json
 
 from test_card_quiz import CardQuizHttpCase, STAMP, question
@@ -18,6 +21,43 @@ def evidence(row):
 
 
 class SessionKnowledgeTests(CardQuizHttpCase):
+    async def test_rolling_cards_keep_each_rounds_cohort_and_never_link_anonymous_cards_to_accounts(self):
+        await self.initialize()
+        logins = await self.student_logins()
+        first = self.journal([op('add_question', **question()), op('start_round'),
+                              op('answer', cardNumber=1, option='A'), op('answer', cardNumber=1, option='B'),
+                              op('end_round')], sid='class-9', card_mode='scanned')
+        await self.sync(self.batch(first))
+        later = self.journal([op('add_question', **question()), op('start_round'), op('answer', cardNumber=47, option='A'),
+                              op('end_round'), op('add_question', **question()), op('start_round'),
+                              op('set_exempt', studentId='card:class-9:1', exempt=True), op('end_session')],
+                             base=first['session'])
+        batch = self.batch(later, first['session']['seq'] + 1)
+        forged = copy.deepcopy(batch)
+        forged['session']['roster'][1]['id'] = 's2'
+        r = forged['session']['questions'][1]['rounds'][0]
+        r['answers']['s2'] = r['answers'].pop('card:class-9:47')
+        await self.sync(forged, 400)
+        forged = copy.deepcopy(batch)
+        forged['session']['questions'][0]['rounds'][0]['participantCount'] = 2
+        await self.sync(forged, 409)
+        self.assertEqual(await self.sync(batch), await self.sync(batch))
+        result = await self.api('GET', '/sessions/class-9')
+        rounds = [q['rounds'][0] for q in result['report']['questions']]
+        self.assertEqual([len(r['students']) for r in rounds], [1, 2, 2])
+        self.assertEqual([(r['abstained'], r['exempt']) for r in rounds], [(0, 0), (1, 0), (1, 1)])
+        self.assertEqual(result['report']['totals']['samples'], 2)
+        report = await self.api('GET', '/report?classId=' + self.cid)
+        self.assertEqual(report['students'], [])
+        self.assertEqual(report['sessions'][0]['studentCount'], 2)
+        self.assertEqual(report['knowledge'][0]['answers'], 2)
+        exported = await self.api('GET', '/export?classId=' + self.cid)
+        rows = list(csv.reader(io.StringIO(exported.decode('utf-8-sig'))))
+        self.assertEqual(len(rows), 6)
+        self.assertEqual([r[8] for r in rows[1:]], ['1 号卡', '1 号卡', '47 号卡', '1 号卡', '47 号卡'])
+        personal = await self.personal(logins['s1'])
+        self.assertEqual((personal['sessions'], personal['records']), ([], []))
+
     async def student_logins(self):
         path = f'/classes/{self.cid}/students'
         state = await self.api('GET', path)

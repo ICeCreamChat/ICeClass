@@ -64,6 +64,10 @@
     const identityChanged = !student || student.id !== value.id || student.csrfToken !== value.csrfToken;
     if (identityChanged) clearWorkspace();
     student = value;
+    $('student-password-title').closest('section').hidden = Boolean(value.numberCard);
+    $('student-analysis-title').textContent = value.numberCard ? '本卡最近一节课堂' : '个人课堂分析';
+    $('student-subject').hidden = Boolean(value.numberCard);
+    document.querySelector('label[for="student-subject"]').hidden = Boolean(value.numberCard);
     $('student-workspace').hidden = false;
     $('student-identity').replaceChildren(...[
       [value.className, ' student-identity-class'],
@@ -124,6 +128,7 @@
     return '未答';
   }
   function roundText(record) {
+    if (student?.numberCard) return record.purpose === 'practice' ? '练习轮次' : record.isOfficial ? '本题正式结果' : '较早的正式轮次';
     if (record.purpose === 'practice') return '练习轮次 · 不计入正式判分';
     if (!record.isOfficial) return '非最终正式轮次 · 不计入汇总';
     return record.counted ? '已计入跨课汇总' : '本节正式记录 · 跨课汇总已采用后续作答';
@@ -166,6 +171,7 @@
   function renderKnowledge() {
     const rows = report.knowledge || [];
     const lessons = renderLessonKnowledge();
+    if (student?.numberCard) return lessons || '<p class="student-empty">本卡暂无本节知识点记录。</p>';
     if (!rows.length) return lessons + '<h3>跨课知识点汇总</h3><p class="student-empty">暂无带知识点标签的有效作答。</p>';
     return lessons + `<h3>跨课知识点汇总</h3><p class="student-note">仅依据教师已确认的标签汇总，请结合判定样本数阅读正确率。</p><div class="student-table-wrap" role="region" aria-label="本人知识点统计" tabindex="0"><table class="student-table"><thead><tr>${['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','未答','免答','未判定','练习','正确率'].map(text => `<th scope="col">${text}</th>`).join('')}</tr></thead><tbody>${rows.map(k => `<tr><td>${esc(subjects[k.subjectId] || k.subjectId)}</td><td class="student-text">${esc(k.tag)}</td><td>${k.questionCount || 0}</td><td>${k.answers || 0}</td>${['samples','correct','wrong','incomplete','unanswered','exempt','ungraded','practice'].map(key => `<td>${k[key] || 0}</td>`).join('')}<td>${rate(k.samples ? k.accuracy : null)}</td></tr>`).join('')}</tbody></table></div>`;
   }
@@ -187,7 +193,7 @@
       if (!groups.has(record.sessionId)) groups.set(record.sessionId, []);
       groups.get(record.sessionId).push(record);
     }
-    $('student-report').innerHTML = (view === 'wrong' ? '<p class="student-note">这里展示计入跨课汇总的正式错题。作答记录保留全部轮次。</p>' : '<p class="student-note">保留所有轮次，分别显示判定状态和统计归属。仅包含本人已结束的课堂。</p>') +
+    $('student-report').innerHTML = (student?.numberCard ? '' : view === 'wrong' ? '<p class="student-note">这里展示计入跨课汇总的正式错题。作答记录保留全部轮次。</p>' : '<p class="student-note">保留所有轮次，分别显示判定状态和统计归属。仅包含本人已结束的课堂。</p>') +
       (all.length ? [...groups].map(([sessionId, rows]) => {
         const session = report.sessions.find(s => s.id === sessionId) || rows[0];
         return `<section class="student-session"><h3>${esc(subjects[session.subjectId] || session.subjectId)} · ${date(session.startedAt)}</h3><p class="student-note">${esc(session.className)} · 已结束课堂</p>${rows.map(recordHTML).join('')}</section>`;
@@ -198,6 +204,11 @@
   async function loadReport() {
     if (busy || !student) return;
     const current = lifecycle;
+    if (student.numberCard) {
+      report = undefined;
+      $('student-report').replaceChildren();
+      $('student-totals').replaceChildren();
+    }
     controls(true); $('student-report').setAttribute('aria-busy', 'true');
     feedback('student-report-feedback', '正在读取个人课堂分析…');
     try {
@@ -210,7 +221,8 @@
         return;
       }
       report = result; renderReport();
-      feedback('student-report-feedback', `已读取 ${report.sessions.length} 节已结束课堂、${report.records.length} 条本人作答记录。`);
+      if (student.numberCard) feedback('student-report-feedback', report.sessions.length ? `本卡在本班最近一节通用卡课堂中有 ${report.records.length} 条作答记录。` : '本班最近一节已结课的通用卡课堂暂无此卡记录。');
+      else feedback('student-report-feedback', `已读取 ${report.sessions.length} 节已结束课堂、${report.records.length} 条本人作答记录。`);
     } catch (error) {
       if (current !== lifecycle) return;
       failure(error, 'student-report-feedback');

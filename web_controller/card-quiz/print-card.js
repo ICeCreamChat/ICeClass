@@ -6,24 +6,22 @@
 
   const studentAddress = 'iceclass.icecreamchat.top/student';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let portalMarkup;
+  let portalImage;
 
-  function portal() {
-    if (portalMarkup) return portalMarkup;
+  function portal(numberCard) {
     const url = 'https://' + studentAddress;
-    const image = 'data:image/svg+xml,' + encodeURIComponent(qr.svg(url));
-    portalMarkup = `<a class="card-portal" target="_blank" rel="noopener" href="${url}">
+    portalImage ||= 'data:image/svg+xml,' + encodeURIComponent(qr.svg(url));
+    return `<a class="card-portal" target="_blank" rel="noopener" href="${url}">
       <span class="card-portal-copy"><strong>扫码查看我的AI课后报告</strong>
-        <span>查看本人的作答、错题和知识点</span>
+        <span>${numberCard ? '查看本卡最近一节课堂的作答和知识点' : '查看本人的作答、错题和知识点'}</span>
         <span class="card-url">${studentAddress}</span>
         <span>备案号　皖ICP备2025106471号</span></span>
-      <img width="119" height="119" src="${esc(image)}" alt="学生入口二维码"></a>`;
-    return portalMarkup;
+      <img width="119" height="119" src="${esc(portalImage)}" alt="学生入口二维码"></a>`;
   }
 
-  function sheet(number, className, credentials, label) {
+  function sheet(number, className, credentials, label, numberCard = false) {
     return `<article class="card-sheet" aria-label="${esc(label)}">
-      <div class="card-login">${credentials}${portal()}</div>
+      <div class="card-login">${credentials}${portal(numberCard)}</div>
       <header class="card-caption">
         <strong class="card-brand">ICeClass <span>班班课堂</span></strong>
         <span class="card-class${className.length > 35 ? ' card-long-class' : ''}">${esc(className)}</span>
@@ -55,7 +53,7 @@
       <div>学生编号<strong>${esc(card.username)}</strong></div>
       <div>登录密码<strong class="card-password">${esc(card.password)}</strong></div></div>
       <div class="card-fold"><img src="icons/card-fold.png" alt="" width="53" height="40">沿虚线向后折，举卡时遮住密码</div></div>`;
-    return sheet(card.cardNumber, card.className, credentials, '编号 ' + card.username + '，卡号 ' + card.cardNumber);
+    return sheet(card.cardNumber, card.className + (card.numberCard ? ' · 按号发卡' : ''), credentials, '编号 ' + card.username + '，卡号 ' + card.cardNumber, card.numberCard);
   }
 
   function renderPublic(number) {

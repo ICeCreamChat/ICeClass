@@ -83,7 +83,7 @@
     const number = s && q ? s.questions.indexOf(q) + 1 : 0;
     const multi = q?.type === 'multiple';
     const inRound = phase === 'collect' || phase === 'paused';
-    const missing = inRound ? s.roster.filter(student => !r.exempt.includes(student.id) &&
+    const missing = inRound ? Model.roundRoster(s,r).filter(student => !r.exempt.includes(student.id) &&
       (multi ? !Object.hasOwn(r.answers[student.id]?.choices || {},r.activeOption) : !r.answers[student.id]))
       .map(student => student.cardNumber).sort((a,b)=>a-b) : [];
     const expected = counts?.expected ?? 0, received = multi && inRound ? counts.optionReceived : counts?.received ?? 0;
@@ -101,7 +101,7 @@
           const index = previous.questions.findIndex(item => item.id === previous.currentQuestionId);
           caption = [subjects[previous.subjectId] || previous.subjectId, index >= 0 ? '第 '+(index+1)+' 题' : ''].filter(Boolean).join(' · ');
         } else if (setup?.canCreate) {
-          caption = [subjects[setup.selection.subject], data.context.students.length+' 人'].filter(Boolean).join(' · ');
+          caption = [subjects[setup.selection.subject], setup.selection.cardMode === 'scanned' ? '随发随扫' : data.context.students.length+' 人'].filter(Boolean).join(' · ');
         } else caption = setup?.roster || '';
         enabled = setup?.recovery || setup?.canCreate; break;
       }
@@ -123,7 +123,7 @@
         break;
       case 'result':
         heading = '第 '+number+' 题';
-        if (expected > 0 && received === 0 && !counts.incomplete && !data?.context?.revoked) {
+        if ((expected > 0 || counts.participantCount === 0) && received === 0 && !counts.incomplete && !data?.context?.revoked) {
           primary = 'collect'; label = q.revealed ? '练习' : '重收'; enabled = !$('start').disabled;
         } else if (s.questions.length >= 100) {
           primary = 'finish'; label = '结课'; enabled = !$('end-session').disabled;
@@ -140,6 +140,7 @@
     return {phase,heading,caption,primary,label,enabled:Boolean(enabled && !operation && !frozen),number,
       kind:q?.type || '',option,received,expected,missing,incomplete:counts?.incomplete ?? 0,
       noCardPolicy:r?.noCardPolicy,abstained:counts?.abstained || 0,
+      participantCount:counts?.participantCount,
       bars:phase==='result' ? Model.distributionBars(q.type,counts.distribution) : [],canChooseType,
       busy:operation,questionCount:s?.questions.length || 0,phone:s?.source==='phone',
       needsSync:phase==='done' && (controller.journal.syncedSeq < s.seq || Boolean(controller.journal.reviewError)),
@@ -147,7 +148,7 @@
         const official = Model.officialRound(item);
         const totals = official && Model.roundSummary(s,official);
         return {kind:item.type,bars:totals ? Model.distributionBars(item.type,totals.distribution) : null,received:totals?.received || 0,
-          expected:totals?.expected || 0,unanswered:totals?.unanswered || 0,incomplete:totals?.incomplete || 0,abstained:totals?.abstained || 0};
+          expected:totals?.expected || 0,participantCount:totals?.participantCount,unanswered:totals?.unanswered || 0,incomplete:totals?.incomplete || 0,abstained:totals?.abstained || 0};
       }),
       key:[s?.id,q?.id,s?.generation,phase,primary].join('/')};
   }
@@ -165,18 +166,18 @@
     let status = !s ? '' : ended ? $('sync-status').textContent : $('round-status').textContent;
     if (multiple) {
       const camera = s.source === 'phone' ? '手机收答中' : scanner.running ? '本机相机收答中' : '等待开启相机';
-      status = `收 ${r.activeOption} 项 · 本项 ${summary.optionReceived} / ${summary.expected} 人\n${r.noCardPolicy === 'abstain' ? '选才举卡，A 朝上' : 'A 朝上选，B 朝上不选'}\n${camera}`;
+      status = `收 ${r.activeOption} 项 · 本项 ${tally(summary,summary.optionReceived)}\n${r.noCardPolicy === 'abstain' ? '选才举卡，A 朝上' : 'A 朝上选，B 朝上不选'}\n${camera}`;
     }
     if (active() && notice.classList.contains('warning')) status = notice.textContent;
     const dialog = document.querySelector('dialog[open]');
     const panelTitle = dialog?.id === 'confirm-dialog' ? '操作确认' :
       dialog ? $(dialog.getAttribute('aria-labelledby')).textContent : titles[pane] || '';
     const onCardMap = dialog?.id === 'exempt-dialog' && !$('card-overview').hidden;
-    const cardHint = onCardMap ? (pendingCardsOnly
+    const cardHint = onCardMap ? (summary.participantCount === 0 ? (r.status === 'closed' ? '本轮未收到卡' : '等待举卡') : pendingCardsOnly
       ? (q?.type === 'multiple' ? r.activeOption + ' 项 · ' : '') + (summary.expected ? '待收 ' + (summary.expected - (q?.type === 'multiple' ? summary.optionReceived : summary.received)) + ' 人' : '全员免答')
       : q?.type === 'multiple' && captureControls
-      ? `${r.activeOption} 项 · ${summary.optionReceived} / ${summary.expected} 人`
-      : `${r.status === 'closed' ? '已答' : '已收'} ${summary.received} / ${summary.expected} 人`)
+      ? `${r.activeOption} 项 · ${tally(summary,summary.optionReceived)}`
+      : `${r.status === 'closed' ? '已答' : '已收'} ${tally(summary)}`)
       : r?.status === 'closed' ? '已封存 · 只读' : pendingCardsOnly || frozen || data?.context?.revoked ? '只读' : '点卡号切换免答';
     let cardPanel = null;
     if (dialog?.id === 'exempt-dialog' && document.body.classList.contains('in-disc')) {
@@ -210,7 +211,7 @@
       labels:{collect:collectLabel,camera:openCamera ? '开启相机' : captureControls ? '收答控制' : '本机相机',
         edit:captureControls ? '查看题目' : inDisc && lesson.phase === 'result' ? '设置与揭晓答案' : '题目答案',
         source:s?.source==='phone'?'换回本机':'手机扫码','end-session':ended?'课堂汇总':history?'待同步课堂':'结束课堂'},
-      progress:setup ? setup.roster : s ? `第 ${s.questions.indexOf(q)+1} 题 · 已收 ${summary.received} / ${summary.expected} 人` : '正在读取纸卡课堂…',
+      progress:setup ? setup.roster : s ? `第 ${s.questions.indexOf(q)+1} 题 · 已收 ${tally(summary)}` : '正在读取纸卡课堂…',
       status:pendingStatus || status,
       multiple,multiEnabled:multiple && !$('multi-next').disabled,multiLabel:nextOption ? `下一项 ${nextOption}` : '',
       cameraRunning:scanner.running,feedback:notice.textContent,error:notice.classList.contains('error')
@@ -412,7 +413,7 @@
   },onRead:async read => {
     if (data?.context?.revoked) throw new Error('设备授权已失效，采集已停止。');
     if (!active() || !canCapture() || session().source !== 'board' || round()?.status !== 'collecting') return;
-    if (!session().roster.some(student => student.cardNumber === read.cardNumber)) return;
+    if (session().attendanceMode !== 'scanned' && !session().roster.some(student => student.cardNumber === read.cardNumber)) return;
     await dispatch(command('answer',{...read,...(question()?.type==='multiple'?{targetOption:round().activeOption}:{})}));
   },onStatus:({message,kind}) => {
     $('camera-status').textContent = message;
@@ -446,7 +447,7 @@
     (j.session.endedAt === null || j.syncedSeq < j.session.seq || j.reviewError)).sort((a,b) => b.session.startedAt-a.session.startedAt);
   const unfinishedJournal = () => savedJournals().find(j => j.session.endedAt === null);
   const journalLabel = ({session:s}) => `${subjects[s.subjectId] || s.subjectId} · ${new Date(s.startedAt).toLocaleString('zh-CN')}`;
-  const setupSelection = () => ({publication:$('publication').value,subject:$('subject').value,template:$('first-template').value});
+  const setupSelection = () => ({publication:$('publication').value,subject:$('subject').value,template:$('first-template').value,cardMode:$('card-mode').value});
   function wheelSetup() {
     const options = id => [...$(id).options].map(option => ({value:option.value,label:option.text}));
     const unfinished = unfinishedJournal();
@@ -455,7 +456,9 @@
     return {
       roster:$('roster-status').textContent,publications:options('publication'),subjects:options('subject'),templates:options('first-template'),
       selection:setupSelection(),recovery:unfinished ? {value:unfinished.session.id,label:journalLabel(unfinished)} : null,
-      canCreate,cardCount:canCreate ? data.context.students.length : null,canRefresh:!$('refresh').disabled,busy:operation,
+      cardModes:$('card-mode-field').hidden ? [] : options('card-mode'),
+      assignedCardCount:!$('card-mode-field').hidden && canCreate ? data.context.students.length : null,
+      canCreate,cardCount:canCreate && $('card-mode').value === 'assigned' ? data.context.students.length : null,canRefresh:!$('refresh').disabled,busy:operation,
       notice:feedback.matches('.warning,.refreshed') ? feedback.textContent : '',refreshed:feedback.matches('.refreshed')
     };
   }
@@ -466,18 +469,23 @@
     const saved = savedJournals();
     const unfinished = saved.some(j => j.session.endedAt === null);
     let ready = false;
+    $('card-mode-field').hidden = true;
     if (unfinished) $('roster-status').textContent = '上次课堂未结束';
     else if (context?.revoked) $('roster-status').textContent = '本机绑定已失效，请在教室设置中重新绑定。';
-    else {
-      try {
-        $('roster-status').textContent = `本班 ${Model.classRoster(context).length} 张纸卡`;
-        ready = true;
-      } catch (error) { $('roster-status').textContent = error.message; }
+    else if (context?.classId && context.deviceId && Array.isArray(context.students)) {
+      let assigned = 0;
+      try { assigned = Model.classRoster(context).length; } catch { /* 通用卡按实际举卡登记。 */ }
+      $('card-mode-field').hidden = !assigned;
+      if (!assigned) $('card-mode').value = 'scanned';
+      $('roster-status').textContent = $('card-mode').value === 'assigned' ? `本班 ${assigned} 张个人卡` : '举卡即计人数';
+      ready = true;
+    } else {
+      $('roster-status').textContent = '请联网刷新，读取本机绑定的班级。';
     }
     $('setup-fields').hidden = $('create-session').hidden = unfinished;
     $('create-session').disabled = !ready || operation || frozen;
     $('refresh').disabled = operation;
-    $('publication').disabled = $('subject').disabled = $('first-template').disabled = operation;
+    $('card-mode').disabled = $('publication').disabled = $('subject').disabled = $('first-template').disabled = operation;
     const selected = $('publication').value;
     $('publication').innerHTML = '<option value="">配合课件临时出题</option>' + (context?.publications || []).map(p=>`<option value="${esc(p.id)}">${esc(p.title)} · ${p.questionCount} 题${p.cached?' · 已缓存':''}</option>`).join('');
     if ([...$('publication').options].some(o=>o.value===selected)) $('publication').value = selected;
@@ -491,6 +499,11 @@
   }
   function renderCardCheck(r,disabled) {
     if (!$('exempt-dialog').open || !r) return;
+    if (r.participantCount !== undefined && r.participantCount !== cardStates.length) {
+      const focused = document.activeElement?.dataset.student;
+      buildCardList(r, false);
+      if (focused) [...$('exempt-cards').querySelectorAll('input')].find(input => input.dataset.student === focused)?.focus({preventScroll:true});
+    }
     const q = question(), sealed = r.status === 'closed';
     if (pendingCardsOnly && sealed) {
       pendingCardsOnly = false;
@@ -527,18 +540,22 @@
       row.hidden = pendingCardsOnly && !row.querySelector('[data-card]:not([hidden])');
     for (const key of $('card-key').children) key.hidden = totals[key.dataset.state] === 0 || pendingCardsOnly && key.dataset.state !== 'pending';
     const scope = !$('card-overview').hidden
-      ? pendingCardsOnly ? `待收 ${totals.pending} 人。` :
+      ? !cardStates.length ? '等待本节第一张卡。' : pendingCardsOnly ? `待收 ${totals.pending} 人。` :
         Object.entries(totals).filter(([,count]) => count).map(([key,count]) => words[key] + ' ' + count).join('，') + '。点阵可查看卡号。'
       : sealed ? '本轮已封存，可核对各卡状态。' : pendingCardsOnly || frozen || data?.context?.revoked ? '当前只读，可核对各卡状态。' : '勾选卡号设为本轮免答，已收答案保留。';
     $('card-check-scope').textContent = (currentOption ? `当前收答项 ${currentOption}。` : '') + scope;
   }
   function emptyResult(summary) {
     if (summary.received) return null;
+    if (summary.participantCount === 0) return {label:'本轮未收到卡',note:''};
     if (!summary.expected) return {label:'全员免答',note:''};
     if (summary.abstained) return {label:`弃权 ${summary.abstained} 人`,note:''};
     if (!summary.incomplete) return {label:'无人作答',note:`应答 ${summary.expected} 人`};
     const note = [`未完成 ${summary.incomplete} 人`, summary.unanswered ? `未答 ${summary.unanswered} 人` : ''].filter(Boolean).join(' · ');
     return {label:'暂无完整作答',note};
+  }
+  function tally(summary,received = summary.received) {
+    return summary.participantCount === undefined ? `${received} / ${summary.expected} 人` : `${received} 人`;
   }
   function distributionRows(q, summary, bars = Model.distributionBars(q.type,summary.distribution)) {
     const empty = companion && emptyResult(summary);
@@ -593,11 +610,13 @@
     $('round-kind').textContent = r?.purpose === 'practice' ? '讲解后练习 · 不覆盖正式记录' : '正式作答';
     $('round-kind').hidden = !r || companion && r.purpose !== 'practice';
     $('received').textContent = summary.received;
-    $('expected').textContent = companion && r?.status === 'closed' ? ` / ${summary.expected}` :
+    $('expected').textContent = summary.participantCount !== undefined ? ' 人已举卡' : companion && r?.status === 'closed' ? ` / ${summary.expected}` :
       ` / ${summary.expected} 人${q?.type === 'multiple' && r && !r.noCardPolicy ? '整题完成' : '已举卡'}`;
     const missing = summary.expected - (q?.type==='multiple' ? summary.optionReceived : summary.received);
     $('capture-progress').hidden = !r || r.status === 'closed';
-    $('capture-progress').textContent = !summary.expected ? '本轮无人须答' : missing ? `待收 ${missing} 人` : q?.type==='multiple' ? '本项已收齐' : '本轮已收齐';
+    $('capture-progress').textContent = summary.participantCount !== undefined
+      ? (questionNumber > 1 ? `本节已参与 ${summary.participantCount} 人` : summary.participantCount ? '' : '等待举卡') + (missing ? ` · 待收 ${missing} 人` : '')
+      : !summary.expected ? '本轮无人须答' : missing ? `待收 ${missing} 人` : q?.type==='multiple' ? '本项已收齐' : '本轮已收齐';
     $('multi-capture').hidden = q?.type !== 'multiple';
     if(q?.type==='multiple'){
       if($('multi-option').options.length!==q.options.length)$('multi-option').innerHTML=letters.slice(0,q.options.length).split('').map(l=>`<option value="${l}">${l} 项</option>`).join('');
@@ -607,7 +626,7 @@
       $('multi-instruction').textContent = !r || r.noCardPolicy === 'abstain' ? '选才举卡，A 朝上。改为不选时举 B。' : 'A 朝上表示选，B 朝上表示不选。';
       $('multi-progress').textContent = !r ? '' : r.status === 'closed'
         ? (r.noCardPolicy === 'abstain' ? `弃权 ${summary.abstained} 人` : `未完成 ${summary.incomplete} 人`)
-        : `本项已收 ${summary.optionReceived} / ${summary.expected} 人 · ${companion || s.source === 'phone' ? '换项时放下再举。' : '换项后请开启相机。'}`;
+        : `本项已收 ${tally(summary,summary.optionReceived)} · ${companion || s.source === 'phone' ? '换项时放下再举。' : '换项后请开启相机。'}`;
     }
     $('round-status').textContent = ended ? '本课堂已结束' : collecting ? (s.source === 'phone' ? '手机收答中，白板保存后确认' : scanner.running ? '本机相机收答中' : '本轮进行中，相机未开启') : r?.status === 'paused' ? '已暂停，已收答案保留' : r ? '本轮已封存' : '等待开始收答';
     $('start').textContent = r?.status === 'paused' ? '恢复本轮' : r ? (q.revealed ? '讲解后练习' : '重新收答') : '开始收答';
@@ -677,7 +696,7 @@
       const label = {single:'单选',boolean:'判断',multiple:'多选'}[item.type];
       const empty = counts && emptyResult(counts);
       const result = !counts ? '无正式收答' : empty ? [empty.label, empty.note].filter(Boolean).join(' · ') :
-        `已答 ${counts.received} / ${counts.expected} 人${counts.abstained ? ` · 弃权 ${counts.abstained} 人` : ''}${counts.incomplete ? ` · 未完成 ${counts.incomplete} 人` : ''}`;
+        `已答 ${tally(counts)}${counts.abstained ? ` · 弃权 ${counts.abstained} 人` : ''}${counts.incomplete ? ` · 未完成 ${counts.incomplete} 人` : ''}`;
       const options = counts?.received ? Model.distributionBars(item.type,counts.distribution).map(({label,count}) => `${esc(label)} ${count} 人`).join(' · ') : '';
       const grade = counts?.received ? (counts.correct === null ? '未设标准答案' : `已答正确 ${counts.correct} / ${counts.received} 人`) : '';
       return `<li><strong>第 ${index + 1} 题 · ${label}</strong><span>${result}</span>${grade ? `<span>${grade}</span>` : ''}${options ? `<small>${options}</small>` : ''}</li>`;
@@ -687,7 +706,7 @@
     const questions = deck?.publication?.questions || [], used = session()?.questions.filter(q=>q.bankId).length || 0;
     return questions[used] || null;
   }
-  async function createSession({publication:id,subject,template} = setupSelection()) {
+  async function createSession({publication:id,subject,template,cardMode = $('card-mode').value} = setupSelection()) {
     if (active() || unfinishedJournal()) throw new Error('请先恢复并结束尚未结束的课堂。');
     const hasOption = (field,value) => [...$(field).options].some(option => option.value === value);
     if (!hasOption('publication',id) || (!id && (!hasOption('subject',subject) || !hasOption('first-template',template))))
@@ -697,12 +716,13 @@
     if (id && !questions?.length) throw new Error('题单中没有可用题目。');
     const subjectId = questions?.[0]?.subjectId || subject;
     if (questions?.some(q=>q.subjectId!==subjectId)) throw new Error('题单包含多个学科，请在教师工作台按学科拆分。');
-    const initial = Journal.create(Model.createSession(data.context,subjectId)); initial.publicationId = id || null;
+    const initial = Journal.create(Model.createSession(data.context,subjectId,Date.now(),cardMode)); initial.publicationId = id || null;
     const created = newController(initial);
     await commit(created,command('add_question', questions?.[0] || slideQuestion(template), created.session));
     resetSessionControls();
     controller = created; deck = selectedDeck;
     $('publication').value = id;
+    $('card-mode').value = cardMode;
     if (!id) { $('subject').value = subject; $('first-template').value = template; }
     $('next-template').value = id ? $('first-template').value : template;
     feedback('课堂已保存，可以开始收答。'); scheduleRelay(); scheduleSync();
@@ -1032,6 +1052,7 @@
   }
   $('create-session').onclick = () => run(createSession);
   $('publication').onchange = updateSetupFields;
+  $('card-mode').onchange = render;
   $('refresh').onclick = () => run(refreshSetup);
   $('saved-sessions').onclick = event => {
     const id = event.target.closest('[data-resume]')?.dataset.resume;
@@ -1137,13 +1158,21 @@
   $('card-next').onclick = () => { showCardPage(cardPage + 1); renderWheel(); if ($('card-next').disabled) $('card-prev').focus(); };
   function openCardCheck(pendingOnly = false) {
     checkedRound = round()?.id;
-    const roster = [...session().roster].sort((a,b)=>a.cardNumber-b.cardNumber);
-    cardStates = roster.map(s => ({number:s.cardNumber, state:''}));
     pendingCardsOnly = pendingOnly; locatedCard = null;
     $('exempt-heading').textContent = pendingOnly ? '待收卡号' : '本轮卡号';
-    const overview = companion && (roster.length > cardsPerPage || document.body.classList.contains('in-disc') && roster.length > 0);
-    $('card-overview').hidden = !overview;
-    $('card-details').hidden = overview;
+    buildCardList(round(), true);
+    $('exempt-dialog').showModal();
+    render();
+  }
+  function buildCardList(r, opening) {
+    const roster = [...Model.roundRoster(session(),r)].sort((a,b)=>a.cardNumber-b.cardNumber);
+    const anchor = opening ? null : locatedCard ?? cardStates[cardPage * cardsPerPage]?.number;
+    cardStates = roster.map(s => ({number:s.cardNumber, state:''}));
+    const overview = companion && (roster.length > cardsPerPage || document.body.classList.contains('in-disc'));
+    if (opening || locatedCard === null) {
+      $('card-overview').hidden = !overview;
+      $('card-details').hidden = overview;
+    }
     const map = $('card-map');
     map.replaceChildren();
     $('card-page').replaceChildren();
@@ -1177,9 +1206,8 @@
       }
     }
     $('exempt-cards').innerHTML = roster.map(s=>`<label tabindex="-1"><input type="checkbox" data-student="${esc(s.id)}" aria-label="${s.cardNumber} 号免答" aria-describedby="card-check-${s.cardNumber}"><span>${s.cardNumber} 号 <small id="card-check-${s.cardNumber}" class="card-check-state"></small></span></label>`).join('');
-    showCardPage(0);
-    $('exempt-dialog').showModal();
-    render();
+    const position = roster.findIndex(student => student.cardNumber === anchor);
+    showCardPage(position < 0 ? 0 : Math.floor(position / cardsPerPage));
   }
   $('exempt').onclick = () => openCardCheck();
   $('exempt-cards').onchange = async event => {
@@ -1212,6 +1240,7 @@
     data = await request('load');
     controller = deck = null;
     historyRecord = null;
+    $('card-mode').value = 'scanned';
     resetSessionControls();
     if (pane || destination) showPane(destination);
     render(); feedback(destination ? '' : '可以开始下一堂课。');
@@ -1260,7 +1289,8 @@
       }
       else if (value.action.startsWith('setup-')) activateSetup(value);
       else if (value.action === 'missing' && !operation && !document.querySelector('dialog[open]') &&
-          ['collect','paused'].includes(lesson?.phase) && !$('exempt').disabled) openCardCheck(true);
+          ['collect','paused'].includes(lesson?.phase) && !$('exempt').disabled)
+        openCardCheck(lesson.participantCount === undefined || (lesson.number === 1 && lesson.missing.length > 0));
       else if (value.action.startsWith('card-') && !operation && $('exempt-dialog').open && checkedRound === round()?.id) {
         if (value.action === 'card-scope' && document.body.classList.contains('in-disc') && !$('card-overview').hidden &&
             ['collect','paused'].includes(lesson.phase)) {

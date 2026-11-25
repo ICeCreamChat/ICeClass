@@ -11,7 +11,7 @@ const SUBJECTS = [
 ];
 const STATUS = {
   correct: '正确', wrong: '错误', incomplete: '未完成', unanswered: '未答',
-  exempt: '免答', ungraded: '未判定', practice: '练习'
+  abstained: '弃权', exempt: '免答', ungraded: '未判定', practice: '练习'
 };
 const MODES = { classic: '兔拔萝卜', carving: '诗词镌刻', particle: '粒子浮雕', rocket: '火箭升空' };
 const SYNC = { current: '已同步', pending: '待补传', review: '待核实', unconfirmed: '待同步确认' };
@@ -28,23 +28,26 @@ function paperMetrics(row, multiple = false, accuracy = row.accuracy) {
   const fields = [
     ['samples', '判定样本'], ['correct', '正确'], ['wrong', '错误'],
     ...(multiple || Object.prototype.hasOwnProperty.call(row, 'incomplete') ? [['incomplete', '未完成']] : []),
-    ['unanswered', '未答'], ['exempt', '免答'], ['ungraded', '未判定'], ['practice', '练习']
+    ['unanswered', '未答'], ...(numeric(row.abstained) ? [['abstained', '弃权']] : []),
+    ['exempt', '免答'], ['ungraded', '未判定'], ['practice', '练习']
   ];
   return fields.map(([key, label]) => metric(key, label, row[key])).concat({
     key: 'accuracy', label: '已答正确率', value: fractionText(accuracy)
   });
 }
 
-function completeAnswer(student, question) {
+function completeAnswer(student, question, round) {
   if (question.type === 'multiple') {
+    if (round && round.noCardPolicy === 'abstain') return Object.keys(student.choices || {}).length > 0;
     return question.options.every((_, i) => typeof (student.choices || {})['ABCD'[i]] === 'boolean');
   }
   return typeof student.option === 'string' && student.option.length > 0;
 }
 
-function answerText(student, question) {
+function answerText(student, question, round) {
+  if (student.status === 'abstained') return '弃权';
   if (question.type === 'multiple') {
-    if (completeAnswer(student, question)) return student.option || '全不选';
+    if (completeAnswer(student, question, round)) return student.option || '全不选';
     if (!Object.keys(student.choices || {}).length) return '未收到作答';
     return question.options.map((_, i) => {
       const letter = 'ABCD'[i], choice = student.choices[letter];
@@ -93,8 +96,11 @@ function paperDetail(payload, formatTime) {
       options: snapshot.options.map((text, i) => ({ letter: 'ABCD'[i], text: text || '选项无文字' })),
       rounds: question.rounds.map((round, i) => {
         const closed = round.status === 'closed';
-        const completed = closed ? round.students.filter(s => s.status !== 'exempt' && completeAnswer(s, snapshot)).length : 0;
-        const expected = closed ? session.roster.length - round.exempt : 0;
+        const saved = (snapshot.rounds || []).find(r => r.id === round.id);
+        const completed = closed ? round.students.filter(s => s.status !== 'exempt' && completeAnswer(s, snapshot, saved)).length : 0;
+        const scanned = session.attendanceMode === 'scanned';
+        const expected = closed ? (scanned ? round.students.length : session.roster.length) - round.exempt : 0;
+        const combinations = snapshot.type === 'multiple' && round.combinationDistribution;
         const accuracy = round.purpose === 'practice' ? null : round.samples ? round.correct / round.samples : null;
         const metrics = closed ? paperMetrics(round, snapshot.type === 'multiple', accuracy) : [];
         if (closed && round.purpose === 'practice') metrics[metrics.length - 1].value = '练习不计入正式正确率';
@@ -103,16 +109,21 @@ function paperDetail(payload, formatTime) {
           label: '第 ' + (i + 1) + ' 轮 · ' + (round.purpose === 'practice' ? '练习' : '正式') + ' · ' +
             ({ closed: '已封存', paused: '已暂停', collecting: '收答中' }[round.status] || round.status),
           contribution: round.purpose === 'practice' ? '练习单独计数' : official && official.id === round.id ? '计入本课正式汇总' : closed ? '历史正式轮次，不计入本课汇总' : '封存后显示统计',
-          participationText: closed ? completed + '/' + expected + '（' + (expected ? fractionText(completed / expected) : '无应答人数') + '）' : '',
+          scanned, combinations: Boolean(combinations),
+          participationText: !closed ? '' : scanned ? '本题已答 ' + completed + ' 人 · 截至本轮已参与 ' + round.students.length + ' 人' :
+            completed + '/' + expected + '（' + (expected ? fractionText(completed / expected) : '无应答人数') + '）',
           metrics,
-          distribution: closed ? snapshot.options.map((text, optionIndex) => {
+          distribution: !closed ? [] : combinations ? Object.entries(combinations).sort(([a, n], [b, m]) =>
+            m - n || (a || 'Z').localeCompare(b || 'Z')).map(([option, count]) => ({
+              letter: option || '全不选', text:'', count:numberText(count), percent:fractionText(count / completed)
+            })) : snapshot.options.map((text, optionIndex) => {
             const letter = 'ABCD'[optionIndex], count = round.distribution[letter];
             return { letter, text: text || '选项无文字', count: numberText(count),
               percent: completed && numeric(count) ? fractionText(count / completed) : '暂无作答' };
-          }) : [],
+          }),
           students: closed ? round.students.map(s => ({
             id: s.studentId, name: s.studentName,
-            answerText: answerText(s, snapshot), statusText: STATUS[s.status] || s.status
+            answerText: answerText(s, snapshot, saved), statusText: STATUS[s.status] || s.status
           })) : []
         };
       })

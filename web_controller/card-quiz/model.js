@@ -42,10 +42,16 @@
       ids.add(s.id);numbers.add(s.cardNumber);return{id:s.id,name:text(s.name,40),cardNumber:s.cardNumber};
     });
   }
-  function createSession(context,subjectId,now=Date.now()){
-    const roster=classRoster(context);
+  function createSession(context,subjectId,now=Date.now(),cardMode='assigned'){
+    if(!context?.classId||!context.deviceId||context.revoked||!Array.isArray(context.students))fail('请联网刷新，读取本机绑定的班级。');
+    if(!['scanned','assigned'].includes(cardMode))fail('请选择发卡方式。');
+    const scanned=cardMode==='scanned',roster=scanned?[]:classRoster(context);
     if(typeof subjectId!=='string'||!subjectId)fail('请选择学科。');
-    return{schema:1,id:uid(),classId:context.classId,deviceId:context.deviceId,subjectId,startedAt:now,endedAt:null,seq:0,cardVersion:'ice-v1',rosterRevision:context.rosterRevision||0,cardRevision:context.cardRevision||0,roster,questions:[],currentQuestionId:null,currentRoundId:null,source:'board',sourceId:'board',generation:1};
+    return{schema:1,id:uid(),classId:context.classId,deviceId:context.deviceId,subjectId,startedAt:now,endedAt:null,seq:0,cardVersion:'ice-v1',rosterRevision:context.rosterRevision||0,cardRevision:context.cardRevision||0,...(scanned?{attendanceMode:'scanned'}:{}),roster,questions:[],currentQuestionId:null,currentRoundId:null,source:'board',sourceId:'board',generation:1};
+  }
+  // The roster grows in first-read order. Each round keeps its own prefix, including retakes.
+  function roundRoster(session,round){
+    return round?.participantCount === undefined ? session.roster : session.roster.slice(0,round.participantCount);
   }
   function apply(input,command,now=Date.now()){
     if(!command?.id||command.sessionId!==input.id)fail('课堂标识不匹配，请重新载入。');
@@ -65,12 +71,20 @@
       case 'start_round':{
         current();between();s.generation++;
         const created={id:uid(),startedAt:now,endedAt:null,purpose:q.revealed||p.practice===true?'practice':'formal',source:s.source,sourceId:s.sourceId,generation:s.generation,status:'collecting',noCardPolicy:'abstain',answers:{},exempt:[]};
+        if(s.attendanceMode==='scanned')created.participantCount=s.roster.length;
         if(q.type==='multiple')created.activeOption='A';
         q.rounds.push(created);s.currentRoundId=created.id;break;
       }
       case 'answer':{
         round();if(r.status!=='collecting'||r.generation!==s.generation)fail('当前没有正在收答的轮次。');
-        const student=s.roster.find(x=>x.cardNumber===p.cardNumber);
+        let student=s.roster.find(x=>x.cardNumber===p.cardNumber);
+        if(!student && s.attendanceMode==='scanned'){
+          const n=p.cardNumber;
+          if(!Number.isInteger(n)||n<1||n>157)fail('纸卡编号应为 1-157。');
+          student={id:`card:${s.id}:${n}`,name:`${n} 号卡`,cardNumber:n};
+          s.roster.push(student);
+          r.participantCount=s.roster.length;
+        }
         if(!student)fail(`卡 ${p.cardNumber} 未绑定本班学生。`);
         if(q.type==='multiple'){
           if(p.targetOption!==r.activeOption)fail('收答项已变化，请核对当前选项。');
@@ -141,20 +155,22 @@
   }
   function roundSummary(s,r){
     const q=s.questions.find(q=>q.rounds.some(item=>item.id===r?.id))||activeQuestion(s);
-    const expected=s.roster.filter(x=>!r?.exempt.includes(x.id)),entries=expected.map(x=>r?.answers[x.id]).filter(Boolean),answers=entries.filter(a=>completeAnswer(q,a,r));
+    const cohort=roundRoster(s,r);
+    const expected=cohort.filter(x=>!r?.exempt.includes(x.id)),entries=expected.map(x=>r?.answers[x.id]).filter(Boolean),answers=entries.filter(a=>completeAnswer(q,a,r));
     const missing = expected.length - entries.length;
     const abstained = r?.noCardPolicy === 'abstain' && r.status === 'closed' ? missing : 0;
     const multi = q?.type === 'multiple';
     const distribution = multi ? combinationDistribution(answers) : Object.fromEntries(letters.slice(0,q?.options.length||4).split('').map(l=>[l,0]));
     if (!multi) for (const a of answers) if (Object.hasOwn(distribution,a.option)) distribution[a.option]++;
-    return{expected:expected.length,received:answers.length,unanswered:missing-abstained,...(r?.noCardPolicy === 'abstain' ? {abstained} : {}),correct:q?.answer?answers.filter(a=>a.option===q.answer).length:null,distribution,
+    return{expected:expected.length,received:answers.length,unanswered:missing-abstained,...(s.attendanceMode==='scanned'?{participantCount:cohort.length}:{}),...(r?.noCardPolicy === 'abstain' ? {abstained} : {}),correct:q?.answer?answers.filter(a=>a.option===q.answer).length:null,distribution,
       ...(q?.type==='multiple'?{incomplete:entries.length-answers.length,optionReceived:entries.filter(a=>Object.hasOwn(a.choices,r?.activeOption)).length}:{})};
   }
   function publicState(s,className=''){
     const q=activeQuestion(s),r=activeRound(s),counts=roundSummary(s,r);
     return{sessionId:s.id,className,subjectId:s.subjectId,questionId:q?.id||null,questionNumber:q?s.questions.indexOf(q)+1:0,questionType:q?.type||null,optionCount:q?.options.length||4,roundId:r?.id||null,roundStatus:r?.status||null,source:s.source,sourceId:s.sourceId,generation:s.generation,seq:s.seq,received:counts.received,expected:counts.expected,ended:s.endedAt!==null,
       ...(r?.noCardPolicy ? {noCardPolicy:r.noCardPolicy} : {}),
+      ...(s.attendanceMode==='scanned' ? {participantCount:s.roster.length} : {}),
       ...(q?.type==='multiple'?{activeOption:r?.activeOption||null,optionReceived:counts.optionReceived||0}:{})};
   }
-  return{classRoster,createSession,apply,recover,officialRound,roundSummary,publicState,activeQuestion,activeRound,completeAnswer,combinationDistribution,distributionBars};
+  return{classRoster,createSession,apply,recover,officialRound,roundRoster,roundSummary,publicState,activeQuestion,activeRound,completeAnswer,combinationDistribution,distributionBars};
 });

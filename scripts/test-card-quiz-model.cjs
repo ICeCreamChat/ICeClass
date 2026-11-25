@@ -9,6 +9,31 @@ function send(session,action,payload={}){
 }
 function opened(){let s=Model.createSession(context,'math',clock);s=send(s,'add_question',{type:'single',options:['','','','']});return send(s,'start_round');}
 
+test('60 张通用卡按首次有效读卡计人，补扫、重收、跨项、免答与结课各有独立口径',()=>{
+  let s=Model.createSession({...context,students:[]},'math',clock,'scanned');
+  const act=(action,payload)=>{s=send(s,action,payload);};
+  const answer=(cardNumber,option='A',targetOption)=>act('answer',{cardNumber,option,targetOption});
+  const open=type=>{act('add_question',{type});act('start_round');};
+  open('boolean');
+  assert.equal(Model.publicState(s).participantCount,0);
+  for (const n of [0,158,1.5,'47']) assert.throws(()=>answer(n));
+  assert.throws(()=>answer(60,'C'));
+  for(let n=1;n<=35;n++)answer(n);
+  answer(1,'B');act('end_round');
+  open('single');
+  for (let n=1;n<=32;n++)answer(n);
+  for (const n of [47,52,60])answer(n);
+  const second=Model.publicState(s);
+  assert.deepEqual([second.received,second.expected,second.participantCount],[35,38,38]);
+  act('end_round');open('multiple');
+  answer(47,'A','A');act('set_multi_option',{option:'C'});answer(47,'A','C');
+  answer(52,'B','C');act('set_exempt',{studentId:s.roster.find(row=>row.cardNumber===60).id,exempt:true});
+  act('recover');act('resume_round');act('end_session');
+  const [first,next,last]=s.questions.map(q=>Model.roundSummary(s,q.rounds[0]));
+  assert.deepEqual([first.expected,first.abstained,next.expected,next.abstained],[35,0,38,3]);
+  assert.deepEqual([last.received,last.expected,last.abstained,last.distribution],[2,37,35,{AC:1,'':1}]);
+});
+
 test('题目上限按Unicode码点与服务端一致，数学字符不提前截断且拒绝无效代理字符',()=>{
   const initial=Model.createSession(context,'math',clock),symbol='𝑥';
   const value={type:'single',text:symbol.repeat(20000),options:[symbol.repeat(2000),'乙'],tags:[symbol.repeat(80)]};

@@ -37,7 +37,7 @@ def observations(session, *, selected=False):
         for r in q['rounds']:
             if r['status'] != 'closed' or selected and r['purpose'] == 'formal' and r is not official:
                 continue
-            for student in session['roster']:
+            for student in session['roster'][:r.get('participantCount')]:
                 sid = student['id']
                 a = r['answers'].get(sid)
                 if sid in r['exempt']:
@@ -173,7 +173,9 @@ class SessionHandlers:
 
     def validate_snapshot_refs(self, session, old=None):
         cid = session['classId']
-        if old is None:
+        # In a scanned class every anonymous roster entry was reconstructed from a valid
+        # answer event by replay(), including its session-scoped ID and printed number.
+        if old is None and session.get('attendanceMode') != 'scanned':
             _, roster = self.roster(cid)
             _, cards = self.cards(cid)
             known = {s['id'] for s in roster} | set(cards['bindings'])
@@ -335,12 +337,15 @@ class SessionHandlers:
             self.audit(user, 'card-quiz.session.review', 'class', row['class_id'], '修订纸卡课堂 ' + row['id'])
         return self.reply(self.session_payload(self.session_row(row['id'])))
 
-    def report_data(self, rows):
+    def report_data(self, rows, *, include_number_cards=False):
         students, latest, knowledge, question_ids = {}, {}, {}, {}
+        named_students = set()
         for row in rows:
             session = json.loads(row['value'])
             multiple = any(q['type'] == 'multiple' for q in session['questions'])
             for s in session['roster']:
+                if include_number_cards or session.get('attendanceMode') != 'scanned':
+                    named_students.add((row['class_id'], s['id']))
                 students[(row['class_id'], s['id'])] = students.get((row['class_id'], s['id']), {
                     'classId': row['class_id'], 'studentId': s['id'], 'studentName': s['name'], **counts(multiple)})
                 if multiple:
@@ -370,7 +375,7 @@ class SessionHandlers:
                 row['answers'] += 1
                 add_count(row, status)
         return {'sessions': [self.summary(row) for row in rows],
-                'students': [rate(row) for row in students.values()],
+                'students': [rate(row) for key, row in students.items() if key in named_students],
                 'knowledge': [rate(row) for row in knowledge.values()]}
 
     @teacher_read('card-quiz.report', '查看纸卡答题学生与知识点统计', fields='classId subjectId')

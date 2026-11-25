@@ -12,7 +12,7 @@ after(async()=>{await browser?.close();});
 const copy=value=>JSON.parse(JSON.stringify(value));
 const Model=require('../web_controller/card-quiz/model.js'),Journal=require('../web_controller/card-quiz/journal.js');
 
-async function open({width=1160,height=820,companion=false,journals=[],publications=[],students,failCommit=false,scannerFixture=false,touch=false,quickScan=false,endpoint=origin}={}){
+async function open({width=1160,height=820,companion=false,journals=[],publications=[],students,cardMode='assigned',failCommit=false,scannerFixture=false,touch=false,quickScan=false,endpoint=origin}={}){
   const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce',hasTouch:touch}),page=await context.newPage();
   const fixture={journals:copy(journals),failCommit,commands:[],messages:[],errors:[],synced:0,pairings:[]};
   const publicationSummaries=publications.map(({id,title,questions})=>({id,title,questionCount:questions.length,cached:true}));
@@ -69,6 +69,9 @@ async function open({width=1160,height=820,companion=false,journals=[],publicati
   });
   await page.goto(origin+'/card-quiz/classroom.html'+(companion?'#banban':''));
   await page.locator(journals.some(j=>j.session.endedAt===null)?'[data-resume]':'#create-session:not([disabled])').first().waitFor({state:'attached'});
+  // Existing classroom fixtures exercise personal cards. A null choice exercises the production default.
+  if(cardMode && !journals.length && !await page.locator('#card-mode-field').evaluate(field=>field.hidden))
+    await page.locator('#card-mode').selectOption(cardMode,{force:true});
   return{page,context,fixture};
 }
 async function create(page){await page.locator('#create-session').click();await page.locator('#workspace:not([hidden])').waitFor();await page.locator('#start:not([disabled])').waitFor();}
@@ -116,6 +119,42 @@ async function detailAction(page, id) {
   await sector(page, id === 'back' ? 'back' : 'disc-' + id, {pageKey:discPage.key, key:lesson.key});
 }
 
+test('九班空名单从原生圆环首题直接扫，开放卡号图实时补卡，封存保留各轮人数',async()=>{
+  const {page,context,fixture}=await open({width:390,companion:true,students:[],cardMode:null,scannerFixture:true});
+  const read=(cardNumber,option='A')=>page.evaluate(read=>testScanner.options.onRead(read),{cardNumber,option});
+  try {
+    await useNativeDisc(page);
+    assert.equal((await wheel(page)).setup.selection.cardMode,'scanned');
+    await startInPet(page,'boolean:2');
+    await sector(page,'collect');
+    await page.waitForFunction(()=>testScanner.running);
+    await read(1); await read(1,'B');
+    assert.equal((await wheel(page)).lesson.received,1);
+    assert.doesNotMatch((await wheel(page)).progress,/收齐|1\s*\/\s*1/);
+    await sector(page,'missing'); await waitPanel(page,'exempt-dialog');
+    assert.equal((await wheel(page)).cardPanel.pendingOnly,false);
+    await read(2);
+    assert.deepEqual((await wheel(page)).cardPanel.cards.map(c=>c.number),[1,2]);
+    await sector(page,'dismiss');
+    await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.lesson.phase==='result');
+    await sector(page,'advance');
+    await page.waitForFunction(()=>__quizWheelState.lesson.phase==='ready');
+    await sector(page,'collect');
+    await page.waitForFunction(()=>testScanner.running);
+    await read(47);
+    const lesson=(await wheel(page)).lesson;
+    assert.equal(lesson.participantCount,3);
+    assert.deepEqual(lesson.missing,[1,2]);
+    await sector(page,'finish-confirmed');
+    await page.waitForFunction(()=>__quizWheelState.lesson.phase==='done');
+    const s=fixture.journals[0].session;
+    assert.deepEqual(s.questions.map(q=>q.rounds[0].participantCount),[2,3]);
+    assert.deepEqual((await wheel(page)).lesson.records.map(r=>r.abstained),[0,2]);
+    await noOverflow(page);assert.deepEqual(fixture.errors,[]);
+  } finally {await context.close();}
+});
+
 test('开课和首题一并保存，结束后无需等待学校同步即可开下一堂',async()=>{
   const {page,context,fixture}=await open({width:390,scannerFixture:true});
   let release;
@@ -128,6 +167,7 @@ test('开课和首题一并保存，结束后无需等待学校同步即可开�
     await page.locator('#end-session').click();
     await page.locator('#confirm-ok').click();
     await page.locator('#return-setup').click();
+    assert.equal(await page.locator('#card-mode').inputValue(),'scanned');
     await create(page);
     assert.equal(fixture.journals.length,2);
     assert.ok(fixture.journals[0].session.endedAt);

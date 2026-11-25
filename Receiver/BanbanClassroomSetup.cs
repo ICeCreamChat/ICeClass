@@ -10,10 +10,11 @@ using static ICeClass.Receiver.BanbanClassroomStyle;
 namespace ICeClass.Receiver;
 
 internal sealed record CardQuizWheelOption(string Value, string Label);
-internal sealed record CardQuizWheelSelection(string Publication, string Subject, string Template);
+internal sealed record CardQuizWheelSelection(string Publication, string Subject, string Template, string CardMode = "scanned");
 internal sealed record CardQuizWheelSetup(string Roster, CardQuizWheelOption[] Publications, CardQuizWheelOption[] Subjects,
     CardQuizWheelOption[] Templates, CardQuizWheelSelection Selection, CardQuizWheelOption? Recovery,
-    bool CanCreate, bool CanRefresh, bool Busy, string Notice, int? CardCount = null, bool Refreshed = false);
+    bool CanCreate, bool CanRefresh, bool Busy, string Notice, int? CardCount = null, bool Refreshed = false,
+    CardQuizWheelOption[]? CardModes = null, int? AssignedCardCount = null);
 internal sealed record CardQuizWheelCommand(string Action, CardQuizWheelSelection? Selection = null, string? SessionId = null, string? Key = null, int? CardNumber = null, string? PageKey = null, int? QuestionIndex = null);
 
 /// <summary>Classroom setup and its pickers stay inside the mascot's wheel.</summary>
@@ -36,7 +37,7 @@ internal sealed class BanbanClassroomSetup : Border
     private readonly Button _info = MakeButton("查看提示"), _pickerBack = MakeButton("返回");
     private readonly BanbanToolSector _submit, _back, _refresh, _statusDetails;
     private readonly BanbanToolSector _names, _previous, _next;
-    private readonly Choice _publication, _subject, _template;
+    private readonly Choice _publication, _subject, _template, _cards;
     private readonly bool _contrast = DesktopStyle.HighContrastEnabled();
     private readonly IBrush _accent;
     private CardQuizWheelSetup? _state;
@@ -55,6 +56,7 @@ internal sealed class BanbanClassroomSetup : Border
         IsVisible = false;
         _accent = _contrast ? Brushes.Black : DesktopStyle.Brush("#005DBF");
         _publication = Field("出题方式", "monitor", 0, option => option.Value.Length == 0 ? "课件" : "题单");
+        _cards = Field("发卡方式", "scan-line", 0, option => option.Value == "scanned" ? "通用卡" : "个人卡");
         _template = Field("首题题型", "list-checks", 1, Kind, Range);
         _refresh = HomeAction("联网刷新", "刷新", "rotate-ccw", 2, () => ActionRequested?.Invoke(new("setup-refresh")));
         _submit = HomeAction("开始课堂", "开课", "play", 3, Submit, primary: true);
@@ -159,7 +161,8 @@ internal sealed class BanbanClassroomSetup : Border
     {
         if (_state is not { Busy: false } setup) return;
         if (setup.Recovery is { } recovery) ActionRequested?.Invoke(new("setup-restore", SessionId: recovery.Value));
-        else if (setup.CanCreate) ActionRequested?.Invoke(new("setup-start", new(_publication.Value, _subject.Value, _template.Value)));
+        else if (setup.CanCreate) ActionRequested?.Invoke(new("setup-start", new(_publication.Value, _subject.Value, _template.Value,
+            _cards.Selected?.Value ?? setup.Selection.CardMode)));
     }
 
     internal void Open(CardQuizWheelState state)
@@ -191,6 +194,7 @@ internal sealed class BanbanClassroomSetup : Border
         _publication.Update(setup.Publications, setup.Selection.Publication, reset);
         _subject.Update(setup.Subjects, setup.Selection.Subject, reset);
         _template.Update(setup.Templates, setup.Selection.Template, reset);
+        _cards.Update(setup.CardModes ?? [], setup.Selection.CardMode, reset);
         _error = state.Error && !string.IsNullOrEmpty(state.Feedback);
         _notice = Paragraphs(_error ? state.Feedback : null, setup.Notice == setup.Roster ? null : setup.Notice);
         if (_choosing is { } choice && (!setup.CanCreate || setup.Recovery is not null || !choice.Options.SequenceEqual(previousOptions!)))
@@ -218,13 +222,19 @@ internal sealed class BanbanClassroomSetup : Border
         _hub.IsVisible = _showFields;
         // Both layouts keep the primary at six o'clock. The four-sector face uses the two
         // sides for refresh and return, even when no subject or first question is editable.
-        var count = sixFields ? 6 : 4;
-        _publication.Button.Place(0, count);
+        var chooseCards = _showFields && _cards.Options.Length > 1;
+        _cards.Button.IsVisible = chooseCards;
+        var count = (sixFields ? 6 : 4) + (chooseCards ? 1 : 0);
+        var offset = chooseCards ? 0.5 : 0;
+        _publication.Button.Place(chooseCards ? count - 0.5 : 0, count);
+        _cards.Button.Place(offset, count);
+        _template.Button.Place(1 + offset, count);
+        _subject.Button.Place(5 + offset, count);
         _statusDetails.Place(0, 4);
-        _refresh.Place(sixFields ? 2 : 1, count);
-        _submit.Place(count / 2, count);
-        _back.Place(sixFields ? 4 : 3, count);
-        foreach (var field in new[] { _publication, _subject, _template })
+        _refresh.Place((sixFields ? 2 : 1) + offset, count);
+        _submit.Place(count / 2d, count);
+        _back.Place((sixFields ? 4 : 3) + offset, count);
+        foreach (var field in new[] { _publication, _subject, _template, _cards })
             field.Button.IsEnabled = setup.CanCreate && !setup.Busy && field.Options.Length > 0;
         var warning = _notice.Length > 0 && (_error || !setup.Refreshed);
         _statusTitle.Text = recovering ? "恢复课堂" : "开课设置";
@@ -235,9 +245,10 @@ internal sealed class BanbanClassroomSetup : Border
         _statusDetails.IsEnabled = !setup.Busy;
         _title.Text = usingDeck ? _publication.Selected?.Label : "开课设置";
         ToolTip.SetTip(_title, _title.Text);
-        _roster.Text = setup.Busy ? "处理中" : setup.CardCount?.ToString() ?? setup.Roster;
-        _roster.FontSize = !setup.Busy && setup.CardCount.HasValue ? 30 : 14;
-        _unit.IsVisible = !setup.Busy && setup.CardCount.HasValue;
+        var cardCount = chooseCards ? (_cards.Value == "assigned" ? setup.AssignedCardCount : null) : setup.CardCount;
+        _roster.Text = setup.Busy ? "处理中" : cardCount?.ToString() ?? (chooseCards ? "举卡即计人数" : setup.Roster);
+        _roster.FontSize = !setup.Busy && cardCount.HasValue ? 30 : 14;
+        _unit.IsVisible = !setup.Busy && cardCount.HasValue;
         _hint.IsVisible = (_notice.Length > 0 || usingDeck) && !setup.Busy;
         _info.IsVisible = !setup.Busy && (warning || usingDeck);
         _hint.Text = _error ? "查看错误" : warning ? "查看提示" : setup.Refreshed ? "已刷新" : "看全名";
@@ -421,7 +432,7 @@ internal sealed class BanbanClassroomSetup : Border
         }
         if (e.Key is not (Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End)) return;
         IEnumerable<Button> buttons = _picker.IsVisible ? _radialOptions.Children.OfType<Button>().Append(_pickerBack)
-            : [_publication.Button, _statusDetails, _template.Button, _refresh, _submit, _back, _subject.Button, _info];
+            : [_publication.Button, _statusDetails, _cards.Button, _template.Button, _refresh, _submit, _back, _subject.Button, _info];
         StepFocus(buttons, buttons.FirstOrDefault(b => b.IsKeyboardFocusWithin), e.Key);
         e.Handled = true;
     }

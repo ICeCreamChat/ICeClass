@@ -10,12 +10,33 @@ from card_quiz_sessions import counts, observations, official_round, rate, sessi
 from teacher_capabilities import teacher_manual
 
 
-REASON = '学生本人报告与题图，仅按当前学生会话关联的历史名单身份读取，不能使用教师身份代替。'
+REASON = '报告与题图须使用学生登录。实名账号按历史名单读取，通用卡按本班、本号和最近一节已结束的通用卡课堂读取。'
 
 
 class StudentReports:
     def personal_rows(self, account, subject=None):
-        query = '''SELECT s.* FROM card_quiz_sessions s WHERE s.ended_at IS NOT NULL AND EXISTS (
+        if (number := account.get('holder_card_number')) is not None:
+            # Select the class's latest finished lesson first. A missing card or different
+            # subject must never fall back to an earlier holder's report.
+            row = self.db.one('''SELECT * FROM card_quiz_sessions WHERE class_id=? AND ended_at IS NOT NULL
+                AND json_extract(value,'$.attendanceMode')='scanned' ORDER BY started_at DESC,id DESC LIMIT 1''',
+                              (account['class_id'],))
+            if not row or subject is not None and identifier(subject) != row['subject_id']:
+                return []
+            value = json.loads(row['value'])
+            student = next((s for s in value['roster'] if s['cardNumber'] == number), None)
+            if not student:
+                return []
+            position = value['roster'].index(student)
+            for question in value['questions']:
+                question['rounds'] = [r for r in question['rounds'] if position < r['participantCount']]
+                for r in question['rounds']:
+                    r['participantCount'] = 1
+                if not question['rounds']:
+                    question['imageId'] = None
+            return [self.filter_student_row(row, value, {student['id']})]
+        query = '''SELECT s.* FROM card_quiz_sessions s WHERE s.ended_at IS NOT NULL
+            AND json_extract(s.value,'$.attendanceMode') IS NULL AND EXISTS (
             SELECT 1 FROM student_account_links l JOIN json_each(s.value,'$.roster') r
             ON json_extract(r.value,'$.id')=l.student_id
             WHERE l.account_id=? AND l.class_id=s.class_id)'''
@@ -28,23 +49,22 @@ class StudentReports:
         links = {}
         for link in self.db.all('SELECT class_id,student_id FROM student_account_links WHERE account_id=?', (account['id'],)):
             links.setdefault(link['class_id'], set()).add(link['student_id'])
-        result = []
-        for row in rows:
-            value = json.loads(row['value'])
-            ids = links[row['class_id']]
-            value['roster'] = [student for student in value['roster'] if student['id'] in ids]
-            for question in value['questions']:
-                for round_value in question['rounds']:
-                    round_value['answers'] = {sid: answer for sid, answer in round_value['answers'].items() if sid in ids}
-                    round_value['exempt'] = [sid for sid in round_value['exempt'] if sid in ids]
-            result.append({**row, 'value': dumps(value)})
-        return result
+        return [self.filter_student_row(row, json.loads(row['value']), links[row['class_id']]) for row in rows]
+
+    @staticmethod
+    def filter_student_row(row, value, ids):
+        value['roster'] = [student for student in value['roster'] if student['id'] in ids]
+        for question in value['questions']:
+            for round_value in question['rounds']:
+                round_value['answers'] = {sid: answer for sid, answer in round_value['answers'].items() if sid in ids}
+                round_value['exempt'] = [sid for sid in round_value['exempt'] if sid in ids]
+        return {**row, 'value': dumps(value)}
 
     @teacher_manual(REASON)
     async def report(self, request):
         account = self.require_student(request)
         rows = self.personal_rows(account, request.query.get('subjectId'))
-        calculated = self.quiz.report_data(rows)
+        calculated = self.quiz.report_data(rows, include_number_cards=bool(account.get('holder_card_number')))
         totals = counts(True)
         for student in calculated['students']:
             for key in totals:

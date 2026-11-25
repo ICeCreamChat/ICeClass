@@ -166,6 +166,21 @@ test('multiple answers retain false choices, all-unselected, partial and missing
   assert.equal(round.distribution[1].percent, '0.0%');
 });
 
+test('scanned lessons use the sealed cohort and group raise-only multiple answers in the mini program', () => {
+  const raw=paperPayload();
+  raw.session.attendanceMode='scanned';
+  const latest=raw.report.questions[0].rounds[2];
+  raw.session.questions[0].rounds=[{id:latest.id,noCardPolicy:'abstain',participantCount:4}];
+  latest.students=[{studentName:'1 号卡',option:'AC',choices:{A:true,C:true},status:'correct'},
+    {studentName:'2 号卡',option:'',choices:{B:false},status:'wrong'},
+    {studentName:'3 号卡',option:null,status:'abstained'},{studentName:'4 号卡',option:null,status:'exempt'}];
+  Object.assign(latest,{combinationDistribution:{'':1,AC:1},incomplete:0,unanswered:0,abstained:1,exempt:1});
+  const view=reports.paperDetail(raw,String).questions[0].rounds[2];
+  assert.equal(view.participationText,'本题已答 2 人 · 截至本轮已参与 4 人');
+  assert.deepEqual(view.distribution.map(row=>[row.letter,row.count,row.percent]),[['AC','1','50.0%'],['全不选','1','50.0%']]);
+  assert.deepEqual(view.students.map(s=>s.statusText),['正确','错误','弃权','免答']);
+});
+
 test('multiple option shares may sum above 100%, without normalizing or inventing recognition scores', () => {
   const raw = paperPayload();
   const round = reports.paperDetail(raw, String).questions[0].rounds[0];

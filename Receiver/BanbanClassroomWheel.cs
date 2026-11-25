@@ -13,11 +13,11 @@ namespace ICeClass.Receiver;
 
 internal sealed record CardQuizWheelAction(string Id, string Label, string Icon, bool Enabled);
 internal sealed record CardQuizBar(string Label, int Count);
-internal sealed record CardQuizRecord(string Kind, CardQuizBar[]? Bars, int Received, int Expected, int Unanswered, int Incomplete, int Abstained = 0);
+internal sealed record CardQuizRecord(string Kind, CardQuizBar[]? Bars, int Received, int Expected, int Unanswered, int Incomplete, int Abstained = 0, int? ParticipantCount = null);
 internal sealed record CardQuizLesson(string Phase, string Heading, string Caption, string Primary, string Label, bool Enabled,
     int Number, string Kind, string Option, int Received, int Expected, int[] Missing, CardQuizBar[] Bars,
     bool CanChooseType, bool Busy, int QuestionCount, bool Phone, bool NeedsSync, CardQuizRecord[] Records, string Key, int Incomplete = 0,
-    int Abstained = 0, string? NoCardPolicy = null);
+    int Abstained = 0, string? NoCardPolicy = null, int? ParticipantCount = null);
 internal sealed record CardQuizWheelState(bool HasSession, CardQuizWheelAction[] Actions, string Progress,
     string Status, string Feedback, bool Error, bool Multiple, bool MultiEnabled, bool CameraRunning, CardQuizWheelSetup? Setup,
     string Panel, string MultiLabel, bool Retry, CardQuizLesson Lesson, string PanelTitle = "", string PanelHint = "", CardQuizCardPanel? CardPanel = null,
@@ -491,6 +491,7 @@ internal sealed class BanbanClassroomWheel : Canvas
         var moreBars = hasResult && bars.Length > VisibleBars;
         var answered = record?.Received ?? lesson?.Received ?? 0;
         var expected = record?.Expected ?? lesson?.Expected ?? 0;
+        var participants = record is null ? lesson?.ParticipantCount : record.ParticipantCount;
         var incomplete = record?.Incomplete ?? lesson?.Incomplete ?? 0;
         var abstained = record?.Abstained ?? lesson?.Abstained ?? 0;
         var mainText = view switch {
@@ -523,7 +524,7 @@ internal sealed class BanbanClassroomWheel : Canvas
         }
         if (_emptyResult.IsVisible)
         {
-            _emptyResult.Text = expected == 0 ? "全员免答" : abstained > 0 ? $"弃权 {abstained} 人" : incomplete > 0 ? "暂无完整作答" : "无人作答";
+            _emptyResult.Text = participants == 0 ? "本轮未收到卡" : expected == 0 ? "全员免答" : abstained > 0 ? $"弃权 {abstained} 人" : incomplete > 0 ? "暂无完整作答" : "无人作答";
             if (incomplete == 0) caption = "";
         }
         if (!failed && _view.Length == 0 && state is { Feedback.Length: >0 } &&
@@ -572,8 +573,9 @@ internal sealed class BanbanClassroomWheel : Canvas
         _number.FontSize = collecting ? (multi ? 28 : 32) : 38;
         _number.LineHeight = collecting ? (multi ? 32 : 36) : 40;
         _number.Text = (view == "done" ? lesson!.QuestionCount : lesson?.Received ?? 0).ToString();
-        _total.Text = view == "done" ? "道题" : $"/ {lesson?.Expected ?? 0} 人";
-        AutomationProperties.SetName(_number,view == "done" ? $"{_number.Text} 道题" : $"已收 {_number.Text}，应收 {lesson?.Expected ?? 0} 人");
+        _total.Text = view == "done" ? "道题" : participants.HasValue ? "人已收" : $"/ {lesson?.Expected ?? 0} 人";
+        AutomationProperties.SetName(_number,view == "done" ? $"{_number.Text} 道题" : participants.HasValue ?
+            $"已收 {_number.Text} 人，本节已参与 {participants} 人" : $"已收 {_number.Text}，应收 {lesson?.Expected ?? 0} 人");
         _optionBadge.IsVisible = collecting && multi;
         if (_optionBadge.IsVisible) _currentOption.Text = $"收 {lesson!.Option} 项";
         var presentAgain = multi && lesson!.Option != "A" && lesson.Received == 0;
@@ -597,10 +599,11 @@ internal sealed class BanbanClassroomWheel : Canvas
         if (!Equals(ToolTip.GetTip(_chartDetails), chartAction)) ToolTip.SetTip(_chartDetails, chartAction);
         if (showChart)
         {
-            _answered.Text = $"已答 {answered} / {expected}";
+            _answered.Text = participants.HasValue ? $"已答 {answered} 人" : $"已答 {answered} / {expected}";
             _barMax.Text = $"{answered} 人";
             AutomationProperties.SetName(_barScale, $"条形刻度，0 到 {answered} 人，按完整作答人数统计");
-            AutomationProperties.SetName(_answered, $"已答 {answered} 人，应答 {expected} 人");
+            AutomationProperties.SetName(_answered, participants.HasValue ? $"已答 {answered} 人，截至本轮已参与 {participants} 人" :
+                $"已答 {answered} 人，应答 {expected} 人");
         }
         _heading.FontSize = _bars.IsVisible || collecting && multi ? 13 : collecting || view == "done" ? 15 : hasResult ? 16 : 17;
         _heading.LineHeight = _bars.IsVisible || collecting && multi ? 16 : collecting || hasResult || view == "done" ? 20 : 22;
@@ -630,7 +633,7 @@ internal sealed class BanbanClassroomWheel : Canvas
         // The shortcut menu also reads this fraction when a tool covers the classroom face.
         Progress.IsVisible = collecting || hasResult;
         var hasParticipation = phase is "collect" or "paused" or "result" || hasResult;
-        Progress.Fraction = !failed && hasParticipation && expected > 0 ? Math.Clamp((double)answered / expected, 0, 1) : null;
+        Progress.Fraction = !failed && hasParticipation && !participants.HasValue && expected > 0 ? Math.Clamp((double)answered / expected, 0, 1) : null;
         if (_lessonActions.IsVisible)
         {
             _homeVoice.IsVisible = _settings.IsVisible = !collecting;
@@ -685,6 +688,17 @@ internal sealed class BanbanClassroomWheel : Canvas
         _lessonPrimary.SetFace(lesson.Label, changingOption ? "下一项" : lesson.Label, glyph, quiet: changingOption);
         ToolTip.SetTip(_lessonPrimary, lesson.Label);
         int pending = lesson.Missing.Length;
+        if (lesson.ParticipantCount is int participants && (lesson.Number > 1 || pending == 0))
+        {
+            var note = participants == 0 ? "等待举卡" : $"本节已参与 {participants} 人";
+            if (pending > 0) note += $"，待收 {pending} 人";
+            else if (participants > 0 && lesson.Expected == 0) note += "，全员免答";
+            var showCount = lesson.Number > 1 && participants > 0;
+            _lessonSide.SetFace(note + "，查看卡号", showCount ? "本节" : "卡号", "list-checks",
+                tally: showCount ? participants : null);
+            ToolTip.SetTip(_lessonSide, note);
+            return;
+        }
         string status = lesson.Expected == 0 ? "全员免答" : pending > 0 ? $"待收 {pending} 人" : "已收齐";
         _lessonSide.SetFace(status + "，查看卡号", pending > 0 ? "待收" : lesson.Expected == 0 ? "免答" : "收齐",
             pending > 0 ? "list-checks" : "check", tally: pending > 0 ? pending : null);

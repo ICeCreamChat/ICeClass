@@ -276,7 +276,7 @@ internal sealed class BanbanToolSector : Button
         finally { ClickedCard = _pressedDot = null; }
     }
 
-    internal void Place(int index, int count)
+    internal void Place(double index, int count)
     {
         // Clockwise from twelve for a full ring, left to right across six for the footer.
         var sweep = _band switch {
@@ -306,7 +306,9 @@ internal sealed class BanbanToolSector : Button
             path.QuadraticBezierTo(Polar(OuterRadius, start), first);
             path.EndFigure(true);
         }
-        var legend = Polar(_legendRadius, angle);
+        // The settings rings with a card selector straddle twelve o'clock. Keep their upright
+        // captions clear of the inner circle in the two narrow top sectors.
+        var legend = Polar(_band == Band.Setup && !double.IsInteger(index) ? 86 : _legendRadius, angle);
         // Upright side labels need room above the narrowing outer chord.
         if (_band is Band.Footer or Band.ReaderFooter && count == 3 && index != 1)
             legend = new Point(legend.X, legend.Y - 6);

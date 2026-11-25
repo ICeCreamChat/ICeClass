@@ -17,6 +17,8 @@ def initial_session(snapshot):
     for key in ('rosterRevision', 'cardRevision'):
         if key in snapshot:
             state[key] = snapshot[key]
+    if snapshot.get('attendanceMode') == 'scanned':
+        state.update(attendanceMode='scanned', roster=[])
     state.update(seq=0, endedAt=None, questions=[], currentQuestionId=None,
                  currentRoundId=None, source='board', sourceId='board', generation=1)
     return state
@@ -37,6 +39,8 @@ def public_state(session, class_name):
             'ended': session['endedAt'] is not None}
     if r and 'noCardPolicy' in r:
         result['noCardPolicy'] = r['noCardPolicy']
+    if session.get('attendanceMode') == 'scanned':
+        result['participantCount'] = len(session['roster'])
     if q and q['type'] == 'multiple':
         result.update(activeOption=r['activeOption'] if r else None,
                       optionReceived=sum(r['activeOption'] in a['choices'] for a in answers.values()) if r else 0)
@@ -103,6 +107,8 @@ def replay(snapshot, events, *, old=None, wanted=(), class_name='', check_phone=
                        'status': 'collecting', 'answers': {}, 'exempt': []}
             if 'noCardPolicy' in event:
                 created['noCardPolicy'] = event['noCardPolicy']
+            if state.get('attendanceMode') == 'scanned':
+                created['participantCount'] = len(state['roster'])
             if q['type'] == 'multiple':
                 created['activeOption'] = 'A'
             q['rounds'].append(created)
@@ -112,6 +118,10 @@ def replay(snapshot, events, *, old=None, wanted=(), class_name='', check_phone=
                 fail('确认作答时轮次没有有效采集许可。')
             number = integer(p.get('cardNumber'), '纸卡编号', 1, 157)
             student = next((s for s in state['roster'] if s['cardNumber'] == number), None)
+            if student is None and state.get('attendanceMode') == 'scanned':
+                student = {'id': f"card:{state['id']}:{number}", 'name': f'{number} 号卡', 'cardNumber': number}
+                state['roster'].append(student)
+                r['participantCount'] = len(state['roster'])
             option = p.get('option')
             multi = q['type'] == 'multiple'
             if not student or not isinstance(option, str) or len(option) != 1 or option not in ('AB' if multi else 'ABCD'[:len(q['options'])]):

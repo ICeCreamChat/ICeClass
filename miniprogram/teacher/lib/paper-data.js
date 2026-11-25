@@ -24,6 +24,7 @@ function readState(value, sessionId) {
       value.questionType === 'boolean' && value.optionCount !== 2 ||
       value.roundId === null && value.roundStatus !== null) fail('教室课堂状态不完整，请刷新核对。');
   if (value.questionType === 'multiple' && (!integer(value.optionReceived, 0, value.expected) || value.roundId && !LETTERS.slice(0, value.optionCount).includes(value.activeOption))) fail('多选收答项无效，请刷新核对。');
+  if (value.participantCount !== undefined && !integer(value.participantCount, value.expected, 157)) fail('本节参与人数无效，请刷新核对。');
   return copy(value);
 }
 function contextKey(state) { return state ? [state.sessionId, state.questionId, state.roundId, state.generation, state.sourceId].join('/') : ''; }

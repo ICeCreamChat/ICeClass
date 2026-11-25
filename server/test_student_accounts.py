@@ -6,7 +6,7 @@ from unittest.mock import patch
 import app as service
 from homework import defaults
 from teacher_capabilities import actions, reads, undeclared_routes
-from test_card_quiz import CardQuizHttpCase, PNG, question
+from test_card_quiz import CardQuizHttpCase, PNG, STAMP, question
 from test_card_quiz_multiple import MultipleFixture
 from student_accounts import StudentAccounts
 from management import Management
@@ -93,6 +93,71 @@ class StudentAccountsTests(CardQuizHttpCase):
             self.assertIn(key, actions(self.app))
         self.assertEqual(actions(self.app)['student.accounts.create'].workflow, 'private-result')
         self.assertEqual(actions(self.app)['student.accounts.reset'].workflow, 'private-result')
+
+    async def number_cards(self, first=1, last=2, *, reset=False, state=None, headers=None, status=200):
+        versions = self.versions(state or await self.state())
+        return await self.api('POST', self.path + '/number-cards' + ('/reset' if reset else ''),
+                              {**versions, 'firstNumber': first, 'lastNumber': last}, status, headers)
+
+    async def test_number_cards_issue_reuse_reset_and_isolate_named_accounts(self):
+        before = await self.state()
+        await self.number_cards(first=0, status=400)
+        _, staff = await self.account('number-readonly', teaching=[self.cid])
+        await self.number_cards(headers=staff, status=403)
+        await self.number_cards(headers=self.dh, status=401)
+        issued = await self.number_cards(state=before)
+        first, second = issued['credentials']
+        self.assertTrue(all(c['numberCard'] for c in (first, second)))
+        self.assertEqual([c['cardNumber'] for c in (first, second)], [1, 2])
+        self.assertEqual(first['username'], '01001001')
+        self.assertEqual((await self.state())['students'], before['students'])
+        self.assertEqual((await self.number_cards())['credentials'], [])
+        await self.number_cards(state=before, status=409)
+        self.assertEqual(len((await self.number_cards(2, 3))['credentials']), 1)
+        old, other = await self.signin(first), await self.signin(second)
+        _, own = await self.student('POST', '/card', {'password': first['password']}, headers=old)
+        self.assertEqual(own['card'], first)
+        await self.student('PUT', '/password', {'currentPassword': first['password'], 'newPassword': '987654'},
+                           headers=old, status=403)
+        await self.api('POST', self.path + '/link', {**self.versions(await self.state()),
+                       'studentId': 's1', 'username': first['username']}, 404)
+        replacement = (await self.number_cards(1, 1, reset=True))['credentials'][0]
+        self.assertEqual(replacement['username'], first['username'])
+        self.assertNotEqual(replacement['password'], first['password'])
+        await self.student('GET', '/report', headers=old, status=401)
+        await self.signin(replacement)
+        await self.student('GET', '/report', headers=other)
+        self.assertNotIn('password', json.dumps(await self.state()))
+
+    async def test_number_card_only_its_latest_class_lesson_with_no_history_fallback(self):
+        issue = await self.number_cards()
+        one, two = [await self.signin(c) for c in issue['credentials']]
+        named = await self.signin((await self.generate())['credentials'][0])
+        def op(action, **payload):
+            return {'action': action, 'payload': payload}
+        seen = [op('add_question', **question()), op('start_round'), op('answer', cardNumber=1, option='A'),
+                op('end_round'), op('add_question', **question(answer='B')), op('start_round'),
+                op('answer', cardNumber=2, option='A'), op('end_session')]
+        lesson = self.journal(seen, sid='scanned-first', card_mode='scanned')
+        await self.sync(self.batch(lesson))
+        _, result = await self.student('GET', '/report?classId=other&studentId=s1&cardNumber=1', headers=two)
+        self.assertEqual([(r['questionNumber'], r['status']) for r in result['records']], [(2, 'wrong')])
+        self.assertEqual((result['totals']['wrong'], result['totals']['abstained']), (1, 0))
+        personal = self.journal(seen, sid='named-next', started=STAMP+20000)
+        await self.sync(self.batch(personal))
+        _, result = await self.student('GET', '/report', headers=one)
+        self.assertEqual([s['id'] for s in result['sessions']], ['scanned-first'])
+        self.assertEqual((result['totals']['correct'], result['totals']['abstained']), (1, 1))
+        _, result = await self.student('GET', '/report', headers=named)
+        self.assertEqual([s['id'] for s in result['sessions']], ['named-next'])
+        later = self.journal(seen[:3] + [op('end_session')], sid='scanned-latest', started=STAMP+40000, card_mode='scanned')
+        await self.sync(self.batch(later))
+        for query in ('', '?subjectId=math', '?sessionId=scanned-first'):
+            _, result = await self.student('GET', '/report'+query, headers=two)
+            self.assertEqual((result['sessions'], result['records']), ([], []))
+        _, result = await self.student('GET', '/report?subjectId=english', headers=one)
+        self.assertEqual(result['sessions'], [])
+        self.assertEqual(len((await self.api('GET', '/sessions/scanned-first'))['session']['roster']), 2)
 
     async def reset(self, ids, *, state=None, cid=None, status=200, headers=None):
         current = state or await self.state(cid, headers)

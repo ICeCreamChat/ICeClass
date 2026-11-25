@@ -231,12 +231,13 @@ internal sealed class BanbanCardOverview : Canvas
         }
         var status = panel.PendingOnly ? "待收" : lesson.Phase == "result" ? "已答" : "已收";
         var option = lesson.Kind == "multiple" && lesson.Phase != "result" ? lesson.Option + " 项" : "";
-        _title.Text = panel.Overview ? option + (lesson.Expected == 0 ? "全员免答" : panel.PendingOnly && lesson.Missing.Length == 0 ? "已收齐" : status) :
+        _title.Text = panel.Overview ? option + (lesson.ParticipantCount == 0 ? (lesson.Phase == "result" ? "本轮未收到卡" : "等待举卡") : lesson.Expected == 0 ? "全员免答" :
+            panel.PendingOnly && lesson.Missing.Length == 0 ? (lesson.ParticipantCount.HasValue ? "暂无待收" : "已收齐") : status) :
             option + (lesson.Phase == "result" ? "已封存" : panel.ReadOnly ? "只读" : "点卡免答");
         _title.FontSize = _title.Text.Length >= 7 ? 13 : 14;
         var count = panel.PendingOnly ? lesson.Missing.Length : lesson.Received;
         _count.Text = panel.Overview ? count.ToString() : pages > 1 ? (page + 1).ToString() : "卡号";
-        _total.Text = panel.Overview ? "/ " + lesson.Expected : pages > 1 ? "/ " + pages + " 页" : "";
+        _total.Text = panel.Overview ? (lesson.ParticipantCount.HasValue ? "人" : "/ " + lesson.Expected) : pages > 1 ? "/ " + pages + " 页" : "";
         _total.IsVisible = _total.Text.Length > 0 && (!panel.Overview || lesson.Expected > 0);
         _pageLabel.IsVisible = panel.Overview && pages > 1;
         _pageLabel.Text = _pageLabel.IsVisible ? $"{page + 1}/{pages}" : "";
@@ -262,7 +263,8 @@ internal sealed class BanbanCardOverview : Canvas
         }
         AutomationProperties.SetName(_back, "返回");
         var pageHint = $"第 {page + 1} 页，共 {pages} 页";
-        AutomationProperties.SetHelpText(_back, panel.Overview ? $"{_title.Text} {count}，应答 {lesson.Expected} 人，{pageHint}" : $"{pageHint}，{_title.Text}");
+        var population = lesson.ParticipantCount is int members ? $"截至本轮已参与 {members} 人" : $"应答 {lesson.Expected} 人";
+        AutomationProperties.SetHelpText(_back, panel.Overview ? $"{_title.Text} {count}，{population}，{pageHint}" : $"{pageHint}，{_title.Text}");
     }
 
     internal void FocusCard(int? number)

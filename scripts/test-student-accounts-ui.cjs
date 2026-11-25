@@ -97,6 +97,18 @@ async function setup(t,{width=1280,student=false,authenticated=false,canEdit=tru
             if(call.csrf!=='fixture')return reply(403,{error:'页面凭证已失效。'});
             if(!state.canEdit)return reply(403,{error:'没有本班名单管理权限。'});
             if(state.versionError||['revision','rosterRevision','cardRevision'].some(k=>body[k]!==state.accounts[k]))return reply(409,{error:'名单、卡号或账号版本冲突。'});
+            if(p.endsWith('/number-cards')){
+              state.accounts.numberCards ??= [];
+              const credentials=[];
+              for(let n=body.firstNumber;n<=body.lastNumber;n++){
+                if(state.accounts.numberCards.some(c=>c.cardNumber===n))continue;
+                const row={accountId:'card-'+n,cardNumber:n};
+                state.accounts.numberCards.push(row);
+                credentials.push({...row,numberCard:true,username:'01009'+String(n).padStart(3,'0'),password,classId:'c1',className:state.accounts.className});
+              }
+              if(credentials.length)state.accounts.revision++;
+              return reply(200,{...state.accounts,credentials});
+            }
             if(p.endsWith('/link')){
               if(state.linkDenied)return reply(403,{error:'没有原班管理权限，无法关联。'});
               const s=state.accounts.students.find(s=>s.studentId===body.studentId);
@@ -135,6 +147,20 @@ async function setup(t,{width=1280,student=false,authenticated=false,canEdit=tru
   return{state,page,context,origin,errors};
 }
 async function noOverflow(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No page-wide horizontal overflow');}
+test('number cards can be issued by keyboard and printed independently of the class roster',async t=>{
+  const {page,state}=await setup(t,{width:390});
+  await page.locator('[name=lastNumber]').fill('2');
+  await page.locator('[name=lastNumber]').press('Enter');
+  await page.locator('.cq-credentials').waitFor();
+  assert.equal(state.accounts.numberCards.length,2);
+  await page.addInitScript(()=>{window.print=()=>{};});
+  await page.locator('[data-cq-action=print-issued]').click();
+  const frame=page.frameLocator('.cq-issued-frame');
+  await frame.locator('.card-sheet').first().waitFor({state:'attached'});
+  assert.equal(await frame.locator('.card-sheet').count(),2);
+  assert.match(await frame.locator('.card-sheet').first().textContent(),/学生编号01009001/);
+  await noOverflow(page);
+});
 async function noPersistentPassword(page){
   assert.equal(await page.evaluate(()=>Object.values({...localStorage,...sessionStorage}).some(v=>/001234|009876|006789/.test(v))),false,'No credentials in browser storage');
   assert.equal(/[?&#](password|currentPassword|newPassword)=/.test(page.url()),false,'No password URL parameters');

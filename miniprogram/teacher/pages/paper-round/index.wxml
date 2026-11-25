@@ -18,8 +18,9 @@
     <text class="section-heading">{{state ? state.className : className}} · 课堂连接</text>
     <view class="status">{{roundText || '请在教室端确认本手机来源后刷新连接。'}}</view>
     <block wx:if="{{state}}">
-      <view class="paper-metrics"><view><text class="muted">当前题目</text><text class="paper-number">第 {{state.questionNumber}} 题</text></view><view><text class="muted">完整作答 / 应答</text><text class="paper-number">{{state.received}} / {{state.expected}}</text></view></view>
-      <view wx:if="{{state.questionType === 'multiple'}}" class="status">多选逐项收答：当前 {{state.activeOption || '尚未开始'}} 项，已收 {{state.optionReceived}} / {{state.expected}} 人。卡面 A 表示选、B 表示不选；各项收齐才是完整作答。</view>
+      <view class="paper-metrics"><view><text class="muted">当前题目</text><text class="paper-number">第 {{state.questionNumber}} 题</text></view><view><text class="muted">{{state.participantCount != null ? '本题已收' : '完整作答 / 应答'}}</text><text class="paper-number">{{state.received}}{{state.participantCount != null ? ' 人' : ' / ' + state.expected}}</text></view></view>
+      <view wx:if="{{state.participantCount != null && state.questionNumber > 1}}" class="status">本节已参与 {{state.participantCount}} 人</view>
+      <view wx:if="{{state.questionType === 'multiple'}}" class="status">当前 {{state.activeOption || '尚未开始'}} 项，已收 {{state.optionReceived}} 人。{{state.noCardPolicy === 'abstain' ? '选才举 A，改为不选可举 B。' : '举 A 表示选，举 B 表示不选。'}}</view>
       <view wx:if="{{paused}}" class="status">暂停轮次只能由教室端恢复。也可封存本轮，再开始新一轮收答。</view>
     </block>
     <view class="button-row"><button class="secondary" bindtap="refreshRoom" loading="{{loading}}" disabled="{{busy || loading || sessionExpired}}">刷新课堂与回执</button><button class="secondary" bindtap="disconnect" disabled="{{busy}}">断开本机</button></view>
@@ -45,7 +46,7 @@
 
   <view wx:if="{{pairId && state && !state.ended}}" class="panel">
     <text class="section-heading">教师手工录入</text>
-    <text class="muted">按本课堂名单中的纸卡号录入。多选题只录入当前分项，A 表示选，B 表示不选。</text>
+    <text class="muted">按学生举起的卡号录入。多选题只录入当前项，A 表示选，B 表示不选。</text>
     <label class="field paper-gap"><text class="label">纸卡编号</text><input class="input" type="number" maxlength="3" value="{{cardNumber}}" bindinput="inputCard" disabled="{{busy || pendingCount || !collecting}}" aria-label="手工录入的纸卡编号，1到157" placeholder="1-157" /></label>
     <view class="field"><text class="label">本次作答</text><picker range="{{answerNames}}" value="{{answerIndex}}" bindchange="chooseAnswer" disabled="{{busy || pendingCount || !collecting}}" aria-label="手工录入本次作答"><view class="picker">{{answerNames[answerIndex] || '尚未开始收答'}}</view></picker></view>
     <button class="primary" bindtap="manualAnswer" disabled="{{busy || loading || pendingCount || !collecting || !cardNumber || sessionExpired}}">提交本次作答</button>

@@ -165,24 +165,38 @@
     const expected = state.expected;
     const label = perOption ? '本项已收' : multiple && !state.noCardPolicy ? '整题完成' : '已收';
     const ring = $('progress-ring');
-    ring.hidden = !state.questionId || !expected;
+    const scanned = state.participantCount !== undefined;
+    ring.hidden = !state.questionId || !scanned && !expected;
     ring.classList.toggle('three-digits', expected >= 100);
-    ring.setAttribute('aria-label', label);
-    ring.setAttribute('aria-valuemax', expected || 1);
-    ring.setAttribute('aria-valuenow', received);
-    ring.setAttribute('aria-valuetext', received + ' / ' + expected + ' 人');
+    ring.setAttribute('role', scanned ? 'status' : 'progressbar');
+    ring.setAttribute('aria-label', scanned ? label + ' ' + received + ' 人' : label);
+    if (scanned) {
+      for (const attribute of ['aria-valuemin','aria-valuemax','aria-valuenow','aria-valuetext']) ring.removeAttribute(attribute);
+    } else {
+      ring.setAttribute('aria-valuemin', '0');
+      ring.setAttribute('aria-valuemax', expected || 1);
+      ring.setAttribute('aria-valuenow', received);
+      ring.setAttribute('aria-valuetext', received + ' / ' + expected + ' 人');
+    }
     setText('received', String(received));
-    setText('expected', ' / ' + expected);
-    setText('ring-label', !multiple && inRound && expected && received === expected ? '已收齐' : label);
+    setText('expected', scanned ? ' 人' : ' / ' + expected);
+    setText('ring-label', !scanned && !multiple && inRound && expected && received === expected ? '已收齐' : label);
     const arc = $('progress-arc');
-    arc.toggleAttribute('hidden', !received || !expected);
+    arc.toggleAttribute('hidden', scanned || !received || !expected);
     arc.setAttribute('stroke-dashoffset', expected ? 100 * (1 - received / expected) : 100);
 
     const sealed = state.roundStatus === 'closed' && state.noCardPolicy === 'abstain';
-    $('capture-progress').hidden = !state.questionId || (expected > 0 && (received === expected || (!sealed && (!inRound || perOption))));
-    setText('capture-progress', !expected ? '全员免答' : (sealed ? '弃权 ' : '待收 ') + (expected - received) + ' 人');
+    const notes = [];
+    if (scanned && state.questionNumber > 1) notes.push('本节已参与 ' + state.participantCount + ' 人');
+    if (scanned && !state.participantCount) notes.push(sealed ? '本轮未收到卡' : '等待举卡');
+    else if (!expected) notes.push('全员免答');
+    else if (expected > received && (sealed || (inRound && (scanned || !perOption)))) {
+      notes.push((sealed ? '弃权 ' : '待收 ') + (expected - received) + ' 人');
+    }
+    $('capture-progress').hidden = !state.questionId || !notes.length;
+    setText('capture-progress', notes.join(' · '));
     $('multi-progress').hidden = !perOption || !expected;
-    setText('multi-progress', perOption ? (state.noCardPolicy === 'abstain' ? '本题已举卡 ' : '整题完成 ') + state.received + ' / ' + expected : '');
+    setText('multi-progress', perOption ? (state.noCardPolicy === 'abstain' ? '本题已举卡 ' : '整题完成 ') + state.received + (scanned ? ' 人' : ' / ' + expected) : '');
   }
 
   function showEditor(multiple, editable) {
