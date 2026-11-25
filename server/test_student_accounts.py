@@ -1,7 +1,11 @@
 """Student identity, credentials and personal reports through real HTTP and SQLite."""
 import asyncio
 import json
+from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
+
+from aiohttp.test_utils import TestClient, TestServer
 
 import app as service
 from homework import defaults
@@ -112,6 +116,7 @@ class StudentAccountsTests(CardQuizHttpCase):
         self.assertEqual([c['cardNumber'] for c in (first, second)], [1, 2])
         self.assertEqual(first['username'], '26110101')
         self.assertEqual((await self.state())['students'], before['students'])
+        self.assertEqual([c['username'] for c in (await self.state(headers=staff))['numberCards']], [None, None])
         self.assertEqual((await self.number_cards())['credentials'], [])
         await self.number_cards(state=before, status=409)
         with patch('student_accounts.today', return_value='2027-11-25'):
@@ -132,31 +137,238 @@ class StudentAccountsTests(CardQuizHttpCase):
         await self.student('GET', '/report', headers=other)
         self.assertNotIn('password', json.dumps(await self.state()))
 
-    async def test_year_and_legacy_number_authenticate_the_same_card(self):
-        legacy = {'username': '01009001', 'password': '075481'}
+    async def restart_accounts_service(self):
+        await self.client.close()
+        root = Path(self.temp.name)
+        self.app = service.create_app(root / 'test.db', root / 'receiver_release')
+        self.db = self.app[service.STORE_KEY]
+        self.client = TestClient(TestServer(self.app))
+        await self.client.start_server()
+
+    def legacy_number_card(self, number, username, *, issued_at='2026-09-01T08:00:00+08:00', cid=None):
+        aid = f'legacy-{number}'
+        password = f'{100000 + number:06d}'
+        timestamp = int(datetime.fromisoformat(issued_at).timestamp() * 1000)
         self.db.run('''INSERT INTO student_accounts
             (id,username,password_hash,class_id,student_id,holder_card_number,created_at,updated_at)
-            VALUES(?,?,?,?,?,1,1,1)''',
-                    ('legacy-card', legacy['username'], service.hash_password(legacy['password']), self.cid, 'holder'))
-        old_session = await self.signin(legacy)
-        self.db.run('UPDATE classes SET name=? WHERE id=?', ('高二（9）班', self.cid))
-        with patch('student_accounts.today', return_value='2028-01-15'):
-            second = (await self.number_cards(first=2, last=2))['credentials'][0]
-        self.assertEqual(second['username'], '26120902')
-        year_card = dict(legacy, username='26120901')
-        for session in (old_session, await self.signin(legacy), await self.signin(year_card)):
-            _, data = await self.student('GET', '/session', headers=session)
-            self.assertEqual((data['student']['id'], data['student']['username']), ('legacy-card', year_card['username']))
-            _, printed = await self.student('POST', '/card', {'password': legacy['password']}, headers=session)
-            self.assertEqual(printed['card']['username'], year_card['username'])
-            _, report = await self.student('GET', '/report', headers=session)
-            self.assertEqual(report['accountId'], 'legacy-card')
-        updated = (await self.number_cards(1, 1, reset=True))['credentials'][0]
-        self.assertEqual(updated['username'], year_card['username'])
-        for name in (legacy['username'], year_card['username']):
-            await self.student('POST', '/login', dict(legacy, username=name), status=401)
-            await self.signin(dict(updated, username=name))
+            VALUES(?,?,?,?,?,?,?,?)''',
+                    (aid, username, service.hash_password(password), cid or self.cid, f'holder-{number}',
+                     number, timestamp, timestamp))
+        return {'accountId': aid, 'username': username, 'password': password}
+
+    def historical_student_session(self, aid):
+        token, csrf = service.random_token(), service.random_token()
+        now = service.now_ms()
+        self.db.run('''INSERT INTO student_sessions(token_hash,account_id,csrf_token,expires_at,created_at)
+            VALUES(?,?,?,?,?)''', (service.sha256(token), aid, csrf, now + 86_400_000, now))
+        return {'Cookie': 'iceclass_student_session=' + token, 'X-CSRF-Token': csrf}
+
+    async def assert_invalid_login(self, username, credential):
+        response = await self.client.post('/api/student/login', json={
+            'username': username, 'password': credential['password']})
+        self.assertEqual(response.status, 401, username)
+        self.assertEqual((await response.json())['code'], 'invalid_credentials')
+        self.assertNotIn('Set-Cookie', response.headers)
+
+    async def test_both_printed_aliases_retired_for_all_sixty_cards(self):
+        self.db.run('UPDATE classes SET name=? WHERE id=?', ('高一（9）班', self.cid))
+        with patch('student_accounts.today', return_value='2026-11-25'):
+            issued = await self.number_cards(1, 60)
+        cards = issued['credentials']
+        self.assertEqual(len(cards), 60)
+        self.db.run("""CREATE TABLE IF NOT EXISTS student_card_login_aliases (
+            username TEXT PRIMARY KEY CHECK(username GLOB '[0-9][0-9]0[0-9][0-9][0-9][0-9][0-9]'),
+            account_id TEXT NOT NULL REFERENCES student_accounts(id) ON DELETE CASCADE)""")
+        with self.db.transaction():
+            for card in cards:
+                for prefix in ('01009', '26009'):
+                    self.db.run('INSERT INTO student_card_login_aliases VALUES(?,?)',
+                                (f'{prefix}{card["cardNumber"]:03d}', card['accountId']))
+        mixed = self.historical_student_session(cards[0]['accountId'])
+        current = await self.signin(cards[-1])
+        accounts = self.db.all('SELECT * FROM student_accounts ORDER BY id')
+        await self.restart_accounts_service()
+        self.assertTrue(self.db.all('SELECT * FROM student_accounts ORDER BY id') == accounts)
+        self.assertIsNone(self.db.one("SELECT 1 FROM sqlite_master WHERE name='student_card_login_aliases'"))
+        state = await self.state()
+        self.assertEqual(state['revision'], issued['revision'])
+        self.assertEqual([(row['cardNumber'], row['username']) for row in state['numberCards']],
+                         [(n, f'261109{n:02d}') for n in range(1, 61)])
+        self.assertNotIn('password', json.dumps(state))
+        for session in (mixed, current):
+            _, result = await self.student('GET', '/session', headers=session)
+            self.assertTrue(result['authenticated'])
+        for n, card in enumerate(cards, 1):
+            self.assertEqual(card['username'], f'261109{n:02d}')
+            for prefix in ('01009', '26009'):
+                await self.assert_invalid_login(f'{prefix}{n:03d}', card)
+            session = await self.signin(card)
+            _, result = await self.student('GET', '/session', headers=session)
+            self.assertEqual(result['student']['id'], card['accountId'])
+        self.assertEqual(self.db.one('SELECT COUNT(*) n FROM student_sessions')['n'], 62)
+        replacement = (await self.number_cards(1, 1, reset=True))['credentials'][0]
+        self.assertEqual((replacement['username'], replacement['accountId']), ('26110901', cards[0]['accountId']))
+        for alias in ('01009001', '26009001'):
+            await self.assert_invalid_login(alias, replacement)
+        await self.assert_invalid_login(replacement['username'], cards[0])
+        await self.signin(replacement)
+        await self.student('GET', '/report', headers=mixed, status=401)
+        await self.student('GET', '/report', headers=current)
+
+    async def test_old_primary_migrates_on_startup_with_password_report_and_history_intact(self):
+        self.db.run('UPDATE classes SET name=? WHERE id=?', ('高一（9）班', self.cid))
+        named = (await self.generate(code='109'))['credentials'][0]
+        personal = await self.signin(named)
+        old = self.legacy_number_card(1, '01009001')
+        last = self.legacy_number_card(157, '26009157')
+        old_session = self.historical_student_session(old['accountId'])
+        identity = '''SELECT id,password_hash,class_id,student_id,holder_card_number,created_at,enabled
+            FROM student_accounts ORDER BY id'''
+        before = self.db.all(identity)
+        ops = [{'action': 'add_question', 'payload': question()}, {'action': 'start_round'},
+               {'action': 'answer', 'payload': {'cardNumber': 1, 'option': 'A'}}, {'action': 'end_session'}]
+        for i in range(2):
+            await self.sync(self.batch(self.journal(ops, sid=f'holder-lesson-{i}', card_mode='scanned',
+                                                    started=STAMP + 20000 * i)))
+        history = self.db.all('SELECT * FROM card_quiz_sessions ORDER BY id')
+        events = self.db.all('SELECT * FROM card_quiz_events ORDER BY session_id,seq')
+        revision = (await self.state())['revision']
+        with patch('student_accounts.today', return_value='2026-11-25'):
+            await self.restart_accounts_service()
+        self.assertTrue(self.db.all(identity) == before)
+        self.assertEqual(self.db.all('SELECT * FROM card_quiz_sessions ORDER BY id'), history)
+        self.assertEqual(self.db.all('SELECT * FROM card_quiz_events ORDER BY session_id,seq'), events)
         await self.student('GET', '/report', headers=old_session, status=401)
+        _, named_state = await self.student('GET', '/session', headers=personal)
+        self.assertEqual(named_state['student']['username'], named['username'])
+        await self.signin(named)
+        for card, number in ((old, 1), (last, 157)):
+            for prefix in ('01009', '26009'):
+                await self.assert_invalid_login(f'{prefix}{number:03d}', card)
+            username = f'261109{number:02d}'
+            session = await self.signin(dict(card, username=username))
+            _, info = await self.student('POST', '/card', {'password': card['password']}, headers=session)
+            self.assertEqual((info['card']['accountId'], info['card']['username']), (card['accountId'], username))
+            if number == 1:
+                _, report = await self.student('GET', '/report', headers=session)
+                self.assertEqual(report['accountId'], old['accountId'])
+                self.assertEqual([(r['sessionId'], r['status']) for r in report['records']],
+                                 [('holder-lesson-1', 'correct')])
+        migrated = self.db.all('SELECT * FROM student_accounts ORDER BY id')
+        self.assertEqual((await self.state())['revision'], revision + 1)
+        with patch('student_accounts.today', return_value='2028-11-25'):
+            await self.restart_accounts_service()
+            repeat = await self.number_cards(1, 1)
+        self.assertEqual((repeat['credentials'], repeat['revision']), ([], revision + 1))
+        self.assertEqual([c['username'] for c in repeat['numberCards']], ['26110901', '261109157'])
+        self.assertTrue(self.db.all('SELECT * FROM student_accounts ORDER BY id') == migrated)
+        self.assertEqual(self.db.all('PRAGMA foreign_key_check'), [])
+
+    async def test_overlapping_issue_migrates_existing_card_and_only_creates_missing_card(self):
+        self.db.run('UPDATE classes SET name=? WHERE id=?', ('高二（9）班', self.cid))
+        old = self.legacy_number_card(1, '02009001', issued_at='2028-01-15T08:00:00+08:00')
+        original = self.db.one('SELECT password_hash FROM student_accounts WHERE id=?', (old['accountId'],))
+        await self.assert_invalid_login(old['username'], old)
+        with patch('student_accounts.today', return_value='2029-11-25'):
+            issued = await self.number_cards(1, 2)
+        self.assertEqual([c['username'] for c in issued['credentials']], ['26120902'])
+        self.assertEqual([c['username'] for c in issued['numberCards']], ['26120901', '26120902'])
+        self.assertEqual(issued['numberCards'][0]['accountId'], old['accountId'])
+        self.assertTrue(self.db.one('SELECT password_hash FROM student_accounts WHERE id=?', (old['accountId'],)) == original)
+        await self.signin(dict(old, username='26120901'))
+        await self.assert_invalid_login(old['username'], old)
+        await self.signin(issued['credentials'][0])
+
+    async def test_legacy_only_class_keeps_first_school_year_across_migration_and_reissue(self):
+        self.db.run('UPDATE classes SET name=? WHERE id=?', ('高一（9）班', self.cid))
+        later = self.legacy_number_card(1, '01009001', issued_at='2027-10-12T08:00:00+08:00')
+        first = self.legacy_number_card(3, '01009003', issued_at='2026-08-01T00:01:00+08:00')
+        self.db.run('UPDATE student_accounts SET updated_at=(SELECT MAX(created_at) FROM student_accounts)')
+        identity = 'SELECT id,student_id,password_hash,created_at FROM student_accounts ORDER BY id'
+        original = self.db.all(identity)
+        with patch('student_accounts.today', return_value='2028-11-25'):
+            await self.restart_accounts_service()
+            migrated = await self.state()
+        self.assertEqual([(r['accountId'], r['username']) for r in migrated['numberCards']],
+                         [(later['accountId'], '26110901'), (first['accountId'], '26110903')])
+        self.assertTrue(self.db.all(identity) == original)
+        for card, username in ((later, '26110901'), (first, '26110903')):
+            await self.assert_invalid_login(card['username'], card)
+            await self.signin(dict(card, username=username))
+        with patch('student_accounts.today', return_value='2029-11-25'):
+            issued = await self.number_cards(1, 3)
+            self.assertEqual([c['username'] for c in issued['credentials']], ['26110902'])
+            snapshot = self.db.all('SELECT * FROM student_accounts ORDER BY id')
+            await self.restart_accounts_service()
+            repeated = await self.number_cards(1, 3)
+        self.assertEqual((repeated['credentials'], repeated['revision']), ([], issued['revision']))
+        self.assertTrue(self.db.all('SELECT * FROM student_accounts ORDER BY id') == snapshot)
+
+    async def test_old_cards_use_grade_and_class_number_at_issue_after_promotion(self):
+        other = await self.other_class()
+        first = self.legacy_number_card(1, '01001001')
+        second = self.legacy_number_card(2, '02008002', cid=other)
+        issued_at = self.db.one('SELECT created_at FROM student_accounts WHERE id=?', (first['accountId'],))['created_at']
+        self.db.run("UPDATE audit_events SET created_at=? WHERE action='class.create'", (issued_at - 1,))
+        response, _ = await self.json_request('POST', '/api/classes/rename-batch', {'changes': [
+            {'id': self.cid, 'name': '高二（9）班'}]}, csrf=True)
+        self.assertEqual(response.status, 200)
+        response, _ = await self.json_request('PATCH', '/api/classes/' + other, {'name': '高三（7）班'}, csrf=True)
+        self.assertEqual(response.status, 200)
+        promoted_at = int(datetime.fromisoformat('2027-09-01T08:00:00+08:00').timestamp() * 1000)
+        self.db.run("UPDATE audit_events SET created_at=? WHERE action IN ('class.rename','class.update')", (promoted_at,))
+        with patch('student_accounts.today', return_value='2028-11-25'):
+            await self.restart_accounts_service()
+        for cid, card, username in ((self.cid, first, '26110101'), (other, second, '25120802')):
+            current, = (await self.state(cid))['numberCards']
+            self.assertEqual((current['accountId'], current['username']), (card['accountId'], username))
+            await self.signin(dict(card, username=username))
+
+    async def test_unusable_first_issue_time_defers_old_class_without_guessing_a_year(self):
+        old = self.legacy_number_card(1, '01001001')
+        self.db.run('UPDATE student_accounts SET created_at=0 WHERE id=?', (old['accountId'],))
+        original = self.db.one('SELECT * FROM student_accounts WHERE id=?', (old['accountId'],))
+        with patch('student_accounts.today', return_value='2028-11-25'):
+            with self.assertLogs('iceclass', 'WARNING'):
+                await self.restart_accounts_service()
+            await self.number_cards(1, 2, status=409)
+        self.assertTrue(self.db.all('SELECT * FROM student_accounts') == [original])
+        await self.assert_invalid_login(old['username'], old)
+
+    async def test_migration_conflict_preserves_class_and_noop_issue_retries_with_existing_prefix(self):
+        first = self.legacy_number_card(1, '01001001')
+        second = self.legacy_number_card(2, '01001002')
+        old_session = self.historical_student_session(first['accountId'])
+        # 26 + 110 + 102 is a valid named student's eight-digit login.
+        person = {'username': '26110102', 'password': '314159'}
+        self.db.run('''INSERT INTO student_accounts(id,username,password_hash,class_id,student_id,created_at,updated_at)
+            VALUES('person',?,?,?,'named',1,1)''', (person['username'], service.hash_password(person['password']), self.cid))
+        original = self.db.all('SELECT * FROM student_accounts ORDER BY id')
+        with patch('student_accounts.today', return_value='2026-11-25'):
+            with self.assertLogs('iceclass', 'WARNING') as warnings:
+                await self.restart_accounts_service()
+            self.assertIn(self.cid, warnings.output[0])
+            await self.number_cards(1, 2, status=409)
+        self.assertTrue(self.db.all('SELECT * FROM student_accounts ORDER BY id') == original)
+        self.assertEqual([c['username'] for c in (await self.state())['numberCards']], [None, None])
+        await self.assert_invalid_login(first['username'], first)
+        await self.assert_invalid_login(second['username'], second)
+        await self.assert_invalid_login(person['username'], second)
+        await self.signin(person)
+        await self.student('GET', '/report', headers=old_session, status=401)
+        # A previously issued canonical card fixes the class prefix even after a rename or across years.
+        self.db.run("""INSERT INTO student_accounts
+            (id,username,password_hash,class_id,student_id,holder_card_number,created_at,updated_at)
+            VALUES('issued','25110903',?,?,'holder-3',3,1,1)""", (service.hash_password('271828'), self.cid))
+        with patch('student_accounts.today', return_value='2029-11-25'):
+            repeat = await self.number_cards(1, 2)
+        self.assertEqual(repeat['credentials'], [])
+        self.assertEqual(repeat['revision'], 1)
+        for n, card in enumerate((first, second), 1):
+            await self.signin(dict(card, username=f'251109{n:02d}'))
+            await self.assert_invalid_login(card['username'], card)
+        await self.student('GET', '/report', headers=old_session, status=401)
+        await self.signin(person)
 
     async def test_year_prefix_owned_by_another_class_is_not_assigned(self):
         self.db.run("INSERT INTO classes(id,name,enabled,created_at,updated_at) VALUES('other-class','旧班',1,1,1)")

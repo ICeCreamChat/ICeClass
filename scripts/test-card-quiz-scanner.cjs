@@ -3,10 +3,90 @@ const assert=require('node:assert/strict');
 const Cards=require('../web_controller/card-quiz/cards.js');
 const Scanner=require('../web_controller/card-quiz/scanner.js');
 const AR=require('../web_controller/card-quiz/vendor/aruco.js');
+const CV=require('../web_controller/card-quiz/vendor/cv.js');
 const positions={A:[{x:0,y:0},{x:10,y:0},{x:10,y:10},{x:0,y:10}],D:[{x:10,y:0},{x:10,y:10},{x:0,y:10},{x:0,y:0}],C:[{x:10,y:10},{x:0,y:10},{x:0,y:0},{x:10,y:0}],B:[{x:0,y:10},{x:0,y:0},{x:10,y:0},{x:10,y:10}]};
 const marker=(option='A',id=0,hammingDistance=0)=>({id,corners:positions[option],hammingDistance});
 function image(matrix){const scale=20,size=matrix.length*scale,data=new Uint8ClampedArray(size*size*4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=(y*size+x)*4;data[i]=data[i+1]=data[i+2]=matrix[Math.floor(y/scale)][Math.floor(x/scale)]?255:0;data[i+3]=255;}return{width:size,height:size,data};}
 const rotate=m=>m[0].map((_,x)=>m.map(row=>row[x]).reverse());
+
+test('全幅与半幅阈值逐像素等同原盒式滤波，含边沿、奇数尺寸和复用缓冲', () => {
+  let seed=9629;
+  const mask=new CV.Image();
+  for(const [w,h] of [[3,2],[4,7],[5,5],[11,9],[7,13],[1921,21],[47,61]]){
+    for(const radius of [2,3])for(const threshold of [0,7,17]){
+      const data=Uint8Array.from({length:w*h},(_,i)=>{
+        seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+        return i%3===0?seed>>>24:(32+(i%23));
+      });
+      const src=new CV.Image(w,h,data), blur=new CV.Image(w,h,new Uint8Array(w*h));
+      CV.stackBoxBlur(src,blur,radius);
+      const expected=blur.data.map((average,i)=>average-data[i]>=threshold?255:0);
+      mask.data=new Uint8Array(w*h);
+      CV.adaptiveThreshold(src,mask,radius,threshold);
+      assert.deepEqual(mask.data,expected,`${w}x${h}, radius ${radius}, threshold ${threshold}`);
+    }
+  }
+});
+
+test('全部 65536 个载荷的精确匹配、单格纠错位置和拒识与汉明距离一致', () => {
+  const dictionary=new AR.Detector({maxHammingDistance:2}).dictionary;
+  const codes=AR.DICTIONARIES.QCMCAM_4X4_157h3.codeList;
+  for(let word=0;word<65536;word++){
+    const bits=word.toString(2).padStart(16,'0').match(/.{4}/g).map(row=>Array.from(row,Number));
+    const exact=codes.indexOf(word);
+    let expected;
+    if(exact>=0)expected={id:exact,distance:0};
+    else for(let id=0;id<codes.length;id++){
+      const diff=codes[id]^word;
+      if((diff&(diff-1))===0){expected={id,distance:1,cell:Math.clz32(diff)-16};break;}
+    }
+    assert.deepEqual(dictionary.find(bits),expected,word.toString(16));
+  }
+});
+
+test('密集候选按角点去重，与原顺序两两比较相同，等周长不会换胜者', () => {
+  const detector=new AR.Detector(), candidates=[];
+  for(let i=0;i<60;i++){
+    const x=36*(i%10)-3, y=28*Math.floor(i/10), side=12+i%4;
+    for(const [shift,extra] of [[2,0],[0,0],[-1,i%3]]){
+      candidates.push([{x:x+shift,y},{x:x+shift+side+extra,y},{x:x+shift+side+extra,y:y+side},{x:x+shift,y:y+side}]);
+    }
+  }
+  for(const minDist of [5,10]){
+    const rejected=new Set();
+    for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){
+      const a=candidates[i],b=candidates[j];
+      const sum=a.reduce((n,p,k)=>n+(p.x-b[k].x)**2+(p.y-b[k].y)**2,0);
+      if(sum<4*minDist**2)rejected.add(CV.perimeter(a)<CV.perimeter(b)?i:j);
+    }
+    const found=detector.notTooNear(candidates.map(square=>square.slice()),minDist);
+    assert.deepEqual(found,candidates.filter((_,i)=>!rejected.has(i)));
+  }
+});
+
+test('320×180 全幅四角保留 12-18 像素的卡，六像素黑框不冒充其他卡',()=>{
+  const width=320,height=180, data=new Uint8ClampedArray(width*height*4).fill(255);
+  const pixels=new Uint32Array(data.buffer);
+  for(const [number,turn,left,top,cell] of [[1,0,1,1,3],[35,1,300,1,2],[124,2,1,160,2],
+    [157,3,292,153,3],[85,1,150,80,1]]){
+    let cells=Cards.matrix(number);
+    for(let i=0;i<turn;i++)cells=rotate(cells);
+    cells.forEach((row,y)=>row.forEach((bit,x)=>{
+      if(bit)return;
+      for(let dy=0;dy<cell;dy++){
+        const start=(top+y*cell+dy)*width+left+x*cell;
+        pixels.fill(0xff111111,start,start+cell);
+      }
+    }));
+  }
+  const detector=new AR.Detector({maxHammingDistance:2}),stable=new Scanner.Stabilizer(),reads=[];
+  for(let frame=0;frame<8;frame++){
+    data[0]=frame;
+    reads.push(...stable.feed(detector.detect({width,height,data}),frame*75));
+  }
+  assert.deepEqual(reads.sort((a,b)=>a.cardNumber-b.cardNumber),[
+    {cardNumber:1,option:'A'},{cardNumber:35,option:'D'},{cardNumber:124,option:'C'},{cardNumber:157,option:'B'}]);
+});
 
 test('换项后留在原位的卡不能沿用，转向和重新举起分别重新计稳',()=>{
   const stable=new Scanner.Stabilizer();
@@ -223,6 +303,16 @@ test('初次三次精确读数确认，改答需连续读数，相同答案不�
   assert.deepEqual(feed([marker('B')],750),[]);assert.deepEqual(feed([marker('B')],900),[]);
   assert.deepEqual(feed([marker('B')],1050),[{cardNumber:1,option:'B'}]);
 });
+test('持续的单格纠错要六个新帧，精确与纠错混合仍需满分且连续',()=>{
+  const stable=new Scanner.Stabilizer();
+  const frame=(option,distance,at)=>stable.feed([marker(option,0,distance)],at);
+  for(let i=0;i<5;i++)assert.deepEqual(frame('A',1,i*75),[]);
+  assert.deepEqual(frame('A',1,375),[{cardNumber:1,option:'A'}]);
+  assert.deepEqual(frame('B',1,450),[]);
+  assert.deepEqual(frame('B',0,525),[]);
+  assert.deepEqual(frame('B',1,600),[]);
+  assert.deepEqual(frame('B',0,675),[{cardNumber:1,option:'B'}]);
+});
 test('同号不同方向在去重之前拒绝，不能累积冲突帧的选项',()=>{
   const stable=new Scanner.Stabilizer();
   for(let i=0;i<12;i++)assert.deepEqual(stable.feed([marker('A'),marker('B')],i*150,4),[]);
@@ -293,6 +383,7 @@ test('手机与白板扫码保留摄像头交付的高清细节，按实际帧�
   await h.scanner.start();
   assert.equal(h.constraints.video.width.ideal,1920);
   assert.equal(h.constraints.video.height.ideal,1080);
+  assert.deepEqual(h.constraints.video.frameRate,{ideal:30});
   for (const [w,hgt,outW,outH] of [[1920,1080,1920,1080],[1080,1920,1080,1920],
     [3840,2160,1920,1080],[640,360,640,360]]) {
     h.video.videoWidth=w;h.video.videoHeight=hgt;
@@ -365,6 +456,55 @@ test('同一上下文中旧选项提交失败不会清除较新选项',async t=>
   await h.scanner.start();for(let i=0;i<3;i++)await h.frame();for(let i=0;i<3;i++)await h.frame({option:'B'});
   old.reject(new Error('旧选项失败'));await settled();for(let i=0;i<3;i++)await h.frame({option:'B'});
   assert.deepEqual(accepted,[{cardNumber:1,option:'B'}]);
+});
+test('A 转 B 再转 A，首次 A 的迟到失败不会重交已确认的新 A',async t=>{
+  const first=deferred(),attempts=[];
+  const h=camera(t,{onRead:read=>{attempts.push(read.option);if(attempts.length===1)return first.promise;}});
+  await h.scanner.start();
+  for(const option of ['A','B','A'])for(let i=0;i<3;i++)await h.frame({option,elapsed:75});
+  first.reject(new Error('旧 A 失败'));await settled();
+  for(let i=0;i<6;i++)await h.frame({elapsed:75});
+  assert.deepEqual(attempts,['A','B','A']);
+  assert.ok(!h.statuses.some(s=>s.kind==='error'));
+});
+
+test('同一呈现帧回调不再绘制、读回或推取景，跳号只算一帧',async t=>{
+  const h=camera(t,{waitForFrames:true});
+  let notify,previews=0;
+  h.video.requestVideoFrameCallback=callback=>{notify=callback;return 1;};
+  h.scanner.onPreview=()=>previews++;
+  await h.scanner.start();
+  const draw=t.mock.method(h.scanner.ctx,'drawImage'), pixels=t.mock.method(h.scanner.ctx,'getImageData');
+  for(const count of [1,1,1,8,8,22]){
+    notify(0,{presentedFrames:count});await h.frame({elapsed:40});
+    if(count!==22)assert.deepEqual(h.reads,[]);
+  }
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+  assert.deepEqual([draw.mock.callCount(),pixels.mock.callCount(),previews],[3,3,3]);
+});
+
+test('从像素后备切回解码计数的过渡帧免绘制免读回，随后继续稳定',async t=>{
+  const h=camera(t);
+  let count=0;
+  h.video.getVideoPlaybackQuality=()=>({totalVideoFrames:count});
+  await h.scanner.start();
+  const draw=t.mock.method(h.scanner.ctx,'drawImage'), pixels=t.mock.method(h.scanner.ctx,'getImageData');
+  await h.frame();
+  count=1;await h.frame();
+  assert.deepEqual([draw.mock.callCount(),pixels.mock.callCount(),h.scanner.stabilizer.frame],[1,1,1]);
+  count=2;await h.frame();count=3;await h.frame();
+  assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
+});
+
+test('无帧计数时同像素只确认一次画面，重复轮询不会再次推送取景',async t=>{
+  const h=camera(t,{waitForFrames:true});
+  let previews=0;
+  h.scanner.onPreview=()=>previews++;
+  await h.scanner.start();await h.frame();
+  for(let i=0;i<5;i++)await h.frame({elapsed:75,changePixels:false});
+  assert.equal(h.scanner.stabilizer.frame,1);assert.equal(previews,1);assert.deepEqual(h.reads,[]);
+  await h.frame();await h.frame();
+  assert.equal(previews,3);assert.deepEqual(h.reads,[{cardNumber:1,option:'A'}]);
 });
 test('保留的视频画面不能反复累计成多帧确认',async t=>{
   const h=camera(t);await h.scanner.start();await h.frame();

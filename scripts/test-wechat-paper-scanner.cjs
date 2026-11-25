@@ -60,6 +60,30 @@ test('the native adapter submits one stable result, and never repeats it for unc
   for (let i = 0; i < 8; i++) { now = i * 180; callback(frame); await Promise.resolve(); }
   assert.deepEqual(reads, [{ cardNumber: 157, option: 'A' }]); scanner.stop();
 });
+test('native capture samples candidates faster and leaves idle time for the camera and touch controls', async () => {
+  let at = 0, callback, markers = [], cost = 0;
+  const samples = [], reads = [], frame = image(cardMatrix(1));
+  const detector = { detect() { samples.push(at); at += cost; return markers; } };
+  const scanner = new CameraScanner({ now: () => at, detector, onRead: read => reads.push(read) });
+  scanner.start({ onCameraFrame(fn) { callback = fn; return { start() {}, stop() {} }; } }, 'round', 4);
+  const feed = (...times) => { for (const time of times) { at = time; callback(frame); } };
+  try {
+    feed(0, 30, 75);
+    markers = [{ ...marker('A'), hammingDistance: 1 }];
+    feed(150, 200, 225, 300, 375, 450);
+    await Promise.resolve();
+    assert.deepEqual(reads, [], 'five weak frames are insufficient');
+    feed(525, 600);
+    await Promise.resolve();
+    assert.deepEqual(samples, [0, 150, 225, 300, 375, 450, 525]);
+    assert.deepEqual(reads, [{ cardNumber: 1, option: 'A' }]);
+    cost = 170; markers = [marker('B')];
+    feed(675, 850, 874, 875, 1050, 1075);
+    await Promise.resolve();
+    assert.deepEqual(samples.slice(-3), [675, 875, 1075]);
+    assert.deepEqual(reads.at(-1), { cardNumber: 1, option: 'B' });
+  } finally { scanner.stop(); }
+});
 test('bad native frame layout fails closed and oversized frames are bounded before decoding', () => {
   assert.throws(() => rgbaFrame({ width: 100, height: 100, data: new Uint8Array(20) }));
   const native = new Uint8ClampedArray(1920 * 1080 * 4);

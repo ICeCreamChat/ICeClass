@@ -49,6 +49,9 @@
         !/^[0-9]+$/.test(card.username) || !/^[0-9]{6}$/.test(card.password) || !card.className) {
       throw new Error('纸卡信息不完整，请重新准备打印。');
     }
+    if (card.numberCard && !new RegExp(`^[0-9]{2}1[0-9]{3}${String(card.cardNumber).padStart(2, '0')}$`).test(card.username)) {
+      throw new Error('通用卡登录编号与当前卡号不符，请重新核对发放编号。');
+    }
     const credentials = `<div class="card-account"><div class="card-credentials">
       <div>学生编号<strong>${esc(card.username)}</strong></div>
       <div>登录密码<strong class="card-password">${esc(card.password)}</strong></div></div>

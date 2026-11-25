@@ -75,6 +75,7 @@ AR.Dictionary = function (dicName) {
 
 AR.Dictionary.prototype._initialize = function (dicName) {
   this.codes = {}
+  this.singleBitCorrections = null
   this.codeList = []
   this.tau = 0
   this.nBits = 0
@@ -115,6 +116,21 @@ AR.Dictionary.prototype.find = function (bits) {
       id: minFound.id,
       distance: 0
     }
+  }
+
+  // tau is an exclusive bound. Index one-bit neighbors once, retaining the
+  // original winner on ties and the cell needed for the confidence check.
+  if (this.tau === 2 && this.nBits === 16 && /^[01]{16}$/.test(val)) {
+    if (!this.singleBitCorrections) {
+      const corrections = new Map()
+      for (const code of this.codeList) for (let cell = 0; cell < 16; cell++) {
+        const word = code.slice(0, cell) + (code[cell] === '0' ? '1' : '0') + code.slice(cell + 1)
+        if (!corrections.has(word)) corrections.set(word, {id:this.codes[code].id, distance:1, cell})
+      }
+      this.singleBitCorrections = corrections
+    }
+    const match = this.singleBitCorrections.get(val)
+    return match && {...match}
   }
 
   for (i = 0; i < this.codeList.length; i++) {
@@ -352,6 +368,10 @@ AR.Detector.prototype.allocateBuffers = function (width, height) {
   this.half = new CV.Image(halfWidth, halfHeight, new Uint8Array(halfWidth * halfHeight))
   this.halfThres = new CV.Image(halfWidth, halfHeight, new Uint8Array(halfWidth * halfHeight))
   this.halfBinary = new Int32Array((halfWidth + 2) * (halfHeight + 2))
+  // Each threshold pass finishes before findContours initializes its label buffer.
+  // Reuse those bytes for the horizontal averages at both resolutions.
+  this.thres.horizontal = new Uint8Array(this.binary.buffer, 0, width * height)
+  this.halfThres.horizontal = new Uint8Array(this.halfBinary.buffer, 0, halfWidth * halfHeight)
 }
 
 AR.Detector.prototype.detect = function (image) {
@@ -550,38 +570,27 @@ AR.Detector.prototype.clockwiseCorners = function (candidates) {
 }
 
 AR.Detector.prototype.notTooNear = function (candidates, minDist) {
-  const notTooNear = []
-  const len = candidates.length
-  let dist; let dx; let dy; let i; let j; let k
-
-  for (i = 0; i < len; ++i) {
-    for (j = i + 1; j < len; ++j) {
-      dist = 0
-
-      for (k = 0; k < 4; ++k) {
-        dx = candidates[i][k].x - candidates[j][k].x
-        dy = candidates[i][k].y - candidates[j][k].y
-
+  const order = candidates.map((_, i) => i).sort((i,j) => candidates[i][0].x - candidates[j][0].x)
+  const reach = 2 * Math.abs(minDist), limit = reach * reach
+  for (let i = 0; i < order.length; i++) {
+    const a = candidates[order[i]]
+    for (let j = i + 1; j < order.length; j++) {
+      const b = candidates[order[j]]
+      // One corner this far away already exceeds the four-corner budget.
+      if (b[0].x - a[0].x >= reach) break
+      let dist = 0
+      for (let k = 0; k < 4 && dist < limit; k++) {
+        const dx = a[k].x - b[k].x, dy = a[k].y - b[k].y
         dist += dx * dx + dy * dy
       }
-
-      if ((dist / 4) < (minDist * minDist)) {
-        if (CV.perimeter(candidates[i]) < CV.perimeter(candidates[j])) {
-          candidates[i].tooNear = true
-        } else {
-          candidates[j].tooNear = true
-        }
+      if (dist < limit) {
+        const pa = CV.perimeter(a), pb = CV.perimeter(b)
+        if (pa < pb || (pa === pb && order[i] > order[j])) a.tooNear = true
+        else b.tooNear = true
       }
     }
   }
-
-  for (i = 0; i < len; ++i) {
-    if (!candidates[i].tooNear) {
-      notTooNear.push(candidates[i])
-    }
-  }
-
-  return notTooNear
+  return candidates.filter(candidate => !candidate.tooNear)
 }
 
 AR.Detector.prototype.findMarkers = function (imageSrc, candidates, warpSize) {

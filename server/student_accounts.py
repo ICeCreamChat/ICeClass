@@ -6,12 +6,12 @@ import hmac
 import re
 import secrets
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 
 from aiohttp import web
 
 from card_quiz_models import QuizError, array, fail, identifier, integer, new_id, revision, unique
-from homework import school_year_start, today
+from homework import SHANGHAI, school_year_start, today
 from student_reports import StudentReports
 from teacher_capabilities import teacher_action, teacher_manual, teacher_read
 
@@ -31,9 +31,6 @@ CREATE TABLE IF NOT EXISTS student_account_links (
 CREATE INDEX IF NOT EXISTS idx_student_links_account ON student_account_links(account_id,class_id);
 CREATE TABLE IF NOT EXISTS student_account_versions (
  class_id TEXT PRIMARY KEY REFERENCES classes(id), revision INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS student_card_login_aliases (
- username TEXT PRIMARY KEY CHECK(username GLOB '[0-9][0-9]0[0-9][0-9][0-9][0-9][0-9]'),
- account_id TEXT NOT NULL REFERENCES student_accounts(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS student_sessions (
  token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES student_accounts(id) ON DELETE CASCADE,
  csrf_token TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
@@ -42,6 +39,9 @@ CREATE INDEX IF NOT EXISTS idx_student_sessions_expiry ON student_sessions(expir
 """
 COOKIE = 'iceclass_student_session'
 STUDENT_REASON = '学生本人专用入口，使用独立学生会话、本人密码及本人数据范围，不能以教师身份代办。'
+# Two year digits, first batch, three class digits, then the card's own two- or three-digit number.
+NUMBER_CARD_LOGIN = "username GLOB ('[0-9][0-9]1[0-9][0-9][0-9]' || printf('%02d',holder_card_number))"
+PENDING_NUMBER_CARDS = f'holder_card_number IS NOT NULL AND NOT ({NUMBER_CARD_LOGIN})'
 
 
 def password_value(value):
@@ -59,6 +59,18 @@ class StudentAccounts(StudentReports):
                 self.db.run('ALTER TABLE student_accounts ADD COLUMN holder_card_number INTEGER CHECK(holder_card_number BETWEEN 1 AND 157)')
             self.db.run('''CREATE UNIQUE INDEX IF NOT EXISTS idx_student_holder_cards
                 ON student_accounts(class_id,holder_card_number) WHERE holder_card_number IS NOT NULL''')
+            self.db.run('DROP TABLE IF EXISTS student_card_login_aliases')
+            for row in self.db.all(f'''SELECT DISTINCT class_id FROM student_accounts
+                    WHERE {PENDING_NUMBER_CARDS} ORDER BY class_id'''):
+                cid = row['class_id']
+                try:
+                    self.migrate_number_card_logins(cid)
+                except QuizError as error:
+                    if error.status != 409:
+                        raise
+                    app[service.LOGGER_KEY].warning('班级 %s 的通用卡编号迁移待核对：%s', cid, error)
+                else:
+                    self.bump(cid)
 
     async def body(self, request):
         return await self.quiz.body(request, 64 * 1024)
@@ -87,14 +99,15 @@ class StudentAccounts(StudentReports):
         return self.db.one('''SELECT a.* FROM student_account_links l
             JOIN student_accounts a ON a.id=l.account_id WHERE l.class_id=? AND l.student_id=?''', (cid, sid))
 
+    def class_code(self, name):
+        match = self.service.CLASS_NAME_RE.fullmatch(name)
+        if match and 1 <= int(match[2]) <= 99:
+            return str({'一': 1, '二': 2, '三': 3}[match[1]]) + f'{int(match[2]):02d}'
+
     def payload(self, cid, user):
         room = self.class_info(cid)
         roster_revision, roster = self.quiz.roster(cid)
         card_revision, cards = self.quiz.cards(cid)
-        match = self.service.CLASS_NAME_RE.fullmatch(room['name'])
-        code = None
-        if match and 1 <= int(match[2]) <= 99:
-            code = str({'一': 1, '二': 2, '三': 3}[match[1]]) + f'{int(match[2]):02d}'
         rows = self.db.all('''SELECT l.student_id AS linked_student,a.* FROM student_account_links l
             JOIN student_accounts a ON a.id=l.account_id WHERE l.class_id=?''', (cid,))
         accounts = {row['linked_student']: row for row in rows}
@@ -108,12 +121,13 @@ class StudentAccounts(StudentReports):
                              'username': account['username'] if account else None,
                              'accountRevision': account['revision'] if account else None,
                              'activeHere': active})
-        number_cards = self.db.all('''SELECT id AS accountId,holder_card_number AS cardNumber FROM student_accounts
-            WHERE class_id=? AND holder_card_number IS NOT NULL ORDER BY holder_card_number''', (cid,))
-        return {'classId': cid, 'className': room['name'], 'classCode': code, 'numberCards': number_cards,
+        can_edit = bool(self.service.can_access_class(self.db, user, cid, include_teaching=False))
+        number_cards = self.db.all(f'''SELECT id AS accountId,holder_card_number AS cardNumber,
+            CASE WHEN ? AND {NUMBER_CARD_LOGIN} THEN username END AS username FROM student_accounts
+            WHERE class_id=? AND holder_card_number IS NOT NULL ORDER BY holder_card_number''', (can_edit, cid))
+        return {'classId': cid, 'className': room['name'], 'classCode': self.class_code(room['name']), 'numberCards': number_cards,
                 'revision': self.class_revision(cid), 'rosterRevision': roster_revision,
-                'cardRevision': card_revision, 'students': students,
-                'canEdit': bool(self.service.can_access_class(self.db, user, cid, include_teaching=False))}
+                'cardRevision': card_revision, 'students': students, 'canEdit': can_edit}
 
     def teacher(self, request, *, edit=False):
         user = self.quiz.staff(request)
@@ -134,13 +148,45 @@ class StudentAccounts(StudentReports):
                 'cardNumber': number or self.quiz.cards(cid)[1]['bindings'].get(sid),
                 **({'numberCard': True} if number else {})}
 
+    def class_code_at_issue(self, cid, issued_at, current_code):
+        change = self.db.one('''SELECT CASE WHEN action='class.rename' AND json_valid(detail)
+                THEN json_extract(detail,'$.previousName') END AS previous_name FROM audit_events
+            WHERE target_type='class' AND target_id=? AND action IN ('class.rename','class.update')
+            AND created_at>? ORDER BY created_at,rowid LIMIT 1''', (cid, issued_at))
+        if not change:
+            return current_code
+        if change['previous_name']:
+            return self.class_code(change['previous_name'])
+        # Single-class edits record the resulting name. Find the last name recorded by issuance.
+        prior = self.db.one('''SELECT CASE WHEN action='class.create' THEN detail
+                WHEN json_valid(detail) THEN json_extract(detail,'$.name') END AS name FROM audit_events
+            WHERE target_type='class' AND target_id=? AND action IN ('class.create','class.rename','class.update')
+            AND created_at<=? ORDER BY created_at DESC,rowid DESC LIMIT 1''', (cid, issued_at))
+        if not prior or not prior['name']:
+            fail('缺少首次发卡时的班级名称，请核对通用卡号段。', 409)
+        return self.class_code(prior['name'])
+
     def number_card_prefix(self, cid, class_code):
-        batch = self.db.one('''SELECT substr(username,1,6) AS prefix FROM student_accounts
-            WHERE class_id=? AND holder_card_number IS NOT NULL AND substr(username,3,1)='1' LIMIT 1''', (cid,))
+        batch = self.db.one(f'''SELECT substr(username,1,6) AS prefix FROM student_accounts
+            WHERE class_id=? AND holder_card_number IS NOT NULL AND {NUMBER_CARD_LOGIN}
+            ORDER BY holder_card_number LIMIT 1''', (cid,))
         if batch:
             return batch['prefix']
+        first_issued_at = self.db.one('''SELECT MIN(created_at) AS issued_at FROM student_accounts
+            WHERE class_id=? AND holder_card_number IS NOT NULL''', (cid,))['issued_at']
+        if first_issued_at is None:
+            issue_day = date.fromisoformat(today())
+        else:
+            # The first edition allocated prefixes by class and availability, without an encoded year.
+            try:
+                issue_day = datetime.fromtimestamp(first_issued_at / 1000, SHANGHAI).date()
+            except (OSError, OverflowError, TypeError, ValueError):
+                fail('首次发卡时间无效，请核对通用卡号段。', 409)
+            class_code = self.class_code_at_issue(cid, first_issued_at, class_code)
         grade = int(class_code[0]) if class_code else 1
-        entry_year = school_year_start(date.fromisoformat(today())) - (grade - 1)
+        entry_year = school_year_start(issue_day) - (grade - 1)
+        if first_issued_at is not None and not 2000 <= entry_year <= 2099:
+            fail('首次发卡时间超出入学年份范围，请核对通用卡号段。', 409)
         occupied = {row['prefix'] for row in self.db.all('''SELECT DISTINCT substr(username,1,6) AS prefix
             FROM student_accounts WHERE holder_card_number IS NOT NULL AND class_id<>?''', (cid,))}
         codes = [class_code] if class_code else (f'{n:03d}' for n in range(100))
@@ -155,6 +201,24 @@ class StudentAccounts(StudentReports):
         if self.db.one('SELECT 1 FROM student_accounts WHERE username=? AND id<>?', (username, account_id)):
             fail('该通用卡编号已由其他账号使用，请核对入学年份、班级和卡号。', 409)
         return username
+
+    def migrate_number_card_logins(self, cid):
+        pending = self.db.all(f'''SELECT id,holder_card_number FROM student_accounts
+            WHERE class_id=? AND {PENDING_NUMBER_CARDS}''', (cid,))
+        if pending:
+            # Only a known old primary proves that every login for that account used a retired number.
+            self.db.run('''DELETE FROM student_sessions WHERE account_id IN (
+                SELECT id FROM student_accounts WHERE class_id=? AND holder_card_number IS NOT NULL
+                AND username GLOB ('[0-9][0-9]0[0-9][0-9]' || printf('%03d',holder_card_number)))''', (cid,))
+        prefix = self.number_card_prefix(cid, self.class_code(self.class_info(cid)['name']))
+        # Check the whole class before renaming any row, including when startup must defer a conflicting class.
+        renamed = {card['id']: self.number_card_username(prefix, card['holder_card_number'], card['id'])
+                   for card in pending}
+        now = self.service.now_ms()
+        for aid, username in renamed.items():
+            self.db.run('UPDATE student_accounts SET username=?,revision=revision+1,updated_at=? WHERE id=?',
+                        (username, now, aid))
+        return prefix, renamed
 
     async def write_number_cards(self, request, *, reset=False):
         user, cid = self.teacher(request, edit=True)
@@ -172,29 +236,23 @@ class StudentAccounts(StudentReports):
         with self.db.transaction():
             user, cid = self.teacher(request, edit=True)
             self.check_versions(cid, body)
-            if accounts:
-                prefix = self.number_card_prefix(cid, self.payload(cid, user)['classCode'])
-                legacy = self.db.all('''SELECT id,username,holder_card_number FROM student_accounts
-                    WHERE class_id=? AND holder_card_number IS NOT NULL AND substr(username,3,1)='0' ''', (cid,))
-                for row in legacy:
-                    name = self.number_card_username(prefix, row['holder_card_number'], row['id'])
-                    self.db.run('UPDATE student_accounts SET username=? WHERE id=?', (name, row['id']))
-                    self.db.run('INSERT INTO student_card_login_aliases(username,account_id) VALUES(?,?)',
-                                (row['username'], row['id']))
+            prefix, renamed = self.migrate_number_card_logins(cid)
             now = self.service.now_ms()
             for account, (_, encoded) in zip(accounts, prepared):
                 n = account['holder_card_number']
-                account['username'] = self.number_card_username(prefix, n, account['id'])
                 if reset:
+                    account['username'] = renamed.get(account['id'], account['username'])
                     self.db.run('UPDATE student_accounts SET password_hash=?,revision=revision+1,updated_at=? WHERE id=?',
                                 (encoded, now, account['id']))
                     self.db.run('DELETE FROM student_sessions WHERE account_id=?', (account['id'],))
                 else:
+                    account['username'] = self.number_card_username(prefix, n, account['id'])
                     self.db.run('''INSERT INTO student_accounts
                         (id,username,password_hash,class_id,student_id,holder_card_number,created_at,updated_at)
                         VALUES(?,?,?,?,?,?,?,?)''', (account['id'], account['username'], encoded, cid, account['student_id'], n, now, now))
-            if accounts:
+            if renamed or accounts:
                 self.bump(cid)
+            if accounts:
                 action = 'reset' if reset else 'issue'
                 self.quiz.audit(user, 'student.number_cards.' + action, 'class', cid, f'按号发卡 {first}-{last}，共 {len(accounts)} 张')
         result = self.payload(cid, user)
@@ -331,9 +389,10 @@ class StudentAccounts(StudentReports):
                 or 'X-ICeClass-Device-Id' in request.headers):
             fail('请使用学生账号登录。', 401)
         token = request.cookies.get(COOKIE)
-        account = self.db.one('''SELECT a.*,s.csrf_token,s.token_hash FROM student_sessions s
+        account = self.db.one(f'''SELECT a.*,s.csrf_token,s.token_hash FROM student_sessions s
             JOIN student_accounts a ON a.id=s.account_id JOIN classes c ON c.id=a.class_id
-            WHERE s.token_hash=? AND s.expires_at>? AND a.enabled=1 AND c.enabled=1''',
+            WHERE s.token_hash=? AND s.expires_at>? AND a.enabled=1 AND c.enabled=1
+            AND (holder_card_number IS NULL OR {NUMBER_CARD_LOGIN})''',
                               (self.service.sha256(token), self.service.now_ms())) if token else None
         if not account:
             fail('学生登录已失效，请重新登录。', 401)
@@ -390,17 +449,15 @@ class StudentAccounts(StudentReports):
         username = username.strip() if isinstance(username, str) else ''
         if not re.fullmatch(r'[0-9]{7,9}', username):
             username = ''
-        account = self.db.one('''SELECT a.* FROM student_accounts a JOIN classes c ON c.id=a.class_id
-            WHERE a.username=? AND a.enabled=1 AND c.enabled=1''', (username,))
-        if not account and len(username) == 8 and username[2] == '0':
-            account = self.db.one('''SELECT a.* FROM student_card_login_aliases l
-                JOIN student_accounts a ON a.id=l.account_id JOIN classes c ON c.id=a.class_id
-                WHERE l.username=? AND a.holder_card_number IS NOT NULL AND a.enabled=1 AND c.enabled=1''', (username,))
-        await self.check_password(request, account, body.get('password'), account['username'] if account else username)
+        account = self.db.one(f'''SELECT a.* FROM student_accounts a JOIN classes c ON c.id=a.class_id
+            WHERE a.username=? AND a.enabled=1 AND c.enabled=1
+            AND (holder_card_number IS NULL OR {NUMBER_CARD_LOGIN})''', (username,))
+        await self.check_password(request, account, body.get('password'), username)
         token, csrf = self.service.random_token(), self.service.random_token(24)
         timestamp = self.service.now_ms()
         with self.db.transaction():
-            current = self.db.one('SELECT * FROM student_accounts WHERE id=? AND enabled=1', (account['id'],))
+            current = self.db.one('SELECT * FROM student_accounts WHERE id=? AND username=? AND enabled=1',
+                                  (account['id'], username))
             if not current or current['revision'] != account['revision'] or not self.class_info(current['class_id'])['enabled']:
                 fail('账号已变化，请重新登录。', 401)
             self.db.run('INSERT INTO student_sessions(token_hash,account_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,?)',

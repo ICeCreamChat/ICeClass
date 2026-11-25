@@ -161,6 +161,25 @@ test('number cards can be issued by keyboard and printed independently of the cl
   assert.match(await frame.locator('.card-sheet').first().textContent(),/学生编号26110901/);
   await noOverflow(page);
 });
+for(const [metadata,usernames,expected] of [
+  ['legacy',[undefined,undefined],'所选通用卡已发放。'],
+  ['partial',['25110901',undefined],'所选通用卡已发放。'],
+  ['current',['25110901','25110902'],'所选通用卡已发放。登录编号 25110901 - 25110902，沿用原密码。'],
+  ['single',['25110901'],'所选通用卡已发放。登录编号 25110901，沿用原密码。']
+]){
+  test(`already issued number cards show the correct notice with ${metadata} metadata`,async t=>{
+    const {page,state}=await setup(t,{width:metadata==='current'?1280:390});
+    state.accounts.numberCards=usernames.map((username,i)=>({accountId:'card-'+(i+1),cardNumber:i+1,username}));
+    const end=page.locator('#cq-number-form [name=lastNumber]');
+    await end.fill(String(usernames.length));
+    await end.press('Enter');
+    const notice=page.locator('.cq-feedback[role=status]').filter({hasText:'所选通用卡已发放。'});
+    await notice.waitFor();
+    assert.equal(await notice.innerText(),expected);
+    assert.equal(await page.locator('.cq-credentials').count(),0);
+    await noOverflow(page);
+  });
+}
 async function noPersistentPassword(page){
   assert.equal(await page.evaluate(()=>Object.values({...localStorage,...sessionStorage}).some(v=>/001234|009876|006789/.test(v))),false,'No credentials in browser storage');
   assert.equal(/[?&#](password|currentPassword|newPassword)=/.test(page.url()),false,'No password URL parameters');

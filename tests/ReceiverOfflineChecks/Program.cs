@@ -47,6 +47,8 @@ if (args is ["--card-quiz-wheel-checks", var wheelOutput]) { CardQuizWheelChecks
 if (args is ["--card-quiz-video-cadence", var cadenceOutput, var cadenceVideo])
 { CardQuizWheelChecks.Run(cadenceOutput,cadenceVideo,videoCadence:true); return; }
 if (args is ["--card-quiz-wheel-checks", var videoOutput, var twoCardVideo]) { CardQuizWheelChecks.Run(videoOutput, twoCardVideo); return; }
+if (args is ["--card-quiz-wheel-review", var wheelReviewOutput, var wheelVideo])
+{ CardQuizWheelChecks.Run(wheelReviewOutput, wheelVideo, collectReview: true); return; }
 if (args is ["--card-quiz-lens-review", var lensOutput, var lensVideo])
 { CardQuizWheelChecks.Run(lensOutput, lensVideo, interactive: true); return; }
 if (args is [("--card-check-small" or "--card-check-review"), var cardOutput, var cardVideo])

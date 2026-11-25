@@ -29,7 +29,7 @@ internal static class CardQuizWheelChecks
     [DllImport("user32.dll")] private static extern IntPtr ChildWindowFromPointEx(IntPtr parent, NativePoint point, uint flags);
     [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
     [DllImport("user32.dll")] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
-    internal static void Run(string outputDirectory, string? twoCardVideo = null, bool smallClass = false, bool interactive = false, bool videoCadence = false)
+    internal static void Run(string outputDirectory, string? twoCardVideo = null, bool smallClass = false, bool interactive = false, bool videoCadence = false, bool collectReview = false)
     {
         Directory.CreateDirectory(outputDirectory);
         var petSettingsPath = Path.Combine(outputDirectory, $"pet-check-{Guid.NewGuid():N}.json");
@@ -508,6 +508,16 @@ internal static class CardQuizWheelChecks
                     await TouchPet(PointerType.Touch); await Primary("开始课堂");
                     Console.WriteLine($"原生窗口缩放 {pet.RenderScaling:P0}，圆环与人物 {pet.Width:0.##} × {pet.Height:0.##} DIP");
                     Check(OnlyPet() && pet.ClassroomExpanded && talks==0 && chats==0 && mascot.AssetsLoaded,"课中单击原人物即展开同窗课堂");
+                    if (collectReview)
+                    {
+                        Click(PrimaryButton()); await Primary("开始收答");
+                        Click(PrimaryButton()); await Primary("结束收答");
+                        await Until(() => Field<CardQuizWheelState>(wheel, "_state").Lesson is
+                            { Phase: "collect", Received: 2, ParticipantCount: 2 }, "通用卡收答主盘已收两张试卡");
+                        Snapshot("native-collect-review.png");
+                        await WaitForReviewExit("圆盘收答");
+                        return;
+                    }
                     if (videoCadence || smallClass || interactive)
                     {
                         Click(ButtonFor("开课设置"));
@@ -879,6 +889,16 @@ internal static class CardQuizWheelChecks
                             $"目标 Rect={target} DIP, 实际屏幕边界={actual} px, 目标屏幕边界={expected} px, RenderScaling={pet.RenderScaling}");
                     }
                     await WaitForBrowserBounds("同步编辑正文像素边界");
+                    var detailGrip = Field<Control>(pet, "_resizeGrip");
+                    var detailCore = pet.ClassroomHost!.Browser.Core!;
+                    var cssWidth = await detailCore.ExecuteScriptAsync("window.innerWidth");
+                    for (var i = 0; i < 5; i++)
+                        detailGrip.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
+                    await WaitForBrowserBounds("放大到 150% 后，编辑区仍在圆内", checkCorners: true);
+                    await Wait($"Math.abs(window.innerWidth - {cssWidth}) <= 2");
+                    Check(true, "放大圆盘后 WebView2 编辑区保持原 CSS 行宽，正文与原生扇面等比缩放");
+                    detailGrip.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Home });
+                    await WaitForBrowserBounds("恢复默认大小时编辑区回到原处");
                     await CheckReaderFooter(detailFace, pet.ClassroomHost!.Browser, "返回", "保存");
                     await SnapshotDetail("native-disc-edit-stem.png");
                     Click(ButtonFor("返回")); await Until(()=>DetailSector("stem")?.IsFocused==true,"字段入口恢复焦点");
@@ -1127,6 +1147,57 @@ internal static class CardQuizWheelChecks
                     Check(menuProgress.Segment.IsEffectivelyVisible && Math.Abs(menuProgress.Segment.SweepAngle-264)<.01 &&
                         await Read("document.getElementById('camera').srcObject?.active===true"), "更多打开期间相机继续，外圈实时更新到 44/60");
                     SnapshotMenu("native-pet-collect-more.png");
+                    var generic = liveState.Lesson with { Kind="single", Number=1, Received=0, Expected=0, ParticipantCount=0, Missing=[] };
+                    void ShowGeneric(CardQuizLesson value) => wheel.Update(liveState with { Lesson=value });
+                    bool MenuMatchesRing() => menuProgress.Fraction == wheel.Progress.Fraction &&
+                        menuProgress.Segment.IsVisible == progress.IsVisible && menuProgress.Segment.StartAngle == progress.StartAngle &&
+                        menuProgress.Segment.SweepAngle == progress.SweepAngle &&
+                        (menuProgress.Rail.Stroke as ISolidColorBrush)?.Color == (track.Stroke as ISolidColorBrush)?.Color;
+                    ShowGeneric(generic);
+                    Check(track.IsVisible && !progress.IsVisible && menuProgress.Rail.IsEffectivelyVisible && MenuMatchesRing(),
+                        "通用卡零人开收与更多均显示浅底空轨");
+                    var firstCard = generic with { Received=1, Expected=1, ParticipantCount=1 };
+                    ShowGeneric(firstCard);
+                    var firstMark = (progress.StartAngle, progress.SweepAngle);
+                    Check(track.IsVisible && progress.IsVisible && progress.SweepAngle is > 0 and < 45 &&
+                        !Equals(track.Stroke, progress.Stroke) && MenuMatchesRing(), "首次收卡在两盘显示同一短蓝标");
+                    ShowGeneric(firstCard);
+                    Check(firstMark == (progress.StartAngle, progress.SweepAngle), "同号改答保留原标记");
+                    ShowGeneric(generic with { Received=2, Expected=2, ParticipantCount=2 });
+                    var secondMark = (progress.StartAngle, progress.SweepAngle);
+                    Check(secondMark != firstMark && MenuMatchesRing(), "第二个不同卡号在打开的更多中也有新反馈");
+                    ShowGeneric(generic with { Received=1, Expected=1, ParticipantCount=2 });
+                    Check(secondMark == (progress.StartAngle, progress.SweepAngle) && Field<TextBlock>(wheel,"_number").Text == "1",
+                        "免答调整圆心人数，不触发新卡反馈");
+                    foreach (var motion in new[] { true, false })
+                    {
+                        var marks = Enumerable.Range(1,157).Select(n => BanbanRingFraction.Receipt(n,motion)).ToArray();
+                        Check(marks.All(mark => mark.Length is > 0 and < .125 && (motion || mark.Start == 0)) &&
+                            marks.Zip(marks.Skip(1)).All(pair => pair.First != pair.Second),
+                            motion ? "157 个不同号逐次更新短标" : "减少动态时 157 个不同号在固定位置逐次反馈");
+                    }
+                    ShowGeneric(generic with { HasPriorParticipants=true, Received=1, Expected=2, ParticipantCount=3 });
+                    Check(progress.StartAngle == -90 && progress.SweepAngle == 180 && MenuMatchesRing(),
+                        "首题重收在已有三人、一人免答时，两盘显示 1/2");
+                    ShowGeneric(generic with { HasPriorParticipants=true, ParticipantCount=3 });
+                    Check(!track.IsVisible && !progress.IsVisible && !menuProgress.Rail.IsEffectivelyVisible && MenuMatchesRing(),
+                        "通用卡全员免答时两盘隐藏人数环");
+                    foreach (var parts in new[] { 2,3,4 })
+                    {
+                        foreach (var index in Enumerable.Range(0,parts).Append(0))
+                        {
+                            var received = index == 0 ? 2 : 0;
+                            ShowGeneric(generic with { Kind="multiple", Option="ABCD"[index].ToString(), OptionCount=parts,
+                                Received=received, Expected=3, ParticipantCount=3 });
+                            var rails = menuProgress.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Arc>()
+                                .Where(arc => arc != menuProgress.Segment && arc.IsEffectivelyVisible).ToArray();
+                            Check(rails.Length == parts && rails[index].StartAngle == progress.StartAngle &&
+                                rails[index].SweepAngle == progress.SweepAngle && progress.SweepAngle > 0 && progress.SweepAngle < 360d / parts &&
+                                !track.IsVisible && menuProgress.Segment.IsEffectivelyVisible && MenuMatchesRing() &&
+                                Field<TextBlock>(wheel,"_number").Text == received.ToString(),
+                                $"通用多选 {parts} 项的两盘同时点亮 {index+1} 项，圆心显示本项已收 {received} 人");
+                        }
+                    }
                     // Restore the actual camera count before returning to live bridge updates.
                     wheel.Update(liveState);
                     Click(menuCenter);
@@ -1140,12 +1211,14 @@ internal static class CardQuizWheelChecks
                     Check(!track.IsVisible && !progress.IsVisible && Find("全员免答，查看卡号") == collectSectors[1],
                         "全班免答时无进度分母，右侧保留查卡入口");
                     wheel.Update(liveState with { Lesson = liveState.Lesson with { Number=1, Received=35, Expected=35, ParticipantCount=35, Missing=[] } });
-                    Check(!track.IsVisible && Field<TextBlock>(wheel,"_total").Text == "人已收" && Find("本节已参与 35 人，查看卡号") != null,
-                        "通用卡首题显示实际已收，外圈和卡号入口没有收齐提示");
-                    wheel.Update(liveState with { Lesson = liveState.Lesson with { Number=2, Received=35, Expected=38, ParticipantCount=38, Missing=[33,34,35] } });
+                    Check(track.IsVisible && progress.IsVisible && progress.SweepAngle < 45 && Field<TextBlock>(wheel,"_total").Text == "人已收" &&
+                        Find("本节已参与 35 人，查看卡号") != null, "首题 35 个通用卡号仍保留浅底和短蓝标");
+                    wheel.Update(liveState with { Lesson = liveState.Lesson with { Number=2, Received=35, Expected=38, ParticipantCount=38,
+                        HasPriorParticipants=true, Missing=[33,34,35] } });
                     pet.UpdateLayout();
                     var sessionSide = ButtonFor("本节已参与 38 人，待收 3 人，查看卡号");
-                    Check(Field<TextBlock>(wheel,"_number").Text == "35" && Field<TextBlock>(sessionSide,"_caption").Text == "本节" &&
+                    Check(Math.Abs(progress.SweepAngle - 360d * 35 / 38) < .01 &&
+                        Field<TextBlock>(wheel,"_number").Text == "35" && Field<TextBlock>(sessionSide,"_caption").Text == "本节" &&
                         sessionSide.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "38") && FaceFits(sessionSide),
                         "后续题区分本题 35 与本节 38 人");
                     wheel.Update(liveState);
@@ -1394,7 +1467,7 @@ internal static class CardQuizWheelChecks
                     var resultMore = ButtonFor("更多操作");
                     Click(resultMore);
                     await Until(() => pet.PetMenu.IsOpen && menuCenter.IsFocused, "从封存后的工具进入更多");
-                    Check(menuProgress.Rail.IsEffectivelyVisible && menuProgress.Fraction is double participation &&
+                    Check(menuProgress.Rail.IsEffectivelyVisible && menuProgress.Fraction is { Start:0, Length:var participation } &&
                         Math.Abs(participation - (double)state.Lesson.Received / state.Lesson.Expected) < .001,
                         "从结果工具打开更多仍显示这道题的实际参与率");
                     Click(menuCenter);
@@ -1454,6 +1527,7 @@ internal static class CardQuizWheelChecks
                     var multiplePoint = OnRing(82, Math.PI / 3); Touch(multiplePoint, multiplePoint);
                     await Until(()=>Field<CardQuizWheelState>(wheel,"_state").Lesson is { Kind:"multiple",Busy:false },"多选题");
                     Click(PrimaryButton()); await Primary("下一项 B");
+                    await CardQuizWheelResizeChecks.Run(pet, wheel, twoCardVideo != null, store, petSettingsPath, ScreenBounds, Until, Check);
                     if(twoCardVideo!=null) await Until(()=>Field<CardQuizWheelState>(wheel,"_state").Lesson.Received==2,"A 项两人");
                     var currentOption = Field<TextBlock>(wheel, "_currentOption");
                     Check(currentOption.IsEffectivelyVisible && currentOption.Text == "收 A 项" && currentOption.FontWeight == FontWeight.Bold &&
@@ -1603,8 +1677,13 @@ internal static class CardQuizWheelChecks
                     Check(await FooterFits(ButtonFor("课堂记录"), ButtonFor("重试同步")), "记录和重试沿结课页底弧并列");
                     Check(TextClearsArcs(heading) && TextClearsArcs(note) && bodyScroll.Extent.Height <= bodyScroll.Viewport.Height + .5,
                         $"已结课和保存状态与上下扇面分开（标题 {heading.TranslatePoint(default, wheel)}，状态 {note.TranslatePoint(default, wheel)}）");
-                    wheel.Update(doneState with { Lesson = doneState.Lesson with { Records = [doneState.Lesson.Records[0]], QuestionCount = 1 } });
+                    var frozenRecord = doneState.Lesson.Records[0] with { Received=2, Expected=3, ParticipantCount=4,
+                        Bars=[new("A",2)], Abstained=1, Incomplete=0, Unanswered=0 };
+                    wheel.Update(doneState with { Lesson = doneState.Lesson with { Expected=8, ParticipantCount=9,
+                        Records=[frozenRecord], QuestionCount=1 } });
                     Click(ButtonFor("课堂记录"));
+                    Check(track.IsVisible && progress.IsVisible && progress.StartAngle == -90 && progress.SweepAngle == 240 &&
+                        tally.Text == "已答 2 人", "已封存通用卡记录按当轮四人扣一人免答显示 2/3，后来加入的卡不改变外圈");
                     Check(!ButtonFor("上一题").IsEnabled && !PrimaryButton().IsEnabled && ButtonFor("返回汇总").IsFocused,
                         "只有一题的记录可从键盘返回，两侧页界不会推进课堂");
                     Click(ButtonFor("返回汇总"));
@@ -1640,9 +1719,14 @@ internal static class CardQuizWheelChecks
                         Click(ButtonFor("判断"));
                         await Until(() => Field<CardQuizWheelState>(wheel,"_state").Lesson is { Kind:"boolean", Busy:false }, "通用卡判断题就绪");
                         Click(PrimaryButton()); await Primary("结束收答");
-                        await Until(() => Field<CardQuizWheelState>(wheel,"_state").Lesson is { Received:2, ParticipantCount:2 },
+                        await Until(() => Field<CardQuizWheelState>(wheel,"_state").Lesson is
+                            { Received:2, ParticipantCount:2, HasPriorParticipants:false, OptionCount:2 },
                             "WebView2 实码从空名单收下两张卡");
+                        Check(track.IsEffectivelyVisible && progress.IsEffectivelyVisible && progress.SweepAngle is > 0 and < 45 &&
+                            !Equals(track.Stroke,progress.Stroke), "两张实码入账后保持短蓝标和可见浅底");
                         Click(PrimaryButton()); await Primary("下一题");
+                        Check(track.IsEffectivelyVisible && !progress.IsVisible && Equals(track.Stroke,progress.Stroke),
+                            "教师封存后按本轮两人中的两份作答闭合参与率");
                         Click(ButtonFor("结课")); await Primary("确认结课"); Click(PrimaryButton()); await Primary("返回班班");
                         var scannedJournal = store.Load()["journals"]!.AsArray().Single(j => j!["session"]!["attendanceMode"]?.GetValue<string>() == "scanned")!;
                         var scannedSession = scannedJournal["session"]!;

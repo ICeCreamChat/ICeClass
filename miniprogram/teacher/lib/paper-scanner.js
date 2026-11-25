@@ -1,6 +1,7 @@
 'use strict';
 const AR = require('./paper-vendor/aruco');
 // Orientation and evidence thresholds match web_controller/card-quiz/scanner.js.
+const confirmInterval = 75, searchInterval = 150;
 function answerFromCorners(corners) {
   if (!Array.isArray(corners) || corners.length !== 4) return '';
   const dx = corners[0].x - corners[2].x, dy = corners[0].y - corners[2].y;
@@ -11,9 +12,9 @@ function answerFromCorners(corners) {
 }
 class Stabilizer {
   constructor() { this.reset(); }
-  reset() { this.entries = new Map(); this.frame = 0; this.conflicts = []; }
+  reset() { this.entries = new Map(); this.frame = 0; this.conflicts = []; this.needsEvidence = false; }
   feed(markers, at, optionCount) {
-    this.frame++; this.conflicts = [];
+    this.frame++; this.conflicts = []; this.needsEvidence = false;
     const groups = new Map(), results = [];
     for (const merged of markers) for (const marker of merged.observations || [merged]) {
       if (marker.id !== merged.id || !Number.isInteger(marker.id) || marker.id < 0 || marker.id >= 157) continue;
@@ -27,13 +28,15 @@ class Stabilizer {
       const options = new Set(reads.map(read => read.option).filter(Boolean)), option = options.size === 1 ? Array.from(options)[0] : '';
       if (options.size > 1) this.conflicts.push(number);
       if (options.size !== 1 || reads.some(read => !read.option) || !'ABCD'.slice(0, optionCount).includes(option)) { entry.history = []; entry.run = ''; entry.streak = 0; continue; }
-      const distance = Math.min(...reads.map(read => read.distance)); if (distance > 1) continue;
+      const distance = Math.min(...reads.map(read => read.distance)); if (distance > 1 || option === entry.committed) continue;
       entry.history = entry.history.filter(read => this.frame - read.frame < 20 && at - read.at <= 3000);
       entry.history.push({ option, weight: distance === 0 ? 2 : 1, frame: this.frame, at });
       entry.streak = entry.run === option && entry.lastFrame === this.frame - 1 ? entry.streak + 1 : 1;
       entry.run = option; entry.lastFrame = this.frame;
       const score = entry.history.filter(read => read.option === option).reduce((sum, read) => sum + read.weight, 0);
-      if (score >= 6 && entry.streak >= 3 && option !== entry.committed) { entry.committed = option; results.push({ cardNumber: number, option }); entry.history = entry.history.filter(read => read.option === option); }
+      if (score >= 6 && entry.streak >= 3) {
+        entry.committed = option; results.push({ cardNumber: number, option }); entry.history = [];
+      } else this.needsEvidence = true;
     }
     for (const [number, entry] of this.entries) if (at - (entry.history.length ? entry.history[entry.history.length - 1].at : 0) > 10000 && !entry.committed) this.entries.delete(number);
     return results;
@@ -75,7 +78,7 @@ class CameraScanner {
     this.stabilizer = new Stabilizer(); this.running = false; this.revision = 0;
   }
   start(context, key, optionCount) {
-    this.stop(); this.key = key; this.optionCount = optionCount; this.lastFrame = -Infinity;
+    this.stop(); this.key = key; this.optionCount = optionCount; this.nextFrameAt = -Infinity;
     if (!context || typeof context.onCameraFrame !== 'function') throw new Error('当前微信不支持原生相机逐帧识别，请使用手工录入。');
     const revision = this.revision;
     this.listener = context.onCameraFrame(frame => this.feed(frame, revision)); this.running = true;
@@ -83,7 +86,7 @@ class CameraScanner {
   }
   feed(frame, revision = this.revision) {
     if (!this.running || revision !== this.revision) return;
-    const at = this.now(); if (at - this.lastFrame < 180) return; this.lastFrame = at;
+    const at = this.now(); if (at < this.nextFrameAt) return;
     try {
       const markers = this.detector.detect(rgbaFrame(frame));
       for (const read of this.stabilizer.feed(markers, at, this.optionCount)) {
@@ -91,6 +94,9 @@ class CameraScanner {
           if (revision !== this.revision) return; this.stop(); this.onStatus(error.message || '作答尚未确认，识别已停止。');
         });
       }
+      // Allow preview and touch events to run even when decoding takes longer than the target interval.
+      const interval = this.stabilizer.needsEvidence ? confirmInterval : searchInterval;
+      this.nextFrameAt = Math.max(at + interval, this.now() + 30);
       if (this.stabilizer.conflicts.length) this.onStatus('重复卡号方向冲突：' + this.stabilizer.conflicts.join('、'));
     } catch (error) { this.stop(); this.onStatus(error.message || '相机识别失败，请使用手工录入。'); }
   }

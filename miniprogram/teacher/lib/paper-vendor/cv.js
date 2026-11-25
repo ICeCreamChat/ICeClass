@@ -75,11 +75,16 @@ CV.threshold = function(imageSrc, imageDst, threshold){
 CV.adaptiveThreshold = function(imageSrc, imageDst, kernelSize, threshold){
   var src = imageSrc.data, dst = imageDst.data, len = src.length, tab = [], i;
 
-  CV.stackBoxBlur(imageSrc, imageDst, kernelSize);
-
   for (i = 0; i < 768; ++ i){
     tab[i] = (i - 255 <= -threshold)? 255: 0;
   }
+
+  if ((kernelSize === 2 || kernelSize === 3) && imageSrc.width > kernelSize &&
+      imageSrc.height > kernelSize && src !== dst){
+    return adaptiveBoxThreshold(imageSrc, imageDst, kernelSize, tab);
+  }
+
+  CV.stackBoxBlur(imageSrc, imageDst, kernelSize);
 
   for (i = 0; i < len; ++ i){
     dst[i] = tab[ src[i] - dst[i] + 255 ];
@@ -90,6 +95,47 @@ CV.adaptiveThreshold = function(imageSrc, imageDst, kernelSize, threshold){
 
   return imageDst;
 };
+
+// Same two integer-rounded box averages as stackBoxBlur. Read contiguous rows
+// in both passes and apply the threshold as the vertical average becomes ready.
+function adaptiveBoxThreshold(imageSrc, imageDst, radius, tab){
+  const {width, height, data:src} = imageSrc, dst = imageDst.data;
+  const mult = CV.stackBoxBlurMult[radius], shift = CV.stackBoxBlurShift[radius];
+  let horizontal = imageDst.horizontal;
+  if (!horizontal || horizontal.length !== width * height){
+    horizontal = imageDst.horizontal = new Uint8Array(width * height);
+  }
+  for (let y = 0; y < height; y++){
+    const start = y * width, end = start + width - 1;
+    let sum = (radius + 1) * src[start];
+    for (let x = 1; x <= radius; x++) sum += src[start + x];
+    for (let i = start; i <= end; i++){
+      horizontal[i] = (sum * mult) >>> shift;
+      sum += src[Math.min(end, i + radius + 1)] - src[Math.max(start, i - radius)];
+    }
+  }
+  for (let y = 0; y < height; y++){
+    const row = y * width;
+    const a = Math.max(0, y - 2) * width, b = Math.max(0, y - 1) * width;
+    const d = Math.min(height - 1, y + 1) * width, e = Math.min(height - 1, y + 2) * width;
+    if (radius === 2){
+      for (let x = 0; x < width; x++){
+        const sum = horizontal[a+x] + horizontal[b+x] + horizontal[row+x] + horizontal[d+x] + horizontal[e+x];
+        dst[row+x] = tab[255 + src[row+x] - ((sum * mult) >>> shift)];
+      }
+    } else {
+      const top = Math.max(0, y - 3) * width, bottom = Math.min(height - 1, y + 3) * width;
+      for (let x = 0; x < width; x++){
+        const sum = horizontal[top+x] + horizontal[a+x] + horizontal[b+x] + horizontal[row+x] +
+          horizontal[d+x] + horizontal[e+x] + horizontal[bottom+x];
+        dst[row+x] = tab[255 + src[row+x] - ((sum * mult) >>> shift)];
+      }
+    }
+  }
+  imageDst.width = width;
+  imageDst.height = height;
+  return imageDst;
+}
 
 CV.otsu = function(imageSrc){
   var src = imageSrc.data, len = src.length, hist = [],

@@ -16,7 +16,7 @@ internal sealed partial class BanbanPetWindow
     private readonly DispatcherTimer _holdTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private (PixelPoint Position, bool Engaged)? _wheelOrigin;
     private bool _longPressed;
-    private double _wheelScale = 1, _wheelPetTop;
+    private double _wheelScale = 1, _companionScale = 1, _wheelPetTop;
     private readonly ReceiverConfig? _classroomBinding;
     internal CardQuizHost? ClassroomHost { get; private set; }
     internal bool ClassroomExpanded => _classroomWheel.IsVisible;
@@ -36,6 +36,7 @@ internal sealed partial class BanbanPetWindow
         Activated += (_, _) => _classroomWheel.RestorePendingFocus();
         _classroomWheel.MenuRequested += opener => OpenPetMenu(opener: opener);
         if (_classroomBinding is null) return;
+        InitializeWheelResize();
         // Use the classroom control theme while the desktop outside the wheel stays transparent.
         Classes.Add("classroom-surface");
         SetClassroomPetName(false);
@@ -122,6 +123,7 @@ internal sealed partial class BanbanPetWindow
         var body = _classroomWheel.BrowserDetailBounds;
         browser.Width = detail ? body.Width * _wheelScale : 1;
         browser.Height = detail ? body.Height * _wheelScale : 1;
+        browser.SetContentScale(detail ? _wheelScale : 1);
         Canvas.SetLeft(browser, detail ? Canvas.GetLeft(_classroomWheel) + body.X * _wheelScale : 0);
         Canvas.SetTop(browser, detail ? Canvas.GetTop(_classroomWheel) + body.Y * _wheelScale : Height - 1);
         var entering = detail && !browser.Focusable;
@@ -142,6 +144,7 @@ internal sealed partial class BanbanPetWindow
             var anchor = this.PointToScreen(center);
             _wheelOrigin = (Position, _engaged);
             _classroomWheel.IsVisible = true; _engaged = true; _docked = false;
+            _resizeGrip.IsVisible = true;
             _dockFrames.Stop(); _dock.Snap(0); _captionTimer.Stop(); _captionButton.IsVisible = false; _idleTimer.Stop();
             var screen = Screens.ScreenFromPoint(anchor) ?? Screens.Primary;
             if (screen is not null) PositionClassroom(anchor,screen);
@@ -154,6 +157,8 @@ internal sealed partial class BanbanPetWindow
         }
         else
         {
+            EndWheelDrag();
+            _resizeGrip.IsVisible = false;
             PetMenu.Hide();
             _classroomWheel.ResetView();
             if (_classroomWheel.DetailVisible) ClassroomHost?.ActivateCompanionAction(new("dismiss"));
@@ -179,34 +184,37 @@ internal sealed partial class BanbanPetWindow
         ToolTip.SetTip(_talk, expanded ? "轻点收起 · 长按更多" : "轻点进课堂 · 长按更多");
     }
 
-    private void PositionClassroom(PixelPoint anchor, Screen screen, int? wheelCenterY = null)
+    private void PositionClassroom(PixelPoint anchor, Screen screen, PixelPoint? wheelCenter = null)
     {
         var placement = FitClassroom(anchor, screen.WorkingArea, screen.Scaling, RestWidth, Scale, _right,
-            _cameraLens.Footprint, wheelCenterY);
+            _cameraLens.Footprint, wheelCenter, _preference.WheelSizePercent);
         Width = placement.Size.Width; Height = placement.Size.Height; Position = placement.Position;
-        _wheelScale = placement.Scale; _wheelPetTop = placement.PetTop;
+        _wheelScale = placement.Scale; _companionScale = placement.CompanionScale; _wheelPetTop = placement.PetTop;
         _wheelOffset = placement.Wheel; _lensOffset = placement.Lens;
         ArrangeClassroomWheel();
     }
 
-    private void RefitClassroom()
+    private PixelPoint WheelCenterOnScreen() => this.PointToScreen(_wheelOffset +
+        new Vector(BanbanClassroomWheel.Diameter / 2, BanbanClassroomWheel.Diameter / 2) * _wheelScale);
+
+    private void RefitClassroom(PixelPoint? fixedCenter = null)
     {
         if (!ClassroomExpanded) return;
         var center = new Point(Canvas.GetLeft(_talk) + _talk.Width / 2, Canvas.GetTop(_talk) + _mascot.Height / 2);
         var anchor = this.PointToScreen(center);
         var screen = Screens.ScreenFromPoint(anchor) ?? Screens.Primary;
-        // Near the work-area edges the mascot can sit above or below the wheel's center.
-        var wheelCenter = this.PointToScreen(new Point(_wheelOffset.X, _wheelOffset.Y + BanbanClassroomWheel.Diameter * _wheelScale / 2));
-        if (screen is not null) PositionClassroom(anchor, screen, wheelCenter.Y);
+        if (screen is not null) PositionClassroom(anchor, screen, fixedCenter ?? WheelCenterOnScreen());
     }
 
-    internal static (PixelPoint Position, Size Size, double Scale, double PetTop, Point Wheel, Point Lens) FitClassroom(
+    internal static (PixelPoint Position, Size Size, double Scale, double PetTop, Point Wheel, Point Lens, double CompanionScale) FitClassroom(
         PixelPoint anchor, PixelRect work, double dpi, double restWidth, double petScale, bool right,
-        Size lens = default, int? wheelCenterY = null)
+        Size lens = default, PixelPoint? wheelCenter = null, int wheelSizePercent = 100)
     {
-        const double disc = BanbanClassroomWheel.Diameter, gap = 8;
+        const double gap = 8;
+        var wheelZoom = Math.Clamp(wheelSizePercent, MinWheelPercent, MaxWheelPercent) / 100d;
+        var disc = BanbanClassroomWheel.Diameter * wheelZoom;
         // Use disc-local coordinates so a wider lens can extend on either side of the wheel.
-        static Rect AboveDisc(Size camera) => new((disc - camera.Width) / 2, -gap - camera.Height, camera.Width, camera.Height);
+        Rect AboveDisc(Size camera) => new((disc - camera.Width) / 2, -gap - camera.Height, camera.Width, camera.Height);
         var row = new Rect(right ? 0 : -restWidth, 0, disc + restWidth, disc);
         var hasLens = lens.Height > 0;
         var bounds = hasLens ? row.Union(AboveDisc(lens)) : row;
@@ -218,29 +226,32 @@ internal sealed partial class BanbanPetWindow
         var lensOffset = new Point(wheel.X + (disc - lens.Width) * scale / 2, 0);
 
         var petCenterX = wheel.X + (right ? disc + restWidth / 2 : -restWidth / 2) * scale;
-        var position = Constrain(new PixelPoint(anchor.X - (int)Math.Round(petCenterX * dpi),
-            (wheelCenterY ?? anchor.Y) - (int)Math.Round((wheel.Y + disc * scale / 2) * dpi)), work, size, dpi);
+        var left = wheelCenter is { } center ? center.X - (int)Math.Round((wheel.X + disc * scale / 2) * dpi)
+            : anchor.X - (int)Math.Round(petCenterX * dpi);
+        var position = Constrain(new PixelPoint(left,
+            (wheelCenter?.Y ?? anchor.Y) - (int)Math.Round((wheel.Y + disc * scale / 2) * dpi)), work, size, dpi);
         var petHeight = Math.Max(44, 130 * petScale);
         var petTop = Math.Clamp((anchor.Y - position.Y) / dpi - 65 * petScale * scale,
             wheel.Y, wheel.Y + Math.Max(0, disc - petHeight) * scale);
-        return (position, size, scale, petTop, wheel, lensOffset);
+        return (position, size, scale * wheelZoom, petTop, wheel, lensOffset, scale);
     }
 
     private void ArrangeClassroomWheel()
     {
         if (!ClassroomExpanded) return;
-        var scale = Scale*_wheelScale;
+        var scale = Scale*_companionScale;
         _pill.IsVisible = false; _captionButton.IsVisible = false;
         _mascot.Width = 116 * scale; _mascot.Height = 130 * scale; _mascot.SetPeeking(0, _right);
-        _talk.Width = RestWidth*_wheelScale; _talk.Height = Math.Max(44,130*Scale)*_wheelScale;
+        _talk.Width = RestWidth*_companionScale; _talk.Height = Math.Max(44,130*Scale)*_companionScale;
         Canvas.SetLeft(_talk, _wheelOffset.X + (_right ? BanbanClassroomWheel.Diameter * _wheelScale : -_talk.Width));
         Canvas.SetTop(_talk,_wheelPetTop);
         _classroomWheel.RenderTransformOrigin = RelativePoint.TopLeft;
         _classroomWheel.RenderTransform = _wheelScale == 1 ? null : new ScaleTransform(_wheelScale,_wheelScale);
         Canvas.SetLeft(_classroomWheel,_wheelOffset.X); Canvas.SetTop(_classroomWheel,_wheelOffset.Y);
         _cameraLens.RenderTransformOrigin = RelativePoint.TopLeft;
-        _cameraLens.RenderTransform = _classroomWheel.RenderTransform;
+        _cameraLens.RenderTransform = _companionScale == 1 ? null : new ScaleTransform(_companionScale, _companionScale);
         Canvas.SetLeft(_cameraLens,_lensOffset.X); Canvas.SetTop(_cameraLens,_lensOffset.Y);
+        ArrangeResizeGrip();
         ArrangeClassroomBrowser();
         if (PetMenu.IsOpen) AlignPetMenu();
     }

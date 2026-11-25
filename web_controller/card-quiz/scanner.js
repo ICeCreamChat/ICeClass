@@ -1,6 +1,7 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory(require('./vendor/aruco.js'));else root.CardQuizScanner=factory(root.ICeCardAR);})(globalThis,function(AR){
   'use strict';
   const frameSignalMaxAge=1000;
+  const confirmInterval=75, searchInterval=150;
   function answerFromCorners(corners){
     if(!Array.isArray(corners)||corners.length!==4)return'';
     const dx=corners[0].x-corners[2].x,dy=corners[0].y-corners[2].y;
@@ -15,8 +16,8 @@
     return true;
   }
   class Stabilizer{
-    constructor(){this.entries=new Map();this.visible=new Map();this.held=new Map();this.frame=0;this.conflicts=[];}
-    reset(){this.entries.clear();this.visible.clear();this.held.clear();this.frame=0;this.conflicts=[];}
+    constructor(){this.entries=new Map();this.visible=new Map();this.held=new Map();this.reset();}
+    reset(){this.entries.clear();this.visible.clear();this.held.clear();this.frame=0;this.conflicts=[];this.needsEvidence=false;}
     cardsInView(){
       const cards=this.cardsOnHold();
       for(const [number,card] of this.visible) if(this.frame-card.frame<3) cards.set(number,card.option);
@@ -28,12 +29,13 @@
     }
     forget(number){this.entries.delete(number);}
     discardCandidates(){
+      this.needsEvidence=false;
       for(const entry of this.entries.values()){
         entry.history=[];entry.streak=0;
       }
     }
     feed(markers,at,optionCount=4){
-      this.frame++;this.conflicts=[];const groups=new Map(),results=[];
+      this.frame++;this.conflicts=[];this.needsEvidence=false;const groups=new Map(),results=[];
       for(const merged of markers)for(const marker of merged.observations||[merged]){
         if(marker.id!==merged.id)continue;
         if(!Number.isInteger(marker.id)||marker.id<0||marker.id>=157)continue;
@@ -58,13 +60,16 @@
         }
         const held=this.held.get(number);
         if(held&&(!held.option||held.option===option)){entry.history=[];entry.run='';entry.streak=0;continue;}
-        const distance=Math.min(...reads.map(x=>x.distance));if(distance>1)continue;
+        const distance=Math.min(...reads.map(x=>x.distance));if(distance>1||option===entry.committed)continue;
         entry.history=entry.history.filter(x=>this.frame-x.frame<20&&at-x.at<=3000);
         entry.history.push({option,weight:distance===0?2:1,frame:this.frame,at});
         entry.streak=entry.run===option&&entry.lastFrame===this.frame-1?entry.streak+1:1;
         entry.run=option;entry.lastFrame=this.frame;
         const score=entry.history.filter(x=>x.option===option).reduce((sum,x)=>sum+x.weight,0);
-        if(score>=6&&entry.streak>=3&&option!==entry.committed){this.held.delete(number);entry.committed=option;results.push({cardNumber:number,option});entry.history=entry.history.filter(x=>x.option===option);}
+        if(score>=6&&entry.streak>=3){
+          this.held.delete(number);entry.committed=option;entry.history=[];
+          entry.submission={cardNumber:number,option};results.push(entry.submission);
+        }else this.needsEvidence=true;
       }
       for(const [number,e]of this.entries)if(at-(e.history.at(-1)?.at??0)>10000&&!e.committed)this.entries.delete(number);
       return results;
@@ -99,7 +104,7 @@
     }
     async open(opening){
       let stream;
-      try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});}
+      try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}}});}
       catch(error){if(opening!==this.opening)return;throw error;}
       let released=false;
       const ended=()=>{if(opening===this.opening)this.cameraError('相机连接已结束，请重新开启相机。');};
@@ -160,15 +165,21 @@
       return now-sample.changedAt<frameSignalMaxAge?sample:null;
     }
     previewFrame(video,now){
-      const hasCallback=!this.readTrack && typeof video.requestVideoFrameCallback==='function';
+      const hasCallback=typeof video.requestVideoFrameCallback==='function';
       if(hasCallback){
         if(this.frameCallback==null){
           const opening=this.opening;
-          this.frameCallback=video.requestVideoFrameCallback(()=>{
+          this.frameCallback=video.requestVideoFrameCallback((_,metadata)=>{
             if(opening!==this.opening)return;
             this.frameCallback=null;
-            this.presentedFrame=(this.presentedFrame??0)+1;
+            const count=metadata?.presentedFrames??(this.presentedFrame??0)+1;
+            if(count===this.presentedFrame)return;
+            this.presentedFrame=count;
             this.presentedAt=performance.now();
+            if(this.waitingForFrames){
+              clearTimeout(this.timer);
+              this.timer=setTimeout(()=>this.tick(),0);
+            }
           });
         }
         if(this.presentedFrame!=null && now-this.presentedAt<frameSignalMaxAge)
@@ -184,6 +195,14 @@
         return {kind:'presented',value:this.presentedFrame};
       // Without frame metadata, only a changed image can confirm a card.
       return {kind:'pixels',value:video.currentTime};
+    }
+    captureImage(source,width,height){
+      // Keep the entire camera view and its rear-row cells, independently of preview size.
+      const scale=Math.min(1,1920/Math.max(width,height),Math.sqrt(1920*1080/(width*height)));
+      const w=Math.max(1,Math.round(width*scale)),h=Math.max(1,Math.round(height*scale));
+      if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
+      this.ctx.drawImage(source,0,0,w,h);
+      return this.ctx.getImageData(0,0,w,h);
     }
     async tick(){
       if(!this.running)return;const started=performance.now();
@@ -210,31 +229,33 @@
         const changedSource=this.lastFrameSource!=null && frameSource!==this.lastFrameSource;
         const advanced=Number.isFinite(frame) && (frame!==this.lastFrame || changedSource);
         if(!muted&&(captured||v.readyState>=2)&&width&&height&&(byPixels||advanced)){
-          // Decode the camera track itself. Display-preview dimensions would discard rear-row cells.
-          const scale=Math.min(1,1920/Math.max(width,height),Math.sqrt(1920*1080/(width*height)));
-          const w=Math.max(1,Math.round(width*scale)),h=Math.max(1,Math.round(height*scale));
-          if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
-          this.ctx.drawImage(source,0,0,w,h);
-          const image=this.ctx.getImageData(0,0,w,h);
-          const pixels=reader?null:new Uint32Array(image.data.buffer,image.data.byteOffset,image.data.byteLength/4);
-          const fresh=!byPixels || !samePixels(this.lastPixels,pixels);
-          this.lastPixels=pixels;this.lastFrame=frame;this.lastFrameSource=frameSource;
+          // A new counter may describe the frame already scanned. Only the pixel
+          // fallback needs a readback on handover, to establish its reference.
+          let image,fresh=true;
+          if(byPixels || (!changedSource && revision===this.contextRevision)){
+            image=this.captureImage(source,width,height);
+            if(!reader){
+              const pixels=new Uint32Array(image.data.buffer,image.data.byteOffset,image.data.byteLength/4);
+              if(byPixels)fresh=!samePixels(this.lastPixels,pixels);
+              this.lastPixels=pixels;
+            }
+          }
+          this.lastFrame=frame;this.lastFrameSource=frameSource;
           if(!byPixels)this.sawFrameCounter=true;
           if(fresh || (!this.waitForFrames && !this.sawFrameCounter && advanced))this.lastFrameAt=started;
           if(fresh && this.waitingForFrames){
             this.waitingForFrames=false;
             this.onStatus({kind:'ready',message:'相机已开启'});
           }
-          // Different counters can describe the same frame during a handover.
-          if(fresh && !changedSource && revision===this.contextRevision)this.lastMarkers=this.scanImage(image);
-          if(this.onPreview && started-this.lastFrameAt<1000){
-            try { this.onPreview(this.canvas,this.lastMarkers || []); } catch { /* Preview cannot interrupt recognition. */ }
+          if(image && fresh && !changedSource && revision===this.contextRevision){
+            const markers=this.scanImage(image);
+            try { this.onPreview?.(this.canvas,markers); } catch { /* Preview cannot interrupt recognition. */ }
           }
         }
         if(muted||started-this.lastFrameAt>=3000){
           if(!this.waitForFrames){this.cameraError('相机画面已停止更新，请重新开启相机。');return;}
           if(!this.waitingForFrames){
-            this.waitingForFrames=true;this.lastMarkers=null;
+            this.waitingForFrames=true;
             this.stabilizer.discardCandidates();
             this.onStatus({kind:'warning',message:'等待相机画面…'});
           }
@@ -244,14 +265,15 @@
         if(reader){this.cameraError('相机画面无法读取，请重新开启相机。');return;}
         this.onStatus({kind:'error',message:'识别未完成，请检查相机或重新开启。'});
       }finally{clearTimeout(timeout);captured?.close();}
-      const interval=this.waitingForFrames?500:180;
+      let interval=this.stabilizer.needsEvidence?confirmInterval:searchInterval;
+      if(this.waitingForFrames)interval=started-this.previewStartedAt<frameSignalMaxAge?confirmInterval:500;
       if(this.running)this.timer=setTimeout(()=>this.tick(),Math.max(30,interval-(performance.now()-started)));
     }
     scanImage(image){
       const markers=this.detector.detect(image);
       const opening=this.opening,context=this.contextRevision,current=()=>this.running&&opening===this.opening&&context===this.contextRevision;
       for(const read of this.stabilizer.feed(markers,Date.now(),this.optionCount))Promise.resolve().then(()=>{if(current())return this.onRead(read);}).catch(error=>{
-        if(!current()||this.stabilizer.entries.get(read.cardNumber)?.committed!==read.option)return;
+        if(!current()||this.stabilizer.entries.get(read.cardNumber)?.submission!==read)return;
         this.stabilizer.forget(read.cardNumber);this.onStatus({kind:'error',message:error?.message||'作答提交未完成，请重试。'});
       });
       if(this.stabilizer.conflicts.length)this.onStatus({kind:'warning',message:`重复卡号方向冲突：${this.stabilizer.conflicts.join('、')}`});
@@ -261,7 +283,7 @@
       if(this.running)this.heldCards=this.stabilizer.cardsOnHold();
       ++this.opening;this.starting=null;this.running=false;clearTimeout(this.timer);
       if(this.frameCallback!=null)this.video.cancelVideoFrameCallback?.(this.frameCallback);
-      this.frameCallback=null;this.presentedFrame=null;this.lastPixels=null;this.lastMarkers=null;
+      this.frameCallback=null;this.presentedFrame=null;this.lastPixels=null;
       const reader=this.reader;this.reader=null;
       if(reader)reader.cancel().catch(()=>{}).finally(()=>reader.releaseLock());
       this.releaseStream?.();this.stream=null;this.video.srcObject=null;this.stabilizer.reset();

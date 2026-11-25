@@ -695,6 +695,7 @@ internal sealed partial class BanbanPetWindow : Window
     {
         if (message != 0x0084) return IntPtr.Zero; // WM_NCHITTEST: transparent space must not block the lesson behind it.
         var point = this.PointToClient(new PixelPoint(unchecked((short)(lParam.ToInt64() & 0xffff)), unchecked((short)((lParam.ToInt64() >> 16) & 0xffff))));
+        if (ClassroomExpanded && ResizeGripContains(point)) return IntPtr.Zero;
         if (ClassroomExpanded && this.TranslatePoint(point,_classroomWheel) is { } local && _classroomWheel.ContainsInteractive(local)) return IntPtr.Zero;
         if (ClassroomExpanded && _cameraLens.IsVisible && this.TranslatePoint(point,_cameraLens) is { } lens && _cameraLens.ContainsInteractive(lens)) return IntPtr.Zero;
         if (!_dismissed && (_talk.Bounds.Contains(point) || _captionButton.IsVisible && _captionButton.Bounds.Contains(point))) return IntPtr.Zero;
@@ -706,7 +707,8 @@ internal sealed partial class BanbanPetWindow : Window
         try
         {
             var value = JsonSerializer.Deserialize<PetPreference>(File.ReadAllText(_preferencePath)) ?? new();
-            return value with { SizePercent = Math.Clamp(value.SizePercent, 25, 150) };
+            return value with { SizePercent = Math.Clamp(value.SizePercent, 25, 150),
+                WheelSizePercent = Math.Clamp(value.WheelSizePercent, MinWheelPercent, MaxWheelPercent) };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
     }
@@ -735,5 +737,5 @@ internal sealed partial class BanbanPetWindow : Window
         }
     }
     private sealed record PetPreference(bool Visible = true, int? X = null, int? Y = null, int? Bottom = null,
-        int SizePercent = DefaultSizePercent, bool? Right = null, double? Vertical = null);
+        int SizePercent = DefaultSizePercent, bool? Right = null, double? Vertical = null, int WheelSizePercent = 100);
 }

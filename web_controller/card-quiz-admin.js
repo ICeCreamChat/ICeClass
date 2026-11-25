@@ -170,7 +170,15 @@
       credentials=issued;accountSelection=new Set();accountsConflict=false;accountsError='';
       if(action==='link-account')accountDraft.studentId=accountDraft.username='';
       if(action==='generate-accounts'){accountDraft.entryYear=entryYear;accountDraft.classCode=accountClassCode;}
-      if(numberCards){notify(issued.length?`已准备 ${issued.length} 张通用卡，可打印本次纸卡。`:'这段卡号都已发放，可继续使用原纸卡。');return;}
+      if(numberCards){
+        if(issued.length){notify(`已准备 ${issued.length} 张通用卡，可打印本次纸卡。`);return;}
+        const range=(data.numberCards||[]).filter(card=>card.cardNumber>=body.firstNumber&&card.cardNumber<=body.lastNumber);
+        if(range.length!==body.lastNumber-body.firstNumber+1 || range.some(card=>!card.username)){
+          notify('所选通用卡已发放。');return;
+        }
+        const first=range[0].username, last=range[range.length-1].username;
+        notify(`所选通用卡已发放。登录编号 ${first===last?first:first+' - '+last}，沿用原密码。`);return;
+      }
       notify(action==='generate-accounts'?`已生成 ${issued.length} 个账号，可打印本次纸卡或下载发放表。`:action==='reset-accounts'?`已重置 ${issued.length} 人的密码，旧密码已失效，请发放新密码。`:'原账号已关联，原历史和密码已保留。');
     },true);
   }

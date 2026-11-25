@@ -101,17 +101,42 @@ internal static class BanbanClassroomStyle
 
 }
 
-/// <summary>The classroom disc and its shortcut menu display the same live fraction.</summary>
+// Start and length are fractions of one clockwise turn from twelve o'clock.
+internal readonly record struct BanbanRingFraction(double Start, double Length, int Parts = 1)
+{
+    internal static BanbanRingFraction? Participation(int received, int expected) =>
+        expected > 0 ? new(0, Math.Clamp((double)received / expected, 0, 1)) : null;
+
+    internal static BanbanRingFraction Receipt(int distinctCards, bool motionEnabled)
+    {
+        if (distinctCards <= 0) return new(0, 0);
+        const double tick = 1d / 24;
+        // One short mark per new number. Reduced motion keeps its position fixed.
+        return motionEnabled ? new((distinctCards - 1) % 12 / 12d, tick) :
+            new(0, distinctCards % 2 == 1 ? tick : 2 * tick);
+    }
+
+    internal static BanbanRingFraction? Option(string option, int count)
+    {
+        var index = option is { Length: 1 } ? "ABCD".IndexOf(option[0]) : -1;
+        return count is >= 2 and <= 4 && index >= 0 && index < count
+            ? new((double)index / count, 1d / count, count) : null;
+    }
+}
+
+/// <summary>The classroom disc and its shortcut menu bind the entire ring in one update.</summary>
 internal sealed class BanbanClassroomProgress : Grid
 {
     // Leave one DIP between the progress stroke and the sector faces.
     internal const double RingThickness = BanbanClassroomStyle.SectorMargin - 1;
-    internal static readonly StyledProperty<double?> FractionProperty =
-        AvaloniaProperty.Register<BanbanClassroomProgress, double?>(nameof(Fraction));
-    internal double? Fraction { get => GetValue(FractionProperty); set => SetValue(FractionProperty, value); }
+    private const double OptionGapDegrees = 5;
+    internal static readonly StyledProperty<BanbanRingFraction?> FractionProperty =
+        AvaloniaProperty.Register<BanbanClassroomProgress, BanbanRingFraction?>(nameof(Fraction));
+    internal BanbanRingFraction? Fraction { get => GetValue(FractionProperty); set => SetValue(FractionProperty, value); }
     internal Ellipse Rail { get; } = new() { StrokeThickness = RingThickness, IsVisible = false };
     internal Arc Segment { get; } = new() { StrokeThickness = RingThickness, StartAngle = -90,
         StrokeLineCap = PenLineCap.Round, IsVisible = false };
+    private readonly Grid _optionRails = new() { IsVisible = false };
     private readonly IBrush _track, _ink;
 
     internal BanbanClassroomProgress()
@@ -123,6 +148,7 @@ internal sealed class BanbanClassroomProgress : Grid
         _ink = contrast ? Brushes.Black : BanbanClassroomStyle.ActionBlue;
         Segment.Stroke = _ink;
         Children.Add(Rail);
+        Children.Add(_optionRails);
         Children.Add(Segment);
     }
 
@@ -131,10 +157,23 @@ internal sealed class BanbanClassroomProgress : Grid
         base.OnPropertyChanged(change);
         if (change.Property != FractionProperty) return;
         var fraction = Fraction;
-        Rail.IsVisible = fraction.HasValue;
+        var parts = fraction?.Parts ?? 1;
+        _optionRails.IsVisible = parts > 1;
+        if (parts > 1 && _optionRails.Children.Count != parts)
+        {
+            _optionRails.Children.Clear();
+            var step = 360d / parts;
+            for (int i = 0; i < parts; i++)
+                _optionRails.Children.Add(new Arc { Stroke = _track, StrokeThickness = RingThickness,
+                    StrokeLineCap = PenLineCap.Round, StartAngle = -90 + i * step + OptionGapDegrees / 2,
+                    SweepAngle = step - OptionGapDegrees });
+        }
+        Rail.IsVisible = fraction.HasValue && parts == 1;
         // A complete ellipse remains closed when the two ends of a 360° arc coincide.
-        Rail.Stroke = fraction >= 1 ? _ink : _track;
-        Segment.IsVisible = fraction is > 0 and < 1;
-        Segment.SweepAngle = (fraction ?? 0) * 360;
+        Rail.Stroke = fraction?.Length >= 1 ? _ink : _track;
+        var gap = parts > 1 ? OptionGapDegrees : 0;
+        Segment.StartAngle = -90 + (fraction?.Start ?? 0) * 360 + gap / 2;
+        Segment.SweepAngle = Math.Max(0, (fraction?.Length ?? 0) * 360 - gap);
+        Segment.IsVisible = fraction is { Length: > 0 and < 1 };
     }
 }

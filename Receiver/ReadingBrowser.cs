@@ -14,6 +14,7 @@ internal sealed class ReadingBrowser : NativeControlHost
     private CoreWebView2Controller? _controller;
     private bool _disposed;
     private bool _resizeQueued;
+    private double _contentScale = 1;
     public CoreWebView2? Core => _controller?.CoreWebView2;
     public event Action? EscapePressed;
     public event Action? FullscreenPressed;
@@ -39,6 +40,7 @@ internal sealed class ReadingBrowser : NativeControlHost
         var controller = await environment.CreateCoreWebView2ControllerAsync(handle);
         if (_disposed || token.IsCancellationRequested) { controller.Close(); token.ThrowIfCancellationRequested(); throw new OperationCanceledException(); }
         _controller = controller;
+        if (_contentScale != 1) controller.ZoomFactor = _contentScale;
         controller.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 244, 249, 255);
         controller.AcceleratorKeyPressed += (_, args) =>
         {
@@ -74,6 +76,13 @@ internal sealed class ReadingBrowser : NativeControlHost
     }
 
     public void FocusPage() => FocusPage(CoreWebView2MoveFocusReason.Programmatic);
+    internal void SetContentScale(double scale)
+    {
+        scale = Math.Clamp(scale, .25, 5);
+        if (_contentScale == scale) return;
+        _contentScale = scale;
+        if (_controller is not null) _controller.ZoomFactor = scale;
+    }
     public void FocusPage(CoreWebView2MoveFocusReason reason) => _controller?.MoveFocus(reason);
     public void SetPageVisible(bool visible) { if (_controller is not null) _controller.IsVisible = visible; }
     public void DisposeBrowser()

@@ -130,6 +130,7 @@ test('九班空名单从原生圆环首题直接扫，开放卡号图实时补�
     await page.waitForFunction(()=>testScanner.running);
     await read(1); await read(1,'B');
     assert.equal((await wheel(page)).lesson.received,1);
+    assert.equal((await wheel(page)).lesson.hasPriorParticipants,false);
     assert.doesNotMatch((await wheel(page)).progress,/收齐|1\s*\/\s*1/);
     await sector(page,'missing'); await waitPanel(page,'exempt-dialog');
     assert.equal((await wheel(page)).cardPanel.pendingOnly,false);
@@ -144,6 +145,8 @@ test('九班空名单从原生圆环首题直接扫，开放卡号图实时补�
     await page.waitForFunction(()=>testScanner.running);
     await read(47);
     const lesson=(await wheel(page)).lesson;
+    assert.equal(lesson.hasPriorParticipants,true);
+    assert.deepEqual([lesson.received,lesson.expected],[1,3]);
     assert.equal(lesson.participantCount,3);
     assert.deepEqual(lesson.missing,[1,2]);
     await sector(page,'finish-confirmed');
@@ -151,9 +154,102 @@ test('九班空名单从原生圆环首题直接扫，开放卡号图实时补�
     const s=fixture.journals[0].session;
     assert.deepEqual(s.questions.map(q=>q.rounds[0].participantCount),[2,3]);
     assert.deepEqual((await wheel(page)).lesson.records.map(r=>r.abstained),[0,2]);
+    assert.deepEqual((await wheel(page)).lesson.records.map(r=>[r.received,r.expected]),[[2,2],[1,3]]);
     await noOverflow(page);assert.deepEqual(fixture.errors,[]);
   } finally {await context.close();}
 });
+
+test('通用单选首题恢复和重收按开轮前的参与人数区分，免答实时扣除',async()=>{
+  const {page,context,fixture}=await open({companion:true,students:[],scannerFixture:true});
+  const read=(cardNumber,option='A')=>page.evaluate(value=>testScanner.options.onRead(value),{cardNumber,option});
+  const collect=async()=>{
+    await sector(page,'collect');
+    await page.waitForFunction(()=>testScanner.running && !__quizWheelState.lesson.busy);
+  };
+  async function checkCounts(prior,received,expected,participants) {
+    const lesson=(await wheel(page)).lesson;
+    assert.deepEqual([lesson.hasPriorParticipants,lesson.received,lesson.expected,lesson.participantCount],
+      [prior,received,expected,participants]);
+  }
+  try {
+    await useNativeDisc(page); await startInPet(page,'single:3'); await collect();
+    await checkCounts(false,0,0,0);
+    await read(7); await read(15); await read(7,'C');
+    await checkCounts(false,2,2,2);
+    await page.reload();
+    await page.waitForFunction(()=>window.__quizWheelState?.setup?.recovery);
+    await useNativeDisc(page); await sector(page,'setup-restore',{sessionId:fixture.journals[0].session.id});
+    await page.waitForFunction(()=>__quizWheelState.lesson.phase==='paused' && !__quizWheelState.lesson.busy);
+    await checkCounts(false,2,2,2);
+    await collect(); await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.lesson.phase==='result' && !__quizWheelState.lesson.busy);
+    await collect(); await checkCounts(true,0,2,2);
+    await read(15); await read(47); await read(47,'B');
+    await checkCounts(true,2,3,3);
+    await sector(page,'missing'); await waitPanel(page,'exempt-dialog');
+    assert.equal((await wheel(page)).cardPanel.pendingOnly,false);
+    await sector(page,'card-locate',{cardNumber:7});
+    for (const [n,received,expected] of [[7,2,2],[15,1,1],[47,0,0]]) {
+      await sector(page,'card-toggle',{cardNumber:n});
+      await page.waitForFunction(e=>!__quizWheelState.lesson.busy && __quizWheelState.lesson.expected===e,expected);
+      await checkCounts(true,received,expected,3);
+    }
+    await sector(page,'dismiss'); await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.lesson.phase==='result' && !__quizWheelState.lesson.busy);
+    const result=(await wheel(page)).lesson;
+    assert.deepEqual([result.received,result.expected,result.participantCount,result.abstained,result.primary],[0,0,3,0,'advance']);
+    assert.deepEqual(fixture.journals[0].session.questions[0].rounds.map(r=>r.participantCount),[2,3]);
+    assert.deepEqual(fixture.errors,[]);
+  } finally {await context.close();}
+});
+
+test('通用单选零卡封存后跳到第二题，首张卡仍无此前参与基数',async()=>{
+  const {page,context}=await open({companion:true,students:[],scannerFixture:true});
+  try {
+    await useNativeDisc(page); await startInPet(page);
+    await sector(page,'collect'); await page.waitForFunction(()=>testScanner.running && !__quizWheelState.lesson.busy);
+    await sector(page,'collect'); await page.waitForFunction(()=>__quizWheelState.lesson.phase==='result' && !__quizWheelState.lesson.busy);
+    const empty=(await wheel(page)).lesson;
+    assert.deepEqual([empty.received,empty.expected,empty.participantCount,empty.primary],[0,0,0,'collect']);
+    await sector(page,'advance'); await page.waitForFunction(()=>__quizWheelState.lesson.phase==='ready' && !__quizWheelState.lesson.busy);
+    await sector(page,'collect'); await page.waitForFunction(()=>testScanner.running && !__quizWheelState.lesson.busy);
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:47,option:'A'}));
+    const next=(await wheel(page)).lesson;
+    assert.deepEqual([next.number,next.hasPriorParticipants,next.received,next.participantCount],[2,false,1,1]);
+  } finally {await context.close();}
+});
+
+for (const count of [2,3,4]) {
+  test(`通用多选 ${count} 项按实际阶段切换、回改，只在教师封存时结束`,async()=>{
+    const {page,context,fixture}=await open({companion:true,students:[],scannerFixture:true});
+    const options='ABCD'.slice(0,count);
+    const read=(cardNumber,option)=>page.evaluate(value=>testScanner.options.onRead(value),{cardNumber,option});
+    async function checkStage(option,received) {
+      await page.waitForFunction(opt=>__quizWheelState.lesson.option===opt && !__quizWheelState.lesson.busy,option);
+      const {lesson,progress}=await wheel(page);
+      assert.deepEqual([lesson.phase,lesson.optionCount,lesson.received],['collect',count,received]);
+      assert.match(progress,new RegExp('本项已收 '+received+' 人'));
+      assert.equal(lesson.label,option===options.at(-1) ? '结束收答' : '下一项 '+options[options.indexOf(option)+1]);
+    }
+    try {
+      await useNativeDisc(page); await startInPet(page,'multiple:'+count);
+      await sector(page,'collect'); await checkStage('A',0);
+      await read(1,'A'); await read(2,'B'); await checkStage('A',2);
+      for (const option of options.slice(1)) { await sector(page,'multi'); await checkStage(option,0); }
+      await read(3,'A'); await checkStage(options.at(-1),1);
+      await sector(page,'missing'); await waitPanel(page,'exempt-dialog');
+      assert.equal((await wheel(page)).cardPanel.pendingOnly,false);
+      await sector(page,'dismiss'); await sector(page,'options'); await detailPage(page,'options','ring');
+      await detailAction(page,'collect-a'); await checkStage('A',2);
+      await read(1,'B'); await checkStage('A',2);
+      await sector(page,'seal'); await page.waitForFunction(()=>__quizWheelState.lesson.phase==='result' && !__quizWheelState.lesson.busy);
+      const result=(await wheel(page)).lesson;
+      assert.deepEqual([result.received,result.expected,result.abstained],[3,3,0]);
+      assert.deepEqual(result.bars,[{label:'全不选',count:2},{label:options.at(-1),count:1}]);
+      assert.deepEqual(fixture.errors,[]);
+    } finally {await context.close();}
+  });
+}
 
 test('开课和首题一并保存，结束后无需等待学校同步即可开下一堂',async()=>{
   const {page,context,fixture}=await open({width:390,scannerFixture:true});
@@ -522,6 +618,64 @@ test('手机取景与本轮收答同时出现，等待连接时可收起，封�
     await sector(page,'preview-open',{key}); assert.equal((await wheel(page)).preview,null);
     assert.deepEqual(fixture.errors,[]);
   } finally {await context.close();}
+});
+
+test('60 张手机卡逐张保存后及时回执，断线重试和空闲轮询仍限频',{timeout:30000},async()=>{
+  const {page,context,fixture}=await open({quickScan:true,students:[]});
+  const polls=()=>fixture.messages.filter(message=>message.action==='relay');
+  let release;
+  try {
+    await page.clock.install();
+    await create(page); await page.locator('#source').click();
+    await page.locator('#pair-dialog[open]').waitFor();
+    fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
+    await page.getByText('手机收答中，白板保存后确认',{exact:true}).waitFor();
+    const s=fixture.journals[0].session;
+    const commands=Array.from({length:60},(_,i)=>({id:crypto.randomUUID(),action:'answer',sessionId:s.id,
+      questionId:s.currentQuestionId,roundId:s.currentRoundId,generation:s.generation,sourceId:s.sourceId,
+      payload:{cardNumber:i+1,option:'A'}}));
+    const saving=new Promise(resolve=>fixture.commitStarted=resolve);
+    fixture.holdCommit=new Promise(resolve=>{release=resolve;});
+    fixture.commands.push(...commands);
+    let offline=true;
+    fixture.relay=body=>{if (offline && body.receipts.length) throw new Error('模拟回执断线');};
+    await saving;
+    const before=polls().length;
+    await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
+    assert.equal(polls().length,before,'逐卡保存期间不并发轮询');
+    release();
+    await page.locator('#received').getByText('60',{exact:true}).waitFor({state:'attached'});
+    await page.clock.runFor(1);
+    assert.equal(polls().length,before+1,'保存已超过设备轮询间隔，应立即发回执');
+    const receipts=polls().at(-1).body.receipts;
+    assert.deepEqual(receipts.map(r=>[r.id,r.result.seq]),commands.map((c,i)=>[c.id,s.seq+i+1]));
+    await page.locator('#feedback').getByText(/手机连接暂时不可用/).waitFor();
+    offline=false;
+    await page.clock.runFor(1000);
+    assert.equal(polls().length,before+1,'断线且有回执时仍退避');
+    await page.clock.runFor(510);
+    assert.equal(polls().length,before+2);
+    assert.deepEqual(polls().at(-1).body.receipts,receipts,'按原顺序重试原回执');
+    await page.locator('#feedback').getByText(/手机连接暂时不可用/).waitFor({state:'hidden'});
+    await page.clock.runFor(600);
+    assert.equal(polls().length,before+2,'回执确认后恢复空闲间隔');
+
+    const next={...commands[0],id:crypto.randomUUID(),payload:{cardNumber:61,option:'B'}};
+    const savingNext=new Promise(resolve=>fixture.commitStarted=resolve);
+    fixture.holdCommit=new Promise(resolve=>{release=resolve;});
+    fixture.commands.push(next);
+    await page.clock.fastForward(160);
+    await savingNext;
+    assert.equal(polls().length,before+3);
+    assert.deepEqual(polls().at(-1).body.receipts,[]);
+    await page.clock.runFor(200);
+    release();
+    await page.locator('#received').getByText('61',{exact:true}).waitFor({state:'attached'});
+    await page.clock.runFor(549);
+    assert.equal(polls().length,before+3,'小批回执不能早于 750 毫秒发送');
+    await page.clock.runFor(1);
+    assert.deepEqual(polls().at(-1).body.receipts.map(r=>r.id),[next.id],'小批只等剩余间隔');
+  } finally {release?.(); await context.close();}
 });
 
 for(const video of [false,true]) test('手机扫一次免登录接入班班，两张模拟纸卡经取景和封存 · '+(video?'连续视频':'旧版取景'), {timeout:50000},async()=>{

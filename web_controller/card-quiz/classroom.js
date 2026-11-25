@@ -83,6 +83,9 @@
     const number = s && q ? s.questions.indexOf(q) + 1 : 0;
     const multi = q?.type === 'multiple';
     const inRound = phase === 'collect' || phase === 'paused';
+    // Only sealed rounds can establish a baseline. The active round grows on every new card.
+    const hasPriorParticipants = inRound && counts.participantCount !== undefined &&
+      s.questions.some(item => item.rounds.some(previous => previous.status === 'closed' && previous.participantCount > 0));
     const missing = inRound ? Model.roundRoster(s,r).filter(student => !r.exempt.includes(student.id) &&
       (multi ? !Object.hasOwn(r.answers[student.id]?.choices || {},r.activeOption) : !r.answers[student.id]))
       .map(student => student.cardNumber).sort((a,b)=>a-b) : [];
@@ -140,7 +143,7 @@
     return {phase,heading,caption,primary,label,enabled:Boolean(enabled && !operation && !frozen),number,
       kind:q?.type || '',option,received,expected,missing,incomplete:counts?.incomplete ?? 0,
       noCardPolicy:r?.noCardPolicy,abstained:counts?.abstained || 0,
-      participantCount:counts?.participantCount,
+      participantCount:counts?.participantCount,hasPriorParticipants,optionCount:q?.options.length ?? 0,
       bars:phase==='result' ? Model.distributionBars(q.type,counts.distribution) : [],canChooseType,
       busy:operation,questionCount:s?.questions.length || 0,phone:s?.source==='phone',
       needsSync:phase==='done' && (controller.journal.syncedSeq < s.seq || Boolean(controller.journal.reviewError)),
@@ -189,6 +192,8 @@
         readOnly:pendingCardsOnly || r.status === 'closed' || frozen || !active() || Boolean(data?.context?.revoked), located:locatedCard};
     }
     const lesson = companionLesson(s,q,r,summary,setup);
+    const progress = s ? `第 ${lesson.number} 题 · ` + (captureControls && q?.type === 'multiple' && lesson.participantCount !== undefined
+      ? `本项已收 ${lesson.received} 人` : `已收 ${tally(summary)}`) : setup?.roster || '正在读取纸卡课堂…';
     const inDisc = companion && document.body.classList.contains('in-disc');
     const preview = cameraPreview();
     currentDiscPage = !inDisc ? null : dialog?.id === 'editor' ? discEditor.describe() :
@@ -211,7 +216,7 @@
       labels:{collect:collectLabel,camera:openCamera ? '开启相机' : captureControls ? '收答控制' : '本机相机',
         edit:captureControls ? '查看题目' : inDisc && lesson.phase === 'result' ? '设置与揭晓答案' : '题目答案',
         source:s?.source==='phone'?'换回本机':'手机扫码','end-session':ended?'课堂汇总':history?'待同步课堂':'结束课堂'},
-      progress:setup ? setup.roster : s ? `第 ${s.questions.indexOf(q)+1} 题 · 已收 ${tally(summary)}` : '正在读取纸卡课堂…',
+      progress,
       status:pendingStatus || status,
       multiple,multiEnabled:multiple && !$('multi-next').disabled,multiLabel:nextOption ? `下一项 ${nextOption}` : '',
       cameraRunning:scanner.running,feedback:notice.textContent,error:notice.classList.contains('error')
@@ -766,10 +771,14 @@
       if (controller === current) scheduleSync();
     },5000);
   }
+  let lastRelayResponseAt = 0;
   function scheduleRelay() {
     clearTimeout(relayTimer);
     if (!canCapture() || !active()) return;
-    relayTimer = setTimeout(relay, Math.min(15000,750 * 2 ** relayFailures));
+    const interval = Math.min(15000,750 * 2 ** relayFailures);
+    // Saving phone commands already used part of the device's 750 ms poll interval.
+    const elapsed = relayReceipts.size && !relayFailures ? performance.now() - lastRelayResponseAt : 0;
+    relayTimer = setTimeout(relay, Math.max(0,Math.ceil(interval - elapsed)));
   }
   async function relay() {
     if (relayRunning || !active() || !canCapture()) return;
@@ -783,6 +792,7 @@
       const preview = previewSignal();
       const state = Model.publicState(session(),data.className);
       const value = await request('relay',{sessionId:session().id,state,receipts:sent,preview,retrySuperseded:true});
+      lastRelayResponseAt = performance.now();
       if (controller !== current) return;
       if (Object.hasOwn(value,'supersededSeq')) {
         await current.queue;
@@ -1290,7 +1300,7 @@
       else if (value.action.startsWith('setup-')) activateSetup(value);
       else if (value.action === 'missing' && !operation && !document.querySelector('dialog[open]') &&
           ['collect','paused'].includes(lesson?.phase) && !$('exempt').disabled)
-        openCardCheck(lesson.participantCount === undefined || (lesson.number === 1 && lesson.missing.length > 0));
+        openCardCheck(lesson.participantCount === undefined);
       else if (value.action.startsWith('card-') && !operation && $('exempt-dialog').open && checkedRound === round()?.id) {
         if (value.action === 'card-scope' && document.body.classList.contains('in-disc') && !$('card-overview').hidden &&
             ['collect','paused'].includes(lesson.phase)) {
