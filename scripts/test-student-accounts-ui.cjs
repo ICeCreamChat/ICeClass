@@ -104,7 +104,7 @@ async function setup(t,{width=1280,student=false,authenticated=false,canEdit=tru
                 if(state.accounts.numberCards.some(c=>c.cardNumber===n))continue;
                 const row={accountId:'card-'+n,cardNumber:n};
                 state.accounts.numberCards.push(row);
-                credentials.push({...row,numberCard:true,username:'01009'+String(n).padStart(3,'0'),password,classId:'c1',className:state.accounts.className});
+                credentials.push({...row,numberCard:true,username:'261109'+String(n).padStart(2,'0'),password,classId:'c1',className:state.accounts.className});
               }
               if(credentials.length)state.accounts.revision++;
               return reply(200,{...state.accounts,credentials});
@@ -158,7 +158,7 @@ test('number cards can be issued by keyboard and printed independently of the cl
   const frame=page.frameLocator('.cq-issued-frame');
   await frame.locator('.card-sheet').first().waitFor({state:'attached'});
   assert.equal(await frame.locator('.card-sheet').count(),2);
-  assert.match(await frame.locator('.card-sheet').first().textContent(),/学生编号01009001/);
+  assert.match(await frame.locator('.card-sheet').first().textContent(),/学生编号26110901/);
   await noOverflow(page);
 });
 async function noPersistentPassword(page){
@@ -303,6 +303,9 @@ test('leaving the teacher view clears the one-time password table from the hidde
 test('shared student login allows a retry and renders only student records and images',async t=>{
   const{page,state}=await setup(t,{student:true,width:390});
   assert.ok(await page.locator('#loginRoleStudent').isChecked());
+  await page.locator('#loginUsername').fill('261109157');
+  assert.equal(await page.locator('#loginUsername').inputValue(),'261109157');
+  assert.equal(await page.locator('#loginUsername').evaluate(input=>input.checkValidity()),true);
   await page.locator('#loginUsername').fill(state.student.username);await page.locator('#loginPassword').fill('999999');
   await page.locator('#loginPassword').press('Enter');await page.locator('#loginError').filter({hasText:'学生编号或密码错误'}).waitFor();
   assert.equal(await page.locator('#loginUsername').inputValue(),state.student.username);

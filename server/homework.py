@@ -35,9 +35,13 @@ def today():
     return datetime.now(SHANGHAI).date().isoformat()
 
 
+def school_year_start(day):
+    return day.year if day.month >= 8 else day.year - 1
+
+
 def defaults():
     current = date.fromisoformat(today())
-    start = current.year if current.month >= 8 else current.year - 1
+    start = school_year_start(current)
     spring = 2 <= current.month < 8
     term_id = f'{start + 1}-spring' if spring else f'{start}-fall'
     return {'activeTermId': term_id, 'students': [], 'terms': [{

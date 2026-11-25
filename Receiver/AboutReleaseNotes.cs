@@ -3,6 +3,10 @@ namespace ICeClass.Receiver;
 internal static class AboutReleaseNotes
 {
     internal const string Text = """
+        2.5.27 · 2026-11-25
+        通用纸卡按入学年份编号
+        · 2026 级高一（9）班首次发卡，01 号的登录编号为 26110901。已发旧卡可用原编号和密码查看同一张卡的报告。
+
         2.5.26 · 2026-11-25
         通用纸卡随发随扫
         · 第一题开始，按实际举卡人数统计本节参与；后来加入的卡从首次作答起计。
