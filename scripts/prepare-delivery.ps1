@@ -47,7 +47,7 @@ New-Item -ItemType Directory -Force -Path $classroom | Out-Null
 Copy-Item -LiteralPath $receiver -Destination (Join-Path $classroom 'ICeClass.exe') -Force
 $printDirectory = Join-Path $delivery '纸卡'
 New-Item -ItemType Directory -Path $printDirectory -Force | Out-Null
-foreach ($sheet in @('通用纸卡-1-2.pdf', '通用纸卡-1-40.pdf')) {
+foreach ($sheet in @('通用纸卡-1-2.pdf', '通用纸卡-1-40.pdf', '通用纸卡-1-60.pdf')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\docs\纸卡\$sheet") -Destination $printDirectory -Force
 }
 # Windows PowerShell 5.1 needs the BOM to display Chinese installer messages.

@@ -43,12 +43,29 @@ function rgbaFrame(frame) {
   if (!frame || !Number.isInteger(frame.width) || !Number.isInteger(frame.height) || frame.width < 1 || frame.height < 1 || frame.width > 4096 || frame.height > 4096) throw new Error('相机图像尺寸无效。');
   const data = frame.data instanceof ArrayBuffer ? new Uint8ClampedArray(frame.data) : frame.data;
   if (!data || data.length !== frame.width * frame.height * 4) throw new Error('相机未返回 RGBA 帧，请使用手工录入。');
-  const scale = Math.min(1, 640 / frame.width, 640 / frame.height), width = Math.max(1, Math.round(frame.width * scale)), height = Math.max(1, Math.round(frame.height * scale));
+  // Keep enough pixels for the last row of a full class, in either camera orientation.
+  const scale = Math.min(1, 1920 / Math.max(frame.width, frame.height), Math.sqrt(1920 * 1080 / (frame.width * frame.height)));
+  const width = Math.max(1, Math.round(frame.width * scale)), height = Math.max(1, Math.round(frame.height * scale));
   if (scale === 1) return { width, height, data };
   const resized = new Uint8ClampedArray(width * height * 4);
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const source = (Math.floor(y / scale) * frame.width + Math.floor(x / scale)) * 4, target = (y * width + x) * 4;
-    for (let channel = 0; channel < 4; channel++) resized[target + channel] = data[source + channel];
+  // Sample pixel centers with bilinear interpolation. Dropping whole rows or
+  // columns can erase an isolated white cell on a distant card.
+  const stepX = frame.width / width, stepY = frame.height / height;
+  let target = 0;
+  for (let y = 0; y < height; y++) {
+    const sourceY = (y + 0.5) * stepY - 0.5, top = Math.floor(sourceY);
+    const bottom = Math.min(top + 1, frame.height - 1), fy = sourceY - top;
+    for (let x = 0; x < width; x++) {
+      const sourceX = (x + 0.5) * stepX - 0.5, left = Math.floor(sourceX);
+      const right = Math.min(left + 1, frame.width - 1), fx = sourceX - left;
+      const topLeft = (top * frame.width + left) * 4, topRight = (top * frame.width + right) * 4;
+      const bottomLeft = (bottom * frame.width + left) * 4, bottomRight = (bottom * frame.width + right) * 4;
+      for (let channel = 0; channel < 4; channel++) {
+        const upper = data[topLeft + channel] + fx * (data[topRight + channel] - data[topLeft + channel]);
+        const lower = data[bottomLeft + channel] + fx * (data[bottomRight + channel] - data[bottomLeft + channel]);
+        resized[target++] = upper + fy * (lower - upper);
+      }
+    }
   }
   return { width, height, data: resized };
 }

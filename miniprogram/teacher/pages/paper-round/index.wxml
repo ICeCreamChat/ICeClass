@@ -38,7 +38,7 @@
   <view wx:if="{{pairId && state && !state.ended}}" class="panel">
     <text class="section-heading">本机相机识别</text>
     <text class="muted">画面仅在本机实时解码，不拍照、不录像、不上传。离开页面、切换轮次或来源后相机停止，需要主动重新开启。</text>
-    <camera wx:if="{{cameraOn}}" id="paper-camera" class="paper-camera" mode="normal" device-position="back" flash="off" resolution="medium" frame-size="medium" bindinitdone="cameraReady" binderror="cameraError" bindstop="cameraError" aria-label="仅在本机识别纸卡的后置相机" />
+    <camera wx:if="{{cameraOn}}" id="paper-camera" class="paper-camera" mode="normal" device-position="back" flash="off" resolution="high" frame-size="large" bindinitdone="cameraReady" binderror="cameraError" bindstop="cameraError" aria-label="仅在本机识别纸卡的后置相机" />
     <view class="button-row"><button wx:if="{{!cameraOn}}" class="primary" bindtap="startCamera" loading="{{cameraOpening}}" disabled="{{busy || loading || pendingCount || cameraOpening || privacyNeeded || !collecting || sessionExpired}}">开启纸卡相机</button><button wx:else class="secondary" bindtap="stopCamera">关闭相机</button><button wx:if="{{cameraDenied}}" class="secondary" bindtap="openCameraSettings">打开相机权限设置</button></view>
     <view wx:if="{{privacyNeeded}}" class="status"><text>请先阅读并同意小程序隐私保护指引，再授权使用相机。</text><view class="button-row"><button class="secondary" bindtap="openPrivacy">阅读隐私保护指引</button><button id="paper-camera-consent" class="primary" open-type="agreePrivacyAuthorization" bindagreeprivacyauthorization="agreeCameraPrivacy">同意并开启相机</button><button class="secondary" bindtap="stopCamera">取消开启</button></view></view>
   </view>

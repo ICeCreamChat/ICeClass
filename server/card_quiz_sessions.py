@@ -65,6 +65,43 @@ def add_count(row, status):
         row['samples'] += 1
 
 
+def session_knowledge(questions, students_by_round, *, include_students=False):
+    """Group sealed formal outcomes by the current question tags and classroom question numbers."""
+    topics = {}
+    for number, question in enumerate(questions, 1):
+        formal = official_round(question)
+        if formal is None:
+            continue
+        for tag in question['tags']:
+            if tag not in topics:
+                topics[tag] = {'tag': tag, 'questionCount': 0, 'wrongQuestionNumbers': [], **counts(True)}
+                if include_students:
+                    topics[tag]['students'] = {}
+            topic = topics[tag]
+            topic['questionCount'] += 1
+            wrong_before = topic['wrong']
+            for outcome in students_by_round.get(formal['id'], ()):
+                status = outcome['status']
+                add_count(topic, status)
+                if include_students:
+                    sid = outcome['studentId']
+                    students = topic['students']
+                    if sid not in students:
+                        students[sid] = {'studentId': sid, 'studentName': outcome['studentName'],
+                                         'wrongQuestionNumbers': [], **counts(True)}
+                    student = students[sid]
+                    add_count(student, status)
+                    if status == 'wrong':
+                        student['wrongQuestionNumbers'].append(number)
+            if topic['wrong'] > wrong_before:
+                topic['wrongQuestionNumbers'].append(number)
+    for topic in topics.values():
+        if include_students:
+            topic['students'] = sorted((rate(s) for s in topic['students'].values()), key=lambda s: -s['wrong'])
+        rate(topic)
+    return list(topics.values())
+
+
 def session_report(session):
     multiple = any(q['type'] == 'multiple' for q in session['questions'])
     totals = counts(multiple)
@@ -99,7 +136,9 @@ def session_report(session):
         if r['purpose'] == 'practice' or r is official_round(q):
             for counter in (totals, students[student['id']]):
                 add_count(counter, 'practice' if r['purpose'] == 'practice' else status)
-    return {'totals': rate(totals), 'questions': questions, 'students': [rate(s) for s in students.values()]}
+    students_by_round = {rid: summary['students'] for rid, summary in lookup.items()}
+    return {'totals': rate(totals), 'questions': questions, 'students': [rate(s) for s in students.values()],
+            'knowledge': session_knowledge(session['questions'], students_by_round, include_students=True)}
 
 
 class SessionHandlers:

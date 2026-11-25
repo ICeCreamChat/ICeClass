@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../assets/typography.css">
   <link rel="stylesheet" href="../assets/classroom-glass.css"><link rel="stylesheet" href="classroom.css"><link rel="stylesheet" href="classroom-disc.css"><link rel="stylesheet" href="classroom-disc-editor.css"><link rel="stylesheet" href="../assets/control-focus.css">
   <script src="vendor/cv.js" defer></script><script src="vendor/aruco.js" defer></script>
-  <script src="vendor/qrcodegen.js" defer></script><script src="model.js" defer></script>
+  <script src="vendor/qrcodegen.js" defer></script><script src="qr-code.js" defer></script><script src="model.js" defer></script>
   <script src="journal.js" defer></script><script src="scanner.js" defer></script><script src="camera-preview.js" defer></script><script src="classroom-video.js" defer></script><script src="classroom-wheel.js" defer></script><script src="classroom-disc.js" defer></script><script src="classroom-disc-editor.js" defer></script><script src="classroom.js" defer></script>
 </head>
 <body class="classroom-liquid classroom-light-material">
@@ -67,7 +67,7 @@
   </form></dialog>
   <dialog id="pair-dialog" aria-labelledby="pair-heading">
     <header class="dialog-header"><h2 id="pair-heading">手机接力扫码</h2><button type="button" data-dismiss="pair-dialog">关闭</button></header>
-    <div id="pair-qr" class="pair-qr" hidden></div>
+    <div id="pair-qr" class="pair-qr" role="img" aria-label="手机配对二维码" hidden></div>
     <p class="pair-code" id="pair-code" hidden></p>
     <p id="pair-status" role="status"></p>
     <div class="actions"><button type="button" id="confirm-phone" class="primary" hidden>确认使用此手机</button></div>

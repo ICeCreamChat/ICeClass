@@ -17,38 +17,87 @@
 #cards { display: flex; flex-direction: column; gap: 24px; align-items: center; margin-top: 24px; }
 #reset-confirm { width: min(480px, calc(100vw - 32px)); }
 
-.card-sheet { background:#fff; color:#000; width:190mm; height:276mm; padding:4mm 5mm; display:grid; grid-template-rows:minmax(0,1fr) 180mm 24mm; justify-items:center; gap:3mm; break-after:page; break-inside:avoid; font-variant-numeric:tabular-nums }
-.card-sheet:last-child { break-after:auto }
-.card-sheet svg { width:180mm; height:180mm; display:block }
-.card-caption { width:100%; display:flex; align-items:center; align-self:center; gap:6mm; font-size:13pt; line-height:1.4 }
-.card-identity { flex:1; min-width:0; display:grid; gap:2mm }
-.card-identity p { display:grid; grid-template-columns:2.5em minmax(0,1fr); align-items:baseline; gap:2mm; margin:0 }
-.card-identity span,.card-number span { font-size:11pt; font-weight:400; white-space:nowrap }
-.card-identity strong { font-weight:600; overflow-wrap:anywhere }
-.card-long-class { font-size:11pt }
-.card-number { display:grid; justify-items:center; gap:1mm; flex:none; min-width:19mm }
-.card-number strong { font-size:32pt; line-height:1.2; font-weight:600 }
-.card-password { letter-spacing:.12em }
-.card-instructions { width:100%; align-self:center; font-size:10pt; line-height:1.55 }
-.card-instructions p { margin:0 }
+/* One sheet is one A4 page. The square begins 20 mm from the left and 63 mm from the top. */
+.card-sheet {
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  padding: 3.3mm 6.5mm 5mm;
+  display: grid;
+  grid-template: 33.4mm 11.3mm 200mm auto / minmax(0, 1fr);
+  align-content: start;
+  background: #fff;
+  color: #000;
+  font: 10pt/1.25 var(--font-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  break-after: page;
+  break-inside: avoid;
+}
+.card-sheet:last-child { break-after: auto; }
+.card-sheet *, .card-sheet *::before { box-sizing: border-box; }
+.card-sheet > svg { display: block; width: 200mm; height: 200mm; justify-self: center; }
+.card-login { display: flex; align-items: flex-start; justify-content: flex-end; border-bottom: .2mm dashed #000; }
+.card-account { flex: 1; min-width: 0; padding-top: 2.6mm; }
+.card-credentials { display: grid; grid-template-columns: 48.8mm auto; font-weight: bold; font-size: 8.8pt; line-height: 6mm; }
+.card-credentials strong { display: block; font-size: 16.4pt; line-height: 10.5mm; }
+.card-fold { display: flex; align-items: center; gap: 3.5mm; font-size: 8.5pt; margin-top: .7mm; }
+.card-fold img { width: 14mm; height: 10.6mm; object-fit: contain; }
+.card-sheet .card-portal { display: flex; align-items: center; gap: 2.7mm; margin-right: -.5mm; color: #000; text-decoration: none; }
+.card-portal-copy { display: grid; text-align: right; font-size: 8pt; line-height: 6.7mm; }
+.card-portal-copy strong { font-size: 10.6pt; }
+.card-portal-copy .card-url { font-size: 8.4pt; }
+.card-portal img { display: block; width: 31.5mm; height: 31.5mm; }
+.card-caption { display: flex; align-items: center; gap: 3.8mm; padding-top: 1.5mm; }
+.card-brand { flex: none; font-size: 13.2pt; line-height: 1; }
+.card-brand span { font-size: 10pt; margin-left: 1.6mm; }
+.card-class { flex: 1; min-width: 0; padding-left: 3.8mm; border-left: .2mm solid; font-size: 10pt; overflow-wrap: anywhere; }
+.card-long-class { font-size: 8pt; line-height: 1.15; }
+.card-number { flex: none; display: flex; align-items: baseline; gap: 2mm; font-size: 8.6pt; }
+.card-number strong { font-size: 20pt; line-height: 1; }
+.card-instructions { margin-top: .2mm; align-self: start; border-top: .33mm solid; }
+.card-instructions p { margin: 0; }
+.card-guide { display: grid; grid-template-columns: 97.5mm 1fr; padding: 2mm 0; }
+.card-guide > div { display: grid; align-items: center; grid-template-rows: 7.3mm repeat(3, 6.3mm); font-size: 9pt; }
+.card-guide strong { font-size: 10.6pt; }
+.card-guide b, .card-rights b { margin-right: 1mm; }
+.card-note { font-size: 8.5pt; }
+.card-report { border-left: .21mm solid; padding-left: 4.7mm; }
+.card-rights { padding-top: 1.7mm; border-top: .18mm solid; font-size: 8.5pt; line-height: 5.9mm; }
 
-@media screen and (max-width: 800px) {
+@media screen and (max-width: 880px) {
   .print-toolbar { flex-wrap: wrap; }
   .print-actions { flex: 1 1 100%; }
-  .card-sheet { width: 100%; height: auto; padding: 16px; gap: 20px; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
-  .card-sheet svg { width: 100%; height: auto; }
-  .card-caption { gap: 16px; font-size: 16px; }
-  .card-identity, .card-identity p { gap: 8px; }
-  .card-number { min-width: 48px; }
-  .card-number strong { font-size: 32px; }
-  .card-identity span, .card-number span, .card-instructions { font-size: 13px; }
-  .card-long-class { font-size: 14px; }
+  .card-sheet { width: 100%; max-width: 210mm; height: auto; padding: 16px; grid-template-rows: repeat(4, auto); }
+  .card-sheet > svg { width: 100%; height: auto; }
+  .card-login { flex-wrap: wrap; row-gap: 10px; padding-bottom: 8px; }
+  .card-account { flex: 1 1 220px; padding: 0; }
+  .card-credentials { grid-template-columns: repeat(2, 1fr); line-height: 1.5; font-size: 12px; }
+  .card-credentials strong { font-size: 18px; line-height: 1.5; }
+  .card-fold { gap: 6px; font-size: 12px; }
+  .card-fold img { width: 26px; height: 20px; }
+  .card-sheet .card-portal { gap: 8px; margin: 0; max-width: 100%; }
+  .card-portal-copy { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+  .card-portal-copy strong { font-size: 14px; }
+  .card-portal-copy .card-url { font-size: 12px; }
+  .card-portal img { width: 72px; height: 72px; }
+  .card-caption { gap: 8px; padding-block: 8px; }
+  .card-brand { font-size: 16px; }
+  .card-brand span { display: block; margin: 3px 0 0; font-size: 12px; }
+  .card-class { padding-left: 8px; font-size: 13px; }
+  .card-number { gap: 4px; }
+  .card-number strong { font-size: 24px; }
+  .card-guide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 12px; padding: 12px 0; }
+  .card-guide > div { grid-template-rows: none; gap: 4px; font-size: 13px; }
+  .card-guide strong { font-size: 14px; }
+  .card-note, .card-rights { font-size: 12px; }
+  .card-report { border: 0; padding: 0; }
+  .card-rights { padding-top: 8px; line-height: 1.55; }
 }
-@page { size: A4 portrait; margin: 10mm; }
+@page { size: A4 portrait; margin: 0; }
 @media print {
-  :root.card-quiz-print-page, .teacher-liquid.card-quiz-print { background: #fff; color: #000; min-width: 0; min-height: 0; }
+  :root.card-quiz-print-page, .teacher-liquid.card-quiz-print { background: #fff; color: #000; min-width: 0; min-height: 0; margin: 0; }
   .card-quiz-print::before, .print-toolbar, #feedback, .print-metadata, #reset-confirm { display: none !important; }
   .teacher-liquid.card-quiz-print main, #cards { display: block; max-width: none; margin: 0; padding: 0; }
-  .card-sheet { margin: 0; }
-  .card-sheet svg { max-width: none; }
+  .card-sheet { margin: 0; print-color-adjust: exact; forced-color-adjust: none; }
+  .card-sheet .card-portal:is(:hover, :focus-visible) { color: #000; outline: none; box-shadow: none; }
 }

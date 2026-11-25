@@ -8,13 +8,15 @@
   <link rel="stylesheet" href="../assets/typography.css">
   <link rel="stylesheet" href="../ui.css?v=19">
   <link rel="stylesheet" href="../teacher-liquid-glass.css?v=13">
-  <link rel="stylesheet" href="print.css?v=3">
+  <link rel="stylesheet" href="print.css?v=5">
   <link rel="stylesheet" href="../assets/control-focus.css?v=1">
   <script src="vendor/cv.js" defer></script>
   <script src="vendor/aruco.js" defer></script>
-  <script src="cards.js" defer></script>
-  <script src="print-card.js?v=3" defer></script>
-  <script src="print.js?v=2" defer></script>
+  <script src="cards.js?v=2" defer></script>
+  <script src="vendor/qrcodegen.js" defer></script>
+  <script src="qr-code.js" defer></script>
+  <script src="print-card.js?v=5" defer></script>
+  <script src="print.js?v=3" defer></script>
 </head>
 <body class="teacher-liquid card-quiz-print">
   <main>
@@ -22,7 +24,7 @@
       <div>
         <h1>教师代印纸卡</h1>
         <p>代印会重置所选学生的六位密码，旧密码和旧学生会话立即失效。请将新纸卡交给对应学生。</p>
-        <p>A4 黑白打印，实际大小（100%），关闭页眉页脚。每张一页，黑色识别方块为 144 mm；请先试印一张并在实际距离试扫。</p>
+        <p>A4 黑白打印，每人一页。选实际大小（100%），关闭页眉页脚。试印后量一下中央黑框，边长应为 170 mm，再到教室后排试扫。</p>
       </div>
       <div class="print-actions">
         <button type="button" id="reload" class="btn">重新载入名单</button>

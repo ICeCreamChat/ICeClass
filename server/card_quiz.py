@@ -7,16 +7,25 @@ import json
 import math
 import os
 import re
+import uuid
 
 from aiohttp import web
 
 from card_quiz_models import (DEVICE_REASON, IMAGE_REASON, MAX_BODY, MAX_LIST, MAX_SYNC_BODY, SCHEMA, QuizError,
                               array, dumps, fail, identifier, integer, new_id, obj, revision,
                               string, unique, validate_question)
+from card_quiz_recognition import CardQuizRecognition
 from card_quiz_relay import RelayHandlers
 from card_quiz_sessions import SessionHandlers
 from card_quiz_turn import PreviewTurn
 from teacher_capabilities import teacher_action, teacher_manual, teacher_read
+
+
+def creation_id(user, kind, body):
+    if 'requestKey' not in body:
+        return new_id()
+    key = identifier(body['requestKey'])
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, dumps(['card-quiz', kind, user['id'], key])))
 
 
 class CardQuiz(SessionHandlers, RelayHandlers):
@@ -53,7 +62,9 @@ class CardQuiz(SessionHandlers, RelayHandlers):
             value = json.loads(raw, parse_float=finite_float, parse_constant=lambda _: fail('JSON 数字无效。'))
             dumps(value).encode('utf-8')
             return obj(value)
-        except (UnicodeError, json.JSONDecodeError, RecursionError):
+        except QuizError:
+            raise
+        except (ValueError, RecursionError):
             fail('请求 JSON 格式不正确。')
 
     def staff(self, request):
@@ -208,14 +219,22 @@ class CardQuiz(SessionHandlers, RelayHandlers):
                     (qid, version, dumps(clean)))
         return clean
 
-    @teacher_action('card-quiz.question.create', '新建私有纸卡题目', fields='value')
+    @teacher_action('card-quiz.question.create', '新建私有纸卡题目', fields='value requestKey')
     async def post_question(self, request):
         user = self.staff(request)
         body = await self.body(request)
+        qid = creation_id(user, 'question', body)
         with self.db.transaction():
+            if 'requestKey' in body:
+                row = self.db.one('SELECT owner_id,deleted,value FROM card_quiz_questions WHERE id=?', (qid,))
+                if row:
+                    saved = json.loads(row['value'])
+                    if row['owner_id'] != user['id'] or row['deleted'] or validate_question(saved) != validate_question(body.get('value')):
+                        fail('这道草稿已保存，内容已变化。请在我的题库中核对已保存的题目。', 409)
+                    return self.reply(saved)
             if self.db.one('SELECT COUNT(*) n FROM card_quiz_questions WHERE owner_id=? AND deleted=0', (user['id'],))['n'] >= MAX_LIST:
                 fail(f'私有题库最多 {MAX_LIST} 题。')
-            result = self.write_question(user, body.get('value'), new_id(), 1)
+            result = self.write_question(user, body.get('value'), qid, 1)
             self.audit(user, 'card-quiz.question.create', 'card-quiz-question', result['id'], '新建题目')
         return self.reply(result)
 
@@ -249,7 +268,8 @@ class CardQuiz(SessionHandlers, RelayHandlers):
     @teacher_manual(IMAGE_REASON)
     async def post_image(self, request):
         user = self.staff(request)
-        value = (await self.body(request, 3 * 1024 * 1024)).get('dataUrl')
+        body = await self.body(request, 3 * 1024 * 1024)
+        value = body.get('dataUrl')
         match = re.fullmatch(r'data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})', value) if isinstance(value, str) else None
         if not match:
             fail('图片仅支持 PNG、JPEG 或 WebP data URL。')
@@ -267,9 +287,13 @@ class CardQuiz(SessionHandlers, RelayHandlers):
                  and int.from_bytes(data[4:8], 'little') + 8 == len(data))
         if not valid:
             fail('图片真实文件签名与类型不符。')
-        iid = new_id()
-        self.db.run('INSERT INTO card_quiz_images(id,owner_id,mime,data,created_at) VALUES(?,?,?,?,?)',
-                    (iid, user['id'], 'image/' + kind, data, self.service.now_ms()))
+        iid = creation_id(user, 'image', body)
+        inserted = self.db.run('''INSERT INTO card_quiz_images(id,owner_id,mime,data,created_at) VALUES(?,?,?,?,?)
+                                  ON CONFLICT(id) DO NOTHING''', (iid, user['id'], 'image/' + kind, data, self.service.now_ms()))
+        if not inserted.rowcount and not self.db.one(
+                'SELECT 1 FROM card_quiz_images WHERE id=? AND owner_id=? AND mime=? AND data=?',
+                (iid, user['id'], 'image/' + kind, data)):
+            fail('本次草稿的配图已变化，请核对截图后重新录题。', 409)
         return self.reply({'id': iid})
 
     def image_allowed(self, iid, *, user=None, device=None):
@@ -420,8 +444,10 @@ class CardQuiz(SessionHandlers, RelayHandlers):
         return self.reply(json.loads(row['value']))
 
 
-def install(app, service):
+def install(app, service, banban):
     feature = CardQuiz(app, service)
+    recognition = CardQuizRecognition(feature, banban)
+    app.on_cleanup.append(recognition.close)
     app.on_cleanup.append(feature.preview_turn.close)
 
     @web.middleware
@@ -441,6 +467,7 @@ def install(app, service):
     routes = [
         ('GET', '/classes/{class_id}/cards', feature.get_cards), ('PUT', '/classes/{class_id}/cards', feature.put_cards),
         ('GET', '/questions', feature.get_questions), ('POST', '/questions', feature.post_question),
+        ('POST', '/questions/recognize', recognition.recognize),
         ('PUT', '/questions/{id}', feature.put_question), ('DELETE', '/questions/{id}', feature.delete_question),
         ('POST', '/images', feature.post_image), ('GET', '/images/{id}', feature.get_image),
         ('GET', '/decks', feature.get_decks), ('POST', '/decks', feature.post_deck), ('PUT', '/decks/{id}', feature.put_deck),

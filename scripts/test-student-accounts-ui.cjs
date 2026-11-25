@@ -152,6 +152,16 @@ test('teacher generates once, safely downloads text credentials, resets only sel
   assert.equal(state.writes.length,1);assert.equal(state.writes[0].body.entryYear,2026);
   assert.deepEqual(Object.keys(state.writes[0].body).sort(),['cardRevision','classCode','entryYear','revision','rosterRevision']);
   assert.equal(await page.locator('.cq-password').count(),2);
+  await page.addInitScript(()=>{if(location.search==='?issued')window.print=()=>{document.documentElement.dataset.printed='true';};});
+  for(let attempt=0;attempt<2;attempt++){
+    await page.getByRole('button',{name:'打印本次纸卡'}).click();
+    const preview=page.frameLocator('.cq-issued-frame');
+    await preview.locator('html[data-printed]').waitFor({state:'attached'});
+    assert.deepEqual(await preview.locator('.card-number strong').allTextContents(),['01','157']);
+    assert.deepEqual(await preview.locator('.card-password').allTextContents(),[password,password]);
+    assert.equal(await preview.locator('.card-portal').first().getAttribute('href'),'https://iceclass.icecreamchat.top/student');
+    assert.equal(state.writes.length,1,'Printing the issued batch reuses the original passwords');
+  }
   const downloadEvent=page.waitForEvent('download');await page.locator('[data-cq-action=download-credentials]').click();const download=await downloadEvent;
   const csv=fs.readFileSync(await download.path(),'utf8');
   assert.ok(csv.includes('"\'=HYPERLINK(""https://example.invalid"")"'),'Formula-leading names are quoted as text');
@@ -160,6 +170,7 @@ test('teacher generates once, safely downloads text credentials, resets only sel
   await page.locator('[data-cq-tab=bank]').click();await page.locator('#workbenchConfirm[open] #workbenchConfirmCancel').click();
   assert.equal(await page.locator('.cq-credentials').isVisible(),true);
   await page.locator('[data-cq-action=clear-credentials]').click();assert.equal(await page.locator('.cq-password').count(),0);
+  assert.equal(await page.locator('.cq-issued-frame').count(),0);
   await page.locator('[data-account-student=s2]').check();assert.equal(await page.locator('#cq-accounts-all').evaluate(n=>n.indeterminate),true);
   await page.locator('[data-cq-action=reset-accounts]').click();await page.locator('#workbenchConfirm[open] #workbenchConfirmAccept').click();await page.locator('.cq-credentials').waitFor();
   const reset=state.writes.find(r=>r.path.endsWith('/reset'));assert.deepEqual(reset.body.studentIds,['s2']);assert.equal(reset.csrf,'fixture');
@@ -193,7 +204,7 @@ test('optional account metadata failure keeps card editing and all three questio
   await page.locator('[data-cq-tab=bank]').click();await page.locator('[data-cq-action=new-question]').click();
   assert.deepEqual(await page.locator('[name=type] option').evaluateAll(nodes=>nodes.map(n=>n.value)),['single','boolean','multiple']);
 });
-test('teacher print GET never resets; explicit confirmation prints one complete, nameless, 144 mm card per page',async t=>{
+test('teacher reset confirmation prints the foldable account strip and a 170 mm marker on one A4 page',async t=>{
   const{context,origin,state}=await setup(t,{width:390,linked:true});state.accounts.className='高一年级国际课程实验班'.repeat(8);
   const page=await openPrint(context,origin);
   assert.equal(state.writes.length,0);assert.equal(await page.locator('.card-sheet').count(),0);assert.equal(await page.locator('#print').isDisabled(),true);
@@ -204,11 +215,28 @@ test('teacher print GET never resets; explicit confirmation prints one complete,
   const dimensions=await page.locator('.card-sheet').evaluateAll(nodes=>nodes.map(sheet=>{
     const svg=sheet.querySelector('svg'),black=svg.querySelector('g[shape-rendering="crispEdges"]').getBBox();
     const caption=sheet.querySelector('.card-caption').getBoundingClientRect(),symbol=svg.getBoundingClientRect();
+    const classText=sheet.querySelector('.card-class').getBoundingClientRect(),fold=sheet.querySelector('.card-login').getBoundingClientRect();
+    const portal=sheet.querySelector('.card-portal'),password=sheet.querySelector('.card-password').getBoundingClientRect();
     return{blackMm:black.width/svg.viewBox.baseVal.width*symbol.width*25.4/96,height:sheet.getBoundingClientRect().height*25.4/96,
-      overflow:sheet.scrollHeight-sheet.clientHeight,captionFits:caption.bottom<=symbol.top,text:sheet.innerText};
+      overflow:sheet.scrollHeight-sheet.clientHeight,captionFits:classText.top>=caption.top && classText.bottom<=symbol.top,
+      foldsAway:Math.max(password.bottom,portal.getBoundingClientRect().bottom)<=fold.bottom && fold.bottom<=caption.top,
+      url:portal.href,text:sheet.innerText};
   }));
   assert.equal(dimensions.length,2);
-  for(const d of dimensions){assert.ok(Math.abs(d.blackMm-144)<.1);assert.ok(d.height<=277&&d.overflow<=1);assert.ok(d.captionFits);assert.match(d.text,/班级/);assert.match(d.text,/编号/);assert.match(d.text,/卡号/);assert.match(d.text,/密码/);assert.match(d.text,/单选.*判断/);assert.match(d.text,/多选只在选中项举 A.*改为不选举 B.*整题没举卡记弃权/);assert.match(d.text,/保持稳定.*不要遮挡/);assert.doesNotMatch(d.text,/姓名|学生乙|HYPERLINK/);}
+  for(const d of dimensions){
+    assert.ok(Math.abs(d.blackMm-170)<.1);
+    assert.ok(Math.abs(d.height-297)<.1 && d.overflow<=1);
+    assert.ok(d.foldsAway && d.captionFits,'Folding must leave the full class name and marker visible');
+    assert.ok(d.text.includes(state.accounts.className));
+    assert.match(d.text,/学生编号/);assert.match(d.text,/登录密码/);assert.match(d.text,/卡号/);
+    assert.match(d.text,/单选.*判断/);assert.match(d.text,/多选\s*只在选中项举 A，改为不选举 B/);
+    assert.match(d.text,/整题未举记弃权，免答另计/);assert.match(d.text,/图案朝镜头，捏白边举稳/);
+    assert.equal(d.url,'https://iceclass.icecreamchat.top/student');
+    assert.match(d.text,/扫码查看我的AI课后报告/);assert.match(d.text,/备案号\s*皖ICP备2025106471号/);
+    assert.match(d.text,/ICeClass 教师端/);assert.match(d.text,/「班伴班班」/);assert.match(d.text,/管局备案中，上线后开放/);
+    assert.match(d.text,/版式著作权归许斌所有/);assert.match(d.text,/获授权学校的师生可为本班教学打印、补印/);
+    assert.doesNotMatch(d.text,/姓名|学生乙|HYPERLINK/);
+  }
   const pdf=await page.pdf({preferCSSPageSize:true});assert.equal([...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length,2);
   await page.emulateMedia({media:'screen'});await page.locator('#clear').click();assert.equal(await page.locator('.card-sheet').count(),0);assert.equal(await page.locator('#print').isDisabled(),true);
 });
@@ -278,7 +306,14 @@ test('wrong current password preserves the student session; self print and chang
   assert.equal(await page.locator('.card-sheet').count(),1);assert.equal(await page.locator('#card-password').inputValue(),'');
   assert.deepEqual(Object.keys(state.writes.filter(r=>r.path==='/api/student/card').at(-1).body),['password']);
   await noOverflow(page);await noPersistentPassword(page);
+  const portal=page.locator('.card-portal');
+  await page.keyboard.press('Tab');await portal.focus();
+  assert.equal(await portal.evaluate(el=>el.matches(':focus-visible') && getComputedStyle(el).outlineStyle!=='none'),true);
+  await portal.hover();
   await page.emulateMedia({media:'print'});assert.equal(await page.locator('#student-workspace').isVisible(),false);
+  assert.deepEqual(await portal.evaluate(el=>{
+    const style=getComputedStyle(el);return [style.color,style.outlineStyle,style.boxShadow];
+  }),['rgb(0, 0, 0)','none','none']);
   const pdf=await page.pdf({preferCSSPageSize:true});assert.equal([...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length,1);
   assert.match(await page.locator('.card-sheet').innerText(),/编号[\s\S]*密码[\s\S]*多选/);
   await page.emulateMedia({media:'screen'});await page.locator('#student-card-clear').click();assert.equal(await page.locator('.card-sheet').count(),0);

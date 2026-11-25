@@ -69,7 +69,7 @@ test('真实教师入口分配卡号，未保存离开保护，保存及单卡�
   const popupEvent=page.waitForEvent('popup');await page.locator('[data-cq-action=print-one]').first().click();const popup=await popupEvent;
   await popup.locator('#prepare:not([disabled])').click();await popup.locator('#confirm-reset').click();
   await popup.locator('#print:not([disabled])').waitFor();assert.equal(await popup.locator('.card-sheet').count(),1);assert.equal(await popup.locator('.card-sheet svg').count(),1);
-  assert.match(popup.url(),/card=8/);await popup.emulateMedia({media:'print'});assert.ok(await popup.locator('.card-sheet').evaluate(el=>Math.abs(el.getBoundingClientRect().width-190*96/25.4)<1));
+  assert.match(popup.url(),/card=8/);await popup.emulateMedia({media:'print'});assert.ok(await popup.locator('.card-sheet').evaluate(el=>Math.abs(el.getBoundingClientRect().width-210*96/25.4)<1));
   await popup.close();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
 });
 test('文字图片题保存、版本冲突保留草稿，题单按序发布和撤回',async t=>{
@@ -263,7 +263,7 @@ test('学生、知识点与本课汇总保留服务端未完成数，不混入�
   assert.equal(await incomplete.locator('strong').innerText(),'2');
 });
 
-test('A4 纸卡实际黑色检测方块为 140-150 mm，长班级保持单页，印账号密码和说明而不印姓名',async t=>{
+test('A4 黑框边长 170 mm，长班名和三位卡号各在一页内完整打印',async t=>{
   const{page,context,fixture}=await setup(t,390);
   fixture.cards.students=[{id:'s1',name:'很长的复姓学生姓名'.repeat(6),cardNumber:1},{id:'s2',name:'学生乙',cardNumber:157}];
   fixture.className='高一年级国际课程实验班'.repeat(8);
@@ -276,7 +276,14 @@ test('A4 纸卡实际黑色检测方块为 140-150 mm，长班级保持单页，
     return{blackMm:black.width/svg.viewBox.baseVal.width*svg.getBoundingClientRect().width*25.4/96,heightMm:box.height*25.4/96,overflow:sheet.scrollHeight-sheet.clientHeight,caption:sheet.innerText,labels:[...svg.querySelectorAll('text')].map(n=>n.textContent)};
   }));
   assert.equal(dimensions.length,2);
-  for(const d of dimensions){assert.ok(d.blackMm>=140&&d.blackMm<=150,JSON.stringify(d));assert.ok(d.heightMm<=277&&d.overflow<=1,JSON.stringify(d));assert.doesNotMatch(d.caption,/ice-v1|姓名|学生乙|很长的复姓学生/);for(const field of ['班级','编号','卡号','密码','001234'])assert.ok(d.caption.includes(field),field);assert.match(d.caption,/朝上/);assert.deepEqual(d.labels.slice(0,4),['A','B','C','D']);}
+  for(const d of dimensions){
+    assert.ok(Math.abs(d.blackMm-170)<0.1);
+    assert.ok(Math.abs(d.heightMm-297)<0.1 && d.overflow<=1);
+    assert.doesNotMatch(d.caption,/ice-v1|姓名|学生乙|很长的复姓学生/);
+    for(const field of [fixture.className,'编号','卡号','密码','001234']) assert.ok(d.caption.includes(field),field);
+    assert.match(d.caption,/朝上/);
+    assert.deepEqual(d.labels,['A','B','C','D']);
+  }
   const pdf=await popup.pdf({preferCSSPageSize:true});assert.equal([...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length,2,'one A4 page per student');
   await popup.close();
 });

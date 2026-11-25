@@ -1183,48 +1183,60 @@ internal static class CardQuizWheelChecks
                         "六张明细和唯一可用的翻页键在末页等分整圈");
                     Snapshot("native-card-detail-60.png");
                     Click(ButtonFor("返回")); await Until(()=>Find("61 号卡")?.IsFocused==true,"回到整班号段");
-                    cardRing.Update(cardPanel with { Cards = cardPanel.Cards.Take(53).ToArray() }, cardState.Lesson);
-                    Check(Field<Canvas>(cardRing, "_ring").Children.Count == 6 && Find("下一页卡号") == null, "53 张普通纸卡仍在一圈显示六个号段");
-                    var sparseMarks = Enumerable.Range(0, 16).Where(row => row is not (7 or 12 or 14)).SelectMany(row => new[] {
-                        new CardQuizCardMark(10 * row + 2, "pending"), new CardQuizCardMark(Math.Min(157, 10 * row + 9), "received")
-                    }).ToArray();
-                    var sparsePanel = cardPanel with { Cards = sparseMarks, Located = null, PendingOnly = false, ReadOnly = false };
-                    var optionC = cardState.Lesson with { Kind="multiple", Option="C", Received=13, Expected=26 };
-                    Task WaitForCardPage(params string[] clockwise)
+                    // The host can refresh its 60-card roster while Avalonia commits a synthetic page for hit testing.
+                    var ringParent = (Panel)cardRing.Parent!;
+                    var ringSlot = ringParent.Children.IndexOf(cardRing);
+                    var sampleRing = new BanbanCardOverview { IsVisible = true };
+                    ringParent.Children[ringSlot] = sampleRing;
+                    try
                     {
-                        var sectors = clockwise.Select(ButtonFor).ToArray();
-                        var sweep = Math.Tau / sectors.Length;
-                        // The input scene can still describe the previous page after UpdateLayout.
-                        return Until(() => sectors.Select((sector, i) => ArcTarget(sector, i * sweep, sweep / 2)).All(hit => hit),
-                            "核卡末页扇面 " + string.Join("、", clockwise), () => arcIssue);
+                        sampleRing.Update(cardPanel with { Cards = cardPanel.Cards.Take(53).ToArray() }, cardState.Lesson);
+                        Check(Field<Canvas>(sampleRing, "_ring").Children.Count == 6 && Find("下一页卡号") == null, "53 张普通纸卡仍在一圈显示六个号段");
+                        var sparseMarks = Enumerable.Range(0, 16).Where(row => row is not (7 or 12 or 14)).SelectMany(row => new[] {
+                            new CardQuizCardMark(10 * row + 2, "pending"), new CardQuizCardMark(Math.Min(157, 10 * row + 9), "received")
+                        }).ToArray();
+                        var sparsePanel = cardPanel with { Cards = sparseMarks, Located = null, PendingOnly = false, ReadOnly = false };
+                        var optionC = cardState.Lesson with { Kind="multiple", Option="C", Received=13, Expected=26 };
+                        Task WaitForCardPage(params string[] clockwise)
+                        {
+                            var sectors = clockwise.Select(ButtonFor).ToArray();
+                            var sweep = Math.Tau / sectors.Length;
+                            // The input scene can still describe the previous page after UpdateLayout.
+                            return Until(() => sectors.Select((sector, i) => ArcTarget(sector, i * sweep, sweep / 2)).All(hit => hit),
+                                "核卡末页扇面 " + string.Join("、", clockwise), () => arcIssue);
+                        }
+                        sampleRing.Update(sparsePanel, optionC);
+                        Click(ButtonFor("下一页卡号"));
+                        sampleRing.Update(sparsePanel, optionC);
+                        Check(Field<TextBlock>(sampleRing, "_pageLabel").Text == "2/3", "实时收答更新保留稀疏总览页");
+                        Click(ButtonFor("下一页卡号"));
+                        await WaitForCardPage("151-157 号卡", "上一页卡号");
+                        Check(Field<TextBlock>(sampleRing, "_pageLabel").Text == "3/3" && Field<Canvas>(sampleRing, "_ring").Children.Count == 1 &&
+                            Field<TextBlock>(sampleRing, "_title").Text!.Contains("C 项") && Find("下一页卡号") == null,
+                            "跨十三个非空号段逐页核对，末页一个实际号段与上页各占半圈");
+                        sampleRing.Update(sparsePanel with { Overview=false, Grouped=false, Page=4, Pages=5, Located=157,
+                            ReadOnly=true, Cards=sparseMarks[^2..] }, optionC);
+                        await WaitForCardPage("152 号卡，待收", "157 号卡，已收", "上一页卡号");
+                        Check(ButtonFor("157 号卡，已收").IsFocused && Field<TextBlock>(sampleRing, "_title").Text!.Contains("只读") &&
+                            Field<Canvas>(sampleRing, "_ring").Children.Count == 2 && Find("下一页卡号") == null,
+                            "稀疏明细末页按两张卡和上页重排，聚焦真实卡号并保留只读");
+                        sampleRing.Update(sparsePanel with { Located=157 }, optionC);
+                        Check(ButtonFor("151-157 号卡").IsFocused && Field<TextBlock>(sampleRing, "_pageLabel").Text == "3/3",
+                            "从明细返回时定位实际卡号所在的总览末页");
+                        sampleRing.Update(sparsePanel with { Located=157, Grouped=false, PendingOnly=true, ReadOnly=true,
+                            Cards=sparseMarks[^2..].Select(mark => mark with { State="pending" }).ToArray() },
+                            optionC with { Missing=[152,157] });
+                        Check(ButtonFor("157 号卡，待收").IsFocused, "待收缩到十二张以内时保留原号段内所选的实际卡号");
+                        sampleRing.Update(cardPanel with { PendingOnly=true, Grouped=false, ReadOnly=true, Cards=[] },
+                            cardState.Lesson with { Missing=[] });
+                        Check(Field<Canvas>(sampleRing, "_ring").Children.Count == 0 && Field<TextBlock>(sampleRing, "_title").Text!.Contains("已收齐") &&
+                            ButtonFor("返回").IsFocused && Find(allCards)?.IsEnabled == true, "大班已收齐时焦点回到圆心，空圆周仍可切回全班");
                     }
-                    cardRing.Update(sparsePanel, optionC);
-                    Click(ButtonFor("下一页卡号"));
-                    cardRing.Update(sparsePanel, optionC);
-                    Check(Field<TextBlock>(cardRing, "_pageLabel").Text == "2/3", "实时收答更新保留稀疏总览页");
-                    Click(ButtonFor("下一页卡号"));
-                    await WaitForCardPage("151-157 号卡", "上一页卡号");
-                    Check(Field<TextBlock>(cardRing, "_pageLabel").Text == "3/3" && Field<Canvas>(cardRing, "_ring").Children.Count == 1 &&
-                        Field<TextBlock>(cardRing, "_title").Text!.Contains("C 项") && Find("下一页卡号") == null,
-                        "跨十三个非空号段逐页核对，末页一个实际号段与上页各占半圈");
-                    cardRing.Update(sparsePanel with { Overview=false, Grouped=false, Page=4, Pages=5, Located=157,
-                        ReadOnly=true, Cards=sparseMarks[^2..] }, optionC);
-                    await WaitForCardPage("152 号卡，待收", "157 号卡，已收", "上一页卡号");
-                    Check(ButtonFor("157 号卡，已收").IsFocused && Field<TextBlock>(cardRing, "_title").Text!.Contains("只读") &&
-                        Field<Canvas>(cardRing, "_ring").Children.Count == 2 && Find("下一页卡号") == null,
-                        "稀疏明细末页按两张卡和上页重排，聚焦真实卡号并保留只读");
-                    cardRing.Update(sparsePanel with { Located=157 }, optionC);
-                    Check(ButtonFor("151-157 号卡").IsFocused && Field<TextBlock>(cardRing, "_pageLabel").Text == "3/3",
-                        "从明细返回时定位实际卡号所在的总览末页");
-                    cardRing.Update(sparsePanel with { Located=157, Grouped=false, PendingOnly=true, ReadOnly=true,
-                        Cards=sparseMarks[^2..].Select(mark => mark with { State="pending" }).ToArray() },
-                        optionC with { Missing=[152,157] });
-                    Check(ButtonFor("157 号卡，待收").IsFocused, "待收缩到十二张以内时保留原号段内所选的实际卡号");
-                    cardRing.Update(cardPanel with { PendingOnly=true, Grouped=false, ReadOnly=true, Cards=[] },
-                        cardState.Lesson with { Missing=[] });
-                    Check(Field<Canvas>(cardRing, "_ring").Children.Count == 0 && Field<TextBlock>(cardRing, "_title").Text!.Contains("已收齐") &&
-                        ButtonFor("返回").IsFocused && Find(allCards)?.IsEnabled == true, "大班已收齐时焦点回到圆心，空圆周仍可切回全班");
-                    cardRing.Update(cardPanel, cardState.Lesson);
+                    finally
+                    {
+                        ringParent.Children[ringSlot] = cardRing;
+                        cardRing.FocusCard(61);
+                    }
                     Click(ButtonFor(pendingCards));
                     await Until(() => Field<CardQuizWheelState>(wheel,"_state").CardPanel is { Overview:true, PendingOnly:true, ReadOnly:true } &&
                         Find(allCards)?.IsEnabled == true, "从全班切回只读待收总览");

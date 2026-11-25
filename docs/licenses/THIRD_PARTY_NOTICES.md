@@ -6,7 +6,7 @@ ICeClass · 班伴由 ICeCreamChat 在原 ICeCreamShouter 通知平台基础上�
 
 ## 纸卡答题
 
-`web_controller/card-quiz/vendor/cv.js` 和 `aruco.js` 来自 QCMCam2 固定提交 `dd161a7e9661ca5028757d69740152398a5e4c22` 的 `src/lib/js/`，沿用其 js-aruco / js-aruco2 检测器及 MIT 文件头。ICeClass 增加 UMD 封装，并在多分辨率检测合并时保留同卡相反方向，供上层拒绝冲突。纸卡采用该提交的 `QCMCAM_4X4_157h3` 字典，编号映射为字典索引加一；未引入上游编辑器或服务。
+`web_controller/card-quiz/vendor/cv.js` 和 `aruco.js` 来自 QCMCam2 固定提交 `dd161a7e9661ca5028757d69740152398a5e4c22` 的 `src/lib/js/`，沿用其 js-aruco / js-aruco2 检测器及 MIT 文件头。ICeClass 增加 UMD 封装、印刷字母排除和小尺寸失焦纸卡的灰度校验，并在多分辨率检测合并时保留同卡相反方向，供上层拒绝冲突。微信教师端随包使用同一份检测器。纸卡采用该提交的 `QCMCAM_4X4_157h3` 字典，编号映射为字典索引加一。上游编辑器和服务不在分发范围内。
 
 Copyright (c) 2020 Damiano Falcioni  
 Copyright (c) 2011 Juan Mellado
@@ -29,7 +29,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-`web_controller/card-quiz/vendor/qrcodegen.js` 来自 Project Nayuki QR Code generator 固定提交 `bcfe1b018cec5f1f91b5705eca5bb4cdd34e9f8d` 的 TypeScript 实现，编译为 ES2017 并增加 CommonJS 导出，用于本机生成配对二维码。原许可头保留。
+`web_controller/card-quiz/vendor/qrcodegen.js` 来自 Project Nayuki QR Code generator 固定提交 `bcfe1b018cec5f1f91b5705eca5bb4cdd34e9f8d` 的 TypeScript 实现，编译为 ES2017 并增加 CommonJS 导出，用于在本机生成教室配对和纸卡上的学生登录二维码。原许可头保留。
 
 Copyright (c) Project Nayuki. (MIT License)
 

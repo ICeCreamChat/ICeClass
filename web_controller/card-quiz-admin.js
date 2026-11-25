@@ -3,8 +3,8 @@
   const root = document.getElementById('cardQuizRoot');
   if (!root) return;
   const app = () => window.ICeClass, esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const api = (path, method = 'GET', data) => app().api('/api/card-quiz' + path, {
-    method, ...(data === undefined ? {} : {body:JSON.stringify(data)})
+  const api = (path, method = 'GET', data, signal) => app().api('/api/card-quiz' + path, {
+    method, signal, ...(data === undefined ? {} : {body:JSON.stringify(data)})
   });
   const clone = v => JSON.parse(JSON.stringify(v));
   const subjects = [['chinese','语文'],['math','数学'],['english','英语'],['physics','物理'],['chemistry','化学'],['biology','生物'],['politics','政治'],['history','历史'],['geography','地理']];
@@ -20,7 +20,9 @@
   let accountClassCode = '', accountDraft = newAccountDraft();
   function newAccountDraft() { return {entryYear,classCode:accountClassCode,studentId:'',username:''}; }
   const ui = window.ICeClassUI, draftLabel = '纸卡答题', credentialsLabel = '纸卡学生密码发放表';
+  let workEpoch = 0;
   function discard() {
+    if (editor?.kind === 'import') { editor.dispose(); notify(); }
     editor = undefined; changed = conflict = false; cardsDraft = cards && clone(cards.students);
     accountDraft = newAccountDraft();
     accountSelection.clear();
@@ -32,23 +34,24 @@
   const allowReplace = action => ui.confirmLeave(action, {only:[draftLabel, credentialsLabel]});
   async function canLeave(action = '离开纸卡答题') {
     if (!await allowReplace(action)) return false;
-    if (changed || credentials.length || draftFields()) discard();
+    if (editor?.kind === 'import') { discard(); render(); }
+    else if (changed || credentials.length || draftFields()) discard();
     return true;
   }
   async function afterLeave(task, action) { if (await canLeave(action)) await task(); }
   async function work(task, accountWrite=false) {
     if (busy) return false;
-    const currentOwner = owner;
+    const epoch = workEpoch;
     busy = true; render();
-    try { await task(); return currentOwner === owner; }
+    try { await task(); return epoch === workEpoch; }
     catch(error) {
-      if(currentOwner!==owner)return false;
-      if(accountWrite && error.status===409)accountsConflict=true;else conflict ||= error.status===409;
+      if(epoch!==workEpoch)return false;
+      if(accountWrite && error.status===409)accountsConflict=true;else if(editor?.kind!=='import')conflict ||= error.status===409;
       notify(error.message+(accountWrite&&error.status===409?' 请重新载入，核对名单、卡号和账号版本后再操作。':''),true);
       return false;
     }
     finally {
-      if(currentOwner===owner){
+      if(epoch===workEpoch){
         const restore = root.contains(document.activeElement) || document.activeElement === document.body;
         busy=false;render();
         if(accountWrite && restore && credentials.length) root.querySelector('.cq-credentials h2')?.focus();
@@ -81,7 +84,7 @@
       <div class="cq-account-tools">${accounts.canEdit?`<label class="cq-choice"><input type="checkbox" id="cq-accounts-all"${available.length&&available.every(s=>accountSelection.has(s.studentId))?' checked':''}${!writable||!available.length?' disabled':''}><span>选择本班已关联账号</span></label><div class="cq-actions"><span id="cq-selected-count">已选 ${accountSelection.size} 人</span>${button('reset-accounts','重置所选密码',false,!writable||!accountSelection.size?'disabled':'')}</div>`:''}</div>
       ${table(['选择','学生','卡号','编号（学生账号）','关联状态'],rows,'本班学生账号')}
       ${accounts.canEdit&&unlinked.length?`<details class="cq-link-account"><summary>转班或升班：关联已有账号</summary><p class="cq-note">明确选择本班学生并输入其原账号编号，不按姓名或卡号猜测身份。需要同时管理原班与本班；关联后保留原历史，密码不变。</p><form id="cq-link-form" class="cq-account-form" data-account-form="link-account"><div class="cq-fields"><label>本班学生<select name="studentId" data-account-field="studentId" required${!writable?' disabled':''}><option value="">请选择学生</option>${option(unlinked.map(s=>[s.studentId,s.name+' · '+(s.cardNumber==null?'未分配卡号':s.cardNumber+' 号卡')]),accountDraft.studentId)}</select></label><label>原学生账号编号<input name="username" data-account-field="username" inputmode="numeric" pattern="[0-9]+" maxlength="32" autocomplete="off" required value="${esc(accountDraft.username)}"${!writable?' disabled':''}></label></div><button type="submit" class="btn" data-cq-action="link-account"${!writable?' disabled':''}>关联原账号并保留历史</button></form></details>`:''}
-    </section>${credentials.length?`<section class="cq-panel cq-credentials" aria-labelledby="cq-credentials-title"><div class="cq-item-head"><h2 tabindex="-1" id="cq-credentials-title">本次发放表 · ${credentials.length} 人</h2><div class="cq-actions">${button('download-credentials','下载发放表 CSV',true)}${button('clear-credentials','清除本次密码')}</div></div><p class="cq-note">密码仅在本次页面显示，离开后无法找回。请下载并妥善发放；CSV 中编号和密码按文本导出以保留前导零。</p>${table(['学生','班级','编号','卡号','六位密码'],credentials.map(c=>`<tr><td>${esc(accounts.students.find(s=>s.studentId===c.studentId)?.name||'')}</td><td>${esc(c.className)}</td><td>${esc(c.username)}</td><td>${c.cardNumber}</td><td class="cq-password">${esc(c.password)}</td></tr>`),'本次一次性账号密码发放表')}</section>`:''}`;
+    </section>${credentials.length?`<section class="cq-panel cq-credentials" aria-labelledby="cq-credentials-title"><div class="cq-item-head"><h2 tabindex="-1" id="cq-credentials-title">本次发放表 · ${credentials.length} 人</h2><div class="cq-actions">${button('print-issued','打印本次纸卡',true,credentials.some(c=>c.cardNumber!=null)?'':'disabled')}${button('download-credentials','下载发放表 CSV')}${button('clear-credentials','清除本次密码')}</div></div><p class="cq-note">有卡号的学生可直接打印本次密码。离开后无法找回，请在发放完毕后清除。</p>${table(['学生','班级','编号','卡号','六位密码'],credentials.map(c=>`<tr><td>${esc(accounts.students.find(s=>s.studentId===c.studentId)?.name||'')}</td><td>${esc(c.className)}</td><td>${esc(c.username)}</td><td>${c.cardNumber??'未分配'}</td><td class="cq-password">${esc(c.password)}</td></tr>`),'本次一次性账号密码发放表')}</section>`:''}`;
   }
   function syncAccountSelection() {
     const all=root.querySelector('#cq-accounts-all'), count=root.querySelector('#cq-selected-count');
@@ -104,6 +107,28 @@
     } catch(error) { if(current()){accounts=undefined;accountsError=error.message;} }
   }
   const accountVersions = () => ({revision:accounts.revision,rosterRevision:accounts.rosterRevision,cardRevision:accounts.cardRevision});
+  function printIssued() {
+    const panel=root.querySelector('.cq-credentials');
+    if(!panel || !accounts?.canEdit || !credentials.length || app().state.sessionExpired || owner!==app().state.user?.id)return;
+    const batch=credentials.filter(card=>card.cardNumber!=null).sort((a,b)=>a.cardNumber-b.cardNumber);
+    if(!batch.length)return;
+    const current=accounts.students;
+    if(changed || batch.some(card=>card.classId!==cid || !current.some(s=>s.activeHere && s.accountId===card.accountId && s.cardNumber===card.cardNumber))){
+      notify('卡号已变化，请先核对名单，再为对应学生打印。',true);return;
+    }
+    panel.querySelector('.cq-issued-frame')?.remove();
+    const frame=document.createElement('iframe');
+    frame.className='cq-issued-frame';frame.title='本次纸卡打印';frame.tabIndex=-1;
+    frame.setAttribute('aria-hidden','true');
+    frame.onload=async()=>{
+      if(!frame.isConnected || app().state.sessionExpired || owner!==app().state.user?.id)return;
+      try{
+        if(!frame.contentWindow.printIssuedCards)throw new Error('打印页未能载入，请重新点击打印。');
+        await frame.contentWindow.printIssuedCards(batch);
+      }catch(error){if(frame.isConnected){frame.remove();notify(error.message,true);}}
+    };
+    frame.src='/card-quiz/print.html?issued';panel.append(frame);
+  }
   function downloadCredentials() {
     const cell=(value,text=false)=>{let s=String(value??'');if(text||/^[\s\u0000-\u001f]*[=+@-]/.test(s)||/^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
     const rows=[['班级','学生','编号','卡号','密码'].map(v=>cell(v)).join(',')];
@@ -113,6 +138,7 @@
     notify('发放表已生成。请妥善保管，完成发放后清除本次密码。');
   }
   function accountAction(action) {
+    if(action==='print-issued'){printIssued();return;}
     if(action==='download-credentials'){if(credentials.length)downloadCredentials();return;}
     if(action==='clear-credentials'){credentials=[];render();notify('本次密码已从页面清除。');return;}
     if(!accounts?.canEdit){notify('只有名单管理员可以管理学生账号。',true);return;}
@@ -124,17 +150,17 @@
       action==='reset-accounts'?{...versions,studentIds:[...accountSelection]}:{...versions,studentId:accountDraft.studentId,username:accountDraft.username.trim()};
     if(action==='reset-accounts'&&!body.studentIds.length)return;
     void work(async()=>{
-      if(credentials.length)throw new Error('请先下载发放表并清除本次密码，再执行新的账号操作。');
+      if(credentials.length)throw new Error('请先发放并清除本次密码，再执行新的账号操作。');
       if(action==='reset-accounts'&&!await confirm('重置所选学生密码？',`将重置 ${body.studentIds.length} 人的六位密码，旧密码和旧学生会话立即失效。新密码仅本次返回，请下载发放。`, '重置密码', true))return;
       if(action==='link-account'&&!await confirm('关联已有学生账号？',`将 ${accounts.students.find(s=>s.studentId===body.studentId)?.name||'所选学生'} 关联到原账号 ${body.username}。原班与本班权限由服务端核验，历史保留，密码不变。`, '关联账号'))return;
       const data=await api('/classes/'+encodeURIComponent(classAt)+'/students'+(action==='reset-accounts'?'/reset':action==='link-account'?'/link':''),'POST',body);
-      if(generationAt!==generation||classAt!==cid||userAt!==owner||userAt!==app()?.state.user?.id)return;
+      if(generationAt!==generation||classAt!==cid||userAt!==owner||userAt!==app()?.state.user?.id||app()?.state.sessionExpired)return;
       const issued=data.credentials||[];
       accounts={...data};delete accounts.credentials;
       credentials=issued;accountSelection=new Set();accountsConflict=false;accountsError='';
       if(action==='link-account')accountDraft.studentId=accountDraft.username='';
       if(action==='generate-accounts'){accountDraft.entryYear=entryYear;accountDraft.classCode=accountClassCode;}
-      notify(action==='generate-accounts'?`已生成 ${issued.length} 个账号，请下载本次发放表。`:action==='reset-accounts'?`已重置 ${issued.length} 人的密码，旧密码已失效，请发放新密码。`:'原账号已关联，原历史和密码已保留。');
+      notify(action==='generate-accounts'?`已生成 ${issued.length} 个账号，可打印本次纸卡或下载发放表。`:action==='reset-accounts'?`已重置 ${issued.length} 人的密码，旧密码已失效，请发放新密码。`:'原账号已关联，原历史和密码已保留。');
     },true);
   }
   function answerControl(q) {
@@ -142,14 +168,64 @@
     if(q.type==='multiple')return `<fieldset class="cq-answer-set" aria-describedby="cq-answer-help"><legend>标准答案（多选）</legend><div class="cq-answer-options">${letters.map(letter=>`<label class="cq-choice"><input type="checkbox" name="answer" value="${letter}"${q.answer?.includes(letter)?' checked':''}><span>${letter}</span></label>`).join('')}</div><p id="cq-answer-help" class="cq-note">可选一项或多项；全部取消时暂不设置标准答案。</p></fieldset>`;
     return `<label>标准答案<select name="answer">${option([['','暂不设置'],...letters.map(letter=>[letter,q.type==='boolean'?letter==='A'?'A 正确':'B 错误':letter])],q.answer||'')}</select></label>`;
   }
+  function importPreview(batch) {
+    const {url, image} = batch.source, draft = batch.current;
+    const [x, y, w, h] = draft?.rect || [0, 0, image.naturalWidth, image.naturalHeight];
+    const picture = draft
+      ? `<svg role="img" aria-label="本题截图" viewBox="${draft.rect.join(' ')}">
+          <clipPath id="cq-import-bounds"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath>
+          <image href="${esc(url)}" width="${image.naturalWidth}" height="${image.naturalHeight}" clip-path="url(#cq-import-bounds)"/></svg>`
+      : `<img src="${esc(url)}" width="${w}" height="${h}" alt="待识别的截图">`;
+    return `<figure class="cq-import-preview"><figcaption><strong>${draft?'本题原图':'截图预览'}</strong>
+      <a href="${esc(url)}" target="_blank" rel="noopener">查看完整原图<span class="sr-only">（在新标签页打开）</span></a>
+      </figcaption><div class="cq-import-picture">${picture}</div></figure>`;
+  }
+
+  function renderImportSource(batch) {
+    const ready = batch.source && !batch.pending;
+    return `<section class="cq-panel cq-import"><div class="cq-item-head"><h2>截图录题</h2>${button('cancel-editor','返回题库')}</div>
+      <div class="cq-import-layout"><div class="cq-form cq-import-controls">
+        <label>识别学科<select id="cq-import-subject">${option(subjects,batch.subjectId)}</select></label>
+        <div><input id="cq-import-file" type="file" accept="image/png,image/jpeg,image/webp" aria-label="题目截图" hidden>
+          ${button('choose-screenshot',batch.source?'更换截图':'选择截图',false,'aria-describedby="cq-import-help"')}
+          <p class="cq-note" id="cq-import-help">也可直接粘贴截图。支持 PNG、JPEG、WebP，单张最多 2 MiB。</p></div>
+        <div><p class="cq-note" id="cq-import-limit">每张最多 8 道单选、多选或判断题。每次发起新识别使用 1 次班班额度。</p>
+          <div class="cq-actions">${button('recognize','识别题目',true,'aria-describedby="cq-import-limit"'+(!ready||batch.request?' disabled':''))}
+          ${ready?button('manual-import','手动录题'):''}</div></div>
+        <p class="cq-note cq-import-status" role="status">${batch.pending?'正在读取截图…':batch.request?'正在识别题目…':''}</p>
+      </div>${batch.source?importPreview(batch):''}</div></section>`;
+  }
+
   function renderQuestionEditor() {
     const q=editor.value, review=editor.kind==='review', boolean=q.type==='boolean', count=q.options.length;
     const image=q.imageId||editor.sourceImageId;
-    return `<section class="cq-panel"><h2>${review?'课后修订':q.id?'编辑私有题目':'新建私有题目'}</h2><form class="cq-form" id="cq-question-form"><div class="cq-fields"><label>学科<select name="subjectId"${review||busy?' disabled':''}>${option(subjects,q.subjectId)}</select></label><label>题型<select name="type"${review||busy?' disabled':''}>${option([['single','单选'],['boolean','判断（A 正确，B 错误）'],['multiple','多选']],q.type)}</select></label></div><label>题干<textarea name="text" rows="4" maxlength="40000">${esc(q.text)}</textarea></label>${image?`<img class="cq-image" src="/api/card-quiz/images/${encodeURIComponent(image)}" alt="题目配图">`:''}${!review?`<label>题目图片（PNG、JPEG、WebP，最多 2 MiB）<input type="file" name="image" accept="image/png,image/jpeg,image/webp"></label>${image?button('remove-image','移除配图'):''}<label>选项数量<select name="count"${boolean||busy?' disabled':''}>${option([['2','2'],['3','3'],['4','4']],String(count))}</select></label>`:''}<div class="cq-fields">${q.options.map((text,i)=>`<label>选项 ${'ABCD'[i]}<input name="option-${i}" maxlength="4000" value="${esc(text)}"${review||boolean?' readonly':''}></label>`).join('')}</div><div class="cq-fields">${answerControl(q)}<label>知识点（逗号分隔）<input name="tags" maxlength="8049" value="${esc(q.tags.join('，'))}"></label></div>${review?`<label>关联本人题库版本<select name="bankLink"><option value="">${q.bankId?'保留原关联':'独立临时题'}</option><option value="clear">取消题库关联</option>${bank.filter(b=>b.subjectId===q.subjectId&&b.type===q.type&&JSON.stringify(b.options)===JSON.stringify(q.options)).map(b=>`<option value="${esc(b.id)}">${esc(b.text||'无题干')} · v${b.revision}</option>`).join('')}</select></label>`:''}<p class="cq-dirty">${conflict?'版本有冲突，请重新载入核对':changed?'尚未保存':''}</p><div class="cq-form-footer"><div class="cq-actions">${button('cancel-editor','返回')}${button(review?'save-review':'save-question','保存',true,conflict?'disabled':'')}</div></div></form></section>`;
+    const importing = editor.kind === 'import';
+    const form = `<form class="cq-form" id="cq-question-form"><div class="cq-fields">
+      <label>学科<select name="subjectId"${review||busy?' disabled':''}>${option(subjects,q.subjectId)}</select></label>
+      <label>题型<select name="type"${review||busy?' disabled':''}>${option([['single','单选'],['boolean','判断（A 正确，B 错误）'],['multiple','多选']],q.type)}</select></label></div>
+      <label>题干<textarea name="text" rows="4" maxlength="40000">${esc(q.text)}</textarea></label>
+      ${image&&!importing?`<img class="cq-image" src="/api/card-quiz/images/${encodeURIComponent(image)}" alt="题目配图">`:''}
+      ${!review&&!importing?`<label>题目图片（PNG、JPEG、WebP，最多 2 MiB）<input type="file" name="image" accept="image/png,image/jpeg,image/webp"></label>${image?button('remove-image','移除配图'):''}`:''}
+      ${!review?`<label>选项数量<select name="count"${boolean||busy?' disabled':''}>${option([['2','2'],['3','3'],['4','4']],String(count))}</select></label>`:''}
+      <div class="cq-fields">${q.options.map((text,i)=>`<label>选项 ${'ABCD'[i]}${!review&&!boolean&&(importing||/[\r\n]/.test(text))
+        ? `<textarea name="option-${i}" rows="2" maxlength="4000">${esc(text)}</textarea>`
+        : `<input name="option-${i}" maxlength="4000" value="${esc(text)}"${review||boolean?' readonly':''}>`}</label>`).join('')}</div>
+      <div class="cq-fields">${answerControl(q)}<label>知识点（逗号分隔）<input name="tags" maxlength="8049" value="${esc(q.tags.join('，'))}"></label></div>
+      ${review?`<label>关联本人题库版本<select name="bankLink"><option value="">${q.bankId?'保留原关联':'独立临时题'}</option><option value="clear">取消题库关联</option>${bank.filter(b=>b.subjectId===q.subjectId&&b.type===q.type&&JSON.stringify(b.options)===JSON.stringify(q.options)).map(b=>`<option value="${esc(b.id)}">${esc(b.text||'无题干')} · v${b.revision}</option>`).join('')}</select></label>`:''}
+      <p class="cq-dirty">${conflict?'版本有冲突，请重新载入核对':changed?'尚未保存':''}</p>
+      <div class="cq-form-footer"><div class="cq-actions">${importing?button('skip-import','跳过此题'):button('cancel-editor','返回')}
+        ${button(review?'save-review':'save-question',importing?'确认保存此题':'保存',true,conflict?'disabled':'')}</div></div></form>`;
+    if (!importing) return `<section class="cq-panel"><h2>${review?'课后修订':q.id?'编辑私有题目':'新建私有题目'}</h2>${form}</section>`;
+    const draft = editor.current;
+    return `<section class="cq-panel cq-import"><div class="cq-item-head"><h2 id="cq-import-heading" tabindex="-1">审阅第 ${editor.index+1} / ${editor.drafts.length} 题</h2>
+      ${button('cancel-editor','返回题库')}</div><div class="cq-import-layout">
+      <div>${importPreview(editor)}<label class="cq-choice cq-import-attach"><input id="cq-import-attach" type="checkbox"${draft.attach?' checked':''}${busy?' disabled':''}>保留本题截图作配图</label>
+      ${draft.note?`<p class="cq-note cq-import-note">${esc(draft.note)}</p>`:''}</div>${form}</div></section>`;
   }
   function renderBank() {
+    if(editor?.kind==='import')return editor.current?renderQuestionEditor():renderImportSource(editor);
     if(editor?.kind==='question')return renderQuestionEditor();
-    return `<section class="cq-panel"><div class="cq-item-head"><h2>我的私有题库</h2>${button('new-question','新建题目',true)}</div>${bank.length?'<div class="cq-list">'+bank.map(q=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(q.text||'图片或课件题')}</p><div class="cq-actions">${button('edit-question','编辑',false,`data-id="${esc(q.id)}"`)}${button('delete-question','删除',false,`data-id="${esc(q.id)}"`)}</div></div><small>${esc(names[q.subjectId]||q.subjectId)} · ${q.type==='boolean'?'判断':q.type==='multiple'?'多选':q.options.length+'选一'} · v${q.revision} · ${q.answer?'答案 '+q.answer:'未设答案'}${q.tags.length?' · '+esc(q.tags.join('、')):''}</small></article>`).join('')+'</div>':'<p class="cq-empty">创建文字或图片题，加入题单后发布到班级。</p>'}</section>`;
+    return `<section class="cq-panel"><div class="cq-item-head"><h2>我的私有题库</h2><div class="cq-actions">${button('open-import','截图录题')}${button('new-question','新建题目',true)}</div></div>${bank.length?'<div class="cq-list">'+bank.map(q=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(q.text||'图片或课件题')}</p><div class="cq-actions">${button('edit-question','编辑',false,`data-id="${esc(q.id)}"`)}${button('delete-question','删除',false,`data-id="${esc(q.id)}"`)}</div></div><small>${esc(names[q.subjectId]||q.subjectId)} · ${q.type==='boolean'?'判断':q.type==='multiple'?'多选':q.options.length+'选一'} · v${q.revision} · ${q.answer?'答案 '+q.answer:'未设答案'}${q.tags.length?' · '+esc(q.tags.join('、')):''}</small></article>`).join('')+'</div>':'<p class="cq-empty">创建文字或图片题，加入题单后发布到班级。</p>'}</section>`;
   }
   function renderDecks() {
     if(editor?.kind==='deck') {
@@ -169,11 +245,36 @@
     if(Object.keys(student.choices||{}).length)return 'ABCD'.slice(0,question.options.length).split('').map(letter=>letter+' '+(student.choices[letter]===true?'选':student.choices[letter]===false?'不选':'未答')).join(' · ');
     return '未答';
   }
+  function renderSessionKnowledge(topics) {
+    if (!topics) return '';
+    return `<section class="cq-panel"><h2>本节知识点</h2>${topics.length
+      ? '<p class="cq-note">每题取最新封存的正式轮次，多标签题分别列入各知识点。展开可看学生明细，错题数多的排在前面。</p>' +
+        topics.map((topic, index) => `<details class="cq-round" data-cq-topic="${index}"><summary class="cq-question-preview">${esc(topic.tag)} · ${topic.questionCount === 1 ? '仅 1 题' : topic.questionCount + ' 题'} · 正确 ${topic.correct} / 已判定 ${topic.samples} · 错误 ${topic.wrong}</summary></details>`).join('')
+      : '<p class="cq-note">本节暂无带知识点标签的已封存正式题。</p>'}</section>`;
+  }
+  root.addEventListener('toggle', event => {
+    const section = event.target;
+    if (!section.matches('details[data-cq-topic]') || !section.open || section.querySelector('table')) return;
+    const topic = detail.report.knowledge[Number(section.dataset.cqTopic)];
+    const cards = new Map(detail.session.roster.map(student => [student.id, student.cardNumber]));
+    const rows = topic.students.map(student => {
+      const card = cards.get(student.studentId);
+      const missed = student.wrongQuestionNumbers;
+      const other = ['abstained','exempt','ungraded','incomplete','unanswered'].filter(key => student[key])
+        .map(key => statuses[key] + ' ' + student[key]).join('、');
+      return `<tr><td>${esc(student.studentName)}${card == null ? '' : ' · ' + card + ' 号'}</td>
+        <td>${student.samples ? student.correct + ' / ' + student.samples : '暂无判定样本'}</td><td>${student.wrong}</td>
+        <td>${missed.length ? '第 ' + missed.join('、') + ' 题' : '—'}</td><td>${other || '—'}</td></tr>`;
+    });
+    section.insertAdjacentHTML('beforeend', table(['学生','正确 / 已判定','错误','错题题号','未计入判分'], rows, topic.tag + '的学生明细'));
+  }, true);
   function renderDetail() {
     if(editor?.kind==='review')return renderQuestionEditor();
     const s=detail.session, totals=detail.report.totals;
     const hasNewRounds = s.questions.some(q => q.rounds?.some(r => r.noCardPolicy === 'abstain'));
-    return `<section class="cq-panel"><div class="cq-item-head"><h2>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}</h2><div class="cq-actions">${button('close-detail','返回报告')}${s.endedAt?button('claim','认领此课',false):''}</div></div><p class="cq-note">${s.endedAt?'课堂已结束并同步，可以补录题干、标准答案和知识点。':'课堂尚未结束，修订由教室端确认。'}${s.teacherId?' 已认领。':''}</p><div class="cq-summary wb-metrics" role="group" aria-label="本课答题汇总">${ui.metric('判定样本',totals.samples,'clipboard')}${ui.metric('已答正确率',rate(totals.accuracy),'chart',{bar:ui.meter(totals.accuracy)})}${!hasNewRounds || totals.incomplete ? ui.metric('未完成',totals.incomplete||0,'clock') : ''}${!hasNewRounds || totals.unanswered ? ui.metric('未答',totals.unanswered||0,'inbox') : ''}${hasNewRounds ? ui.metric('弃权',totals.abstained||0,'inbox') : ''}</div>${detail.report.questions.map((q,i)=>{
+    return `<section class="cq-panel"><div class="cq-item-head"><h2>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}</h2><div class="cq-actions">${button('close-detail','返回报告')}${s.endedAt?button('claim','认领此课',false):''}</div></div><p class="cq-note">${s.endedAt?'课堂已结束并同步，可以补录题干、标准答案和知识点。':'课堂尚未结束，修订由教室端确认。'}${s.teacherId?' 已认领。':''}</p><div class="cq-summary wb-metrics" role="group" aria-label="本课答题汇总">${ui.metric('判定样本',totals.samples,'clipboard')}${ui.metric('已答正确率',rate(totals.accuracy),'chart',{bar:ui.meter(totals.accuracy)})}${!hasNewRounds || totals.incomplete ? ui.metric('未完成',totals.incomplete||0,'clock') : ''}${!hasNewRounds || totals.unanswered ? ui.metric('未答',totals.unanswered||0,'inbox') : ''}${hasNewRounds ? ui.metric('弃权',totals.abstained||0,'inbox') : ''}</div></section>
+      ${renderSessionKnowledge(detail.report.knowledge)}
+      <section class="cq-panel"><h2>逐题记录与修订</h2>${detail.report.questions.map((q,i)=>{
       const snapshot=s.questions.find(value=>value.id===q.id), options=snapshot?.options||[];
       return `<article class="cq-item"><div class="cq-item-head"><h3>第 ${i+1} 题</h3><div class="cq-actions">${s.endedAt?button('review-question','课后修订',false,`data-id="${esc(q.id)}"`):''}${button('copy-session','另存为我的题目',false,`data-id="${esc(q.id)}"`)}</div></div><p class="cq-question-preview">${esc(q.text|| (snapshot?.imageId?'图片题':'课件临时题'))}</p>${snapshot?.imageId?`<img class="cq-image" src="/api/card-quiz/images/${encodeURIComponent(snapshot.imageId)}" alt="本题配图">`:''}<ol type="A">${options.map(text=>`<li>${esc(text||'选项无文字')}</li>`).join('')}</ol><p class="cq-note">${q.answer?'标准答案 '+q.answer:'未设置答案'}${q.tags.length?' · '+esc(q.tags.join('、')):''}</p>${q.rounds.map((r,index)=>{
       if(r.status!=='closed')return `<details class="cq-round"><summary>第 ${index+1} 轮 · ${r.purpose==='practice'?'练习':'正式'} · ${r.status==='paused'?'已暂停':'收答中'}</summary><p class="cq-note">本轮尚未封存，结束后显示作答结果。</p></details>`;
@@ -201,7 +302,7 @@
   function renderReports() {
     if(detail)return renderDetail();
     if(!report)return'<p class="cq-empty">请选择班级查询课堂记录。</p>';
-    return `<section class="cq-panel"><div class="cq-item-head"><h2>课堂记录</h2>${button('export','导出明细 CSV')}</div><div class="cq-list">${[...report.sessions].reverse().map(s=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}<br><small>${s.questionCount} 题 · ${s.endedAt?'已结束':'尚未结束'} · ${s.teacherId?'已认领':'待认领'}</small></p>${button('open-session','查看与修订',false,`data-id="${esc(s.id)}"`)}</div></article>`).join('')||'<p class="cq-empty">本班暂无已同步课堂。</p>'}</div></section><section class="cq-panel"><h2>学生汇总</h2><p class="cq-note">同人、同题、同版本取最近的有效正式作答。正确率按已判定的作答计算。</p>${statistics(report.students,'学生')}</section><section class="cq-panel"><h2>知识点表现</h2><p class="cq-note">按手工标签汇总；请结合判定样本数阅读已答正确率。</p>${table(['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','已答正确率'],report.knowledge.map(k=>`<tr><td>${esc(names[k.subjectId]||k.subjectId)}</td><td>${esc(k.tag)}</td><td>${k.questionCount}</td><td>${k.answers}</td><td>${k.samples}</td><td>${k.correct}</td><td>${k.wrong}</td><td>${k.incomplete||0}</td><td>${rate(k.accuracy)}</td></tr>`),'知识点样本与正确率')}</section>`;
+    return `<section class="cq-panel"><div class="cq-item-head"><h2>课堂记录</h2>${button('export','导出明细 CSV')}</div><div class="cq-list">${[...report.sessions].reverse().map(s=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}<br><small>${s.questionCount} 题 · ${s.endedAt?'已结束':'尚未结束'} · ${s.teacherId?'已认领':'待认领'}</small></p>${button('open-session','查看与修订',false,`data-id="${esc(s.id)}"`)}</div></article>`).join('')||'<p class="cq-empty">本班暂无已同步课堂。</p>'}</div></section><section class="cq-panel"><h2>学生汇总</h2><p class="cq-note">同人、同题、同版本取最近的有效正式作答。正确率按已判定的作答计算。</p>${statistics(report.students,'学生')}</section><section class="cq-panel"><h2>知识点表现</h2><p class="cq-note">按教师确认的知识点汇总，请结合判定样本数看正确率。</p>${table(['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','已答正确率'],report.knowledge.map(k=>`<tr><td>${esc(names[k.subjectId]||k.subjectId)}</td><td>${esc(k.tag)}</td><td>${k.questionCount}</td><td>${k.answers}</td><td>${k.samples}</td><td>${k.correct}</td><td>${k.wrong}</td><td>${k.incomplete||0}</td><td>${rate(k.accuracy)}</td></tr>`),'知识点样本与正确率')}</section>`;
   }
   function render() {
     ui.preserveFocus(root, renderContent, () => root.querySelector('[data-cq-tab][aria-pressed="true"]'));
@@ -213,6 +314,7 @@
     if(tab==='cards'&&accounts)syncAccountSelection();
   }
   async function fetchTab({classId=cid, nextTab=tab, nextSubject=subject, replace=false}={}) {
+    if (replace && editor?.kind === 'import') editor.cancelRequest();
     const current=++generation, base='/classes/'+encodeURIComponent(classId);
     const [questions, lists, published, freshCards, freshReport] = await Promise.all([
       api('/questions'), api('/decks'), classId?api(base+'/publications'):null,
@@ -231,6 +333,7 @@
   async function load() {
     const uid=app()?.state.user?.id;if(!uid)return;
     if(owner!==uid){destroy();owner=uid;}
+    if(editor?.kind==='import')return;
     if(changed || draftFields() || busy || credentials.length){render();return;}
     const classes=app().state.classes||[];
     const classId=classes.some(c=>c.id===cid)?cid:classes[0]?.id||'';
@@ -238,7 +341,7 @@
   }
   function editQuestion(value,kind='question',sourceImageId=null) {editor={kind,value:clone(value),sourceImageId};changed=false;conflict=false;render();root.querySelector('textarea')?.focus();}
   function syncEditor() {
-    if(!editor)return;
+    if(!editor?.value)return;
     const form=root.querySelector('.cq-form');if(!form)return;
     if(editor.kind==='deck'){editor.value.title=form.elements.title.value;return;}
     const q=editor.value;
@@ -250,12 +353,80 @@
     if(editor.kind==='review'&&form.elements.bankLink.value){const id=form.elements.bankLink.value,b=bank.find(q=>q.id===id);q.bankId=b?.id||null;q.bankVersion=b?.revision||null;}
   }
   const fileData = file => new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('图片未能读取，请重新选择。'));reader.readAsDataURL(file);});
+  function currentBankEditor(target) {
+    return editor === target && tab === 'bank' && owner === app().state.user?.id && !app().state.sessionExpired &&
+      !document.getElementById('view-card-quiz').classList.contains('hidden');
+  }
+
+  function focusImport(selector) {
+    if (root.contains(document.activeElement) || document.activeElement === document.body) root.querySelector(selector)?.focus();
+  }
+
+  async function updateImport(batch, operation, focusSelector) {
+    notify();
+    render();
+    try {
+      if (await operation && currentBankEditor(batch)) {
+        render();
+        focusImport(focusSelector);
+      }
+    } catch (error) {
+      if (currentBankEditor(batch)) { render(); notify(error.message, true); }
+    }
+  }
+
+  function selectScreenshot(file) {
+    const batch = editor;
+    if (file && batch?.kind === 'import' && !batch.current && !busy && currentBankEditor(batch))
+      return updateImport(batch, batch.selectFile(file), '[data-cq-action="recognize"]');
+  }
+
+  function finishImportQuestion(batch, saved) {
+    if (saved) batch.saved++;
+    batch.drafts[batch.index++] = null;
+    changed = conflict = false;
+    if (batch.current) {
+      notify(saved ? '上一题已保存到我的题库。' : '已跳过上一题。');
+    } else {
+      notify('审阅完成，已入库 ' + batch.saved + ' 道，跳过 ' + (batch.index - batch.saved) + ' 道。');
+      batch.dispose();
+      editor = undefined;
+    }
+  }
+
   async function saveQuestion() {
-    const q=editor.value;
-    if(editor.file){if(!['image/png','image/jpeg','image/webp'].includes(editor.file.type)||editor.file.size>2*1024*1024)throw new Error('图片仅支持 PNG、JPEG、WebP，最多 2 MiB。');q.imageId=(await api('/images','POST',{dataUrl:await fileData(editor.file)})).id;editor.file=null;}
-    if(editor.sourceImageId){const response=await fetch('/api/card-quiz/images/'+encodeURIComponent(editor.sourceImageId),{credentials:'same-origin',signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error('配图未能复制，请重新载入后再试。');q.imageId=(await api('/images','POST',{dataUrl:await fileData(await response.blob())})).id;editor.sourceImageId=null;}
-    const value={subjectId:q.subjectId,type:q.type,text:q.text,imageId:q.imageId||null,options:q.options,answer:q.answer,tags:q.tags};
-    await api('/questions'+(q.id?'/'+encodeURIComponent(q.id):''),q.id?'PUT':'POST',{...(q.id?{revision:q.revision}:{}),value});
+    const target = editor, q = target.value, draft = target.kind === 'import' ? target.current : null;
+    if (!currentBankEditor(target)) return;
+    const creation = draft ? {requestKey:draft.saveKey} : {};
+    let dataUrl;
+    if (draft?.attach && !q.imageId) {
+      dataUrl = await target.imageData();
+    } else if (target.file) {
+      if (!['image/png','image/jpeg','image/webp'].includes(target.file.type) || target.file.size > 2*1024*1024)
+        throw new Error('图片仅支持 PNG、JPEG、WebP，最多 2 MiB。');
+      dataUrl = await fileData(target.file);
+    } else if (target.sourceImageId) {
+      const response = await fetch('/api/card-quiz/images/'+encodeURIComponent(target.sourceImageId),{credentials:'same-origin',signal:AbortSignal.timeout(15000)});
+      if (!response.ok) throw new Error('配图未能复制，请重新载入后再试。');
+      dataUrl = await fileData(await response.blob());
+    }
+    if (!currentBankEditor(target)) return;
+    if (dataUrl) {
+      const image = await api('/images', 'POST', {dataUrl,...creation});
+      if (!currentBankEditor(target)) return;
+      if (!image?.id) throw new Error('未获得配图编号，请重新保存。');
+      q.imageId = image.id;
+      target.file = target.sourceImageId = null;
+      if (draft) draft.cropData = null;
+    }
+    const value={subjectId:q.subjectId,type:q.type,text:q.text,imageId:draft&&!draft.attach?null:q.imageId||null,options:q.options,answer:q.answer,tags:q.tags};
+    const saved = await api('/questions'+(q.id?'/'+encodeURIComponent(q.id):''),q.id?'PUT':'POST',{...(q.id?{revision:q.revision}:creation),value});
+    if (!currentBankEditor(target)) return;
+    if (draft) {
+      bank.push(saved);
+      finishImportQuestion(target, true);
+      return;
+    }
     editor=undefined;changed=false;await fetchTab();notify('题目已保存到我的私有题库。');
   }
   function openPrint(number) {
@@ -273,6 +444,11 @@
   });
   root.addEventListener('change',event=>{
     const input=event.target;
+    if (input.id === 'cq-import-file') { void selectScreenshot(input.files?.[0]); return; }
+    if (input.id === 'cq-import-subject') {
+      editor.cancelRequest(); editor.requestKey = null; editor.subjectId = input.value; notify(); render(); return;
+    }
+    if (input.id === 'cq-import-attach') { editor.current.attach = input.checked; markChanged(); return; }
     if(input.dataset.accountField){accountDraft[input.dataset.accountField]=input.value;return;}
     if(input.dataset.accountStudent){if(input.checked)accountSelection.add(input.dataset.accountStudent);else accountSelection.delete(input.dataset.accountStudent);syncAccountSelection();return;}
     if(input.id==='cq-accounts-all'){accountSelection=new Set(input.checked?accounts.students.filter(s=>s.accountId&&s.activeHere).map(s=>s.studentId):[]);root.querySelectorAll('[data-account-student]').forEach(n=>n.checked=accountSelection.has(n.dataset.accountStudent));syncAccountSelection();return;}
@@ -298,6 +474,15 @@
     }
   });
   root.addEventListener('submit',event=>{event.preventDefault();if(event.target.dataset.accountForm&&!busy)accountAction(event.target.dataset.accountForm);});
+  document.addEventListener('paste', event => {
+    if (editor?.kind !== 'import' || editor.current || busy || !currentBankEditor(editor) ||
+        document.querySelector('dialog[open]') || root.closest('[inert]')) return;
+    if (!root.contains(event.target) && event.target !== document.body && event.target !== document) return;
+    const data = event.clipboardData;
+    const file = [...(data?.files || [])].find(item => item.type.startsWith('image/')) ||
+      [...(data?.items || [])].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+    if (file) { event.preventDefault(); void selectScreenshot(file); }
+  });
   root.addEventListener('click',async event=>{
     const control=event.target.closest('button');if(!control||control.disabled||busy)return;
     if(control.dataset.cqTab){
@@ -307,7 +492,34 @@
     }
     const action=control.dataset.cqAction,id=control.dataset.id;
     if(!action)return;
-    if(['generate-accounts','reset-accounts','link-account','download-credentials','clear-credentials'].includes(action)){event.preventDefault();accountAction(action);return;}
+    if (action === 'open-import') {
+      editor = new window.ICeClassQuestionImport(subject || 'math', fileData);
+      changed = conflict = false; notify(); render(); focusImport('[data-cq-action="choose-screenshot"]'); return;
+    }
+    if (editor?.kind === 'import') {
+      const batch = editor;
+      if (!currentBankEditor(batch)) return;
+      if (action === 'choose-screenshot') { root.querySelector('#cq-import-file').click(); return; }
+      if (action === 'recognize') {
+        await updateImport(batch, batch.recognize(api, () => currentBankEditor(batch)), '#cq-import-heading'); return;
+      }
+      if (action === 'manual-import') {
+        batch.manual(); notify(); render(); focusImport('#cq-question-form textarea'); return;
+      }
+      if (action === 'skip-import') {
+        finishImportQuestion(batch, false); render(); focusImport('#cq-import-heading,[data-cq-action="open-import"]'); return;
+      }
+      if (action === 'save-question') {
+        syncEditor();
+        if (await work(saveQuestion)) focusImport('#cq-import-heading,[data-cq-action="open-import"]');
+        return;
+      }
+      if (action === 'cancel-editor') {
+        if (await canLeave('返回我的题库')) focusImport('[data-cq-action="open-import"]');
+        return;
+      }
+    }
+    if(['generate-accounts','reset-accounts','link-account','print-issued','download-credentials','clear-credentials'].includes(action)){event.preventDefault();accountAction(action);return;}
     if(action==='retry-accounts'){await work(readAccounts);return;}
     if(action==='reload'){if(await allowReplace('重新载入纸卡答题')&&await work(()=>fetchTab({replace:true})))notify('已重新载入。');return;}
     if(action==='cancel-editor'){await afterLeave(async()=>{editor=undefined;render();},'关闭编辑');return;}
@@ -348,11 +560,22 @@
       else if(action==='export'){const csv=await api('/export?'+new URLSearchParams({classId:cid,...(subject?{subjectId:subject}:{})}));const url=URL.createObjectURL(new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='纸卡答题明细.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('CSV 明细已生成。');}
     });
   });
-  function destroy(){generation++;owner=cid='';tab='cards';subject='';cards=cardsDraft=report=detail=editor=accounts=undefined;credentials=[];accountSelection=new Set();accountsError='';accountsConflict=false;accountClassCode='';accountDraft=newAccountDraft();bank=[];decks=[];publications=[];changed=conflict=busy=failed=false;message='';root.replaceChildren();}
-  ui.registerDraft(draftLabel, () => ({dirty:changed || draftFields(), busy}));
+  function destroy(){
+    workEpoch++;
+    if (editor?.kind === 'import') editor.dispose();
+    generation++;owner=cid='';tab='cards';subject='';cards=cardsDraft=report=detail=editor=accounts=undefined;credentials=[];accountSelection=new Set();accountsError='';accountsConflict=false;accountClassCode='';accountDraft=newAccountDraft();bank=[];decks=[];publications=[];changed=conflict=busy=failed=false;message='';root.replaceChildren();
+  }
+  ui.registerDraft(draftLabel, () => ({dirty:changed || draftFields() || !!(editor?.kind==='import' && (editor.source || editor.pending)), busy}));
   ui.registerDraft(credentialsLabel, () => ({dirty:credentials.length > 0}));
   window.addEventListener('iceclass-logout', destroy);
-  window.addEventListener('pagehide',()=>{generation++;credentials=[];root.querySelector('.cq-credentials')?.remove();});
+  window.addEventListener('iceclass-session-expired',()=>{
+    credentials=[];root.querySelector('.cq-credentials')?.remove();
+    if (editor?.kind === 'import') { editor.cancelRequest(); render(); }
+  });
+  window.addEventListener('pagehide',()=>{
+    generation++;credentials=[];root.querySelector('.cq-credentials')?.remove();
+    if (editor?.kind === 'import') { workEpoch++; busy=false; discard(); render(); }
+  });
   window.addEventListener('iceclass-classes-changed',()=>{
     if(cid && !app().state.classes.some(c=>c.id===cid))destroy();
     if(!document.getElementById('view-card-quiz')?.classList.contains('hidden')&&!busy)void load();

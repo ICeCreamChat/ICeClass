@@ -90,7 +90,7 @@ before(async()=>{
     await new Promise(resolve=>setTimeout(resolve,100));
   }
   assert.ok(ready,'Fictional localhost test service must start');
-  browser=await chromium.launch({headless:true});
+  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
   teacher=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
   const auth=await api(teacher,'/api/auth/login','POST',{username:'ICe',password:'LocalDemo2026'});
   teacher.csrf=auth.user.csrfToken;
@@ -111,6 +111,7 @@ before(async()=>{
   await makeJournal();
   student=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
   other=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  await login(student,credentials[0]);await login(other,credentials[2]);
   for(const context of [teacher,student,other])context.on('page',page=>{
     page.on('pageerror',error=>errors.push(error.message));
     page.on('console',message=>{if(message.type()==='error'&&/Content Security Policy|Refused to/.test(message.text()))errors.push(message.text());});
@@ -123,16 +124,17 @@ after(async()=>{
 });
 
 test('real three-type classroom produces separate per-student reports and matching teacher totals',async()=>{
-  await login(student,credentials[0]);await login(other,credentials[2]);
   const first=await api(student,'/api/student/report');
   const third=await api(other,'/api/student/report?studentId='+fixture.students[0].id);
   assert.equal(first.totals.correct,3);assert.equal(first.totals.samples,3);assert.equal(first.totals.accuracy,1);
   assert.deepEqual(first.records.map(r=>r.type),['single','boolean','multiple']);
   assert.equal(first.records[2].option,'AC');
-  assert.equal(third.totals.correct,1);assert.equal(third.totals.samples,1);
-  assert.equal(third.totals.incomplete,1);assert.equal(third.totals.unanswered,1);
-  assert.equal(third.records[2].status,'incomplete');
-  assert.equal(first.knowledge[0].samples,3);assert.equal(third.knowledge[0].samples,1);
+  assert.equal(third.totals.correct,1);assert.equal(third.totals.samples,2);
+  assert.equal(third.totals.abstained,1);assert.equal(third.totals.incomplete,0);assert.equal(third.totals.unanswered,0);
+  assert.deepEqual(third.records.map(record=>record.status),['abstained','correct','wrong']);
+  assert.equal(third.records[2].option,'A');
+  assert.equal(first.knowledge[0].samples,3);assert.equal(third.knowledge[0].samples,2);
+  assert.deepEqual(third.sessions[0].knowledge[0].wrongQuestionNumbers,[3]);
   assert.ok(!JSON.stringify(first).includes('虚构同学2'));
   await api(student,'/api/classes','GET',undefined,401);
   const teacherReport=await api(teacher,'/api/card-quiz/report?classId='+fixture.cid);
@@ -157,7 +159,7 @@ async function paperPDF(page,name,count){
   await page.emulateMedia({media:'print'});
   const size=await page.locator('.card-sheet svg').first().evaluate(svg=>
     svg.querySelector('g').getBBox().width/svg.viewBox.baseVal.width*svg.getBoundingClientRect().width*25.4/96);
-  assert.ok(Math.abs(size-144)<0.2,'Black recognition square must remain 144mm');
+  assert.ok(Math.abs(size-170)<0.2,'Printed recognition square must measure 170 mm');
   const pdf=await page.pdf({path:path.join(output,name),preferCSSPageSize:true,printBackground:true});
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length,count,'Exactly one A4 page per card');
   await page.emulateMedia({media:'screen'});
@@ -181,13 +183,14 @@ test('real student page supports keyboard login, personal statuses, self print a
     await page.locator('#student-workspace:not([hidden])').waitFor();
     await page.locator('.student-record').first().waitFor();
     assert.equal(await page.locator('.student-record').count(),3);
-    assert.equal(await page.locator('[data-status="incomplete"]').count(),1);
-    assert.match(await page.locator('#student-totals').innerText(),/100\.0%/);
+    assert.equal(await page.locator('[data-status="abstained"]').count(),1);
+    assert.match(await page.locator('#student-totals').innerText(),/50\.0%/);
     await page.locator('[data-student-view="knowledge"]').focus();
     await page.keyboard.press('Enter');await page.locator('.student-table').waitFor();
     assert.match(await page.locator('.student-table').innerText(),/课堂练习/);
     await page.locator('[data-student-view="wrong"]').click();
-    assert.equal(await page.locator('.student-record').count(),0);
+    assert.equal(await page.locator('.student-record').count(),1);
+    assert.match(await page.locator('.student-record-title').innerText(),/第 3 题/);
     await page.locator('[data-student-view="records"]').click();
     await page.screenshot({path:path.join(output,'学生个人分析-桌面.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});await noOverflow(page);
@@ -200,7 +203,7 @@ test('real student page supports keyboard login, personal statuses, self print a
     assert.ok(await page.locator('#student-workspace').isVisible());
     await page.locator('#card-password').fill(credentials[2].password);
     await page.locator('#student-card-form button[type=submit]').click();await page.locator('.card-sheet').waitFor();
-    assert.equal(await page.locator('.card-caption .card-password').innerText(),credentials[2].password);
+    assert.equal(await page.locator('.card-login .card-password').innerText(),credentials[2].password);
     assert.match(await page.locator('.card-instructions').innerText(),/单选.*判断/);
     assert.match(await page.locator('.card-instructions').innerText(),/多选/);
     assert.ok(!/姓名|虚构同学/.test(await page.locator('.card-sheet').innerText()));

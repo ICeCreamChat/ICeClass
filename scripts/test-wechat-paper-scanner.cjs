@@ -20,6 +20,13 @@ const marker = option => ({ id: 0, corners: positions[option], hammingDistance: 
 test('native packaged decoder is the existing checked-in decoder, including license notices', () => {
   for (const name of ['aruco.js', 'cv.js']) assert.equal(fs.readFileSync(require.resolve('../miniprogram/teacher/lib/paper-vendor/' + name), 'utf8'), fs.readFileSync(require.resolve('../web_controller/card-quiz/vendor/' + name), 'utf8'));
 });
+test('the collection page requests large native frames from the rear camera', () => {
+  const page = fs.readFileSync(require.resolve('../miniprogram/teacher/pages/paper-round/index.wxml'), 'utf8');
+  const camera = page.match(/<camera\b[^>]*>/)?.[0] || '';
+  for (const setting of ['device-position="back"', 'resolution="high"', 'frame-size="large"']) {
+    assert.ok(camera.includes(setting), setting);
+  }
+});
 test('all 157 native cards decode with their original number and orientation in four rotations', () => {
   const detector = new AR.Detector({ dictionaryName: 'QCMCAM_4X4_157h3', maxHammingDistance: 2 });
   for (let number = 1; number <= 157; number++) {
@@ -55,8 +62,19 @@ test('the native adapter submits one stable result, and never repeats it for unc
 });
 test('bad native frame layout fails closed and oversized frames are bounded before decoding', () => {
   assert.throws(() => rgbaFrame({ width: 100, height: 100, data: new Uint8Array(20) }));
-  const reduced = rgbaFrame({ width: 1280, height: 720, data: new Uint8ClampedArray(1280 * 720 * 4) });
-  assert.equal(reduced.width, 640); assert.equal(reduced.height, 360);
+  const native = new Uint8ClampedArray(1920 * 1080 * 4);
+  for (const [width, height] of [[1920,1080],[1080,1920]]) {
+    assert.ok(rgbaFrame({width,height,data:native}).data === native, 'keep native 1080p camera detail');
+  }
+  for (const [width, height] of [[2560, 1440], [1440, 2560]]) {
+    const reduced = rgbaFrame({ width, height, data: new Uint8ClampedArray(width * height * 4) });
+    assert.equal(reduced.width, width * 0.75);
+    assert.equal(reduced.height, height * 0.75);
+  }
+  const pixels = new Uint8Array(3840 * 4);
+  pixels.set([0, 20, 40, 255, 40, 80, 160, 255]);
+  const reduced = rgbaFrame({ width: 3840, height: 1, data: pixels });
+  assert.deepEqual([...reduced.data.slice(0, 4)], [20, 50, 100, 255]);
 });
 test('the actual native card drawing keeps the marker square, white margins and all orientation labels', () => {
   const rects = [], labels = []; const ctx = { fillRect(...args) { rects.push({ color: this.fillStyle, args }); }, fillText(text) { labels.push(text); }, save() {}, restore() {}, translate() {}, rotate() {} };

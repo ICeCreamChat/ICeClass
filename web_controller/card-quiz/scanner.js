@@ -99,7 +99,7 @@
     }
     async open(opening){
       let stream;
-      try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});}
+      try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});}
       catch(error){if(opening!==this.opening)return;throw error;}
       let released=false;
       const ended=()=>{if(opening===this.opening)this.cameraError('相机连接已结束，请重新开启相机。');};
@@ -210,7 +210,9 @@
         const changedSource=this.lastFrameSource!=null && frameSource!==this.lastFrameSource;
         const advanced=Number.isFinite(frame) && (frame!==this.lastFrame || changedSource);
         if(!muted&&(captured||v.readyState>=2)&&width&&height&&(byPixels||advanced)){
-          const scale=Math.min(1,960/width),w=Math.round(width*scale),h=Math.round(height*scale);
+          // Decode the camera track itself. Display-preview dimensions would discard rear-row cells.
+          const scale=Math.min(1,1920/Math.max(width,height),Math.sqrt(1920*1080/(width*height)));
+          const w=Math.max(1,Math.round(width*scale)),h=Math.max(1,Math.round(height*scale));
           if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
           this.ctx.drawImage(source,0,0,w,h);
           const image=this.ctx.getImageData(0,0,w,h);

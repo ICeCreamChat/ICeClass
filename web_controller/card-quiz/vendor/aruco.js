@@ -363,14 +363,24 @@ AR.Detector.prototype.detect = function (image) {
   // Scale Fix: https://stackoverflow.com/questions/35936397/marker-detection-on-paper-sheet-using-javascript
   // this.candidates = this.findCandidates(this.contours, image.width * 0.20, 0.05, 10);
 //  this.candidates = this.findCandidates(this.contours, image.width * 0.01, 0.05, 10)
-  this.candidates = this.findCandidates(this.contours, 12, 0.05, 10)
+  const distant = this.dictionary.dicName === 'QCMCAM_4X4_157h3' ? [] : null
+  this.candidates = this.findCandidates(this.contours, 12, 0.05, 10, distant)
   this.candidates = this.clockwiseCorners(this.candidates)
   this.candidates = this.notTooNear(this.candidates, 10)
 
   const markers = this.findMarkers(this.grey, this.candidates, 49)
   // cartes grosses ou floues, que la recherche ci-dessus manque
   const coarseMarkers = this.findMarkers(this.grey, this.findCoarseCandidates(), 49)
-  return this.mergeMarkers(markers.concat(coarseMarkers))
+  const detected = this.mergeMarkers(markers.concat(coarseMarkers))
+  const originalCount = detected.length
+  if (distant) {
+    for (const square of this.clockwiseCorners(distant)) {
+      if (detected.some(marker => this.isSameSquare(marker.corners, square))) continue
+      const recovered = this.readDistantSquare(square)
+      if (recovered) detected.push(recovered)
+    }
+  }
+  return detected.length > originalCount ? this.mergeMarkers(detected) : detected
 }
 
 // Second passage de recherche de carrés, sur l'image réduite de moitié avec une fenêtre de
@@ -419,7 +429,7 @@ AR.Detector.prototype.halve = function () {
   }
 }
 
-AR.Detector.prototype.findCandidates = function (contours, minSize, epsilon, minLength) {
+AR.Detector.prototype.findCandidates = function (contours, minSize, epsilon, minLength, distant) {
   const candidates = []
   const len = contours.length
   let contour; let poly; let i
@@ -435,8 +445,18 @@ AR.Detector.prototype.findCandidates = function (contours, minSize, epsilon, min
       this.polys.push(poly)
 
       if ((poly.length === 4) && (CV.isContourConvex(poly))) {
-        if (CV.minEdgeLength(poly) >= minLength) {
-          candidates.push(this.refineCorners(contour, poly))
+        const shortest = CV.minEdgeLength(poly)
+        const retry = distant && !contour.hole && shortest >= 6 && shortest < 16 && CV.perimeter(poly) <= 72
+        if (shortest >= minLength || retry) {
+          // An oblique card is still convex. The coarse four-corner approximation
+          // can hide the notch between the lobes of a printed B when its card is covered.
+          if (this.dictionary.dicName === 'QCMCAM_4X4_157h3' && shortest < 0.85 * CV.perimeter(poly) / 4) {
+            const outline = CV.approxPolyDP(contour, Math.max(1, contour.length * epsilon / 3))
+            if (!CV.isContourConvex(outline)) continue
+          }
+          const square = this.refineCorners(contour, poly)
+          if (shortest >= minLength) candidates.push(square)
+          if (retry) distant.push(square)
         }
       }
     }
@@ -576,12 +596,131 @@ AR.Detector.prototype.findMarkers = function (imageSrc, candidates, warpSize) {
     CV.warp(imageSrc, this.homography, candidate, warpSize)
 
     marker = this.getMarker(this.homography, candidate, CV.otsu(this.homography))
-    if (marker) {
+    if (marker && (this.dictionary.dicName !== 'QCMCAM_4X4_157h3' || CV.minEdgeLength(candidate) >= 16 ||
+        this.supportsDistantCode(imageSrc, marker.id, marker.corners))) {
       markers.push(marker)
     }
   }
 
   return markers
+}
+
+// At one or two camera pixels per cell a rounded contour can lose an entire
+// white cell. Restore and refit only the unresolved black squares, on this frame.
+const patchSide = 32
+const zoomSide = 3 * patchSide
+
+function sampleGrey (image, x, y) {
+  if (x < 0 || y < 0 || x >= image.width - 1 || y >= image.height - 1) return NaN
+  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy
+  const off = iy * image.width + ix, next = off + image.width, p = image.data
+  return (p[off] * (1 - fx) + p[off + 1] * fx) * (1 - fy) +
+    (p[next] * (1 - fx) + p[next + 1] * fx) * fy
+}
+
+function hasPaperBorder (grey, square) {
+  for (let i = 0; i < 4; i++) {
+    const a = square[i], b = square[(i + 1) % 4]
+    const dx = b.x - a.x, dy = b.y - a.y
+    let darkToLight = 0
+    for (const t of [.25, .5, .75]) {
+      const x = a.x + t * dx, y = a.y + t * dy
+      const outside = sampleGrey(grey, x + .13 * dy, y - .13 * dx)
+      const inside = sampleGrey(grey, x - .06 * dy, y + .06 * dx)
+      if (outside - inside > 30) darkToLight++
+    }
+    if (darkToLight < 2) return false
+  }
+  return true
+}
+
+// Separable short inverse blur, with unit DC gain. Each pass transposes
+// the patch so the same operation handles rows and columns.
+function restoreRows (src, start, stride, dst) {
+  for (let y = 0; y < patchSide; y++) {
+    const row = start + y * stride
+    for (let x = 0; x < patchSide; x++) {
+      const near = src[row + Math.max(0, x - 1)] + src[row + Math.min(patchSide - 1, x + 1)]
+      const far = src[row + Math.max(0, x - 2)] + src[row + Math.min(patchSide - 1, x + 2)]
+      dst[x * patchSide + y] = (9 * src[row + x] - 4 * near + far) / 3
+    }
+  }
+}
+
+function tripleRows (src, height, dst) {
+  for (let y = 0; y < height; y++) {
+    const row = y * patchSide
+    for (let x = 0; x < patchSide; x++) {
+      const center = src[row + x], before = src[row + Math.max(0, x - 1)], after = src[row + Math.min(patchSide - 1, x + 1)]
+      const off = x * 3 * height + y
+      // Bicubic samples at -1/3, 0, +1/3 of a source pixel.
+      dst[off] = (43 * center + 20 * before - 6 * after - 3 * src[row + Math.max(0, x - 2)]) / 54
+      dst[off + height] = center
+      dst[off + height * 2] = (43 * center + 20 * after - 6 * before - 3 * src[row + Math.min(patchSide - 1, x + 2)]) / 54
+    }
+  }
+}
+
+AR.Detector.prototype.readDistantSquare = function (square) {
+  const grey = this.grey
+  if (grey.width < patchSide || grey.height < patchSide || !hasPaperBorder(grey, square)) return null
+  if (!this.distantPatch) {
+    this.distantPatch = {
+      horizontal: new Float32Array(patchSide ** 2), restored: new Uint8ClampedArray(patchSide ** 2),
+      columns: new Float32Array(patchSide * zoomSide),
+      zoom: new CV.Image(zoomSide, zoomSide, new Uint8ClampedArray(zoomSide ** 2)),
+      mask: new CV.Image(zoomSide, zoomSide, new Uint8Array(zoomSide ** 2)),
+      binary: new Int32Array((zoomSide + 2) ** 2)
+    }
+  }
+  const { horizontal, restored, columns, zoom, mask, binary } = this.distantPatch
+  const cx = square.reduce((sum, p) => sum + p.x, 0) / 4, cy = square.reduce((sum, p) => sum + p.y, 0) / 4
+  const left = Math.max(0, Math.min(grey.width - patchSide, Math.round(cx) - patchSide / 2))
+  const top = Math.max(0, Math.min(grey.height - patchSide, Math.round(cy) - patchSide / 2))
+  restoreRows(grey.data, top * grey.width + left, grey.width, horizontal)
+  restoreRows(horizontal, 0, patchSide, restored)
+  tripleRows(restored, patchSide, columns)
+  tripleRows(columns, zoomSide, zoom.data)
+  const threshold = CV.otsu(zoom)
+  for (let i = 0; i < mask.data.length; i++) mask.data[i] = zoom.data[i] < threshold ? 255 : 0
+  const contours = CV.findContours(mask, binary).filter(c => !c.hole)
+  const quads = this.clockwiseCorners(this.findCandidates(contours, 32, .05, 14))
+  for (const quad of quads) {
+    const toSource = p => ({ x: left + (p.x - 1) / 3, y: top + (p.y - 1) / 3 })
+    if (!this.isSameSquare(square, quad.map(toSource))) continue
+    CV.warp(zoom, this.homography, quad, 49)
+    // An isolated white cell can blend with its black neighbors. Bracket the
+    // local threshold, accepting only one exact code and orientation supported by the original pixels.
+    const middle = CV.otsu(this.homography)
+    const margin = Math.min(middle, 255 - middle) / 5
+    let confirmed = null
+    for (const cut of [middle, middle - margin, middle + margin]) {
+      const marker = this.getMarker(this.homography, quad, cut, true)
+      if (!marker || (confirmed && confirmed.id === marker.id && confirmed.corners[0] === marker.corners[0])) continue
+      if (!this.supportsDistantCode(grey, marker.id, marker.corners.map(toSource))) continue
+      if (confirmed) return null
+      confirmed = marker
+    }
+    if (confirmed) return new AR.Marker(confirmed.id, confirmed.corners.map(toSource), 0)
+  }
+  return null
+}
+
+// An exact bit match after thresholding can still alias a different printed
+// card. Check the entire proposed pattern against the unsharpened source.
+AR.Detector.prototype.supportsDistantCode = function (grey, id, corners) {
+  const transform = CV.square2quad(corners), mean = []
+  for (let row = 0; row < 6; row++) {
+    mean[row] = []
+    for (let col = 0; col < 6; col++) {
+      const u = (col + .5) / 6, v = (row + .5) / 6, w = transform[6] * u + transform[7] * v + 1
+      mean[row][col] = sampleGrey(grey, (transform[0] * u + transform[1] * v + transform[2]) / w,
+        (transform[3] * u + transform[4] * v + transform[5]) / w)
+    }
+  }
+  const code = this.dictionary.codeList[id]
+  const bits = [0, 4, 8, 12].map(offset => Array.from(code.slice(offset, offset + 4), Number))
+  return [0, .07, .12, .17, .21, .25].some(spill => matchesBlurredGrid(bits, mean, spill, .085))
 }
 
 // Keep one geometric result, but retain its observations so downstream stability checks can
@@ -601,7 +740,24 @@ AR.Detector.prototype.mergeMarkers = function (markers) {
     }
   }
 
-  return kept
+  if (kept.length < 2 || this.dictionary.dicName !== 'QCMCAM_4X4_157h3') return kept
+
+  // In the printed ice-v1 SVG the 384-unit square begins at (48, 48).
+  // At some resolutions the 26-unit B glyph itself decodes as another marker.
+  // Project its position from each card so a genuine small card elsewhere is retained.
+  const labelX = (460 - 48) / 384
+  const labelY = 0.5
+  const labels = kept.map(marker => {
+    const matrix = CV.square2quad(marker.corners)
+    const scale = matrix[6] * labelX + matrix[7] * labelY + 1
+    return {
+      x: (matrix[0] * labelX + matrix[1] * labelY + matrix[2]) / scale,
+      y: (matrix[3] * labelX + matrix[4] * labelY + matrix[5]) / scale,
+      radiusSquared: (CV.perimeter(marker.corners) / 4 * 26 / 384) ** 2
+    }
+  })
+  return kept.filter(marker => !labels.some(label => marker.corners.every(point =>
+    (point.x - label.x) ** 2 + (point.y - label.y) ** 2 <= label.radiusSquared)))
 }
 
 // Deux quadrilatères sont le même carré s'ils ont presque le même périmètre et que leurs centres
@@ -626,7 +782,7 @@ AR.Detector.prototype.isSameSquare = function (a, b) {
  * Chaque cellule est jugée sur sa zone centrale (cf. cellMargin) : pixels plus clairs que le
  * seuil pour son bit, gris moyen pour la confiance de ce bit.
  */
-AR.Detector.prototype.getMarker = function (imageSrc, candidate, threshold) {
+AR.Detector.prototype.getMarker = function (imageSrc, candidate, threshold, exactOnly = false) {
   const markSize = this.dictionary.markSize
   const width = (imageSrc.width / markSize) >>> 0
   const margin = this.cellMargin
@@ -634,14 +790,15 @@ AR.Detector.prototype.getMarker = function (imageSrc, candidate, threshold) {
   const minZero = (side * side) >> 1
   const light = []
   const mean = []
-  const bits = []
-  const confidence = []
-  const rotations = []
   let i; let j; let x; let y
   let lowest = 255
   let highest = 0
   let borderErrors = 0
+  let clearBorder = true
   const maxBorderErrors = 1
+  // Camera pixels per printed cell, before the fixed 49 px perspective warp.
+  const smallCard = this.dictionary.dicName === 'QCMCAM_4X4_157h3' &&
+    CV.perimeter(candidate) / 4 <= markSize * 7 && CV.minEdgeLength(candidate) >= markSize * 2.5
 
   for (i = 0; i < markSize; ++i) {
     light[i] = []
@@ -661,17 +818,36 @@ AR.Detector.prototype.getMarker = function (imageSrc, candidate, threshold) {
       lowest = Math.min(lowest, mean[i][j])
       highest = Math.max(highest, mean[i][j])
       // la bordure du marqueur doit être noire (une cellule claire tolérée)
-      if (light[i][j] === 1 && (i === 0 || j === 0 || i === markSize - 1 || j === markSize - 1)) {
-        borderErrors++
-        if (borderErrors > maxBorderErrors) return null
+      if (i === 0 || j === 0 || i === markSize - 1 || j === markSize - 1) {
+        // A small pattern in a website QR can resemble a one-bit-corrected card.
+        // Require a black majority around a payload that already needs correction.
+        if (2 * count >= side * side) clearBorder = false
+        if (light[i][j] === 1 && ++borderErrors > maxBorderErrors && !smallCard) return null
       }
     }
   }
 
   // Confiance dans chaque bit : écart du gris moyen au milieu noir/blanc du motif, ramené à
   // [0, 1] par la dynamique du motif (0 = cellule pile entre noir et blanc, 1 = franche).
+  if (exactOnly) {
+    if (borderErrors || highest - lowest < 48) return null
+    return this.exactMarker(light.slice(1, -1).map(row => row.slice(1, -1)), candidate)
+  }
   const middle = (lowest + highest) / 2
   const range = Math.max(1, highest - lowest)
+  const marker = borderErrors <= maxBorderErrors
+    ? this.matchCells(light, mean, middle, range, clearBorder, candidate)
+    : null
+  if (!smallCard || (marker && marker.hammingDistance === 0)) return marker
+  return this.readBlurredMarker(mean, middle, candidate) || marker
+}
+
+AR.Detector.prototype.matchCells = function (light, mean, middle, range, clearBorder, candidate) {
+  const bits = []
+  const confidence = []
+  const rotations = []
+  const markSize = this.dictionary.markSize
+  let i; let j
   for (i = 0; i < markSize - 2; ++i) {
     bits[i] = []
     confidence[i] = []
@@ -689,7 +865,7 @@ AR.Detector.prototype.getMarker = function (imageSrc, candidate, threshold) {
   let rot = 0
   for (i = 0; i < 4; i++) {
     let found = this.dictionary.find(rotations[i])
-    if (found && found.distance === 1 && !this.isCorrectionPlausible(rotatedConfidence[i], found.cell, candidate)) {
+    if (found && found.distance === 1 && (!clearBorder || !this.isCorrectionPlausible(rotatedConfidence[i], found.cell, candidate))) {
       found = null
     }
     if (found && (foundMin === null || found.distance < foundMin.distance)) {
@@ -704,6 +880,75 @@ AR.Detector.prototype.getMarker = function (imageSrc, candidate, threshold) {
   if (foundMin) { return new AR.Marker(foundMin.id, this.rotate2(candidate, 4 - rot), foundMin.distance) }
 
   return null
+}
+
+// Defocus mixes neighboring cells. Restore their local contrast, then require an
+// exact dictionary match whose entire blurred pattern also explains the observed greys.
+AR.Detector.prototype.readBlurredMarker = function (mean, middle, candidate) {
+  const bits = []
+  for (let y = 1; y <= 4; y++) {
+    const row = []
+    for (let x = 1; x <= 4; x++) {
+      const neighbors = (mean[y - 1][x] + mean[y + 1][x] + mean[y][x - 1] + mean[y][x + 1]) / 4
+      const center = mean[y][x]
+      row.push(Number(center + 3 * (center - neighbors) > middle))
+    }
+    bits.push(row)
+  }
+  const marker = this.exactMarker(bits, candidate)
+  return marker && matchesBlurredGrid(bits, mean) ? marker : null
+}
+
+AR.Detector.prototype.exactMarker = function (bits, candidate) {
+  let oriented = bits
+  for (let turn = 0; turn < 4; turn++) {
+    const exact = this.dictionary.codes[oriented.map(row => row.join('')).join('')]
+    if (exact) {
+      return new AR.Marker(exact.id, this.rotate2(candidate, 4 - turn), 0)
+    }
+    oriented = this.rotate(oriented)
+  }
+  return null
+}
+
+function matchesBlurredGrid (bits, mean, spill = 1 / 6, maxRms = .08) {
+  // Forward-project the proposed ink, black border and white paper using the
+  // separable [1,4,1]/6 kernel on cell centers. Fit paper brightness and ink contrast
+  // to this square so the same check works in a shadow.
+  function whiteCell (y, x) {
+    if (x < 0 || y < 0 || x > 5 || y > 5) return 1
+    if (x === 0 || y === 0 || x === 5 || y === 5) return 0
+    return bits[y - 1][x - 1]
+  }
+  function horizontal (y, x) {
+    return spill * (whiteCell(y, x - 1) + whiteCell(y, x + 1)) + (1 - 2 * spill) * whiteCell(y, x)
+  }
+  const expected = []
+  let sum = 0, squares = 0, greySum = 0, product = 0
+  for (let y = 0; y < 6; y++) {
+    for (let x = 0; x < 6; x++) {
+      const white = spill * (horizontal(y - 1, x) + horizontal(y + 1, x)) + (1 - 2 * spill) * horizontal(y, x)
+      expected.push(white)
+      sum += white
+      squares += white * white
+      greySum += mean[y][x]
+      product += white * mean[y][x]
+    }
+  }
+  const contrast = (product - sum * greySum / 36) / (squares - sum * sum / 36)
+  if (!Number.isFinite(contrast) || contrast < 40) return false
+  const black = (greySum - contrast * sum) / 36
+  let squaredError = 0
+  for (let y = 0; y < 6; y++) {
+    for (let x = 0; x < 6; x++) {
+      const error = (mean[y][x] - black) / contrast - expected[y * 6 + x]
+      // A center bit contributes 16/36. Reject a half-bit error anywhere, and
+      // reject globally inconsistent patterns such as text and QR fragments.
+      if (Math.abs(error) > 0.20) return false
+      squaredError += error * error
+    }
+  }
+  return squaredError <= 36 * maxRms ** 2
 }
 
 /**

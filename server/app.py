@@ -1953,7 +1953,7 @@ def create_app(database_path: Path | None = None, receiver_release_root: Path | 
     install_client_diagnostics(app, sys.modules[__name__])
     install_ideas(app, sys.modules[__name__])
     install_homework(app, sys.modules[__name__])
-    card_quiz = install_card_quiz(app, sys.modules[__name__])
+    card_quiz = install_card_quiz(app, sys.modules[__name__], banban)
     install_student_accounts(app, sys.modules[__name__], card_quiz)
     install_acknowledgements(app, sys.modules[__name__])
     app.router.add_get("/{path:.*}", static_file)

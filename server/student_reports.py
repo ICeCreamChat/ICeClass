@@ -6,7 +6,7 @@ import json
 from aiohttp import web
 
 from card_quiz_models import dumps, fail, identifier
-from card_quiz_sessions import counts, observations, official_round, rate
+from card_quiz_sessions import counts, observations, official_round, rate, session_knowledge
 from teacher_capabilities import teacher_manual
 
 
@@ -53,12 +53,13 @@ class StudentReports:
         for row in rows:
             value = json.loads(row['value'])
             class_name = self.class_info(row['class_id'])['name']
-            sessions.append({'id': row['id'], 'classId': row['class_id'], 'className': class_name,
-                             'subjectId': row['subject_id'], 'startedAt': row['started_at'], 'endedAt': row['ended_at']})
+            question_numbers = {q['id']: number for number, q in enumerate(value['questions'], 1)}
+            own_by_round = {}
             for q, r, student, answer, status in observations(value):
                 official = r is official_round(q)
                 record = {'sessionId': row['id'], 'classId': row['class_id'], 'className': class_name,
-                          'subjectId': row['subject_id'], 'questionId': q['id'], 'text': q['text'],
+                          'subjectId': row['subject_id'], 'questionId': q['id'], 'questionNumber': question_numbers[q['id']],
+                          'text': q['text'],
                           'type': q['type'], 'options': q['options'], 'imageId': q['imageId'],
                           'answer': q['answer'], 'tags': q['tags'], 'roundId': r['id'], 'purpose': r['purpose'],
                           'status': status, 'option': answer['option'] if answer else None,
@@ -71,12 +72,17 @@ class StudentReports:
                 records.append(record)
                 if len(records) > 100000:
                     fail('答题记录超过 100000 条，请选择学科后重试。')
+                if official:
+                    own_by_round.setdefault(r['id'], []).append(record)
                 if official and status in ('correct', 'wrong', 'ungraded'):
                     identity = (q['bankId'], q['bankVersion']) if q['bankId'] is not None else (row['id'], q['id'])
                     key = (row['class_id'], student['id'], row['subject_id'], identity)
                     order = (value['startedAt'], answer['confirmedAt'], r['endedAt'], row['id'], r['id'])
                     if key not in latest or order > latest[key][0]:
                         latest[key] = (order, record)
+            sessions.append({'id': row['id'], 'classId': row['class_id'], 'className': class_name,
+                             'subjectId': row['subject_id'], 'startedAt': row['started_at'], 'endedAt': row['ended_at'],
+                             'knowledge': session_knowledge(value['questions'], own_by_round)})
         for _, record in latest.values():
             record['counted'] = True
         return self.quiz.reply({'accountId': account['id'], 'totals': rate(totals), 'knowledge': calculated['knowledge'],

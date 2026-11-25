@@ -7,13 +7,15 @@
   <title>我的课堂 · ICeClass 班伴</title>
   <link rel="icon" href="/favicon.ico?v=5">
   <link rel="stylesheet" href="../assets/typography.css">
-  <link rel="stylesheet" href="print.css">
-  <link rel="stylesheet" href="student.css?v=3">
+  <link rel="stylesheet" href="print.css?v=5">
+  <link rel="stylesheet" href="student.css?v=4">
   <link rel="stylesheet" href="../assets/control-focus.css">
   <script src="vendor/cv.js" defer></script>
   <script src="vendor/aruco.js" defer></script>
-  <script src="cards.js" defer></script>
-  <script src="print-card.js?v=3" defer></script>
+  <script src="cards.js?v=2" defer></script>
+  <script src="vendor/qrcodegen.js" defer></script>
+  <script src="qr-code.js" defer></script>
+  <script src="print-card.js?v=5" defer></script>
   <script src="student.js?v=3" defer></script>
 </head>
 <body class="student-page">
@@ -37,7 +39,7 @@
         <p class="student-note">输入当前密码核验后，本页显示本人纸卡和密码。自行补印不改密；纸卡显示班级、编号、卡号、密码和使用说明。</p>
         <form id="student-card-form" class="student-form student-inline-form"><div class="student-field"><label for="card-password">当前六位密码</label><input id="card-password" name="password" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="current-password" aria-describedby="student-card-error" required></div><button type="submit" class="primary">核验密码并准备纸卡</button></form>
         <p id="student-card-error" class="student-error" role="alert" tabindex="-1"></p>
-        <div id="student-card-actions" class="student-card-actions" hidden><p class="student-note">A4 黑白打印，实际大小（100%），关闭页眉页脚。黑色识别方块为 144 mm。密码仅本次显示，请妥善保管纸卡。</p><div class="student-actions"><button type="button" id="student-print" class="primary" disabled>打印我的纸卡</button><button type="button" id="student-card-clear">清除本次纸卡和密码</button></div></div>
+        <div id="student-card-actions" class="student-card-actions" hidden><p class="student-note">A4 黑白打印，选实际大小（100%），关闭页眉页脚。中央黑框边长应为 170 mm。密码仅本次显示，请妥善保管纸卡。</p><div class="student-actions"><button type="button" id="student-print" class="primary" disabled>打印我的纸卡</button><button type="button" id="student-card-clear">清除本次纸卡和密码</button></div></div>
       </section>
       <section class="student-panel" aria-labelledby="student-password-title">
         <h2 id="student-password-title">修改六位密码</h2>

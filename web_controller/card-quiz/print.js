@@ -1,6 +1,18 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id), params = new URLSearchParams(location.search);
+  if (params.has('issued')) {
+    document.querySelector('.print-toolbar').remove();
+    $('feedback').textContent = '请在教师工作台的本次发放表中打印纸卡。';
+    window.printIssuedCards = async batch => {
+      $('cards').innerHTML = batch.map(window.CardQuizPrintCard.render).join('');
+      await Promise.all([document.fonts.ready, ...Array.from(document.images, image => image.decode())]);
+      if (window.frameElement?.isConnected) window.print();
+    };
+    window.addEventListener('afterprint', () => window.frameElement?.remove(), {once:true});
+    window.addEventListener('pagehide', () => $('cards').replaceChildren());
+    return;
+  }
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let roster, selected = [], csrf = '', busy = false, prepared = false, lifecycle = 0;
   const classId = params.get('classId');

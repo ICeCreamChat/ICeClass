@@ -822,11 +822,6 @@
       if (session()?.source === 'phone') feedback(relayUnavailable,'warning');
     } finally { relayRunning = false; scheduleRelay(); }
   }
-  function qrSvg(text) {
-    const qr = qrcodegen.QrCode.encodeText(text,qrcodegen.QrCode.Ecc.MEDIUM), paths = [];
-    for(let y=0;y<qr.size;y++) for(let x=0;x<qr.size;x++) if(qr.getModule(x,y)) paths.push(`M${x+4},${y+4}h1v1h-1z`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${qr.size+8} ${qr.size+8}" role="img" aria-label="手机配对二维码" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="white"/><path d="${paths.join('')}" fill="black"/></svg>`;
-  }
   function cancelScanOffer(offer) {
     if (offer?.mode === 'scan')
       void request('cancel-pair',{sessionId:offer.sessionId,pairId:offer.pairId}).catch(() => {
@@ -856,7 +851,7 @@
     $('pair-code').hidden = !manual;
     $('pair-code').textContent = manual ? offer.code : '';
     $('pair-qr').hidden = !offer;
-    $('pair-qr').innerHTML = offer ? qrSvg(offer.url) : '';
+    $('pair-qr').innerHTML = offer ? CardQuizQr.svg(offer.url) : '';
     $('pair-status').textContent = message || (manual ? '扫码登录后在白板确认。' : '请用手机扫码');
     openDialog('pair-dialog');
   }

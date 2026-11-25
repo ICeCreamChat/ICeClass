@@ -29,29 +29,193 @@ test('全套 157 张打印图案各方向可还原同一卡号和字母',()=>{
   assert.match(Cards.svg(1),/<svg/);assert.throws(()=>Cards.svg(158));
 });
 
-test('实际 SVG 黑色方块占 180 mm 纸卡图的 140-150 mm，157 张含方向字母的打印图四向识别不变',async()=>{
-  const {chromium}=require('playwright'),browser=await chromium.launch({channel:'msedge',headless:true});
-  try{
-    const page=await browser.newPage();
-    for(const file of ['vendor/cv.js','vendor/aruco.js','cards.js','scanner.js'])await page.addScriptTag({path:require.resolve('../web_controller/card-quiz/'+file)});
-    const result=await page.evaluate(async()=>{
-      const canvas=document.createElement('canvas');canvas.width=canvas.height=480;const ctx=canvas.getContext('2d',{willReadFrequently:true});
-      const detector=new ICeCardAR.Detector({dictionaryName:'QCMCAM_4X4_157h3',maxHammingDistance:2}),failures=[];
-      let blackMm,checks=0;
-      for(let number=1;number<=157;number++){
-        const svg=CardQuizCards.svg(number),image=new Image();image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);await image.decode();
-        if(number===1){const holder=document.createElement('div');holder.innerHTML=svg;document.body.append(holder);const el=holder.querySelector('svg');blackMm=el.querySelector('g[shape-rendering="crispEdges"]').getBBox().width/el.viewBox.baseVal.width*180;}
-        for(let turn=0;turn<4;turn++){
-          ctx.fillStyle='#fff';ctx.fillRect(0,0,480,480);ctx.save();ctx.translate(240,240);ctx.rotate(turn*Math.PI/2);ctx.drawImage(image,-240,-240,480,480);ctx.restore();
-          const matches=detector.detect(ctx.getImageData(0,0,480,480)).filter(m=>m.id===number-1),option=['A','D','C','B'][turn];
-          if(!matches.some(m=>CardQuizScanner.answerFromCorners(m.corners)===option))failures.push({number,option});checks++;
-        }
-      }
-      return{blackMm,checks,failures};
-    });
-    assert.equal(result.checks,628);assert.deepEqual(result.failures,[]);assert.ok(result.blackMm>=140&&result.blackMm<=150,'actual black detection square: '+result.blackMm+' mm');
-  }finally{await browser.close();}
+test('个人卡印刷的 B 不得作为第二张卡计入，旁边真实的小号图案仍可识别', () => {
+  const detector = new AR.Detector({dictionaryName:'QCMCAM_4X4_157h3', maxHammingDistance:2});
+  // Coordinates from the rendered A4. Depending on scale, the letter decodes as card 85
+  // even at zero Hamming distance. Also place a genuine 85 of the same size nearby.
+  const outline = [[94,265],[501,265],[501,672],[94,672]];
+  const letter = [[541,462],[541,473],[521,476],[521,462]];
+  for (let turn = 0; turn < 4; turn++) {
+    const rotate = ([x,y]) => [ {x,y}, {x:-y,y:x}, {x:-x,y:-y}, {x:y,y:-x} ][turn];
+    const card = {id:0, hammingDistance:0, corners:outline.map(rotate)};
+    const glyph = {id:84, hammingDistance:0, corners:letter.map(rotate)};
+    const neighbor = {id:84, hammingDistance:1, corners:letter.map(([x,y]) => rotate([x+55,y]))};
+    assert.deepEqual(detector.mergeMarkers([glyph,neighbor,card]), [neighbor,card]);
+    assert.deepEqual(detector.mergeMarkers([neighbor]), [neighbor]);
+  }
 });
+
+test('网站二维码的混色边框不能给纠错载荷作证，真正的单格纠错仍可用', () => {
+  const detector = new AR.Detector({dictionaryName:'QCMCAM_4X4_157h3', maxHammingDistance:2});
+  const width = 49, data = new Uint8Array(width * width);
+  const cells = Cards.matrix(1).slice(1, 7).map(row => row.slice(1, 7));
+  for (let y = 0; y < 48; y++) {
+    for (let x = 0; x < 48; x++) data[y * width + x] = 255 * cells[Math.floor(y / 8)][Math.floor(x / 8)];
+  }
+  function setCenter(row, col, whitePixels) {
+    for (let i = 0; i < 16; i++) {
+      const y = row * 8 + 2 + Math.floor(i / 4), x = col * 8 + 2 + i % 4;
+      data[y * width + x] = i < whitePixels ? 255 : 0;
+    }
+  }
+  const decode = () => detector.getMarker({width, height:width, data}, positions.A, 127);
+  setCenter(1, 1, 7);
+  assert.equal(decode()?.hammingDistance, 1);
+  setCenter(0, 2, 8);
+  assert.equal(decode(), null);
+  setCenter(1, 1, 16);
+  setCenter(0, 2, 9);
+  assert.equal(decode()?.hammingDistance, 0, '精确载荷仍容许单格边框受损');
+});
+
+async function renderScannerScene(render, input) {
+  const {chromium} = require('playwright');
+  const browser = await chromium.launch({channel:'msedge', headless:true});
+  try {
+    const page = await browser.newPage();
+    for (const file of ['vendor/cv.js','vendor/aruco.js','cards.js','scanner.js']) {
+      await page.addScriptTag({path:require.resolve('../web_controller/card-quiz/' + file)});
+    }
+    return await page.evaluate(render, input);
+  } finally {
+    await browser.close();
+  }
+}
+
+test('远处斜拍的纸卡可确认四向，遮挡不收且能区分 35 号与真正的 124 号', async () => {
+  // 32 px crops from paper-card projections at different tilts, subpixel offsets and focus.
+  // Two views of card 35 used to decode as 124. On card 8 one white cell blends into the border.
+  const png = require('node:fs').readFileSync(require.resolve('../tests/fixtures/paper-distant.png'));
+  const result = await renderScannerScene(async encoded => {
+    const source = new Image();
+    source.src = 'data:image/png;base64,' + encoded;
+    await source.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    const detector = new ICeCardAR.Detector({maxHammingDistance:2}), readings = [];
+    for (let crop = 0; crop < 8; crop++) for (let turn = 0; turn < 4; turn++) {
+      const stable = new CardQuizScanner.Stabilizer(), reads = [];
+      for (let frame = 0; frame < 8; frame++) {
+        ctx.fillStyle = '#c1c1c1';
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.save();
+        ctx.translate(32 + frame % 2, 32);
+        ctx.rotate(turn * Math.PI / 2);
+        ctx.drawImage(source, crop % 2 * 32, Math.floor(crop / 2) * 32, 32, 32, -16, -16, 32, 32);
+        if (frame < 3) ctx.fillRect(-6, -3, 12, 6);
+        ctx.restore();
+        const markers = detector.detect(ctx.getImageData(0, 0, 64, 64));
+        for (const item of stable.feed(markers, frame * 180)) reads.push({...item, frame});
+      }
+      readings.push(reads);
+    }
+    return readings;
+  }, png.toString('base64'));
+  for (const [i, reads] of result.entries()) {
+    const expected = {cardNumber:[1,1,48,60,35,35,8,124][Math.floor(i / 4)], option:'ADCB'[i % 4]};
+    assert.deepEqual(reads.map(({cardNumber, option}) => ({cardNumber, option})), [expected]);
+    assert.ok(reads[0].frame >= 5, 'three fresh unobscured frames are required');
+  }
+});
+
+test('大卡被挡住时单独露出的 B 不能冒充 85 号，旁边斜视的真卡仍可读', async () => {
+  const failures = await renderScannerScene(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200; canvas.height = 120;
+    const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    const detector = new ICeCardAR.Detector({maxHammingDistance:2}), failures = [];
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 200, 120);
+    ctx.fillStyle = 'black';
+    CardQuizCards.matrix(85).forEach((row, y) => row.forEach((bit, x) => {
+      if (!bit) ctx.fillRect(125 + x*4, 39 + y*6, 4, 6);
+    }));
+    for (const size of [23,28,38,56]) for (let turn = 0; turn < 4; turn++) {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 105, 120);
+      ctx.save();
+      ctx.translate(52, 54); ctx.rotate(turn * Math.PI / 2);
+      ctx.font = 'bold ' + size + 'px "Microsoft YaHei UI"';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'black';
+      ctx.fillText('B', 0, 0); ctx.restore();
+      const markers = detector.detect(ctx.getImageData(0, 0, 200, 120));
+      if (markers.length !== 1 || markers[0].id !== 84 || markers[0].corners[0].x < 105 ||
+          CardQuizScanner.answerFromCorners(markers[0].corners) !== 'A') failures.push({size, turn});
+    }
+    return failures;
+  });
+  assert.deepEqual(failures, []);
+});
+
+test('200 mm 印刷图内的黑框边长为 170 mm，157 张卡的四向卡号和字母全部匹配',async()=>{
+  const result=await renderScannerScene(async()=>{
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=480;const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const detector=new ICeCardAR.Detector({dictionaryName:'QCMCAM_4X4_157h3',maxHammingDistance:2}),failures=[];
+    let blackMm,checks=0;
+    for(let number=1;number<=157;number++){
+      const svg=CardQuizCards.svg(number),image=new Image();image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);await image.decode();
+      if(number===1){const holder=document.createElement('div');holder.innerHTML=svg;document.body.append(holder);const el=holder.querySelector('svg');blackMm=el.querySelector('g[shape-rendering="crispEdges"]').getBBox().width/el.viewBox.baseVal.width*200;}
+      for(let turn=0;turn<4;turn++){
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,480,480);ctx.save();ctx.translate(240,240);ctx.rotate(turn*Math.PI/2);ctx.drawImage(image,-240,-240,480,480);ctx.restore();
+        const matches=detector.detect(ctx.getImageData(0,0,480,480)),option=['A','D','C','B'][turn];
+        if(matches.length!==1||matches[0].id!==number-1||CardQuizScanner.answerFromCorners(matches[0].corners)!==option)failures.push({number,option});checks++;
+      }
+    }
+    return{blackMm,checks,failures};
+  });
+  assert.equal(result.checks,628);assert.deepEqual(result.failures,[]);assert.equal(result.blackMm,170);
+});
+
+test('后排小纸卡轻度失焦时，60 人的卡号和四向均能确认，空位和遮挡不计入', async () => {
+  const {all, remaining} = await renderScannerScene(() => {
+    const board = document.createElement('canvas');
+    board.width = 960;
+    board.height = 540;
+    const camera = board.cloneNode();
+    const pen = board.getContext('2d'), frame = camera.getContext('2d', {willReadFrequently:true});
+    const detector = new ICeCardAR.Detector({maxHammingDistance:2});
+    function collect(lowerSome) {
+      const stable = new CardQuizScanner.Stabilizer(), reads = [];
+      pen.fillStyle = '#ececec';
+      pen.fillRect(0, 0, board.width, board.height);
+      for (let i = 0; i < 60; i++) {
+        const row = Math.floor(i / 10), size = [40,37,34,31,27,24][row];
+        if (lowerSome && i % 3 === 0) continue;
+        pen.save();
+        pen.translate(48 + 96 * (i % 10), 45 + 90 * row);
+        pen.rotate(i % 4 * Math.PI / 2);
+        // Draw at the camera's resolution with the same black border and four data rows as the printout.
+        const cells = CardQuizCards.matrix(i + 1), unit = size / 6;
+        pen.fillStyle = 'white';
+        pen.fillRect(-4*unit, -4*unit, 8*unit, 8*unit);
+        const edge = index => Math.round((index - 4) * unit);
+        pen.fillStyle = 'black';
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+          if (cells[y][x]) continue;
+          pen.fillRect(edge(x), edge(y), edge(x+1)-edge(x), edge(y+1)-edge(y));
+        }
+        if (lowerSome && i % 3 === 1) {
+          pen.fillStyle = '#aaa';
+          pen.fillRect(-unit, -4*unit, 2*unit, 8*unit);
+        }
+        pen.restore();
+      }
+      frame.filter = 'blur(2px)';
+      for (let f = 0; f < 8; f++) {
+        frame.drawImage(board, [0,1,-1][f % 3], 0);
+        const markers = detector.detect(frame.getImageData(0, 0, camera.width, camera.height));
+        reads.push(...stable.feed(markers, f * 180));
+      }
+      return reads.sort((a,b) => a.cardNumber - b.cardNumber);
+    }
+    return {all:collect(false), remaining:collect(true)};
+  });
+  const expected = Array.from({length:60}, (_,i) => ({cardNumber:i+1, option:'ADCB'[i%4]}));
+  assert.deepEqual(all, expected);
+  assert.deepEqual(remaining, expected.filter((_,i) => i % 3 === 2));
+});
+
 test('初次三次精确读数确认，改答需连续读数，相同答案不重复触发',()=>{
   const stable=new Scanner.Stabilizer();const feed=(m,at)=>stable.feed(m,at,4);
   assert.deepEqual(feed([marker()],0),[]);assert.deepEqual(feed([marker()],150),[]);assert.deepEqual(feed([marker()],300),[{cardNumber:1,option:'A'}]);
@@ -96,7 +260,7 @@ test('同方向几何重复只计一帧，合并保留较低纠错距离',()=>{
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};}
 async function settled(){for(let i=0;i<8;i++)await Promise.resolve();}
 function camera(t,{getUserMedia,play,onRead,trackProcessor,waitForFrames=false}={}){
-  let now=0,mediaCalls=0,timerId=0;const timers=new Map(),statuses=[],reads=[],streams=[];
+  let now=0,mediaCalls=0,timerId=0,constraints;const timers=new Map(),statuses=[],reads=[],streams=[];
   function stream(){
     const track=new EventTarget();Object.assign(track,{kind:'video',readyState:'live',stops:0,stop(){this.stops++;this.readyState='ended';},end(){this.readyState='ended';this.dispatchEvent(new Event('ended'));}});
     const value={getTracks:()=>[track],getVideoTracks:()=>[track],track};streams.push(value);return value;
@@ -105,7 +269,7 @@ function camera(t,{getUserMedia,play,onRead,trackProcessor,waitForFrames=false}=
   let frameNumber=0;
   const ctx={drawImage(){},getImageData(){const sample=image(Cards.matrix(1));sample.data[0]=frameNumber%256;return sample;}};
   const canvas={width:0,height:0,getContext:()=>ctx};
-  const globals={isSecureContext:true,navigator:{mediaDevices:{getUserMedia:()=>{mediaCalls++;return getUserMedia?getUserMedia():Promise.resolve(stream());}}},document:{createElement:()=>canvas}};
+  const globals={isSecureContext:true,navigator:{mediaDevices:{getUserMedia:request=>{mediaCalls++;constraints=request;return getUserMedia?getUserMedia():Promise.resolve(stream());}}},document:{createElement:()=>canvas}};
   if(trackProcessor)globals.MediaStreamTrackProcessor=trackProcessor;
   const descriptors=Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   for(const [key,value]of Object.entries(globals))Object.defineProperty(globalThis,key,{value,configurable:true});
@@ -121,8 +285,21 @@ function camera(t,{getUserMedia,play,onRead,trackProcessor,waitForFrames=false}=
     if(changePixels)frameNumber++;
     scanner.detector.detect=()=>[marker(option)];clearTimeout(scanner.timer);scanner.tick();await settled();
   }
-  return{scanner,video,stream,streams,statuses,reads,frame,get mediaCalls(){return mediaCalls;}};
+  return{scanner,video,stream,streams,statuses,reads,frame,get mediaCalls(){return mediaCalls;},get constraints(){return constraints;}};
 }
+
+test('手机与白板扫码保留摄像头交付的高清细节，按实际帧限制扫描像素', async t => {
+  const h=camera(t);
+  await h.scanner.start();
+  assert.equal(h.constraints.video.width.ideal,1920);
+  assert.equal(h.constraints.video.height.ideal,1080);
+  for (const [w,hgt,outW,outH] of [[1920,1080,1920,1080],[1080,1920,1080,1920],
+    [3840,2160,1920,1080],[640,360,640,360]]) {
+    h.video.videoWidth=w;h.video.videoHeight=hgt;
+    await h.frame();
+    assert.deepEqual([h.scanner.canvas.width,h.scanner.canvas.height],[outW,outH]);
+  }
+});
 
 test('班班切项关闭摄像头，迟到的视频帧释放且不写入下一项',async t=>{
   const pending=deferred();let closed=0,cancelled=0,released=0;

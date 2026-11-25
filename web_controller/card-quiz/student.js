@@ -126,13 +126,13 @@
   function roundText(record) {
     if (record.purpose === 'practice') return '练习轮次 · 不计入正式判分';
     if (!record.isOfficial) return '非最终正式轮次 · 不计入汇总';
-    return record.counted ? '当前有效记录' : '已被后续记录替代 · 不计入汇总';
+    return record.counted ? '已计入跨课汇总' : '本节正式记录 · 跨课汇总已采用后续作答';
   }
   function recordHTML(record) {
     const status = statuses[record.status] || '状态待确认';
     const title = record.text || (record.imageId ? '图片题' : '临时题，老师尚未补录题干');
     const answer = record.answer ? record.type === 'boolean' ? record.answer === 'A' ? 'A 正确' : 'B 错误' : record.answer : '未设置标准答案';
-    return `<details class="student-record"><summary><span class="student-record-title">${esc(types[record.type] || '题目')} · ${esc(title.length > 100 ? title.slice(0,100) + '…' : title)}</span><span class="student-record-state"><span class="student-status" data-status="${esc(record.status)}">${status}</span><span>${esc(roundText(record))}</span></span></summary><div class="student-record-content">
+    return `<details class="student-record"><summary><span class="student-record-title">${record.questionNumber ? '第 ' + record.questionNumber + ' 题 · ' : ''}${esc(types[record.type] || '题目')} · ${esc(title.length > 100 ? title.slice(0,100) + '…' : title)}</span><span class="student-record-state"><span class="student-status" data-status="${esc(record.status)}">${status}</span><span>${esc(roundText(record))}</span></span></summary><div class="student-record-content">
       <p class="student-round-note">${esc(date(record.startedAt))} · ${esc(roundText(record))}</p>
       <p class="student-question">${esc(record.text || (record.imageId ? '请结合配图作答。' : '临时题，老师尚未补录题干。'))}</p>
       ${record.imageId ? `<img class="student-question-image" src="/api/student/images/${encodeURIComponent(record.imageId)}" alt="本题配图" loading="lazy"><p class="student-error student-image-error" hidden>题图未能载入，请重新载入报告后重试。</p>` : ''}
@@ -142,11 +142,38 @@
       <p class="student-note">${record.tags.length ? '已确认知识点：' + esc(record.tags.join('、')) : '教师尚未确认知识点标签。'}</p>
     </div></details>`;
   }
+  function lessonKnowledge(session) {
+    if (!session.knowledge.length) return '<p class="student-note">本节暂无带知识点标签的已封存正式题。</p>';
+    return '<ul>' + session.knowledge.map(topic => {
+      const questions = topic.questionCount === 1 ? '仅 1 题' : topic.questionCount + ' 题';
+      const missed = topic.wrongQuestionNumbers;
+      const other = ['abstained','exempt','ungraded','incomplete','unanswered'].filter(key => topic[key])
+        .map(key => statuses[key] + ' ' + topic[key]);
+      return `<li><strong class="student-record-title">${esc(topic.tag)}</strong>
+        <p class="student-note">${questions} · 正确 ${topic.correct} / 已判定 ${topic.samples} · 错误 ${topic.wrong}${missed.length ? '（第 ' + missed.join('、') + ' 题）' : ''}${other.length ? ' · ' + other.join('、') : ''}</p></li>`;
+    }).join('') + '</ul>';
+  }
+  function renderLessonKnowledge() {
+    const sessions = report.sessions.slice().reverse();
+    if (!sessions.length || !sessions[0].knowledge) return '';
+    const selectedId = $('student-knowledge-session')?.value;
+    const current = sessions.find(s => s.id === selectedId) || sessions[0];
+    return `<section class="student-session"><h3>本节知识点</h3>
+      <div class="student-report-tools"><label for="student-knowledge-session">选择课堂</label><select id="student-knowledge-session">
+      ${sessions.map(s => `<option value="${esc(s.id)}"${s.id === current.id ? ' selected' : ''}>${esc(subjects[s.subjectId] || s.subjectId)} · ${date(s.startedAt)} · ${esc(s.className)}</option>`).join('')}</select></div>
+      <div id="student-lesson-knowledge">${lessonKnowledge(current)}</div></section>`;
+  }
   function renderKnowledge() {
     const rows = report.knowledge || [];
-    if (!rows.length) return '<p class="student-empty">暂无已确认知识点。教师确认标签后显示统计。</p>';
-    return `<p class="student-note">仅依据教师已确认的标签汇总，请结合判定样本数阅读正确率。</p><div class="student-table-wrap" role="region" aria-label="本人知识点统计" tabindex="0"><table class="student-table"><thead><tr>${['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','未答','免答','未判定','练习','正确率'].map(text => `<th scope="col">${text}</th>`).join('')}</tr></thead><tbody>${rows.map(k => `<tr><td>${esc(subjects[k.subjectId] || k.subjectId)}</td><td class="student-text">${esc(k.tag)}</td><td>${k.questionCount || 0}</td><td>${k.answers || 0}</td>${['samples','correct','wrong','incomplete','unanswered','exempt','ungraded','practice'].map(key => `<td>${k[key] || 0}</td>`).join('')}<td>${rate(k.samples ? k.accuracy : null)}</td></tr>`).join('')}</tbody></table></div>`;
+    const lessons = renderLessonKnowledge();
+    if (!rows.length) return lessons + '<h3>跨课知识点汇总</h3><p class="student-empty">暂无带知识点标签的有效作答。</p>';
+    return lessons + `<h3>跨课知识点汇总</h3><p class="student-note">仅依据教师已确认的标签汇总，请结合判定样本数阅读正确率。</p><div class="student-table-wrap" role="region" aria-label="本人知识点统计" tabindex="0"><table class="student-table"><thead><tr>${['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','未答','免答','未判定','练习','正确率'].map(text => `<th scope="col">${text}</th>`).join('')}</tr></thead><tbody>${rows.map(k => `<tr><td>${esc(subjects[k.subjectId] || k.subjectId)}</td><td class="student-text">${esc(k.tag)}</td><td>${k.questionCount || 0}</td><td>${k.answers || 0}</td>${['samples','correct','wrong','incomplete','unanswered','exempt','ungraded','practice'].map(key => `<td>${k[key] || 0}</td>`).join('')}<td>${rate(k.samples ? k.accuracy : null)}</td></tr>`).join('')}</tbody></table></div>`;
   }
+  $('student-report').addEventListener('change', event => {
+    if (event.target.id !== 'student-knowledge-session') return;
+    const session = report.sessions.find(s => s.id === event.target.value);
+    if (session) $('student-lesson-knowledge').innerHTML = lessonKnowledge(session);
+  });
   function renderReport() {
     document.querySelectorAll('[data-student-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.studentView === view)));
     if (!report) { $('student-report').innerHTML = '<p class="student-empty">暂无可显示的报告，请重新载入。</p>'; return; }
@@ -160,7 +187,7 @@
       if (!groups.has(record.sessionId)) groups.set(record.sessionId, []);
       groups.get(record.sessionId).push(record);
     }
-    $('student-report').innerHTML = (view === 'wrong' ? '<p class="student-note">只展示计入汇总的最新有效正式错题；练习和被替代轮次可在作答记录中查看。</p>' : '<p class="student-note">保留所有轮次，分别显示判定状态和统计归属。仅包含本人已结束的课堂。</p>') +
+    $('student-report').innerHTML = (view === 'wrong' ? '<p class="student-note">这里展示计入跨课汇总的正式错题。作答记录保留全部轮次。</p>' : '<p class="student-note">保留所有轮次，分别显示判定状态和统计归属。仅包含本人已结束的课堂。</p>') +
       (all.length ? [...groups].map(([sessionId, rows]) => {
         const session = report.sessions.find(s => s.id === sessionId) || rows[0];
         return `<section class="student-session"><h3>${esc(subjects[session.subjectId] || session.subjectId)} · ${date(session.startedAt)}</h3><p class="student-note">${esc(session.className)} · 已结束课堂</p>${rows.map(recordHTML).join('')}</section>`;

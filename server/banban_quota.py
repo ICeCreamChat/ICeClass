@@ -77,17 +77,22 @@ class BanbanQuota:
         # an admitted turn share it; confirmations and receipts never call here.
         if request.get(CHARGED_KEY) is not None:
             return request[CHARGED_KEY]
-        kind, ident = self.subject(user)
         with self.db.transaction():
-            quota = self.status(user)
-            if quota['remaining'] == 0:
-                raise QuotaExceeded(quota)
-            self.db.run('''INSERT INTO banban_quota_usage(kind,subject_id,month,used) VALUES(?,?,?,1)
-                ON CONFLICT(kind,subject_id,month) DO UPDATE SET used=used+1''', (kind, ident, quota['month']))
-            quota['used'] += 1
-            if quota['remaining'] is not None:
-                quota['remaining'] -= 1
+            quota = self.consume_in_transaction(user)
         request[CHARGED_KEY] = quota
+        return quota
+
+    def consume_in_transaction(self, user):
+        """Debit once inside the caller's transaction, alongside its request receipt."""
+        kind, ident = self.subject(user)
+        quota = self.status(user)
+        if quota['remaining'] == 0:
+            raise QuotaExceeded(quota)
+        self.db.run('''INSERT INTO banban_quota_usage(kind,subject_id,month,used) VALUES(?,?,?,1)
+            ON CONFLICT(kind,subject_id,month) DO UPDATE SET used=used+1''', (kind, ident, quota['month']))
+        quota['used'] += 1
+        if quota['remaining'] is not None:
+            quota['remaining'] -= 1
         return quota
 
     def admin(self, request):

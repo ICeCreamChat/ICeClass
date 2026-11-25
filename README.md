@@ -10,9 +10,9 @@
 
 | 组件 | 源码版本 | 技术 |
 | --- | --- | --- |
-| Windows 教室端 | 2.5.24 | .NET 8 / Avalonia / WebView2 |
-| Windows 教师端 | 2.5.24 | .NET 8 / Avalonia / WebView2 |
-| 学校服务 | 2.5.24 | Python / aiohttp / SQLite / WebSocket |
+| Windows 教室端 | 2.5.25 | .NET 8 / Avalonia / WebView2 |
+| Windows 教师端 | 2.5.25 | .NET 8 / Avalonia / WebView2 |
+| 学校服务 | 2.5.25 | Python / aiohttp / SQLite / WebSocket |
 | 视频展台插件 | 1.0.0 | .NET 10 / Windows Forms / WebView2 |
 
 本仓库包含教室端创意工坊中的视频展台和纸卡答题。源码、Release 附件和学校服务器分别更新，公开下载入口以实际发布内容为准。
@@ -67,7 +67,7 @@ Windows 教室端 2.5.24 支持在 PPT 放映时用班班收答。单击屏幕�
 
 单选和判断各收一轮。多选只在选中项举 A，改为不选可举 B。三种题型整题没举卡都在封存时记弃权。使用教室相机时，切到下一项会自动继续采集。收起班班会暂停，再次展开可从原项继续。教师可在工作台课前组题、课后查看学生作答。
 
-班主任可批量发放学生编号和六位密码，打印带班级、卡号及使用说明的纸卡。学生在统一登录页选择“学生”，登录后可查看本人课堂分析、改密和补印。使用方法见[纸卡答题](docs/纸卡答题.md)。
+班主任在账号发放表内可直接打印个人纸卡。上沿有学生编号、六位密码和登录二维码，学生扫码可查看本人课堂分析、改密和补印。教师可在“我的题库”粘贴截图，由班班提取图文题并建议答案和知识点，核对后组题发布。课后在课堂报告中按本节知识点查看答错的学生及题号。打印、备课与上课步骤见[纸卡答题](docs/纸卡答题.md)。
 
 ## 早读陪伴与统计
 
@@ -173,6 +173,7 @@ node --test scripts/test-workshop-ui.cjs scripts/test-video-booth-workbench.cjs
 ~~~powershell
 node --test scripts/test-card-quiz-model.cjs scripts/test-card-quiz-scanner.cjs scripts/test-card-quiz-journal.cjs
 node --test scripts/test-card-quiz-classroom.cjs scripts/test-card-quiz-phone.cjs scripts/test-card-quiz-admin.cjs
+node --test scripts/test-card-quiz-recognition.cjs scripts/test-card-quiz-session-knowledge.cjs
 node --test scripts/test-student-accounts-ui.cjs scripts/test-student-accounts.cjs
 dotnet run --project tests/CardQuizChecks -c Release
 dotnet run --project tests/CardQuizServiceChecks -c Release
