@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -14,9 +15,12 @@ internal sealed class CardQuizService : IDisposable
     private static readonly object Registry = new();
     private static CardQuizService? _current;
     private static readonly HttpClient Http = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(25) };
+    private static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(10);
     private readonly ReceiverConfig _config;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly SemaphoreSlim _sync = new(1, 1);
+    private readonly SemaphoreSlim _outbox = new(1, 1);
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _journalSync = new();
+    private readonly object _receiptProgress = new();
     private readonly SemaphoreSlim _bootstrap = new(1, 1);
     private readonly object _authorization = new();
     private long _authorizationVersion;
@@ -225,80 +229,116 @@ internal sealed class CardQuizService : IDisposable
         lock (_authorization) { RequirePublication(id); Store.SaveCache("publication-" + id, cached); }
         return cached;
     }
-    private string ReceiptClassName(string id, JsonObject progress)
+    private string ReceiptClassName(string id)
     {
-        if (progress["className"] is null)
+        lock (_receiptProgress)
         {
-            // Both delivery paths hold _sync while establishing the durable wire name.
-            progress["className"] = _config.ClassName;
+            var progress = Store.LoadCache("receipt-" + id) ?? new JsonObject { ["seq"] = 0 };
+            if (progress["className"] is null)
+            {
+                progress["className"] = _config.ClassName;
+                Store.SaveCache("receipt-" + id, progress);
+            }
+            return progress["className"]!.GetValue<string>();
+        }
+    }
+    private void SaveReceiptProgress(string id, int through)
+    {
+        lock (_receiptProgress)
+        {
+            var progress = Store.LoadCache("receipt-" + id) ?? new JsonObject();
+            progress["seq"] = through;
             Store.SaveCache("receipt-" + id, progress);
         }
-        return progress["className"]!.GetValue<string>();
     }
     internal async Task<JsonObject> SyncAsync(bool retry, CancellationToken token)
     {
-        await _sync.WaitAsync(token);
+        await _outbox.WaitAsync(token);
         try
         {
             foreach (var item in Store.Load()["journals"]!.AsArray().OfType<JsonObject>())
             {
-                var session = item["session"]!.AsObject(); var id = session["id"]!.GetValue<string>();
-                var seq = session["seq"]!.GetValue<int>(); var synced = item["syncedSeq"]?.GetValue<int>() ?? 0;
-                var receiptProgress = Store.LoadCache("receipt-" + id) ?? new JsonObject { ["seq"] = 0 };
-                var delivered = receiptProgress["seq"]?.GetValue<int>() ?? 0;
-                if (delivered < 0 || delivered > seq) throw new InvalidDataException("本机回执进度异常，原记录已保留待核对。");
-                var candidates = new List<JsonObject>(); var through = delivered;
-                foreach (var entry in item["events"]!.AsArray().OfType<JsonObject>().Where(e => e["seq"]!.GetValue<int>() > delivered))
-                {
-                    if (candidates.Count == 128) break;
-                    through = entry["seq"]!.GetValue<int>();
-                    if (entry["sourceId"]?.GetValue<string>() == "board") continue;
-                    candidates.Add(entry);
-                }
-                if (!retry && !string.IsNullOrEmpty(item["reviewError"]?.GetValue<string>())) continue;
-                try
-                {
-                    var receipts = new JsonArray();
-                    if (candidates.Count > 0)
-                    {
-                        // The server durably records actual phone submissions. sourceId alone also
-                        // labels local controls while a phone is selected, including old journals.
-                        var lookup = await SendAsync("device/receipt-ids", new JsonObject { ["sessionId"] = id,
-                            ["ids"] = new JsonArray(candidates.Select(e => e["id"]!.DeepClone()).ToArray()) }, token);
-                        if (lookup["commandIds"] is not JsonArray commandIds) throw new InvalidDataException("手机请求来源尚未核实，原记录将继续保留。");
-                        var registeredIds = commandIds.Select(n => n!.GetValue<string>()).ToArray();
-                        if (registeredIds.Distinct().Count() != registeredIds.Length || registeredIds.Any(value => !candidates.Any(e => e["id"]!.GetValue<string>() == value)))
-                            throw new InvalidDataException("手机请求来源回执不匹配，原记录将继续保留。");
-                        var receiptClassName = registeredIds.Length > 0 ? ReceiptClassName(id, receiptProgress) : null;
-                        foreach (var requestId in registeredIds)
-                        {
-                            var original = item["receipts"]![requestId]!.AsObject();
-                            var result = original["result"]!.DeepClone().AsObject(); result["state"]!["className"] = receiptClassName;
-                            var receipt = new JsonObject { ["id"] = requestId, ["fingerprint"] = original["fingerprint"]!.DeepClone(), ["result"] = result };
-                            if (Encoding.UTF8.GetByteCount(receipt.ToJsonString()) > 16 * 1024) throw new InvalidDataException("手机原回执超过传输上限，已保留原记录，请核对后重试。");
-                            receipts.Add(receipt);
-                        }
-                    }
-                    if (synced == seq && receipts.Count == 0)
-                    {
-                        if (through > delivered) { receiptProgress["seq"] = through; Store.SaveCache("receipt-" + id, receiptProgress); }
-                        continue;
-                    }
-                    var events = new JsonArray(item["events"]!.AsArray().Where(e => e!["seq"]!.GetValue<int>() > synced).Select(e => e!.DeepClone()).ToArray());
-                    var response = await SendAsync("device/sync", new JsonObject { ["session"] = session.DeepClone(), ["events"] = events, ["fromSeq"] = synced + 1, ["receipts"] = receipts }, token);
-                    if (response["syncedSeq"]?.GetValue<int>() != seq) throw new InvalidDataException("同步回执不完整，记录已保留待核对。");
-                    if (receipts.Count > 0 && (response["receiptIds"] is not JsonArray ids ||
-                        !ids.Select(n => n!.GetValue<string>()).Order().SequenceEqual(receipts.Select(n => n!["id"]!.GetValue<string>()).Order())))
-                        throw new InvalidDataException("手机回执尚未完整确认，原结果将继续补传。");
-                    Store.MarkSynced(id, seq); _lastError = null;
-                    receiptProgress["seq"] = through; Store.SaveCache("receipt-" + id, receiptProgress);
-                }
-                catch (ApiFailure error) when ((int)error.Status is >= 400 and < 500)
-                { Store.MarkReview(id, error.Message); _lastError = error.Message; }
+                var id = item["session"]!["id"]!.GetValue<string>();
+                try { await SyncJournalAsync(id, retry, token); }
+                catch (ApiFailure error) when (NeedsReview(error)) { /* Keep syncing other lessons. */ }
             }
             return Load();
         }
-        finally { _sync.Release(); }
+        finally { _outbox.Release(); }
+    }
+    private static bool NeedsReview(ApiFailure error) =>
+        (int)error.Status is >= 400 and < 500 && error.Status is not (HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests);
+
+    private async Task<int> SyncJournalAsync(string id, bool retry, CancellationToken token)
+    {
+        if (!Guid.TryParseExact(id, "D", out var key)) throw new InvalidDataException("课堂编号无效。");
+        var gate = _journalSync.GetOrAdd(key, static _ => new(1, 1));
+        await gate.WaitAsync(token);
+        try
+        {
+            var item = Store.Read(id) ?? throw new InvalidDataException("本机课堂不存在。");
+            var session = item["session"]!.AsObject();
+            var seq = session["seq"]!.GetValue<int>(); var synced = item["syncedSeq"]?.GetValue<int>() ?? 0;
+            if (!retry && !string.IsNullOrEmpty(item["reviewError"]?.GetValue<string>())) return synced;
+            var delivered = Store.LoadCache("receipt-" + id)?["seq"]?.GetValue<int>() ?? 0;
+            if (delivered < 0 || delivered > seq) throw new InvalidDataException("本机回执进度异常，原记录已保留待核对。");
+            var candidates = new List<JsonObject>(); var through = delivered;
+            foreach (var entry in item["events"]!.AsArray().OfType<JsonObject>().Where(e => e["seq"]!.GetValue<int>() > delivered))
+            {
+                if (candidates.Count == 128) break;
+                through = entry["seq"]!.GetValue<int>();
+                if (entry["sourceId"]?.GetValue<string>() == "board") continue;
+                candidates.Add(entry);
+            }
+            var receipts = new JsonArray();
+            if (candidates.Count > 0)
+            {
+                // Only actual phone submissions need an original receipt, including in old journals.
+                var lookup = await SendAsync("device/receipt-ids", new JsonObject { ["sessionId"] = id,
+                    ["ids"] = new JsonArray(candidates.Select(e => e["id"]!.DeepClone()).ToArray()) }, token);
+                if (lookup["commandIds"] is not JsonArray commandIds) throw new InvalidDataException("手机请求来源尚未核实，原记录将继续保留。");
+                var registeredIds = commandIds.Select(n => n!.GetValue<string>()).ToArray();
+                if (registeredIds.Distinct().Count() != registeredIds.Length || registeredIds.Any(value => !candidates.Any(e => e["id"]!.GetValue<string>() == value)))
+                    throw new InvalidDataException("手机请求来源回执不匹配，原记录将继续保留。");
+                var receiptClassName = registeredIds.Length > 0 ? ReceiptClassName(id) : null;
+                foreach (var requestId in registeredIds)
+                {
+                    var original = item["receipts"]![requestId]!.AsObject();
+                    var result = original["result"]!.DeepClone().AsObject(); result["state"]!["className"] = receiptClassName;
+                    var receipt = new JsonObject { ["id"] = requestId, ["fingerprint"] = original["fingerprint"]!.DeepClone(), ["result"] = result };
+                    if (Encoding.UTF8.GetByteCount(receipt.ToJsonString()) > 16 * 1024) throw new InvalidDataException("手机原回执超过传输上限，已保留原记录，请核对后重试。");
+                    receipts.Add(receipt);
+                }
+            }
+            if (synced != seq || receipts.Count > 0)
+            {
+                var events = new JsonArray(item["events"]!.AsArray().Where(e => e!["seq"]!.GetValue<int>() > synced).Select(e => e!.DeepClone()).ToArray());
+                var response = await SendAsync("device/sync", new JsonObject { ["session"] = session.DeepClone(), ["events"] = events, ["fromSeq"] = synced + 1, ["receipts"] = receipts }, token);
+                if (response["syncedSeq"]?.GetValue<int>() != seq) throw new InvalidDataException("同步回执不完整，记录已保留待核对。");
+                if (receipts.Count > 0 && (response["receiptIds"] is not JsonArray ids ||
+                    !ids.Select(n => n!.GetValue<string>()).Order().SequenceEqual(receipts.Select(n => n!["id"]!.GetValue<string>()).Order())))
+                    throw new InvalidDataException("手机回执尚未完整确认，原结果将继续补传。");
+                Store.MarkSynced(id, seq); _lastError = null;
+            }
+            if (through > delivered) SaveReceiptProgress(id, through);
+            return seq;
+        }
+        catch (ApiFailure error) when (NeedsReview(error))
+        {
+            Store.MarkReview(id, error.Message); _lastError = error.Message;
+            throw;
+        }
+        finally { gate.Release(); }
+    }
+    internal async Task<JsonObject> SyncSessionAsync(string id, CancellationToken token)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(HandoffTimeout);
+        try { return new JsonObject { ["syncedSeq"] = await SyncJournalAsync(id, true, deadline.Token) }; }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("本堂课同步超时。"); }
+        catch (HttpRequestException)
+        { throw new InvalidOperationException("暂时无法连接学校服务。"); }
     }
     internal async Task<JsonObject> RelayAsync(JsonObject body, CancellationToken token)
     {
@@ -307,32 +347,47 @@ internal sealed class CardQuizService : IDisposable
         {
             var id = outbound["sessionId"]?.GetValue<string>();
             if (!Guid.TryParseExact(id, "D", out _)) throw new InvalidDataException("成功回执的课堂编号无效。");
-            await _sync.WaitAsync(token);
-            try
+            var className = ReceiptClassName(id);
+            foreach (var receipt in receipts.OfType<JsonObject>().Where(r => r["result"] is JsonObject))
             {
-                var progress = Store.LoadCache("receipt-" + id) ?? new JsonObject { ["seq"] = 0 };
-                var className = ReceiptClassName(id, progress);
-                foreach (var receipt in receipts.OfType<JsonObject>().Where(r => r["result"] is JsonObject))
-                {
-                    if (receipt["result"]!["state"] is not JsonObject state || state["sessionId"]?.GetValue<string>() != id)
-                        throw new InvalidDataException("成功回执的课堂状态不匹配。");
-                    state["className"] = className;
-                }
+                if (receipt["result"]!["state"] is not JsonObject state || state["sessionId"]?.GetValue<string>() != id)
+                    throw new InvalidDataException("成功回执的课堂状态不匹配。");
+                state["className"] = className;
             }
-            finally { _sync.Release(); }
         }
         return await SendAsync("device/relay", outbound, token);
     }
     internal async Task<JsonObject> PairAsync(string sessionId, CancellationToken token)
     {
         var journal = Store.Read(sessionId) ?? throw new InvalidDataException("请先在本机建立课堂。");
-        if (journal["session"]!["endedAt"] is not null) throw new InvalidOperationException("课堂已经结束。");
-        await SyncAsync(false, token);
-        var pair = await SendAsync("device/pair", new JsonObject { ["sessionId"] = sessionId, ["quickScan"] = true }, token);
-        // The device binding has the public origin, including HTTPS behind the school's reverse proxy.
-        var link = new Uri(pair["url"]!.GetValue<string>(), UriKind.Absolute);
-        pair["url"] = _config.Endpoint + link.PathAndQuery + link.Fragment;
-        return pair;
+        var session = journal["session"]!;
+        if (session["endedAt"] is not null) throw new InvalidOperationException("课堂已经结束。");
+        var synced = journal["syncedSeq"]!.GetValue<int>();
+        var body = new JsonObject { ["sessionId"] = sessionId, ["quickScan"] = true };
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(HandoffTimeout);
+        try
+        {
+            // A just-saved return to the board must reach the school before issuing a new phone code.
+            if (session["source"]?.GetValue<string>() == "board" && journal["events"]!.AsArray().OfType<JsonObject>()
+                .Any(e => e["seq"]!.GetValue<int>() > synced && e["action"]!.GetValue<string>() == "set_source"))
+                await SyncJournalAsync(sessionId, true, deadline.Token);
+            JsonObject pair;
+            try { pair = await SendAsync("device/pair", body, deadline.Token); }
+            catch (ApiFailure error) when (error.Status == HttpStatusCode.NotFound && synced == 0 && session["seq"]!.GetValue<int>() > 0)
+            {
+                await SyncJournalAsync(sessionId, true, deadline.Token);
+                pair = await SendAsync("device/pair", body, deadline.Token);
+            }
+            // The binding has the public origin, including HTTPS behind the school's reverse proxy.
+            var link = new Uri(pair["url"]!.GetValue<string>(), UriKind.Absolute);
+            pair["url"] = _config.Endpoint + link.PathAndQuery + link.Fragment;
+            return pair;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("获取二维码超时。"); }
+        catch (HttpRequestException)
+        { throw new InvalidOperationException("暂时无法连接学校服务。"); }
     }
     internal Task<JsonObject> CancelPairAsync(string sessionId, string pairId, CancellationToken token) =>
         SendAsync("device/pair/cancel", new JsonObject { ["sessionId"] = sessionId, ["pairId"] = pairId }, token);

@@ -14,7 +14,7 @@
     return {type,options:Array(Number(count)).fill('')};
   }
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let requestId = 0, data, controller, deck, pair, operation = false, frozen = false, disposed = false;
+  let requestId = 0, data, controller, deck, pair, pairRequest, operation = false, frozen = false, disposed = false;
   let relayTimer, relayRunning = false, relayFailures = 0, syncTimer, editorAdding = false, editorContext, distributionRound = '';
   let hostVisible = true, suspension, pendingPause, visibilityRevision = 0;
   const companion = location.hash === '#banban';
@@ -60,6 +60,7 @@
       return;
     }
     if (dialog?.id === 'confirm-dialog') $('confirm-cancel').click();
+    else if (dialog?.id === 'pair-dialog') closePhoneInvite();
     else if (dialog) dialog.close();
     if (!dialog || dismissAll) showPane('');
   }
@@ -296,7 +297,7 @@
           peer.viewSent = stamp; peer.liveKey = '';
           peer.send(JSON.stringify({view:key,round:s.currentRoundId,generation:s.generation,visible}));
           clearTimeout(peer.viewTimer);
-          peer.viewTimer=setTimeout(()=>peer.close(),4000);
+          peer.viewTimer=setTimeout(()=>peer.close(),CardQuizPreview.channelTimeout);
         }
       }
     } else {
@@ -772,6 +773,7 @@
     },5000);
   }
   let lastRelayResponseAt = 0;
+  const phoneInviteContactTimeout = 8000;
   function scheduleRelay() {
     clearTimeout(relayTimer);
     if (!canCapture() || !active()) return;
@@ -806,37 +808,19 @@
       relayFailures = 0;
       if (!isCurrent()) return;
       acceptPreview(value.preview,preview,state.generation);
-      if (pair && $('pair-dialog').open) {
+      if (pair?.pairId && $('pair-dialog').open) {
         const ready = value.pairings?.find(p=>p.pairId === pair.pairId)?.claimed === true;
-        if (pair.mode === 'scan') {
-          if (pair.seq !== session().seq || Date.now() >= pair.expiresAt) {
-            const stale = pair.seq !== session().seq;
-            cancelScanOffer(pair); pair = null;
-            $('pair-qr').hidden = true;
-            $('pair-qr').replaceChildren();
-            $('pair-status').textContent = stale ? '课堂已变化，请返回后重新扫码。' : '二维码已过期，请返回后重新扫码。';
-          } else if (ready && !operation && !frozen) {
-            const offered = pair;
-            await run(async () => {
-              offered.accepting = true;
-              try {
-                await saveSource('phone', offered.pairId);
-                if (!isCurrent() || pair !== offered || !$('pair-dialog').open) return;
-                if (question() && (!round() || round().status === 'paused')) await startRound();
-                feedback('手机已连接。');
-              } catch(error) {
-                if (session()?.sourceId !== offered.pairId) cancelScanOffer(offered);
-                throw error;
-              } finally {
-                if (pair === offered && $('pair-dialog').open) $('pair-dialog').close();
-              }
-            });
+        if (!pairMatches(pair)) showPairError('课堂已变化，请返回后重新扫码。');
+        else if (Date.now() >= pair.expiresAt) showPairError('二维码已过期，请返回后重新扫码。');
+        else {
+          if (!pair.accepting) watchPhoneInvite(pair);
+          if (pair.mode === 'scan' && ready && !operation) await acceptPhone(pair);
+          else if (pair.mode !== 'scan' && ready !== !$('confirm-phone').disabled) {
+            $('confirm-phone').disabled = !ready;
+            $('pair-status').textContent = ready ? '手机已连接，请确认使用。' : '扫码登录后在白板确认。';
+            renderWheel();
           }
-        } else {
-          $('confirm-phone').disabled = !ready;
-          if (ready) $('pair-status').textContent = '手机已连接，请确认使用。';
         }
-        if ($('pair-dialog').open) renderWheel();
       }
       for (const incoming of value.commands || []) {
         if (!isCurrent()) break;
@@ -853,14 +837,33 @@
     } finally { relayRunning = false; scheduleRelay(); }
   }
   function cancelScanOffer(offer) {
-    if (offer?.mode === 'scan')
+    if (offer?.mode === 'scan' && offer.pairId)
       void request('cancel-pair',{sessionId:offer.sessionId,pairId:offer.pairId}).catch(() => {
         // The board also drops its local offer immediately. An offline invitation expires at the service.
       });
   }
   function releasePair() {
+    clearTimeout(pair?.expiryTimer);
+    clearTimeout(pair?.contactTimer);
+    pair?.dismiss?.(false);
     if (!pair?.accepting) cancelScanOffer(pair);
     pair = null;
+  }
+  function ownsPair(offer) { return pair === offer && $('pair-dialog').open; }
+  function watchPhoneInvite(offer) {
+    clearTimeout(offer.contactTimer);
+    offer.contactTimer = setTimeout(() => {
+      if (ownsPair(offer)) showPairError('学校连接已中断，请返回重试。');
+    },phoneInviteContactTimeout);
+  }
+  function pairMatches(offer) {
+    const s = session();
+    return active() && canCapture() && s.id === offer.sessionId && s.generation === offer.generation && s.source === 'board';
+  }
+  function closePhoneInvite() {
+    releasePair();
+    $('pair-dialog').close();
+    renderWheel();
   }
   function phoneAddressIssue(address) {
     let url;
@@ -873,8 +876,7 @@
       return '请将白板连接到学校的 HTTPS 地址，再用手机扫码。';
     return '';
   }
-  function showPhoneInvite(offer, message) {
-    pair = offer;
+  function renderPhoneInvite(offer, message) {
     const manual = Boolean(offer && offer.mode !== 'scan');
     $('confirm-phone').hidden = !manual;
     $('confirm-phone').disabled = true;
@@ -883,35 +885,111 @@
     $('pair-qr').hidden = !offer;
     $('pair-qr').innerHTML = offer ? CardQuizQr.svg(offer.url) : '';
     $('pair-status').textContent = message || (manual ? '扫码登录后在白板确认。' : '请用手机扫码');
+  }
+  function showPairError(message) {
+    releasePair();
+    renderPhoneInvite(null,message);
+    renderWheel();
+  }
+  async function requestPhoneInvite() {
+    const issue = data.endpoint ? phoneAddressIssue(data.endpoint) : '';
+    const s = session(), offer = {sessionId:s.id,generation:s.generation};
+    pair = offer;
+    renderPhoneInvite(null,issue || '正在获取二维码…');
     openDialog('pair-dialog');
+    if (issue) return;
+    try {
+      // One signing request at a time. A canceled request can still return an invitation.
+      if (pairRequest) await pairRequest.catch(() => {});
+      if (!ownsPair(offer)) return;
+      if (!pairMatches(offer)) { showPairError('课堂已变化，请返回后重新扫码。'); return; }
+      pairRequest = request('pair',{sessionId:offer.sessionId}).finally(() => { pairRequest = null; });
+      Object.assign(offer,await pairRequest);
+      if (!ownsPair(offer)) { cancelScanOffer(offer); return; }
+      if (!pairMatches(offer)) { showPairError('课堂已变化，请返回后重新扫码。'); return; }
+      const badAddress = phoneAddressIssue(offer.url);
+      if (badAddress) { showPairError(badAddress); return; }
+      renderPhoneInvite(offer);
+      offer.expiryTimer = setTimeout(() => {
+        if (ownsPair(offer)) showPairError('二维码已过期，请返回后重新扫码。');
+      },Math.max(0,offer.expiresAt-Date.now()));
+      watchPhoneInvite(offer);
+      relayFailures = 0;
+      scheduleRelay();
+      renderWheel();
+    } catch(error) {
+      if (ownsPair(offer)) showPairError(error.message + '返回后可重试。');
+    }
   }
-  async function setSource() {
-    if (!active() || !canCapture()) return;
+  async function syncSource(s) {
+    const {syncedSeq} = await request('sync-session',{sessionId:s.id});
+    if (!Number.isSafeInteger(syncedSeq) || syncedSeq < s.seq) throw new Error('学校尚未确认本堂课的设备切换。');
+    if (session()?.id === s.id && syncedSeq >= controller.journal.syncedSeq) {
+      controller.journal.syncedSeq = syncedSeq;
+      controller.journal.reviewError = null;
+    }
+  }
+  function acceptPhone(offer) {
+    return run(async () => {
+      if (!ownsPair(offer) || !pairMatches(offer) || Date.now() >= offer.expiresAt) {
+        if (ownsPair(offer)) showPairError('配对已失效，请返回后重新扫码。');
+        return;
+      }
+      offer.accepting = true;
+      clearTimeout(offer.expiryTimer);
+      clearTimeout(offer.contactTimer);
+      const dismissed = new Promise(resolve => { offer.dismiss = resolve; });
+      renderPhoneInvite(null,'正在连接手机…');
+      renderWheel();
+      const collecting = round()?.status === 'collecting', cameraRunning = scanner.running;
+      const stillHere = () => ownsPair(offer) && canCapture() && active() && session().id === offer.sessionId;
+      let connected = false, issue = '';
+      try {
+        if (collecting) await pauseRound();
+        if (!stillHere()) return;
+        await dispatch(command('set_source',{source:'phone',sourceId:offer.pairId}));
+        if (!stillHere()) return;
+        const synced = await Promise.race([syncSource(session()).then(() => true),dismissed]);
+        if (!synced || !stillHere()) return;
+        if (Date.now() >= offer.expiresAt) throw new Error('二维码已过期。');
+        connected = true;
+        if (offer.mode === 'scan' && question() && (!round() || round().status === 'paused')) await startRound();
+        feedback(offer.mode === 'scan' ? '手机已连接。' : '已切换到手机，请在手机上开始或恢复收答。');
+      } catch(error) {
+        if (connected) throw error;
+        issue = error.message;
+      } finally {
+        if (connected) {
+          if (ownsPair(offer)) closePhoneInvite();
+        } else {
+          try {
+            if (active() && session().id === offer.sessionId && !frozen && !data?.context?.revoked) {
+              const sourceChanged = session().sourceId === offer.pairId;
+              if (sourceChanged) await dispatch(command('set_source',{source:'board',sourceId:'board'}));
+              if (collecting && round()?.status === 'paused' && canCapture()) {
+                if (cameraRunning) await startRound();
+                else await dispatch(command('resume_round'));
+              }
+              if (sourceChanged) syncSourceInBackground();
+            }
+          } finally {
+            cancelScanOffer(offer);
+            if (ownsPair(offer)) showPairError('手机连接失败。' + issue + '返回后可重试。');
+          }
+        }
+      }
+    },'正在连接手机…');
+  }
+  function syncSourceInBackground() {
+    void syncSource(session()).catch(() => { /* The native outbox retries the saved source. */ });
+  }
+  async function switchBackToBoard() {
     const at = visibilityRevision;
-    if (session().source === 'board' && data.endpoint) {
-      const issue = phoneAddressIssue(data.endpoint);
-      if (issue) { showPhoneInvite(null, issue); return; }
-    }
     if (round()?.status === 'collecting') await pauseRound();
-    else scanner.stop();
     if (!active() || !canCapture() || at !== visibilityRevision) return;
-    if (session().source === 'phone') { await saveSource('board','board'); pair = null; feedback('已换回本机，可以继续收答。'); return; }
-    const current = controller, {id:sessionId,seq} = session();
-    const offer = {...await request('pair',{sessionId}),sessionId,seq};
-    if (controller !== current || !canCapture() || at !== visibilityRevision || seq !== session().seq) {
-      cancelScanOffer(offer); return;
-    }
-    const issue = phoneAddressIssue(offer.url);
-    if (issue) cancelScanOffer(offer);
-    showPhoneInvite(issue ? null : offer, issue);
-  }
-  async function saveSource(source,sourceId) {
-    await dispatch(command('set_source',{source,sourceId}));
-    if (round()?.status !== 'paused') return;
-    const current = controller;
-    void request('sync').then(value => {
-      if (controller === current) mergeSync(value);
-    }).catch(() => { /* The native outbox retries the saved handoff. */ });
+    await dispatch(command('set_source',{source:'board',sourceId:'board'}));
+    feedback('已换回本机，可以继续收答。');
+    syncSourceInBackground();
   }
   function editorAnswer(){return $('edit-answer-multiple').hidden?$('edit-answer').value:[...$('edit-answer-choices').querySelectorAll('input:checked')].map(i=>i.value).join('');}
   function setEditorAnswer(value){
@@ -1010,10 +1088,7 @@
   }
   function suspend(retryPause = false) {
     visibilityRevision++;
-    if (pair?.mode === 'scan' && $('pair-dialog').open) {
-      releasePair();
-      $('pair-dialog').close();
-    }
+    if ($('pair-dialog').open) closePhoneInvite();
     closePreviewPeer(); foldedPreview = '';
     cancelBoardOpen?.(false);
     scanner.stop(); clearTimeout(relayTimer);
@@ -1043,7 +1118,7 @@
     finally { operation = false; pendingStatus = ''; render(); }
   }
   function resetSessionControls() {
-    pair = null; relayReceipts.clear(); relayFailures = 0; distributionRound = '';
+    releasePair(); relayReceipts.clear(); relayFailures = 0; distributionRound = '';
     clearTimeout(relayTimer); clearTimeout(syncTimer);
   }
   async function refreshSetup() {
@@ -1096,14 +1171,11 @@
   $('multi-option').onchange = event => switchMultiOption(event.target.value);
   $('multi-next').onclick = () => switchMultiOption(letters[letters.indexOf(round()?.activeOption)+1]);
   function changeSource() {
-    return run(setSource,session().source === 'board' ? '正在获取二维码…' : '正在换回本机…');
+    if (!active() || !canCapture() || operation || document.querySelector('dialog[open]')) return;
+    return session().source === 'board' ? requestPhoneInvite() : run(switchBackToBoard,'正在换回本机…');
   }
   $('source').onclick = changeSource;
-  $('confirm-phone').onclick = () => run(async()=>{
-    if (!canCapture() || !pair || pair.sessionId !== session()?.id || pair.seq !== session().seq || Date.now() >= pair.expiresAt)
-      throw new Error('配对已失效，请关闭并重新配对。');
-    await saveSource('phone',pair.pairId); $('pair-dialog').close(); feedback('已切换到手机，请在手机上开始或恢复收答。');
-  });
+  $('confirm-phone').onclick = () => { if (pair?.pairId) void acceptPhone(pair); };
   $('edit').onclick = () => openEditor(false); $('temporary').onclick = () => openEditor(true);
   $('edit-type').onchange = editOptions; $('edit-count').onchange = editOptions;
   $('question-form').onsubmit = event => {
@@ -1270,9 +1342,11 @@
     if (event.key === 'Escape' && !event.isComposing && (currentDiscPage || !document.querySelector('dialog[open]') && pane)) { event.preventDefault(); back(); }
     else if (event.key === 'F4' && !event.altKey) { event.preventDefault(); native?.postMessage({type:'collapse'}); }
   });
-  document.querySelectorAll('[data-dismiss]').forEach(button=>button.onclick=() => $(button.dataset.dismiss).close());
+  $('pair-dialog').addEventListener('cancel',event => { event.preventDefault(); closePhoneInvite(); });
+  document.querySelectorAll('[data-dismiss]').forEach(button=>button.onclick=() =>
+    button.dataset.dismiss === 'pair-dialog' ? closePhoneInvite() : $(button.dataset.dismiss).close());
   document.addEventListener('visibilitychange',updateVisibility);
-  window.addEventListener('pagehide',()=>{disposed=true;liveVideo.stop();closePreviewPeer();scanner.stop();clearTimeout(relayTimer);clearTimeout(syncTimer);});
+  window.addEventListener('pagehide',()=>{disposed=true;releasePair();liveVideo.stop();closePreviewPeer();scanner.stop();clearTimeout(relayTimer);clearTimeout(syncTimer);});
   if (native) native.addEventListener('message',event=>{
     const value = event.data; if (!value || typeof value !== 'object') return;
     if (value.type === 'response') { const task = pending.get(value.id); if (!task) return; clearTimeout(task.timeout); pending.delete(value.id); value.error ? task.reject(new Error(value.error)) : task.resolve(value.value); }
@@ -1282,7 +1356,12 @@
       document.body.classList.toggle('in-disc', companion && value.nativeDisc === true);
       hostVisible = value.visible === true; updateVisibility();
     }
-    else if (value.type === 'authorization' && value.revoked) { scanner.stop(); if (data?.context) data.context.revoked = true; render(); feedback(value.message || '设备授权已失效，采集已停止，本机记录保留待核对。','error'); }
+    else if (value.type === 'authorization' && value.revoked) {
+      scanner.stop();
+      if (data?.context) data.context.revoked = true;
+      if ($('pair-dialog').open) closePhoneInvite();
+      render(); feedback(value.message || '设备授权已失效，采集已停止，本机记录保留待核对。','error');
+    }
     else if (value.type === 'companion-action' && typeof value.action === 'string') {
       const lesson = wheel.lesson;
       if (!hostVisible || document.hidden || suspension || disposed) return;

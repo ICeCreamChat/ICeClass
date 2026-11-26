@@ -34,7 +34,7 @@
         entry.history=[];entry.streak=0;
       }
     }
-    feed(markers,at,optionCount=4){
+    feed(markers,at,optionCount=4,reading=true){
       this.frame++;this.conflicts=[];this.needsEvidence=false;const groups=new Map(),results=[];
       for(const merged of markers)for(const marker of merged.observations||[merged]){
         if(marker.id!==merged.id)continue;
@@ -50,10 +50,11 @@
         else if(++card.absent>=3) this.held.delete(number);
       }
       for(const [number,reads]of groups){
-        let entry=this.entries.get(number);if(!entry){entry={history:[],committed:'',run:'',streak:0,lastFrame:0};this.entries.set(number,entry);}
         const options=new Set(reads.map(x=>x.option).filter(Boolean));
         const option=options.size===1?[...options][0]:'';
         this.visible.set(number,{option,frame:this.frame});
+        if(!reading)continue; // Keep the cards in view for a possible change of item during reconnect.
+        let entry=this.entries.get(number);if(!entry){entry={history:[],committed:'',run:'',streak:0,lastFrame:0};this.entries.set(number,entry);}
         if(options.size>1)this.conflicts.push(number);
         if(options.size!==1||reads.some(x=>!x.option)||!'ABCD'.slice(0,optionCount).includes(option)){
           entry.history=[];entry.run='';entry.streak=0;continue;
@@ -80,6 +81,7 @@
       this.video=video;this.onRead=onRead;this.onPreview=onPreview;this.onStatus=onStatus;
       this.readTrack=readTrack;this.waitForFrames=waitForFrames;
       this.stabilizer=new Stabilizer();this.optionCount=4;this.running=false;this.opening=0;
+      this.reading=true;
       this.contextKey='';this.contextRevision=0;this.starting=null;
     }
     reset(key,optionCount=4,presentationKey=key){
@@ -90,6 +92,11 @@
       this.stabilizer.reset();this.stabilizer.waitForNewPresentation(this.heldCards);
     }
     cardsInView(){return this.running?this.stabilizer.cardsInView():this.heldCards;}
+    setReading(enabled){
+      if(this.reading===enabled)return;
+      this.reading=enabled;
+      this.stabilizer.discardCandidates();
+    }
     waitForNewPresentation(cards){
       this.heldCards=cards;
       if(this.running)this.stabilizer.waitForNewPresentation(cards);
@@ -272,7 +279,11 @@
     scanImage(image){
       const markers=this.detector.detect(image);
       const opening=this.opening,context=this.contextRevision,current=()=>this.running&&opening===this.opening&&context===this.contextRevision;
-      for(const read of this.stabilizer.feed(markers,Date.now(),this.optionCount))Promise.resolve().then(()=>{if(current())return this.onRead(read);}).catch(error=>{
+      for(const read of this.stabilizer.feed(markers,Date.now(),this.optionCount,this.reading))Promise.resolve().then(()=>{
+        if(!current())return;
+        if(this.reading)return this.onRead(read);
+        if(this.stabilizer.entries.get(read.cardNumber)?.submission===read)this.stabilizer.forget(read.cardNumber);
+      }).catch(error=>{
         if(!current()||this.stabilizer.entries.get(read.cardNumber)?.submission!==read)return;
         this.stabilizer.forget(read.cardNumber);this.onStatus({kind:'error',message:error?.message||'作答提交未完成，请重试。'});
       });

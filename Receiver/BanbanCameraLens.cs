@@ -23,13 +23,14 @@ internal sealed class BanbanCameraLens : Grid
     private const int PixelWidth = 640, PixelHeight = 360;
     internal const int PixelBytes = PixelWidth * PixelHeight * 4;
     private byte[]? _pixels;
-    private const double ToolbarHeight = 44;
+    internal const double ToolbarHeight = 44;
     private const double SourceButtonWidth = 60;
     internal static readonly Size PreviewSize = new(VideoSize.Width, VideoSize.Height + ToolbarHeight);
     internal static readonly Size DockSize = new(48, 48);
     private const double Corner = 12;
     private readonly bool _contrast = DesktopStyle.HighContrastEnabled();
     private readonly Grid _aperture = new();
+    private readonly Grid _toolbar = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
     private readonly StackPanel _choices = new()
     {
         Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left,
@@ -54,14 +55,11 @@ internal sealed class BanbanCameraLens : Grid
         _secondary = _contrast ? Brushes.Black : SecondaryInk;
         var surface = _contrast ? Brushes.White : ToolFill;
         var rim = _contrast ? Brushes.Black : ToolEdge;
-        _aperture.Width = PreviewSize.Width;
-        _aperture.Height = PreviewSize.Height;
         _aperture.RowDefinitions = new RowDefinitions
         {
-            new(VideoSize.Height, GridUnitType.Pixel), new(ToolbarHeight, GridUnitType.Pixel)
+            new(VideoSize.Height, GridUnitType.Pixel), new(1, GridUnitType.Star)
         };
         _aperture.Background = _contrast ? Brushes.Black : DesktopStyle.Brush("#24394A");
-        _aperture.Clip = new RectangleGeometry(new Rect(PreviewSize), Corner, Corner);
         _waiting = new Border
         {
             Background = surface, IsHitTestVisible = false,
@@ -75,17 +73,17 @@ internal sealed class BanbanCameraLens : Grid
         _aperture.Children.Add(_frame);
         _aperture.Children.Add(_waiting);
 
-        var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
         var bar = new Border
         {
-            Background = surface, Padding = new Thickness(4, 0), Child = toolbar
+            Background = surface, Padding = new Thickness(4, 0),
+            Child = new Viewbox { StretchDirection = StretchDirection.DownOnly, Child = _toolbar }
         };
         Grid.SetRow(bar, 1);
         _aperture.Children.Add(bar);
         _source = LensButton("相机来源", IconPair(_sourceFace, Glyph("chevron-down", 12, _secondary)),
             SourceButtonWidth, () => ShowChoices(true), fill: _contrast ? Brushes.White : ToolHover);
         _source.HorizontalAlignment = HorizontalAlignment.Left;
-        toolbar.Children.Add(_source);
+        _toolbar.Children.Add(_source);
 
         _phoneCheck = Glyph("check", 14, _accent);
         _boardCheck = Glyph("check", 14, _accent);
@@ -101,14 +99,14 @@ internal sealed class BanbanCameraLens : Grid
             if (e.Property == IsKeyboardFocusWithinProperty && _choices.IsVisible && !_choices.IsKeyboardFocusWithin)
                 ShowChoices(false, focus: false);
         };
-        toolbar.Children.Add(_choices);
+        _toolbar.Children.Add(_choices);
 
         _fold = LensButton("收起取景，继续扫码", Glyph("minimize-2", 18, _secondary), 44, () => Request("fold"));
         var stop = LensButton("关闭当前相机", Glyph("video-off", 18, _secondary), 44, () => Request("stop"));
         Grid.SetColumn(_fold, 1);
         Grid.SetColumn(stop, 2);
-        toolbar.Children.Add(_fold);
-        toolbar.Children.Add(stop);
+        _toolbar.Children.Add(_fold);
+        _toolbar.Children.Add(stop);
         var outline = new Border
         {
             CornerRadius = new CornerRadius(Corner), BorderThickness = new Thickness(1), BorderBrush = rim,
@@ -119,7 +117,7 @@ internal sealed class BanbanCameraLens : Grid
         Children.Add(_aperture);
         _dock = LensButton("展开取景，正在扫码", Icon("scan-line", 22, _accent), DockSize.Width, () => Request("open"), dock: true);
         _dock.Clip = new RectangleGeometry(new Rect(DockSize), DockSize.Height / 2, DockSize.Height / 2);
-        Children.Add(_dock);
+        Children.Add(new Viewbox { StretchDirection = StretchDirection.DownOnly, Child = _dock });
         _staleFrame.Tick += (_, _) => ClearFrame();
         DetachedFromVisualTree += (_, _) => ClearFrame();
     }
@@ -230,8 +228,6 @@ internal sealed class BanbanCameraLens : Grid
         _state = view;
         ShowChoices(false, focus: false);
         IsVisible = view is not null;
-        Width = Footprint.Width;
-        Height = Footprint.Height;
         if (view is null) return;
         _aperture.IsVisible = !view.Folded;
         _dock.IsVisible = view.Folded;
@@ -248,6 +244,21 @@ internal sealed class BanbanCameraLens : Grid
         if (moveFocus) (view.Folded ? _dock : _fold).Focus();
     }
 
+    internal void SetFootprint(Size size)
+    {
+        if (Width == size.Width && Height == size.Height) return;
+        Width = size.Width;
+        Height = size.Height;
+        if (_state is not { Folded:false }) return;
+        _aperture.Width = size.Width;
+        _aperture.Height = size.Height;
+        _aperture.RowDefinitions[0].Height = new GridLength(size.Width * 9 / 16);
+        _aperture.Clip = new RectangleGeometry(new Rect(size), Corner, Corner);
+        _toolbar.Height = ToolbarHeight;
+        // Keep touch targets full size whenever the available preview width can fit all choices.
+        _toolbar.Width = Math.Max(2 * SourceButtonWidth + 3 * ToolbarHeight, size.Width - 8);
+    }
+
     private static void SetChoice(Button button, Viewbox check, string label, bool selected)
     {
         button.IsEnabled = !selected;
@@ -262,7 +273,8 @@ internal sealed class BanbanCameraLens : Grid
 
     internal bool ContainsInteractive(Point p)
     {
-        return _state is { } view && new RoundedRect(new Rect(Footprint), view.Folded ? DockSize.Height / 2 : Corner).ContainsExclusive(p);
+        return _state is { } view && new RoundedRect(new Rect(new Size(Width, Height)),
+            view.Folded ? Height / 2 : Corner).ContainsExclusive(p);
     }
 
     internal void ShowFrame(string key,string data)

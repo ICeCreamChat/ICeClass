@@ -22,6 +22,7 @@ async function open({unknown=false,status='pending',roundStatus='collecting',que
     constructor(options){window.testScanner=this;this.options=options;this.running=false;this.starts=0;}
     start(){this.starts++;this.running=true;return Promise.resolve();}
     stop(){this.running=false;}
+    setReading(enabled){this.reading=enabled;}
     reset(key,count){this.key=key;this.optionCount=count;}
     cardsInView(){return new Map([[1,'A']]);}
     waitForNewPresentation(cards){this.held=[...cards];}
@@ -154,6 +155,76 @@ test('白板停止提供本轮状态时释放手机镜头，恢复连接后由�
     fixture.waiting=false;fixture.boardOnline=true;
     await page.getByRole('button',{name:'开启相机'}).waitFor();
     assert.equal(await page.evaluate(()=>window.testScanner.running),false);
+  }finally{await context.close();}
+});
+
+test('扫码收答遇到暂时断网，保留镜头，校验新代次才收下一项',async()=>{
+  const {page,context,fixture}=await open({scan:{},questionType:'multiple'});
+  try{
+    await page.getByRole('button',{name:'关闭相机'}).waitFor();
+    fixture.pollStatus=503;
+    await page.getByText('正在重连',{exact:true}).waitFor({timeout:5000});
+    assert.deepEqual(await page.evaluate(()=>[testScanner.running,testScanner.reading,testScanner.starts]),[true,false,1]);
+    const blocked=await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'A'}).then(()=>false,()=>true));
+    assert.equal(blocked,true);
+    assert.deepEqual(fixture.commands,[]);
+    Object.assign(fixture.state,{activeOption:'B',generation:3,seq:4});
+    fixture.pollStatus=200;
+    await page.getByText('多选 · 收 B 项',{exact:true}).waitFor();
+    assert.deepEqual(await page.evaluate(()=>[testScanner.running,testScanner.reading,testScanner.starts,testScanner.held]),
+      [true,true,1,[[1,'A']]]);
+    const answer=page.waitForResponse(res=>res.url().endsWith('/commands'));
+    await page.evaluate(()=>{void testScanner.options.onRead({cardNumber:2,option:'A'});});
+    assert.deepEqual((await answer).request().postDataJSON().payload,{cardNumber:2,option:'A',targetOption:'B'});
+    assert.equal(fixture.commands[0].generation,3);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('扫码断网超出恢复窗口会关镜头，重新联网后手动开启',async()=>{
+  const {page,context,fixture}=await open({scan:{}});
+  try{
+    await page.getByRole('button',{name:'关闭相机'}).waitFor();
+    fixture.pollStatus=0;
+    await page.getByText('正在重连',{exact:true}).waitFor({timeout:5000});
+    await page.getByText('白板离线',{exact:true}).waitFor({timeout:15000});
+    assert.deepEqual(await page.evaluate(()=>[testScanner.running,testScanner.starts]),[false,1]);
+    fixture.pollStatus=200;
+    await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+    const camera=page.getByRole('button',{name:'开启相机'});
+    await camera.waitFor({timeout:16000});
+    assert.equal(await page.evaluate(()=>testScanner.running),false);
+    await camera.click();
+    assert.deepEqual(await page.evaluate(()=>[testScanner.running,testScanner.starts]),[true,2]);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
+
+test('扫码正在重连时手动关闭或切到后台，恢复连接后保持关闭',async()=>{
+  const {page,context,fixture}=await open({scan:{}});
+  try{
+    const close=page.getByRole('button',{name:'关闭相机'});
+    const openCamera=page.getByRole('button',{name:'开启相机'});
+    for(const background of [false,true]){
+      await close.waitFor();
+      fixture.pollStatus=0;
+      await page.getByText('正在重连',{exact:true}).waitFor();
+      if(background)await page.evaluate(()=>{
+        Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      else await close.click();
+      assert.equal(await page.evaluate(()=>testScanner.running),false);
+      fixture.pollStatus=200;
+      await page.evaluate(hidden=>{
+        if(hidden){delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));}
+        else window.dispatchEvent(new Event('online'));
+      },background);
+      await openCamera.waitFor();
+      assert.deepEqual(await page.evaluate(()=>[testScanner.running,testScanner.starts]),[false,background?2:1]);
+      if(!background)await openCamera.click();
+    }
+    assert.deepEqual(fixture.errors,[]);
   }finally{await context.close();}
 });
 
@@ -353,7 +424,8 @@ function previewCamera(){
 
 async function connectPreviewBoard(page,fixture,{video,legacyPhone=false}){
   await page.addScriptTag({url:origin+'/card-quiz/cards.js'});
-  await page.getByRole('button',{name:'开启相机'}).click();
+  if(await page.getByRole('button',{name:'开启相机'}).isVisible())
+    await page.getByRole('button',{name:'开启相机'}).click();
   await page.getByRole('button',{name:'关闭相机'}).waitFor();
   const offer=await page.evaluate(async({video,legacyPhone})=>{
     window.previewMessages=[];window.jpegEncodes=0;
@@ -389,6 +461,38 @@ async function connectPreviewBoard(page,fixture,{video,legacyPhone=false}){
   await page.waitForFunction(()=>board.channel?.readyState==='open');
   return {offer,answer};
 }
+
+test('扫码手机短时断网后复用镜头和取景，丢失的发送回执按原请求查询',async()=>{
+  const {page,context,fixture}=await open({scan:{},setupCamera:previewCamera});
+  try{
+    await page.getByRole('button',{name:'关闭相机'}).waitFor();
+    await connectPreviewBoard(page,fixture,{video:true});
+    await page.evaluate(()=>{
+      window.scannerTrack=document.getElementById('camera').srcObject.getVideoTracks()[0];
+      board.send(JSON.stringify({view:'current-view',round:'round-1',generation:2,visible:true}));
+    });
+    await page.waitForFunction(()=>phonePeer.videoSender.track===scannerTrack && boardVideo.currentTime>0);
+    fixture.unknown=true;
+    await page.evaluate(()=>{window.previewCard=1;});
+    await page.getByText('正在重连',{exact:true}).waitFor({timeout:5000});
+    assert.equal(await page.locator('#received').innerText(),'0');
+    assert.deepEqual(await page.evaluate(()=>[scannerTrack.readyState,Boolean(phonePeer.closed),phonePeer.videoSender.track===scannerTrack]),['live',false,true]);
+    const id=fixture.commands[0].id;
+    fixture.unknown=false;
+    fixture.state={...fixture.state,seq:4,received:1};
+    fixture.receipts=[{id,status:'confirmed',result:{state:copy(fixture.state)}}];
+    const recovery=await page.waitForResponse(r=>new URL(r.url()).searchParams.getAll('commandId').includes(id));
+    assert.equal(new URL(recovery.url()).searchParams.get('preview'),'phone-preview');
+    await page.getByText('正在收答',{exact:true}).waitFor();
+    assert.equal(await page.locator('#received').innerText(),'1');
+    assert.deepEqual(await page.evaluate(()=>[cameraOpens,Boolean(phonePeer.closed),phonePeer.videoSender.track===scannerTrack]),[1,false,true]);
+    const next=page.waitForResponse(r=>r.url().endsWith('/commands') && r.request().postDataJSON().payload.cardNumber===2);
+    await page.evaluate(()=>{window.previewCard=2;});
+    await next;
+    assert.deepEqual(fixture.commands.map(command=>command.payload.cardNumber),[1,2]);
+    assert.deepEqual(fixture.errors,[]);
+  }finally{await context.close();}
+});
 
 test('手机 WebRTC 连续传原镜头和匿名角点，收起停发视频仍能识卡，再展开复用轨道',async()=>{
   const {page,context,fixture}=await open({setupCamera:previewCamera});

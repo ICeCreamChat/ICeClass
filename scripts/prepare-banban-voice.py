@@ -28,7 +28,10 @@ def verify_manifest(directory):
         path = directory / name
         if not path.is_file() or digest(path) != entry["sha256"]:
             raise ValueError(f"Missing or corrupt voice asset: {path}")
-        if "size" in entry and path.stat().st_size != entry["size"]:
+        size = entry.get("size")
+        if type(size) is not int:
+            raise ValueError(f"Voice asset manifest has missing or invalid size: {path}")
+        if size <= 0 or path.stat().st_size != size:
             raise ValueError(f"Voice asset size mismatch: {path}")
     return manifest
 

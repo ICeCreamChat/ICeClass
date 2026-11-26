@@ -191,6 +191,7 @@ internal sealed partial class BanbanPetWindow
         Width = placement.Size.Width; Height = placement.Size.Height; Position = placement.Position;
         _wheelScale = placement.Scale; _companionScale = placement.CompanionScale; _wheelPetTop = placement.PetTop;
         _wheelOffset = placement.Wheel; _lensOffset = placement.Lens;
+        _cameraLens.SetFootprint(placement.LensSize);
         ArrangeClassroomWheel();
     }
 
@@ -206,34 +207,45 @@ internal sealed partial class BanbanPetWindow
         if (screen is not null) PositionClassroom(anchor, screen, fixedCenter ?? WheelCenterOnScreen());
     }
 
-    internal static (PixelPoint Position, Size Size, double Scale, double PetTop, Point Wheel, Point Lens, double CompanionScale) FitClassroom(
+    internal static (PixelPoint Position, Size Size, double Scale, double PetTop, Point Wheel, Point Lens, double CompanionScale, Size LensSize) FitClassroom(
         PixelPoint anchor, PixelRect work, double dpi, double restWidth, double petScale, bool right,
         Size lens = default, PixelPoint? wheelCenter = null, int wheelSizePercent = 100)
     {
         const double gap = 8;
         var wheelZoom = Math.Clamp(wheelSizePercent, MinWheelPercent, MaxWheelPercent) / 100d;
-        var disc = BanbanClassroomWheel.Diameter * wheelZoom;
-        // Use disc-local coordinates so a wider lens can extend on either side of the wheel.
-        Rect AboveDisc(Size camera) => new((disc - camera.Width) / 2, -gap - camera.Height, camera.Width, camera.Height);
-        var row = new Rect(right ? 0 : -restWidth, 0, disc + restWidth, disc);
+        var diameter = BanbanClassroomWheel.Diameter * wheelZoom;
         var hasLens = lens.Height > 0;
-        var bounds = hasLens ? row.Union(AboveDisc(lens)) : row;
-        // Folding shrinks the host, but keeps the scale needed to reopen at the same center.
-        var fit = hasLens ? bounds.Union(AboveDisc(BanbanCameraLens.PreviewSize)) : row;
-        var scale = Math.Min(1, Math.Min(work.Width / (dpi * fit.Width), work.Height / (dpi * fit.Height)));
-        var size = bounds.Size * scale;
-        var wheel = new Point(-bounds.X * scale, -bounds.Y * scale);
-        var lensOffset = new Point(wheel.X + (disc - lens.Width) * scale / 2, 0);
+        var video = hasLens ? BanbanCameraLens.VideoSize * wheelZoom : default;
+        var toolbar = hasLens ? Math.Min(BanbanCameraLens.ToolbarHeight, work.Height / dpi / 2) : 0;
+        // Reserve space for the expanded video even when folded so it can reopen at the same center.
+        var overhang = Math.Max(0, (video.Width - diameter) / 2);
+        var fitWidth = diameter + overhang + Math.Max(restWidth, overhang);
+        var fitHeight = diameter + (hasLens ? gap + video.Height : 0);
+        var scale = Math.Min(1, Math.Min(work.Width / (dpi * fitWidth), (work.Height / dpi - toolbar) / fitHeight));
+        var expanded = new Size(video.Width * scale, video.Height * scale + toolbar);
+        var dock = BanbanCameraLens.DockSize;
+        var camera = lens == dock ? dock * Math.Min(1, Math.Min(expanded.Width, expanded.Height) / dock.Width) : expanded;
+        var disc = diameter * scale;
+        var companionWidth = restWidth * scale;
+        // Use disc-local coordinates so a wider lens can extend on either side of the wheel.
+        var lensBounds = new Rect((disc - camera.Width) / 2, -gap * scale - camera.Height, camera.Width, camera.Height);
+        var row = new Rect(right ? 0 : -companionWidth, 0, disc + companionWidth, disc);
+        var bounds = hasLens ? row.Union(lensBounds) : row;
+        // The host is positioned in physical pixels. Reserve the last fractional pixel for the lens and disc.
+        var size = new Size(Math.Min(work.Width, Math.Ceiling(bounds.Width * dpi)) / dpi,
+            Math.Min(work.Height, Math.Ceiling(bounds.Height * dpi)) / dpi);
+        var wheel = new Point(-bounds.X, -bounds.Y);
+        var lensOffset = new Point(wheel.X + lensBounds.X, 0);
 
-        var petCenterX = wheel.X + (right ? disc + restWidth / 2 : -restWidth / 2) * scale;
-        var left = wheelCenter is { } center ? center.X - (int)Math.Round((wheel.X + disc * scale / 2) * dpi)
+        var petCenterX = wheel.X + (right ? disc + companionWidth / 2 : -companionWidth / 2);
+        var left = wheelCenter is { } center ? center.X - (int)Math.Round((wheel.X + disc / 2) * dpi)
             : anchor.X - (int)Math.Round(petCenterX * dpi);
         var position = Constrain(new PixelPoint(left,
-            (wheelCenter?.Y ?? anchor.Y) - (int)Math.Round((wheel.Y + disc * scale / 2) * dpi)), work, size, dpi);
-        var petHeight = Math.Max(44, 130 * petScale);
+            (wheelCenter?.Y ?? anchor.Y) - (int)Math.Round((wheel.Y + disc / 2) * dpi)), work, size, dpi);
+        var petHeight = Math.Max(44, 130 * petScale) * scale;
         var petTop = Math.Clamp((anchor.Y - position.Y) / dpi - 65 * petScale * scale,
-            wheel.Y, wheel.Y + Math.Max(0, disc - petHeight) * scale);
-        return (position, size, scale * wheelZoom, petTop, wheel, lensOffset, scale);
+            wheel.Y, wheel.Y + Math.Max(0, disc - petHeight));
+        return (position, size, scale * wheelZoom, petTop, wheel, lensOffset, scale, camera);
     }
 
     private void ArrangeClassroomWheel()
@@ -248,8 +260,6 @@ internal sealed partial class BanbanPetWindow
         _classroomWheel.RenderTransformOrigin = RelativePoint.TopLeft;
         _classroomWheel.RenderTransform = _wheelScale == 1 ? null : new ScaleTransform(_wheelScale,_wheelScale);
         Canvas.SetLeft(_classroomWheel,_wheelOffset.X); Canvas.SetTop(_classroomWheel,_wheelOffset.Y);
-        _cameraLens.RenderTransformOrigin = RelativePoint.TopLeft;
-        _cameraLens.RenderTransform = _companionScale == 1 ? null : new ScaleTransform(_companionScale, _companionScale);
         Canvas.SetLeft(_cameraLens,_lensOffset.X); Canvas.SetTop(_cameraLens,_lensOffset.Y);
         ArrangeResizeGrip();
         ArrangeClassroomBrowser();

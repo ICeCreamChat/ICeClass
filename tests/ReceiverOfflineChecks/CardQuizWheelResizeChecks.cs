@@ -26,6 +26,7 @@ internal static class CardQuizWheelResizeChecks
     {
         var grip = Field<Control>(pet, "_resizeGrip");
         var lens = Field<BanbanCameraLens>(pet, "_cameraLens");
+        var image = Field<Image>(lens, "_frame");
         var mascot = Field<BanbanPetMascot>(pet, "_mascot");
         var preview = BanbanCameraLens.PreviewSize;
         await until(() => lens.IsEffectivelyVisible && lens.Footprint == preview && bounds(lens).Width > 0,
@@ -34,7 +35,8 @@ internal static class CardQuizWheelResizeChecks
         var focus = pet.FocusManager?.GetFocusedElement() as Control;
         var position = pet.Position;
         var originalDisc = bounds(wheel);
-        var mascotToLens = (double)bounds(mascot).Width / bounds(lens).Width;
+        double CompanionPixels() => Field<double>(pet, "_companionScale") * pet.RenderScaling;
+        var mascotWidth = bounds(mascot).Width / CompanionPixels();
         var labels = new[] { Field<TextBlock>(wheel, "_currentOption"), Field<TextBlock>(wheel, "_number"),
             Field<TextBlock>(wheel.ActivePrimary, "_caption") };
         var fontSizes = labels.Select(label => label.FontSize).ToArray();
@@ -57,7 +59,7 @@ internal static class CardQuizWheelResizeChecks
         int Percent() => ReadSettings()["WheelSizePercent"]!.GetValue<int>();
         JsonObject ReadSession() => store.Load()["journals"]!.AsArray().Single()!["session"]!.AsObject();
         PixelPoint GripCenter() => grip.PointToScreen(new Rect(grip.Bounds.Size).Center);
-        double VisiblePercent() => 100 * bounds(wheel).Width / Diameter * preview.Width / bounds(lens).Width;
+        double VisiblePercent() => 100 * bounds(wheel).Width / Diameter / CompanionPixels();
         Button ButtonNamed(string name) => wheel.GetVisualDescendants().OfType<Button>()
             .Single(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == name);
         static bool BelongsTo(Visual? hit, Visual control) => hit == control || hit?.GetVisualAncestors().Contains(control) == true;
@@ -70,17 +72,22 @@ internal static class CardQuizWheelResizeChecks
         {
             var disc = bounds(wheel);
             var camera = bounds(lens);
+            var frame = bounds(image);
             var window = bounds((Visual)pet.Content!);
             var work = pet.Screens.ScreenFromPoint(requestedCenter)!.WorkingArea;
-            var companionPixels = camera.Width / preview.Width;
+            var companionPixels = CompanionPixels();
             var center = wheel.PointToScreen(Center);
+            check(Math.Abs(frame.Width - BanbanCameraLens.VideoSize.Width * disc.Width / Diameter) <= 3 &&
+                Math.Abs(frame.Height - frame.Width * 9d / 16) <= 2,
+                $"圆盘 {percent}% 时取景同倍率保持 16:9（圆盘 {disc.Width} px，视频 {frame.Width} × {frame.Height} px）");
             check(work.Contains(window) && window.Contains(disc) && window.Contains(camera) &&
                 CenterFits(center, requestedCenter, window, work) && Math.Abs(camera.Center.X - disc.Center.X) <= 2 &&
                 Math.Abs(disc.Y - camera.Bottom - 8 * companionPixels) <= 2 &&
-                Math.Abs(camera.Height - preview.Height * companionPixels) <= 2 &&
-                Math.Abs(bounds(mascot).Width - camera.Width * mascotToLens) <= 2 &&
+                Math.Abs(camera.Height - frame.Height - BanbanCameraLens.ToolbarHeight * pet.RenderScaling) <= 2 &&
+                Math.Abs(bounds(mascot).Width - mascotWidth * companionPixels) <= 2 &&
                 Math.Abs(disc.Width - Diameter * percent / 100 * companionPixels) <= 2 && Math.Abs(disc.Width - disc.Height) <= 1,
-                $"圆盘 {percent}% 与人物、取景分别适配，圆心只在碰边时移动（圆盘 {disc}，取景 {camera}，目标圆心 {requestedCenter}，工作区 {work}）");
+                $"圆盘 {percent}% 时视频居中、操作条保持 44 DIP，人物独立适配（窗口 {window}，圆盘 {disc}，取景 {camera}，" +
+                $"人物宽 {bounds(mascot).Width}/{mascotWidth * companionPixels:F1} px，实际/目标圆心 {center}/{requestedCenter}，工作区 {work}）");
             check(labels.Select((label, index) =>
             {
                 var em = label.PointToScreen(new Point(0, label.FontSize)).Y - label.PointToScreen(default).Y;
@@ -196,6 +203,7 @@ internal static class CardQuizWheelResizeChecks
                     "抬笔后恢复 100%，原轮仍收 A 项并保留两卡");
             }
             var trackId = await openingTrack;
+            await until(() => image.Source != null && bounds(image).Width > 0, "缩放检查前白板已显示首帧", null);
             var original = State();
             var session = ReadSession();
             CheckPlacement(check);
@@ -203,6 +211,19 @@ internal static class CardQuizWheelResizeChecks
                 1.5, "单指从下一项扇面外沿连续放大");
             await Drag(PointerType.Mouse, wheel.PointToScreen(new Point(Radius, Radius - 115)), wheel,
                 2.6, "鼠标从空白盘沿拖至上限");
+            var enlargedFrame = bounds(image).Size;
+            var enlargedCenter = wheel.PointToScreen(Center);
+            void ClickLens(string name) => lens.GetVisualDescendants().OfType<Button>()
+                .Single(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == name)
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            ClickLens("收起取景，继续扫码");
+            await until(() => lens.Footprint == BanbanCameraLens.DockSize && image.Source == null,
+                "放大后收起只显示扫描按钮", null);
+            ClickLens("展开取景，正在扫码");
+            await until(() => image.Source != null && bounds(image).Size == enlargedFrame,
+                "展开恢复放大后的连续取景", null);
+            check(wheel.PointToScreen(Center) == enlargedCenter && await LiveTrackId() == trackId,
+                "收起再展开保留圆心和原摄像头轨道");
             KeySize(Key.Up, 200);
             CheckReload(petSettingsPath, Field<ReceiverConfig>(pet, "_classroomBinding"), check);
             await Drag(PointerType.Mouse, GripCenter(), grip, .25, "鼠标从把手拖至下限");
@@ -342,19 +363,22 @@ internal static class CardQuizWheelResizeChecks
                 var window = new PixelRect(fit.Position, PixelSize.FromSize(fit.Size, dpi));
                 var surface = new Rect(fit.Size).Inflate(.001);
                 var disc = new Rect(fit.Wheel, new Size(Diameter, Diameter) * fit.Scale);
-                var camera = new Rect(fit.Lens, lens * fit.CompanionScale);
+                var camera = new Rect(fit.Lens, fit.LensSize);
                 var petWidth = rest * fit.CompanionScale;
                 var companion = new Rect(right ? disc.Right : disc.X - petWidth, fit.PetTop, petWidth, 130 * petScale * fit.CompanionScale);
                 var actual = new PixelPoint(fit.Position.X + (int)Math.Round(disc.Center.X * dpi),
                     fit.Position.Y + (int)Math.Round(disc.Center.Y * dpi));
                 var lensFits = lens == default || surface.Contains(camera) && Math.Abs(camera.Center.X - disc.Center.X) <= .001 &&
                     Math.Abs(disc.Top - camera.Bottom - 8 * fit.CompanionScale) <= .001;
+                var videoFollows = lens != BanbanCameraLens.PreviewSize ||
+                    Math.Abs(camera.Width - BanbanCameraLens.VideoSize.Width * fit.Scale) <= .001 &&
+                    Math.Abs(camera.Height - BanbanCameraLens.VideoSize.Height * fit.Scale - BanbanCameraLens.ToolbarHeight) <= .001;
                 var foldKeepsCenter = lens != BanbanCameraLens.DockSize || Math.Abs(fit.Scale - expandedScale) <= .00001 &&
                     Math.Abs(actual.X - center.X) <= 1 && Math.Abs(actual.Y - center.Y) <= 1;
                 if (fit.CompanionScale is <= 0 or > 1 || work == roomy && fit.CompanionScale != 1 ||
                     Math.Abs(fit.Scale - fit.CompanionScale * percent / 100) > .00001 ||
                     !work.Contains(window) || !surface.Contains(disc) || !surface.Contains(companion) ||
-                    !CenterFits(actual, center, window, work) || !lensFits || !foldKeepsCenter)
+                    !CenterFits(actual, center, window, work) || !lensFits || !videoFollows || !foldKeepsCenter)
                     throw new InvalidOperationException($"圆盘适配异常 {work} @ {dpi}，右停靠 {right}，{percent}%，取景 {lens}，" +
                         $"盘/人物倍率 {fit.Scale}/{fit.CompanionScale}，窗口 {window}，目标圆心 {center}，实际 {actual}");
                 if (lens == BanbanCameraLens.PreviewSize) { expandedScale = fit.Scale; center = actual; }

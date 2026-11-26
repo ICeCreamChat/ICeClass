@@ -458,9 +458,12 @@ class CardQuizTests(CardQuizHttpCase):
         await self.api('POST', '/pair', {'code': pair['code']}, 409)
 
     async def test_scan_invite_connects_without_a_login_and_only_collects_confirmed_cards(self):
-        board = self.batch(self.journal([{'action': 'add_question', 'payload': question()}], card_mode='scanned'))
+        board = self.batch(self.journal([
+            {'action': 'add_question', 'payload': question()}, {'action': 'start_round'}
+        ], card_mode='scanned'))
         await self.sync(board)
         sid = board['session']['id']
+        round_id = board['session']['currentRoundId']
         offer = await self.api('POST', '/device/pair', {'sessionId': sid, 'quickScan': True}, headers=self.dh)
         link = urlsplit(offer['url'])
         self.assertEqual((link.path, link.query), ('/card-quiz/phone.html', ''))
@@ -483,10 +486,20 @@ class CardQuizTests(CardQuizHttpCase):
         with patch.object(service, 'now_ms', return_value=service.now_ms() + 20000):
             self.assertFalse((await self.api('GET', path, headers=mobile))['boardOnline'])
         await self.api('GET', path, status=403, headers=second)
-        board = self.advance(board, 'set_source', {'source': 'phone', 'sourceId': pid})
+        # The board continues to collect while the phone claims its invitation.
+        saved_seq = board['session']['seq']
+        scanned = self.advance(board, 'answer', {'cardNumber': 3, 'option': 'A'})
+        old_state = public_state(scanned['session'], '高一（1）班')
+        offer_state = await self.api('POST', '/device/relay', {'sessionId': sid, 'state': old_state, 'receipts': []}, headers=self.dh)
+        self.assertTrue(any(p['pairId'] == pid and p['claimed'] for p in offer_state['pairings']))
+        handoff = self.journal([
+            {'action': 'recover'}, {'action': 'set_source', 'payload': {'source': 'phone', 'sourceId': pid}}
+        ], base=scanned['session'])
+        board = self.batch(handoff, saved_seq + 2)
+        board['fromSeq'] = saved_seq + 1
+        board['events'] = scanned['events'] + board['events']
         await self.sync(board)
-        board = self.advance(board, 'start_round')
-        await self.sync(board)
+        board = self.advance(board, 'resume_round')
         state = public_state(board['session'], '高一（1）班')
         relay = {'sessionId': sid, 'state': state, 'receipts': []}
         stamp = service.now_ms() + 22000
@@ -494,8 +507,9 @@ class CardQuizTests(CardQuizHttpCase):
             await self.api('POST', '/device/relay', relay, headers=self.dh)
             current = await self.api('GET', path, headers=mobile)
             self.assertTrue(current['connected'])
-            self.assertEqual(current['state']['received'], 0)
-            self.assertEqual(current['state']['participantCount'], 0)
+            self.assertEqual(current['state']['roundId'], round_id)
+            self.assertEqual(current['state']['received'], 1)
+            self.assertEqual(current['state']['participantCount'], 1)
             self.assertNotIn('roster', current['state'])
             for action in ('start_round', 'end_round', 'edit_question', 'set_multi_option'):
                 await self.api('POST', path + '/commands', {'action': action}, 403, mobile)
@@ -505,8 +519,9 @@ class CardQuizTests(CardQuizHttpCase):
                        'payload': {'cardNumber': number, 'option': option}}
                 response = await self.api('POST', path + '/commands', cmd, headers=mobile)
                 self.assertEqual(response['status'], 'pending')
+        await self.sync(board)
         with patch.object(service, 'now_ms', return_value=stamp + 1500):
-            self.assertEqual((await self.api('GET', path, headers=mobile))['state']['received'], 0)
+            self.assertEqual((await self.api('GET', path, headers=mobile))['state']['received'], 1)
             delivery = await self.api('POST', '/device/relay', relay, headers=self.dh)
         self.assertEqual(len(delivery['commands']), 2)
         receipts = []
@@ -521,8 +536,8 @@ class CardQuizTests(CardQuizHttpCase):
             await self.api('POST', '/device/relay', {**relay, 'state': public_state(board['session'], state['className']),
                                                      'receipts': receipts}, headers=self.dh)
             saved = await self.api('GET', path + '?commandId=scan-card-1&commandId=scan-card-2', headers=mobile)
-            self.assertEqual(saved['state']['received'], 2)
-            self.assertEqual(saved['state']['participantCount'], 2)
+            self.assertEqual(saved['state']['received'], 3)
+            self.assertEqual(saved['state']['participantCount'], 3)
             self.assertEqual([r['status'] for r in saved['receipts']], ['confirmed', 'confirmed'])
         for secret in (invite['invite'], mobile['X-ICeClass-Scanner']):
             self.assertNotIn(secret, '\n'.join(self.db.db.iterdump()))

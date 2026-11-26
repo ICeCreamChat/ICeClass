@@ -10,12 +10,22 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / 'Receiver/Assets/Voice/Tts'
 MODEL_SHA256 = 'bf30582eb1b012250a35b1a4a80e7dfbcf8485e7bb9de0d95efbbeef0e4ad86d'
+VAD_SHA256 = '6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396'
 UPSTREAM = 'a0d5c6a264c0ef92d70d8661d8cc502d79627cd6'
 
 
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def write_vad_manifest(model, sha256):
+    manifest = {'license': 'MIT', 'files': [
+        {'name': model.name, 'size': model.stat().st_size, 'sha256': sha256}]}
+    path = model.parent / 'manifest.json'
+    content = json.dumps(manifest, indent=2) + '\n'
+    if not path.is_file() or path.read_text(encoding='utf-8') != content:
+        path.write_text(content, encoding='utf-8')
 
 
 def prepare(source, archive):
@@ -53,8 +63,7 @@ def prepare(source, archive):
     model = vad / 'silero_vad_v5.onnx'
     if not model.exists():
         urllib.request.urlretrieve('https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad_v5.onnx', model)
-    (vad / 'manifest.json').write_text(json.dumps({'license': 'MIT', 'files': [
-        {'name': model.name, 'sha256': digest(model)}]}, indent=2) + '\n', encoding='utf-8')
+    write_vad_manifest(model, digest(model))
     vad_license = ROOT / 'docs/licenses/SileroVAD-LICENSE.txt'
     if not vad_license.exists():
         urllib.request.urlretrieve('https://raw.githubusercontent.com/snakers4/silero-vad/master/LICENSE', vad_license)
@@ -74,9 +83,10 @@ def main():
                         and digest(TARGET / part['name']) == part['sha256']
                         for part in manifest['parts'])
                 and vad.is_file()
-                and digest(vad) == '6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396'
+                and digest(vad) == VAD_SHA256
                 and (ROOT / 'docs/licenses/MeloTTS-LICENSE.txt').is_file()
                 and (ROOT / 'docs/licenses/SileroVAD-LICENSE.txt').is_file()):
+            write_vad_manifest(vad, VAD_SHA256)
             print(json.dumps({'prepared': True, 'reusedVerifiedPacks': True,
                               'persistentDownloadCache': False}))
             return

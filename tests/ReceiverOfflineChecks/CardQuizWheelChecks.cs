@@ -92,7 +92,7 @@ internal static class CardQuizWheelChecks
                             var placement = BanbanPetWindow.FitClassroom(new PixelPoint(anchorX,475),work,dpi,100,.8,right,lensSize);
                             var area = new Rect(placement.Size);
                             var disc = new Rect(placement.Wheel,new Size(240,240)*placement.Scale);
-                            var aperture = new Rect(placement.Lens,lensSize*placement.Scale);
+                            var aperture = new Rect(placement.Lens,placement.LensSize);
                             var window = new PixelRect(placement.Position, PixelSize.FromSize(placement.Size, dpi));
                             if (!work.Contains(window) || !area.Inflate(.001).Contains(disc) || !area.Inflate(.001).Contains(aperture) ||
                                 Math.Abs(aperture.Center.X-disc.Center.X) > .001 || Math.Abs(disc.Y-aperture.Bottom-8*placement.Scale) > .001)
@@ -554,6 +554,22 @@ internal static class CardQuizWheelChecks
                         await Task.Delay(6000);
                         var fps = frames / watch.Elapsed.TotalSeconds;
                         Check(fps >= 20 && ReferenceEquals(image.Source,liveBitmap), $"原生取景 {fps:F1} 帧/秒，六秒采样 {frames} 帧，复用同一显示位图");
+                        var core = host.Browser.Core!;
+                        await core.ExecuteScriptAsync("""
+                            (() => {
+                                const acknowledge = CardQuizClassroomVideo.prototype.acknowledge;
+                                CardQuizClassroomVideo.prototype.acknowledge = function(message) {
+                                    if (message.type === 'preview-consumed') setTimeout(() => acknowledge.call(this,message),80);
+                                    else acknowledge.call(this,message);
+                                };
+                            })()
+                            """);
+                        var beforeDelay = frames;
+                        watch.Restart();
+                        await Task.Delay(4000);
+                        var delayedFps = (frames - beforeDelay) / watch.Elapsed.TotalSeconds;
+                        Check(delayedFps >= fps * .9 && ReferenceEquals(image.Source,liveBitmap),
+                            $"白板每帧确认额外延迟 80 ms 时仍交付 {delayedFps:F1} 帧/秒，原始取景 {fps:F1} 帧/秒");
                         var renderedFrames = new HashSet<string>();
                         for (var sample = 0; sample < 5; sample++)
                         {

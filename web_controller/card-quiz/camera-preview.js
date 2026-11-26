@@ -2,6 +2,8 @@
 (() => {
   'use strict';
   const size = 288;
+  const disconnectGrace = 8000;
+  const channelTimeout = 12000;
   const prefix = 'data:image/jpeg;base64,';
   function frameSampler() {
     let canvas, ctx, next = 0;
@@ -66,7 +68,15 @@
       };
       this.pc.ondatachannel = event => attach(event.channel);
       this.pc.onconnectionstatechange = () => {
-        if (['failed','disconnected','closed'].includes(this.pc.connectionState)) this.close();
+        const state = this.pc.connectionState;
+        if (state === 'disconnected') {
+          this.disconnectTimer ??= setTimeout(() => this.close(), disconnectGrace);
+          return;
+        }
+        if (state === 'connected') {
+          clearTimeout(this.disconnectTimer);
+          this.disconnectTimer = undefined;
+        } else if (state === 'failed' || state === 'closed') this.close();
       };
       this.createChannel = () => attach(this.pc.createDataChannel('banban-preview'));
     }
@@ -114,7 +124,7 @@
     waitForChannel() {
       if (this.channel?.readyState !== 'open' && !this.closed) {
         clearTimeout(this.deadline);
-        this.deadline = setTimeout(() => this.close(), 12000);
+        this.deadline = setTimeout(() => this.close(), channelTimeout);
       }
     }
     send(value) {
@@ -125,11 +135,12 @@
       if (this.closed) return;
       this.closed = true;
       clearTimeout(this.deadline);
+      clearTimeout(this.disconnectTimer);
       this.finishGathering?.();
       this.channel?.close();
       this.pc.close();
       this.onClose();
     }
   }
-  window.CardQuizPreview = {frameSampler, validFrame, Peer};
+  window.CardQuizPreview = {frameSampler, validFrame, Peer, channelTimeout};
 })();

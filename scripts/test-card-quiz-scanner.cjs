@@ -103,6 +103,20 @@ test('换项后留在原位的卡不能沿用，转向和重新举起分别重�
   frame(turn);frame(turn);assert.deepEqual(frame(turn),[{cardNumber:1,option:'A'}]);
 });
 
+test('重连暂停提交期间仍跟踪举卡，换项后不能计入断网时已举的卡',()=>{
+  const stable=new Scanner.Stabilizer();
+  let time=0;
+  const frame=(option,reading)=>stable.feed([marker(option,0)],time+=150,2,reading);
+  for(let i=0;i<5;i++)assert.deepEqual(frame('A',false),[]);
+  const held=stable.cardsInView();
+  assert.deepEqual([...held],[[1,'A']]);
+  stable.reset();stable.waitForNewPresentation(held);
+  for(let i=0;i<4;i++)assert.deepEqual(frame('A',true),[]);
+  assert.deepEqual(frame('B',true),[]);
+  assert.deepEqual(frame('B',true),[]);
+  assert.deepEqual(frame('B',true),[{cardNumber:1,option:'B'}]);
+});
+
 test('全套 157 张打印图案各方向可还原同一卡号和字母',()=>{
   assert.equal(Cards.capacity,157);const detector=new AR.Detector({dictionaryName:'QCMCAM_4X4_157h3',maxHammingDistance:2});
   for(let number=1;number<=157;number++){let matrix=Cards.matrix(number);for(const option of ['A','D','C','B']){const matches=detector.detect(image(matrix)).filter(m=>m.id===number-1);assert.ok(matches.length,`卡 ${number} 朝向 ${option}`);assert.equal(Scanner.answerFromCorners(matches[0].corners),option);matrix=rotate(matrix);}}

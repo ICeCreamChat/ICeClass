@@ -39,8 +39,16 @@ async function open({width=1160,height=820,companion=false,journals=[],publicati
         if (fixture.failSync) throw new Error('学校服务暂时离线');
         fixture.journals.forEach(j=>j.syncedSeq=j.session.seq);return load();
       }
+      case'sync-session':{
+        const journal=fixture.journals.find(j=>j.session.id===body.sessionId);
+        const syncedSeq=journal.session.seq;
+        if (fixture.beforeSyncSession) await fixture.beforeSyncSession(journal.session);
+        journal.syncedSeq=syncedSeq;
+        return {syncedSeq};
+      }
       case'relay':{const commands=fixture.commands.splice(0);return{commands,pairings:fixture.pairings,...await fixture.relay?.(body)};}
       case'pair':
+        if (fixture.beforePair) await fixture.beforePair();
         fixture.pairId=crypto.randomUUID();
         if(quickScan){
           fixture.scanUrl=(fixture.inviteOrigin ?? endpoint)+'/card-quiz/phone.html#scan='+crypto.randomUUID().replaceAll('-','');
@@ -57,6 +65,7 @@ async function open({width=1160,height=820,companion=false,journals=[],publicati
     window.chrome.webview={addEventListener(type,fn){if(type==='message')listeners.push(fn);},postMessage(message){
       if(message.type==='companion-state')window.__quizWheelState=message.state;
       if(message.type==='suspended')(window.__quizSuspendReplies??=[]).push(message);
+      if(message.action==='cancel-pair')(window.__quizCancelledPairs??=[]).push(message.body.pairId);
       window.__quizNative(message).then(value=>{if(message.id)window.__quizReceive({type:'response',id:message.id,value});}).catch(error=>{if(message.id)window.__quizReceive({type:'response',id:message.id,error:error.message});});
     }};
   });
@@ -90,6 +99,9 @@ async function startInPet(page,template='single:4'){
 }
 async function waitPanel(page,name){
   await page.waitForFunction(name=>window.__quizWheelState.panel===name,name);
+}
+async function waitPhoneCode(page) {
+  await page.locator('#pair-qr svg').waitFor({state:'attached'});
 }
 async function openClassCards(page) {
   await sector(page,'missing'); await waitPanel(page,'exempt-dialog');
@@ -450,7 +462,7 @@ test('原班班的收答操作保持圆环，相机持续接收模拟视频',asy
 test('班班内显示配对码、确认换机、换回本机和按卡号免答',async()=>{
   const{page,context,fixture}=await open({scannerFixture:true,companion:true,width:280,height:280});
   try{
-    await startInPet(page);await sector(page,'source');await waitPanel(page,'pair-dialog');
+    await startInPet(page);await sector(page,'source');await waitPhoneCode(page);
     assert.equal(await page.locator('#pair-qr svg').count(),1);assert.equal(await page.locator('#confirm-phone').isDisabled(),true);
     fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
     await page.locator('#confirm-phone:not([disabled])').click();await waitPanel(page,'');
@@ -481,7 +493,7 @@ test('模拟班在圆心提示真机入口，不签发邀请或显示本机链�
 test('圆心显示完整的学校二维码，服务返回不可用的手机地址就撤回',async()=>{
   const {page,context,fixture}=await open({companion:true,quickScan:true,width:178,height:140});
   try {
-    await useNativeDisc(page); await startInPet(page); await sector(page,'source'); await waitPanel(page,'pair-dialog');
+    await useNativeDisc(page); await startInPet(page); await sector(page,'source'); await waitPhoneCode(page);
     const qr=page.locator('#pair-qr svg');
     const rect=await qr.boundingBox();
     assert.ok(rect && rect.width>=128 && rect.width===rect.height && rect.x>=0 && rect.y>=0 && rect.x+rect.width<=178 && rect.y+rect.height<=140);
@@ -490,6 +502,7 @@ test('圆心显示完整的学校二维码，服务返回不可用的手机地�
     for (const address of ['https://[::1]','http://school.example']) {
       fixture.inviteOrigin=address;
       await sector(page,'source'); await waitPanel(page,'pair-dialog');
+      await page.locator('#pair-dialog .disc-reader').getByText(/纸卡测试班|HTTPS 地址/).waitFor();
       assert.equal(await qr.count(),0);
       assert.equal(await page.locator('#confirm-phone').isVisible(),false);
       assert.doesNotMatch(await page.locator('#pair-dialog').innerText(),/#scan=|https?:/);
@@ -505,8 +518,8 @@ test('关掉或收起班班就撤回待扫的码，过期后手机不能接管',
   try {
     await startInPet(page);
     for (const action of ['back','suspend','exit','expire']) {
-      if(action==='expire')fixture.lifetime=1;
-      await sector(page,'source');await waitPanel(page,'pair-dialog');
+      if(action==='expire')fixture.lifetime=1000;
+      await sector(page,'source');await waitPhoneCode(page);
       const pid=fixture.pairId;
       if(action==='suspend')
         await page.evaluate(()=>window.__quizReceive({type:'visibility',visible:false}));
@@ -541,14 +554,14 @@ test('扫码直接恢复暂停的一轮，连接已封存的课堂时保留原�
     await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'A'}));
     const roundId=fixture.journals[0].session.currentRoundId;
     await page.locator('#pause').click();await page.locator('#source').click();
-    await page.locator('#pair-dialog[open]').waitFor();
+    await waitPhoneCode(page);
     fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
     await page.getByText('手机收答中，白板保存后确认',{exact:true}).waitFor();
     assert.equal(fixture.journals[0].session.currentRoundId,roundId);
     assert.equal(fixture.journals[0].session.questions[0].rounds[0].answers.s1.option,'A');
     await page.locator('#stop').click();await page.locator('#source').click();
     await page.waitForFunction(()=>document.getElementById('source').textContent.includes('使用手机'));
-    await page.locator('#source').click();await page.locator('#pair-dialog[open]').waitFor();
+    await page.locator('#source').click();await waitPhoneCode(page);
     fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
     await page.locator('#pair-dialog').waitFor({state:'hidden'});
     const rounds=fixture.journals[0].session.questions[0].rounds;
@@ -602,11 +615,187 @@ test('等待电脑相机授权时可取消取景，迟到的授权释放镜头',
   } finally {await context.close();}
 });
 
+test('从电脑取景获取手机码期间继续收卡，返回后撤回迟到的二维码',async()=>{
+  const {page,context,fixture}=await open({companion:true,quickScan:true,scannerFixture:true,width:178,height:140});
+  let releasePair;
+  try {
+    await useNativeDisc(page); await startInPet(page);
+    await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    const pairStarted = new Promise(resolve => {
+      fixture.beforePair = () => new Promise(release => { releasePair = release; resolve(); });
+    });
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await pairStarted;
+    assert.equal((await wheel(page)).lesson.phase,'collect');
+    assert.equal((await wheel(page)).preview.phone,false);
+    await waitPanel(page,'pair-dialog');
+    assert.match(await page.locator('#pair-dialog').innerText(),/正在获取二维码/);
+    assert.ok(await page.locator('#pair-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1));
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'C'}));
+    await page.keyboard.press('Escape'); await waitPanel(page,'');
+    assert.equal(fixture.journals[0].session.questions[0].rounds[0].answers.s1.option,'C');
+    fixture.beforePair = null;
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPanel(page,'pair-dialog');
+    assert.equal(fixture.messages.filter(message=>message.action==='pair').length,1);
+    releasePair();
+    await page.waitForFunction(()=>window.__quizCancelledPairs?.length===1,undefined,{timeout:2500});
+    const [oldPair] = await page.evaluate(()=>window.__quizCancelledPairs);
+    await waitPhoneCode(page);
+    assert.notEqual(oldPair,fixture.pairId);
+    assert.ok(!fixture.messages.some(message=>message.action==='cancel-pair' && message.body.pairId===fixture.pairId));
+    assert.equal(fixture.journals[0].session.source,'board');
+  } finally { releasePair?.(); await context.close(); }
+});
+
+test('二维码申请失败仍用电脑收答，同一轮可重新扫码接力',async()=>{
+  const {page,context,fixture}=await open({companion:true,quickScan:true,scannerFixture:true});
+  try {
+    await useNativeDisc(page); await startInPet(page);
+    await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    const initial = fixture.journals[0].session.currentRoundId;
+    fixture.beforePair = () => { throw new Error('获取二维码超时。'); };
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await page.locator('#pair-dialog .disc-reader').getByText(/获取二维码超时/).waitFor({timeout:2500});
+    assert.equal((await wheel(page)).cameraRunning,true);
+    assert.equal(await page.locator('#pair-qr svg').count(),0);
+    await sector(page,'back'); await waitPanel(page,'');
+    fixture.beforePair = null;
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPhoneCode(page);
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:2,option:'B'}));
+    assert.equal(await page.locator('#pair-qr svg').count(),1);
+    fixture.beforeSyncSession = async session => {
+      assert.equal(session.currentRoundId,initial);
+      assert.equal(session.questions[0].rounds[0].status,'paused');
+      assert.equal(session.sourceId,fixture.pairId);
+      assert.equal((await wheel(page)).preview?.phone ?? false,false);
+    };
+    fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
+    await page.waitForFunction(()=>__quizWheelState.preview?.phone && !__quizWheelState.lesson.busy);
+    const session = fixture.journals[0].session;
+    assert.equal(session.currentRoundId,initial);
+    assert.equal(session.questions[0].rounds[0].answers.s2.option,'B');
+    assert.deepEqual(fixture.errors,[]);
+  } finally { await context.close(); }
+});
+
+test('已显示的手机码在学校连接中断后撤下，同一轮继续收答', async () => {
+  const {page,context,fixture} = await open({companion:true,quickScan:true,scannerFixture:true,width:178,height:140});
+  let unblockRelay;
+  try {
+    await page.clock.install();
+    await useNativeDisc(page);
+    await startInPet(page);
+    await sector(page,'collect');
+    await page.waitForFunction(() => __quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    const roundId = fixture.journals[0].session.currentRoundId;
+    const stalled = new Promise(resolve => { unblockRelay = resolve; });
+    const relayStarted = new Promise(resolve => {
+      fixture.relay = async () => {
+        resolve();
+        await stalled;
+        throw new Error('学校连接已中断');
+      };
+    });
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPhoneCode(page);
+    const oldPair = fixture.pairId;
+    await relayStarted;
+    await page.clock.fastForward(1000);
+    assert.equal(await page.locator('#pair-qr svg').count(),1,'短时延迟保留已有二维码');
+    await page.clock.fastForward(9000);
+    assert.equal(await page.locator('#pair-qr svg').count(),0,'失联时撤下原二维码');
+    const dialog = page.locator('#pair-dialog');
+    assert.match(await dialog.innerText(),/连接已中断/);
+    assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1));
+    assert.equal((await wheel(page)).cameraRunning,true);
+    await page.evaluate(() => testScanner.options.onRead({cardNumber:1,option:'C'}));
+    await page.keyboard.press('Escape');
+    await waitPanel(page,'');
+    fixture.relay = null;
+    unblockRelay();
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPhoneCode(page);
+    assert.notEqual(fixture.pairId,oldPair);
+    fixture.pairings = [{pairId:oldPair,claimed:true},{pairId:fixture.pairId,claimed:true}];
+    await page.waitForFunction(() => __quizWheelState.preview?.phone && !__quizWheelState.lesson.busy);
+    const lesson = fixture.journals[0].session;
+    assert.equal(lesson.sourceId,fixture.pairId);
+    assert.equal(lesson.currentRoundId,roundId);
+    assert.equal(lesson.questions[0].rounds[0].answers.s1.option,'C');
+    assert.deepEqual(fixture.errors,[]);
+  } finally {
+    unblockRelay?.();
+    await context.close();
+  }
+});
+
+test('扫码后本堂同步超时会恢复电脑相机，原多选项和已收卡保留',async()=>{
+  const {page,context,fixture}=await open({companion:true,quickScan:true,scannerFixture:true});
+  try {
+    await useNativeDisc(page); await startInPet(page,'multiple:3');
+    await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    await sector(page,'multi');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && __quizWheelState.lesson.option==='B' && !__quizWheelState.lesson.busy);
+    const initial=fixture.journals[0].session.currentRoundId;
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'A'}));
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPhoneCode(page);
+    fixture.beforeSyncSession = () => { throw new Error('本堂课同步超时。'); };
+    fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
+    await page.locator('#pair-dialog .disc-reader').getByText(/本堂课同步超时/).waitFor({timeout:4000});
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    await sector(page,'back'); await waitPanel(page,'');
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:2,option:'B'}));
+    const session=fixture.journals[0].session, result=session.questions[0].rounds[0];
+    assert.deepEqual([session.source,session.currentRoundId,result.activeOption,result.status],['board',initial,'B','collecting']);
+    assert.deepEqual([result.answers.s1.choices.B,result.answers.s2.choices.B],[true,false]);
+    assert.ok(fixture.messages.some(message=>message.action==='cancel-pair' && message.body.pairId===fixture.pairId));
+    assert.deepEqual(fixture.errors,[]);
+  } finally { await context.close(); }
+});
+
+test('扫码后主动返回可立即恢复电脑，迟到的同步确认不再换源',async()=>{
+  const {page,context,fixture}=await open({companion:true,quickScan:true,scannerFixture:true});
+  let releaseSync;
+  try {
+    await useNativeDisc(page); await startInPet(page); await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    const roundId=fixture.journals[0].session.currentRoundId;
+    const syncing=new Promise(resolve=>{
+      fixture.beforeSyncSession=session=>session.source==='phone' && new Promise(release=>{releaseSync=release;resolve();});
+    });
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPhoneCode(page);
+    fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
+    await syncing;
+    const syncRequest=fixture.messages.findLast(message=>message.action==='sync-session').id;
+    await page.evaluate(id=>{
+      window.chrome.webview.addEventListener('message',event=>{
+        if(event.data.type==='response' && event.data.id===id) window.lateHandoffSync=true;
+      });
+    },syncRequest);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.panel && !__quizWheelState.lesson.busy,undefined,{timeout:2500});
+    await page.evaluate(()=>testScanner.options.onRead({cardNumber:1,option:'D'}));
+    releaseSync();
+    await page.waitForFunction(()=>window.lateHandoffSync);
+    const session=fixture.journals[0].session;
+    assert.deepEqual([session.source,session.currentRoundId,session.questions[0].rounds[0].answers.s1.option],['board',roundId,'D']);
+    assert.ok(fixture.messages.some(message=>message.action==='cancel-pair' && message.body.pairId===fixture.pairId));
+    assert.deepEqual(fixture.errors,[]);
+  } finally { releaseSync?.(); await context.close(); }
+});
+
 test('手机取景与本轮收答同时出现，等待连接时可收起，封存立即清屏',async()=>{
   const {page,context,fixture}=await open({companion:true,quickScan:true});
   try {
     await useNativeDisc(page); await startInPet(page,'boolean:2');
-    await sector(page,'source'); await waitPanel(page,'pair-dialog');
+    await sector(page,'source'); await waitPhoneCode(page);
     fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
     await page.waitForFunction(()=>__quizWheelState.lesson.phase==='collect' && !__quizWheelState.lesson.busy);
     const started=fixture.messages.find(m=>m.type==='companion-state' && m.state.lesson.phase==='collect');
@@ -627,7 +816,7 @@ test('60 张手机卡逐张保存后及时回执，断线重试和空闲轮询�
   try {
     await page.clock.install();
     await create(page); await page.locator('#source').click();
-    await page.locator('#pair-dialog[open]').waitFor();
+    await waitPhoneCode(page);
     fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
     await page.getByText('手机收答中，白板保存后确认',{exact:true}).waitFor();
     const s=fixture.journals[0].session;
@@ -698,8 +887,11 @@ for(const video of [false,true]) test('手机扫一次免登录接入班班，�
     return body.preview && offer ? {preview:{id:offer.id,...(answer && !body.preview.answered ? {answer}: {})}} : {};
   };
   try {
-    await useNativeDisc(page);await startInPet(page);await sector(page,'source');
-    await waitPanel(page,'pair-dialog');
+    await useNativeDisc(page);await startInPet(page);await sector(page,'collect');
+    await page.waitForFunction(()=>__quizWheelState.cameraRunning && !__quizWheelState.lesson.busy);
+    const boardRound=fixture.journals[0].session.currentRoundId;
+    await sector(page,'preview-phone',{key:(await wheel(page)).preview.key});
+    await waitPhoneCode(page);
     assert.equal(await page.locator('#confirm-phone').isVisible(),false);
     assert.equal(await page.locator('#pair-code').isVisible(),false);
     await phone.route('**/api/**',async route=>{
@@ -752,6 +944,7 @@ for(const video of [false,true]) test('手机扫一次免登录接入班班，�
     await phone.goto(fixture.scanUrl);
     await phone.addScriptTag({url:origin+'/card-quiz/cards.js'});
     await waitPanel(page,'');
+    assert.equal(fixture.journals[0].session.currentRoundId,boardRound);
     await page.waitForFunction(()=>window.__quizWheelState.lesson.phase==='collect');
     await page.waitForFunction(()=>window.__quizWheelState.preview?.phone,{},{timeout:18000});
     const initialKey=(await wheel(page)).preview.key;
@@ -827,12 +1020,16 @@ for(const video of [false,true]) test('手机扫一次免登录接入班班，�
         previewConnection.close();
       });
       const untilReconnect=Date.now()+14000;
-      while((offer.id===oldOffer || !fixture.messages.some(m=>m.type==='preview-frame' && m.key!==key &&
-        m.key!==initialKey && m.key!==second)) && Date.now()<untilReconnect)
+      let restored;
+      while(Date.now()<untilReconnect) {
+        restored=(await wheel(page)).preview;
+        if (offer.id!==oldOffer && restored?.phone && restored.key!==second &&
+          fixture.messages.some(m=>m.type==='preview-frame' && m.key===restored.key)) break;
         await new Promise(resolve=>setTimeout(resolve,50));
+      }
       assert.notEqual(offer.id,oldOffer,'连接中断后自动重新协商');
-      const restored=(await wheel(page)).preview;
-      assert.ok(restored && restored.key!==second && fixture.messages.some(m=>m.type==='preview-frame' && m.key===restored.key));
+      assert.ok(restored?.phone && restored.key!==second && fixture.messages.some(m=>m.type==='preview-frame' && m.key===restored.key),
+        '重新协商后收到当前手机取景的新帧');
       assert.equal(await phone.evaluate(()=>document.querySelector('video').srcObject.getVideoTracks()[0]===secondTrack),true);
     }
     assert.ok(!JSON.stringify(fixture.journals).includes('data:image/jpeg'));
@@ -1173,19 +1370,20 @@ test('本机无取景时可重开或换设备，相机失败和换源都先保�
     assert.equal(state().questions[0].rounds[0].status,'paused');
     await sector(page,'source',{key:beforeRetry});
     assert.equal(fixture.messages.some(item=>item.action==='pair'),false);
-    await sector(page,'source'); await waitPanel(page,'pair-dialog');
+    await sector(page,'source'); await waitPhoneCode(page);
     await sector(page,'back'); await waitPanel(page,'');
     await sector(page,'collect'); await waitPhase('collect');
     await stopCamera();
+    await sector(page,'source'); await waitPhoneCode(page);
     fixture.holdCommit = new Promise(resolve=>{release=resolve;});
     const saving = new Promise(resolve=>{fixture.commitStarted=resolve;});
-    await sector(page,'source'); await saving;
-    for (const id of ['source','pause','seal','options']) await sector(page,id);
-    assert.equal(fixture.messages.filter(item=>item.action==='pair').length,1);
-    release(); await waitPanel(page,'pair-dialog');
-    assert.equal(state().questions[0].rounds[0].status,'paused');
-    assert.equal(state().source,'board');
     fixture.pairings=[{pairId:fixture.pairId,claimed:true}];
+    await saving;
+    for (const id of ['source','pause','seal','options']) await sector(page,id);
+    assert.equal(fixture.messages.filter(item=>item.action==='pair').length,2);
+    assert.equal(fixture.messages.findLast(item=>item.action==='commit').body.journal.session.questions[0].rounds[0].status,'paused');
+    assert.equal(state().source,'board');
+    release();
     await waitPhase('collect'); await waitPanel(page,'');
     assert.equal(state().source,'phone');
     const waitingLens=(await wheel(page)).preview;

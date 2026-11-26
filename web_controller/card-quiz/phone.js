@@ -6,6 +6,8 @@
   let user, pair, state, connected=false, pollTimer, polling=false, failures=0, disposed=false, controlBusy=false, uncertain=0, editQuestionId, editContext, cameraIntent=0, captureKey='';
   let cameraOpening=false;
   let followRounds=false, collectingMultiRound='', cardsBeforePause=null;
+  const pollTimeout=5000, reconnectGrace=12000;
+  let reconnectTimer;
   const pairStorage = 'iceclass.cardQuizPair';
   const rescan = '请在班班点「手机扫码」，扫新码连接。';
   let scan = null, claimingScan = false, waitingOffline = false;
@@ -27,7 +29,10 @@
   function updatePreviewTrack() {
     const peer=previewPeer;
     if (!peer?.follow) return;
-    const track=scanner.running && peer.view?.visible && viewMatchesRound(peer) ? scanner.stream?.getVideoTracks()[0] : null;
+    const currentTrack=scanner.stream?.getVideoTracks()[0];
+    // Hold the already authorized view during a short signaling outage. New views need fresh classroom state.
+    const keepTrack=reconnectTimer && peer.videoKey===peer.view?.view && peer.sentTrack===currentTrack;
+    const track=scanner.running && peer.view?.visible && (viewMatchesRound(peer) || keepTrack) ? currentTrack : null;
     const key=track ? peer.view.view : '';
     if (peer.videoKey===key && peer.sentTrack===track) return;
     peer.videoKey=key; peer.sentTrack=track;
@@ -146,11 +151,11 @@
       return true;
     } catch { return false; }
   }
-  async function api(path,body){
+  async function api(path,body,timeout=15000){
     const headers=body?{'Content-Type':'application/json'}:{};
     if(scan) headers['X-ICeClass-Scanner']=scan.key;
     else if(body) headers['X-CSRF-Token']=user?.csrfToken||'';
-    const abort = new AbortController(), timer = setTimeout(() => abort.abort(),15000);
+    const abort = new AbortController(), timer = setTimeout(() => abort.abort(),timeout);
     try {
       const response=await fetch(path,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined,
         credentials:scan?'omit':'same-origin',redirect:'error',cache:'no-store',signal:abort.signal});
@@ -244,7 +249,9 @@
     const selected = state.source === 'phone' && state.sourceId === pair?.pairId;
     const own = connected && selected && !state.ended;
     const collecting = own && state.roundStatus === 'collecting';
-    if (!scanner.running && previewPeer && !(previewPeer.follow && own)) releasePreview();
+    const reconnecting = Boolean(reconnectTimer && selected && !state.ended);
+    const canShowCamera = (own || reconnecting) && state.roundStatus === 'collecting';
+    if (!scanner.running && previewPeer && !(previewPeer.follow && (own || reconnecting))) releasePreview();
     const paused = state.roundStatus === 'paused';
     const between = !state.roundId || state.roundStatus === 'closed';
     const inRound = !between && !state.ended;
@@ -252,10 +259,10 @@
     const active = state.activeOption || 'A';
     const nextOption = letters.slice(0, state.optionCount)[letters.indexOf(active) + 1];
     const nextKey = `${state.sessionId}/${state.roundId}/${state.generation}`;
-    const multiRound = scan && collecting && multiple ? state.roundId : '';
+    const multiRound = scan && canShowCamera && multiple ? state.roundId : '';
     const sameMultiRound = Boolean(multiRound && multiRound === collectingMultiRound);
     const held = captureKey !== nextKey && sameMultiRound && scanner.running ? scanner.cardsInView() : null;
-    if (captureKey !== nextKey || !collecting) {
+    if (captureKey !== nextKey || !canShowCamera) {
       if (!sameMultiRound && (cameraOpening || scanner.running)) stopCamera(own);
       setText('camera-status', '');
     }
@@ -263,7 +270,7 @@
     captureKey = nextKey;
 
     const awaitingBoard = !selected && failures === 0 && !document.hidden;
-    const connection = state.ended ? '已结课' : awaitingBoard ? (scan ? '正在连接白板' : '请在白板确认') : !connected ? '白板离线' :
+    const connection = state.ended ? '已结课' : reconnecting ? '正在重连' : awaitingBoard ? (scan ? '正在连接白板' : '请在白板确认') : !connected ? '白板离线' :
       collecting ? '正在收答' : paused ? '已暂停' : state.roundId ? '已封存' : '已连接';
     setText('connection', connection);
     $('connection').dataset.state = collecting ? 'live' : !own && !state.ended ? 'waiting' : 'idle';
@@ -292,12 +299,12 @@
     $('start').hidden = Boolean(scan) || !own || !state.questionId || state.roundStatus === 'collecting';
     $('start').disabled = Boolean(scan) || !own || (!between && !paused) || controlBusy || !state.questionId;
     setText('start', paused ? '恢复本轮' : state.roundId ? '重新收答' : '开始收答');
-    $('camera-panel').hidden = !collecting;
-    $('camera').hidden = !collecting || (!cameraOpening && !scanner.running);
+    $('camera-panel').hidden = !canShowCamera;
+    $('camera').hidden = !canShowCamera || (!cameraOpening && !scanner.running);
     $('camera-idle').hidden = scanner.running || cameraOpening;
     $('viewfinder').classList.toggle('is-live', scanner.running);
-    $('camera-toggle').hidden = !collecting;
-    $('camera-toggle').disabled = !collecting || controlBusy;
+    $('camera-toggle').hidden = !canShowCamera;
+    $('camera-toggle').disabled = controlBusy || !collecting && !(reconnecting && (cameraOpening || scanner.running));
     setText('camera-toggle', scanner.running ? '关闭相机' : cameraOpening ? '取消开启' : '开启相机');
     $('camera-toggle').classList.toggle('primary', collecting && !scanner.running && !cameraOpening);
     const canAdvance = !scan && collecting && multiple && Boolean(nextOption);
@@ -325,11 +332,29 @@
     if (!scan) showEditor(multiple, own && between && !controlBusy);
     scanner.reset(nextKey, multiple ? 2 : state.optionCount);
     if (held) scanner.waitForNewPresentation(held);
+    scanner.setReading(collecting);
     updatePreviewTrack();
+  }
+  function clearReconnect(){
+    clearTimeout(reconnectTimer);
+    reconnectTimer=undefined;
+  }
+  function interrupted(message){
+    connected=false;
+    if (scan && !document.hidden && state?.source==='phone' && state.sourceId===pair?.pairId && !state.ended &&
+        (cameraOpening || scanner.running || followRounds)) {
+      reconnectTimer ??= setTimeout(()=>{
+        stopCamera();show();
+        feedback('连接尚未恢复。恢复后请点“开启相机”。','warning transport');
+      },reconnectGrace);
+    } else stopCamera();
+    feedback(message,reconnectTimer?'warning transport':'error transport');
+    show();
   }
   function stopCamera(keepFollowing=false){
     if (keepFollowing && followRounds && scanner.running) cardsBeforePause=scanner.cardsInView();
     if (!keepFollowing) {
+      clearReconnect();
       followRounds=false;
       cardsBeforePause=null;
       collectingMultiRound='';
@@ -346,7 +371,7 @@
     $('camera-status').textContent='';
   }
   async function openCamera(automatic=false){
-    if(cameraOpening||scanner.running)return;
+    if(cameraOpening||scanner.running||!connected||document.hidden||state?.roundStatus!=='collecting')return;
     if (scan?.openOnConnect) { scan.openOnConnect=false; remember(scan); }
     if (cardsBeforePause) {
       scanner.waitForNewPresentation(cardsBeforePause);
@@ -404,7 +429,7 @@
   function schedule(){
     clearTimeout(pollTimer);
     if (!disposed && !document.hidden && (pair || scan?.invite) && !(scan && state?.ended))
-      pollTimer=setTimeout(resumeConnection,Math.min(15000,1200*2**failures));
+      pollTimer=setTimeout(resumeConnection,reconnectTimer ? 1200 : Math.min(15000,1200*2**failures));
   }
   function leavePair() {
     pair=state=null; connected=false; failures=0; waitingOffline=false;
@@ -416,14 +441,17 @@
     try{
       const query=new URLSearchParams();for(const id of pending.keys())query.append('commandId',id);
       if(scanner.running || scan?.openOnConnect || followRounds)query.set('preview',previewPeer?.id || 'open');
-      const value=await api('/api/card-quiz/pairs/'+encodeURIComponent(pair.pairId)+(query.size?'?'+query:''));
+      const value=await api('/api/card-quiz/pairs/'+encodeURIComponent(pair.pairId)+(query.size?'?'+query:''),undefined,pollTimeout);
       if(pair?.pairId!==pairId||disposed)return;
       if (scan && value.state === null) {
         connected=false; failures=0; state=null; waitingOffline=value.boardOnline===false;
-        if(cameraOpening || scanner.running || followRounds)stopCamera();
+        stopCamera();
         feedback(waitingOffline ? '请确认白板联网，并保持扫码圆环打开。' : '',waitingOffline?'warning transport':'');
         show(); return;
       }
+      if(!value.state || !Number.isSafeInteger(value.state.seq) || typeof value.connected!=='boolean')
+        throw new Error('未收到白板状态。');
+      clearReconnect();
       if(!state||value.state.seq>=state.seq)state=value.state;
       connected=value.connected&&!document.hidden;failures=0;
       if($('feedback').classList.contains('transport') && (connected || state.sourceId!==pairId))feedback('');
@@ -448,19 +476,21 @@
     }catch(error){
       if(pair?.pairId!==pairId||disposed)return;
       if(error.status===429)return;
-      connected=false;stopCamera();failures=Math.min(failures+1,4);
+      failures=Math.min(failures+1,4);
       if([401,403,404,410].includes(error.status)){
+        stopCamera();
         clearPending('连接已失效，未确认的作答请在白板核对。');
         if(error.status===401)user=null;
         leavePair();
-      }
-      show();
-      feedback(!pair && scan ? '连接已结束。'+rescan : error.status?error.message:'网络中断。恢复连接后请核对白板人数。',pair?'error transport':'error');
+        show();
+        feedback(scan ? '连接已结束。'+rescan : error.message,'error');
+      } else interrupted(scan ? '连接暂时中断，正在重试…' : error.status ? error.message : '网络中断。恢复连接后请核对白板人数。');
     }finally{polling=false;schedule();}
   }
   function send(action,payload={},context){
     if(scan && action!=='answer')return Promise.reject(new Error('请在白板操作课堂。'));
     if(!pair||!state||!connected||state.sourceId!==pair.pairId||state.ended)return Promise.reject(new Error('白板尚未连接或采集来源已变化。'));
+    if(action==='answer' && state.roundStatus!=='collecting')return Promise.reject(new Error('本轮已停止收答。'));
     if(pending.size>=128)return Promise.reject(new Error('待确认队列已满，请等待白板保存。'));
     if(context&&Object.keys(context).some(key=>context[key]!==state[key]))return Promise.reject(new Error('题目或版本已变化，草稿已保留。请核对后清空重填。'));
     const command={id:crypto.randomUUID(),sessionId:state.sessionId,questionId:state.questionId,roundId:state.roundId,generation:state.generation,sourceId:state.sourceId,action,payload};
@@ -471,8 +501,8 @@
     }).catch(error=>{
       const item=pending.get(command.id);
       if(!item)return;
-      if(error.status){pending.delete(command.id);item?.reject(error);feedback(error.message,'error');}
-      else{item.deliveryUnknown=true;connected=false;stopCamera();feedback('发送尚未确认，请在连接恢复后核对白板。','warning transport');}
+      if(error.status && error.status!==408 && error.status<500){pending.delete(command.id);item.reject(error);feedback(error.message,'error');}
+      else{item.deliveryUnknown=true;interrupted('发送尚未确认，请在连接恢复后核对白板。');}
       show();
     });
     show();return result;
@@ -570,6 +600,7 @@
     feedback(checkBoard?'已断开，未确认的操作请在白板核对。':usingPhone?'已断开。继续收答请在白板换回本机。':scan?rescan:'',checkBoard?'warning':'');
   };
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera();connected=false;clearTimeout(pollTimer);show();}else resumeConnection();});
+  window.addEventListener('online',resumeConnection);
   window.addEventListener('pagehide',()=>{disposed=true;stopCamera();clearTimeout(pollTimer);clearPending('页面已离开，未确认操作请在白板核对。');});
   window.addEventListener('pageshow',event=>{if(event.persisted){disposed=false;resumeConnection();}});
   window.addEventListener('hashchange',()=>{

@@ -52,6 +52,21 @@ class NeuralVoicePreparationTest(unittest.TestCase):
                 self.assertEqual(archive.read("model.onnx"), b"model.onnx")
                 self.assertEqual(archive.read("LICENSE"), b"LICENSE")
 
+            vad_model = vad / "silero_vad_v5.onnx"
+            vad_manifest_path = vad / "manifest.json"
+            vad_manifest = json.loads(vad_manifest_path.read_text("utf-8"))
+            vad_hash = hashlib.sha256(b"fixture vad").hexdigest()
+            expected = {"name": vad_model.name, "size": vad_model.stat().st_size, "sha256": vad_hash}
+            self.assertEqual(vad_manifest["files"], [expected])
+
+            # A previously prepared model can be reused even if its manifest lacks a size.
+            del vad_manifest["files"][0]["size"]
+            vad_manifest_path.write_text(json.dumps(vad_manifest), encoding="utf-8")
+            with patch.multiple(voice, ROOT=root, TARGET=target, VAD_SHA256=vad_hash), \
+                    patch.object(voice.urllib.request, "urlopen", side_effect=AssertionError("unexpected download")):
+                voice.main()
+            self.assertEqual(json.loads(vad_manifest_path.read_text("utf-8"))["files"], [expected])
+
 
 if __name__ == "__main__":
     unittest.main()

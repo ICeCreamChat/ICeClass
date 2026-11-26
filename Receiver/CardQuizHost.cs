@@ -22,7 +22,9 @@ internal sealed class CardQuizHost : IDisposable
     private bool _closed, _ready, _visible;
     private bool _failed;
     private string? _previewKey, _bufferId;
-    private CoreWebView2SharedBuffer? _videoBuffer;
+    private const int VideoSlotCount = 3;
+    private readonly CoreWebView2SharedBuffer?[] _videoBuffers = new CoreWebView2SharedBuffer?[VideoSlotCount];
+    private long _lastVideoFrame;
     internal event Action<CardQuizWheelState>? CompanionStateChanged;
     internal event Action<string,string>? PreviewFrame;
     internal event Action<string,Stream>? PreviewPixels;
@@ -125,23 +127,29 @@ internal sealed class CardQuizHost : IDisposable
                         break;
                     case "preview-buffer":
                     case "preview-pixels":
+                    case "preview-release":
                         if (_visible && !_service.IsRevoked && _previewKey is { } currentKey &&
                             message["key"]?.GetValue<string>() == currentKey &&
                             message["id"]?.GetValue<string>() is { } runId && Guid.TryParseExact(runId, "D", out _))
                         {
-                            if (type == "preview-buffer") OpenVideoBuffer(core, currentKey, runId);
-                            else if (_bufferId == runId && _videoBuffer is { } buffer)
+                            if (type == "preview-buffer") OpenVideoBuffers(core, currentKey, runId);
+                            else if (_bufferId != runId) break;
+                            else if (type == "preview-release") CloseVideoBuffers();
+                            else if (message["slot"]?.GetValue<int>() is { } slot && slot is >= 0 and < VideoSlotCount &&
+                                message["frame"]?.GetValue<long>() is { } frameNumber && frameNumber > _lastVideoFrame &&
+                                _videoBuffers[slot] is { } buffer)
                             {
                                 try
                                 {
                                     // WebView2 exposes a forward-only stream. Each view starts at the first pixel.
                                     using var pixels = buffer.OpenStream();
                                     PreviewPixels?.Invoke(currentKey, pixels);
-                                    Post(new { type = "preview-consumed", id = runId });
+                                    _lastVideoFrame = frameNumber;
+                                    Post(new { type = "preview-consumed", id = runId, slot, frame = frameNumber });
                                 }
                                 catch (Exception error) when (error is not OutOfMemoryException)
                                 {
-                                    CloseVideoBuffer();
+                                    CloseVideoBuffers();
                                     AppLog.Error("Read classroom video buffer", error);
                                     Post(new { type = "preview-buffer-unavailable", id = runId });
                                 }
@@ -176,9 +184,11 @@ internal sealed class CardQuizHost : IDisposable
                     IsBusy = true;
                     result = await Task.Run(() => _service.Commit(body["journal"]!.AsObject()), _lifetime.Token);
                     IsBusy = ((JsonObject)result)["session"]!["endedAt"] is null; break;
-                case "sync": result = await _service.SyncAsync(body["retry"]?.GetValue<bool>() == true, _lifetime.Token); break;
-                case "pair": result = await _service.PairAsync(body["sessionId"]!.GetValue<string>(), _lifetime.Token); break;
-                case "cancel-pair": result = await _service.CancelPairAsync(body["sessionId"]!.GetValue<string>(), body["pairId"]!.GetValue<string>(), _lifetime.Token); break;
+                case "sync": result = await Task.Run(() => _service.SyncAsync(body["retry"]?.GetValue<bool>() == true, _lifetime.Token), _lifetime.Token); break;
+                case "sync-session": result = await Task.Run(() => _service.SyncSessionAsync(body["sessionId"]!.GetValue<string>(), _lifetime.Token), _lifetime.Token); break;
+                case "pair": result = await Task.Run(() => _service.PairAsync(body["sessionId"]!.GetValue<string>(), _lifetime.Token), _lifetime.Token); break;
+                // A cancel sent just before the window closes still needs to reach the school.
+                case "cancel-pair": result = await _service.CancelPairAsync(body["sessionId"]!.GetValue<string>(), body["pairId"]!.GetValue<string>(), CancellationToken.None); break;
                 case "relay": result = await _service.RelayAsync(body, _lifetime.Token); break;
                 default: throw new InvalidDataException("纸卡操作不支持。");
             }
@@ -189,31 +199,40 @@ internal sealed class CardQuizHost : IDisposable
             if (!_closed && id > 0) Post(new { type = "response", id, error = error is OperationCanceledException ? "操作已中断，请核对本机记录。" : error.Message });
         }
     }
-    private void OpenVideoBuffer(CoreWebView2 core, string key, string runId)
+    private void OpenVideoBuffers(CoreWebView2 core, string key, string runId)
     {
-        CloseVideoBuffer();
+        CloseVideoBuffers();
         try
         {
-            _videoBuffer = core.Environment.CreateSharedBuffer(BanbanCameraLens.PixelBytes);
             _bufferId = runId;
-            core.PostSharedBufferToScript(_videoBuffer, CoreWebView2SharedBufferAccess.ReadWrite,
-                JsonSerializer.Serialize(new { type = "preview-buffer", key, id = runId }));
+            for (var slot = 0; slot < _videoBuffers.Length; slot++)
+            {
+                var buffer = core.Environment.CreateSharedBuffer(BanbanCameraLens.PixelBytes);
+                _videoBuffers[slot] = buffer;
+                core.PostSharedBufferToScript(buffer, CoreWebView2SharedBufferAccess.ReadWrite,
+                    JsonSerializer.Serialize(new { type = "preview-buffer", key, id = runId, slot }));
+            }
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            CloseVideoBuffer();
+            CloseVideoBuffers();
             Post(new { type = "preview-buffer-unavailable", id = runId });
         }
     }
-    private void CloseVideoBuffer()
+    private void CloseVideoBuffers()
     {
         _bufferId = null;
-        _videoBuffer?.Close(); _videoBuffer = null;
+        _lastVideoFrame = 0;
+        for (var slot = 0; slot < _videoBuffers.Length; slot++)
+        {
+            _videoBuffers[slot]?.Close();
+            _videoBuffers[slot] = null;
+        }
     }
     private void SetPreviewKey(string? key)
     {
         if (_previewKey == key) return;
-        CloseVideoBuffer(); _previewKey = key;
+        CloseVideoBuffers(); _previewKey = key;
     }
     private void Fail(string message)
     {

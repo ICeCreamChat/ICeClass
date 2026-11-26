@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -14,7 +15,10 @@ var endpoint = "http://127.0.0.1:" + ((IPEndPoint)port.LocalEndpoint).Port; port
 using var listener = new HttpListener(); listener.Prefixes.Add(endpoint + "/"); listener.Start();
 using var lifetime = new CancellationTokenSource();
 var bootstrap = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-var received = new List<JsonObject>(); var loseReply = false; var failures = new List<string>(); var count = 0;
+var received = new ConcurrentQueue<JsonObject>(); var loseReply = false; var failures = new List<string>(); var count = 0;
+var syncedSessions = new ConcurrentDictionary<string, byte>();
+string? heldSyncId = null, unregisteredSessionId = null, timedOutSyncId = null;
+TaskCompletionSource? heldSyncStarted = null, releaseSync = null;
 var bootstrapStatus = 503; var publications = new JsonArray(); var bootstrapCalls = 0; var activeBootstrap = 0; var maximumBootstrap = 0;
 TaskCompletionSource? holdBootstrap = null, bootstrapStarted = null; var relayStatus = 200;
 var localCommandIds = new HashSet<string>();
@@ -43,7 +47,10 @@ async Task Handle(HttpListenerContext request) {
         } else if (request.Request.Url.AbsolutePath.EndsWith("/device/pair")) {
             using var reader = new StreamReader(request.Request.InputStream);
             invitationRequest = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
-            response = new() { ["mode"] = "scan", ["pairId"] = "test-pair", ["url"] = "http://upstream.example" + scanPath };
+            var requestedId = invitationRequest["sessionId"]!.GetValue<string>();
+            if (requestedId == unregisteredSessionId && !syncedSessions.ContainsKey(requestedId)) {
+                request.Response.StatusCode = 404; response = new() { ["error"] = "课堂不存在。" };
+            } else response = new() { ["mode"] = "scan", ["pairId"] = "test-pair", ["url"] = "http://upstream.example" + scanPath };
         } else if (request.Request.Url.AbsolutePath.EndsWith("/device/pair/cancel")) {
             using var reader = new StreamReader(request.Request.InputStream);
             cancellationRequest = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
@@ -55,9 +62,19 @@ async Task Handle(HttpListenerContext request) {
         } else {
             using var reader = new StreamReader(request.Request.InputStream);
             var body = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
-            received.Add(body.DeepClone().AsObject());
+            received.Enqueue(body.DeepClone().AsObject());
+            var syncedId = body["session"]!["id"]!.GetValue<string>();
+            if (syncedId == heldSyncId) {
+                heldSyncStarted!.TrySetResult();
+                await releaseSync!.Task.WaitAsync(lifetime.Token);
+            }
             if (request.Request.Headers["Authorization"] != "Bearer isolated-device-token" || request.Request.Headers["X-ICeClass-Class-Id"] != "c1") failures.Add("native authentication headers missing");
-            response = new() { ["syncedSeq"] = body["session"]!["seq"]!.DeepClone(), ["receiptIds"] = new JsonArray(body["receipts"]!.AsArray().Select(r => r!["id"]!.DeepClone()).ToArray()) };
+            if (syncedId == timedOutSyncId) {
+                request.Response.StatusCode = 408; response = new() { ["error"] = "本堂课同步超时。" };
+            } else {
+                if (!loseReply) syncedSessions.TryAdd(syncedId, 0);
+                response = new() { ["syncedSeq"] = body["session"]!["seq"]!.DeepClone(), ["receiptIds"] = new JsonArray(body["receipts"]!.AsArray().Select(r => r!["id"]!.DeepClone()).ToArray()) };
+            }
         }
         var bytes = Encoding.UTF8.GetBytes(response.ToJsonString()); request.Response.ContentType = "application/json";
         request.Response.ContentLength64 = bytes.Length + (loseReply && request.Request.Url.AbsolutePath.EndsWith("/sync") ? 128 : 0);
@@ -105,6 +122,46 @@ try {
     await service.CancelPairAsync(sid, "test-pair", lifetime.Token);
     Check(cancellationRequest?["pairId"]?.GetValue<string>() == "test-pair" && cancellationRequest["sessionId"]?.GetValue<string>() == sid,
           "取消邀请只提交原课堂和配对编号");
+
+    var historyId = Guid.NewGuid().ToString(); var history = Initial(historyId); service.Store.Commit(history);
+    history = Advance(history, "end_session"); history["session"]!["endedAt"] = 1001; service.Store.Commit(history);
+    heldSyncId = historyId;
+    heldSyncStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    releaseSync = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    var backgroundSync = service.SyncAsync(false, lifetime.Token);
+    try {
+        await heldSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var fromKnown = await service.PairAsync(sid, lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2));
+        Check(fromKnown["mode"]!.GetValue<string>() == "scan" && !backgroundSync.IsCompleted, "历史课堂上传未完成时已登记课堂仍立即拿到手机码");
+        var freshId = Guid.NewGuid().ToString(); var fresh = Initial(freshId); service.Store.Commit(fresh);
+        service.Store.Commit(Advance(fresh, "recover")); unregisteredSessionId = freshId;
+        var fromFresh = await service.PairAsync(freshId, lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2));
+        Check(fromFresh["mode"]!.GetValue<string>() == "scan" && service.Store.Read(freshId)!["syncedSeq"]!.GetValue<int>() == 1 &&
+              service.Store.Read(historyId)!["syncedSeq"]!.GetValue<int>() == 0, "新课堂只补传本堂记录即可签发手机码");
+        fresh = Advance(service.Store.Read(freshId)!, "set_source", Guid.NewGuid().ToString()); service.Store.Commit(fresh);
+        fresh = Advance(fresh, "recover"); service.Store.Commit(fresh);
+        timedOutSyncId = freshId;
+        try {
+            await service.SyncSessionAsync(freshId, lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2));
+            throw new Exception("HTTP 408 was accepted");
+        } catch (Exception error) when (error.Message == "本堂课同步超时。") { }
+        var afterTimeout = service.Store.Read(freshId)!;
+        Check(afterTimeout["reviewError"] is null && afterTimeout["syncedSeq"]!.GetValue<int>() == 1,
+              "HTTP 408 保留待同步记录且允许重试");
+        timedOutSyncId = null;
+        var beforeRetry = received.Count;
+        var syncCurrent = service.SyncSessionAsync(freshId, lifetime.Token);
+        var duplicate = service.SyncSessionAsync(freshId, lifetime.Token);
+        await Task.WhenAll(syncCurrent, duplicate).WaitAsync(TimeSpan.FromSeconds(2));
+        Check(syncCurrent.Result["syncedSeq"]!.GetValue<int>() == 3 && duplicate.Result["syncedSeq"]!.GetValue<int>() == 3 &&
+              received.Count == beforeRetry + 1 && !backgroundSync.IsCompleted, "同一课堂并发同步按已确认序号串行，历史上传不阻塞切源");
+        await service.RelayAsync(RelayBody(fresh, config.ClassName), lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2));
+        Check(relayed.Last()["sessionId"]!.GetValue<string>() == freshId && !backgroundSync.IsCompleted,
+              "历史上传未完成时手机仍能收到本机成功回执");
+    } finally {
+        releaseSync.TrySetResult(); await backgroundSync;
+        heldSyncId = unregisteredSessionId = timedOutSyncId = null;
+    }
     j = Advance(j, "set_source", Guid.NewGuid().ToString()); service.Store.Commit(j); j = Advance(j, "recover"); service.Store.Commit(j);
     service.Store.SaveCache("receipt-" + sid, new JsonObject { ["seq"] = 0 });
     var cacheRoot = (string)typeof(CardQuizStore).GetField("_root", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(service.Store)!;

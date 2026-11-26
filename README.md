@@ -10,9 +10,9 @@
 
 | 组件 | 源码版本 | 技术 |
 | --- | --- | --- |
-| Windows 教室端 | 2.5.28 | .NET 8 / Avalonia / WebView2 |
-| Windows 教师端 | 2.5.28 | .NET 8 / Avalonia / WebView2 |
-| 学校服务 | 2.5.28 | Python / aiohttp / SQLite / WebSocket |
+| Windows 教室端 | 2.5.30 | .NET 8 / Avalonia / WebView2 |
+| Windows 教师端 | 2.5.30 | .NET 8 / Avalonia / WebView2 |
+| 学校服务 | 2.5.30 | Python / aiohttp / SQLite / WebSocket |
 | 视频展台插件 | 1.0.0 | .NET 10 / Windows Forms / WebView2 |
 
 本仓库包含教室端创意工坊中的视频展台和纸卡答题。源码、Release 附件和学校服务器分别更新，公开下载入口以实际发布内容为准。
@@ -173,6 +173,7 @@ node --test scripts/test-workshop-ui.cjs scripts/test-video-booth-workbench.cjs
 ~~~powershell
 node --test scripts/test-card-quiz-model.cjs scripts/test-card-quiz-scanner.cjs scripts/test-card-quiz-journal.cjs
 node --test scripts/test-card-quiz-classroom.cjs scripts/test-card-quiz-phone.cjs scripts/test-card-quiz-admin.cjs
+node --test scripts/test-card-quiz-video.cjs
 node --test scripts/test-card-quiz-recognition.cjs scripts/test-card-quiz-session-knowledge.cjs
 node --test scripts/test-student-accounts-ui.cjs scripts/test-student-accounts.cjs
 dotnet run --project tests/CardQuizChecks -c Release
