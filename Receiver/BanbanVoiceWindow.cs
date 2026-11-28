@@ -91,7 +91,7 @@ internal sealed class BanbanVoiceWindow : Window
 
     // Native HWNDs draw above Avalonia siblings. Keep the host itself hidden
     // until the page authorizes; a notice layered over a visible host is obscured.
-    private static ReadingBrowser CreateBrowser() => new() { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
+    private static ClassroomBrowser CreateBrowser() => new() { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
 
     private void ShowNotice(string message)
     {
@@ -183,9 +183,6 @@ internal sealed class BanbanVoiceWindow : Window
                 if (!Allowed(e.Uri)) { e.Cancel = true; return; }
                 BeginConnection();
             };
-            core.NewWindowRequested += (_, e) => e.Handled = true;
-            core.DownloadStarting += (_, e) => e.Cancel = true;
-            core.LaunchingExternalUriScheme += (_, e) => e.Cancel = true;
             core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             core.WebMessageReceived += (_, e) =>
             {
@@ -218,8 +215,8 @@ internal sealed class BanbanVoiceWindow : Window
             browser.DisposeBrowser();
             if (_lifetime.IsCancellationRequested) return;
             AppLog.Error($"Open Banban voice window failed during {stage}; HRESULT=0x{error.HResult:X8}", error);
-            FailConnection(error is OperationCanceledException ? "班班窗口初始化超时，请重新连接。"
-                : "班班窗口无法打开，请检查 WebView2 运行组件后重试。", recreateBrowser: true);
+            FailConnection(ClassroomWebViewRuntime.Recovery(error) ?? (error is OperationCanceledException ? "班班窗口初始化超时，请重新连接。"
+                : "班班窗口无法打开，请检查 WebView2 运行组件后重试。"), recreateBrowser: true);
         }
     }
 

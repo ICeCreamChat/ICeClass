@@ -54,6 +54,11 @@ class ClientArchiveTests(unittest.TestCase):
             teacher_manifest['version'] = '2.5.4'
             (teacher / 'manifest.json').write_text(json.dumps(teacher_manifest))
             (teacher / 'update-plan.json').write_text(json.dumps({'version': '2.5.4', 'files': []}))
+            runtime_name = 'WebView2-x64.cab'
+            runtime_bytes = b'fixture fixed WebView2 cabinet'
+            runtime_meta = {'version': '158.0.4370.45', 'size': len(runtime_bytes), 'sha256': hashlib.sha256(runtime_bytes).hexdigest()}
+            (receiver / runtime_name).write_bytes(runtime_bytes)
+            (receiver / 'program-manifest.json').write_text(json.dumps({'webView2': runtime_meta}))
             independent = root / 'independent-downloads'
             module.create_archives(root, independent)
             for kind in ('teacher', 'teacher-offline'):
@@ -63,6 +68,15 @@ class ClientArchiveTests(unittest.TestCase):
                     self.assertNotIn('2.5.5', instructions)
             with zipfile.ZipFile(independent / 'ICeClass-classroom.zip') as archive:
                 self.assertIn('ICeClass 班伴 2.5.5', archive.read(prefix + '一步使用说明.txt').decode('utf-8-sig'))
+                self.assertNotIn(prefix + runtime_name, archive.namelist())
+                self.assertNotIn('webView2', json.loads(archive.read(prefix + 'program-manifest.json')))
+            with zipfile.ZipFile(independent / 'ICeClass-classroom-offline.zip') as archive:
+                self.assertEqual(archive.read(prefix + runtime_name), runtime_bytes)
+                self.assertEqual(json.loads(archive.read(prefix + 'program-manifest.json'))['webView2'], runtime_meta)
+            (receiver / runtime_name).write_bytes(b'x' * len(runtime_bytes))
+            with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
+                module.create_archives(root, root / 'invalid-runtime')
+            (receiver / runtime_name).write_bytes(runtime_bytes)
             (teacher / 'update-plan.json').write_text(json.dumps({'version': '2.5.3', 'files': []}))
             with self.assertRaises(ValueError):
                 module.create_archives(root, root / 'mismatched-downloads')

@@ -91,7 +91,7 @@ public sealed class CreativeIdeasWindow : Window
 
     private ReadingBrowser CreateBrowser()
     {
-        var browser = new ReadingBrowser { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
+        var browser = new ClassroomBrowser { HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false };
         browser.FocusOutside += next =>
         {
             if (!_closed && ReferenceEquals(browser, _browser))
@@ -153,9 +153,6 @@ public sealed class CreativeIdeasWindow : Window
                         && string.Equals(args.Uri, _navigationTarget, StringComparison.Ordinal))
                         _navigationId = args.NavigationId;
                 };
-                core.NewWindowRequested += (_, args) => args.Handled = true;
-                core.DownloadStarting += (_, args) => args.Cancel = true;
-                core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
                 core.AddWebResourceRequestedFilter(_origin.GetLeftPart(UriPartial.Authority) + "/api/ideas/*",
                     CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.Document);
                 core.WebResourceRequested += (_, args) =>
@@ -236,9 +233,7 @@ public sealed class CreativeIdeasWindow : Window
         {
             if (!_initialized) _browserFailed = true;
             AppLog.Error("Open creative ideas failed", error);
-            ShowError(error is WebView2RuntimeNotFoundException
-                ? "请先安装 Microsoft Edge WebView2，再打开创意计划。"
-                : "暂时无法打开，请检查网络后重试。");
+            ShowError(ClassroomWebViewRuntime.Recovery(error) ?? "暂时无法打开，请检查网络后重试。");
         }
         finally { _loading = false; _navigation = null; _navigationId = null; _navigationTarget = null; }
     }
@@ -363,7 +358,7 @@ public sealed class CreativeIdeasWindow : Window
 
     private async void PermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs args)
     {
-        args.State = CoreWebView2PermissionState.Deny; args.SavesInProfile = false;
+        if (!ClassroomWebViewRuntime.PermissionForThisRequest(args, ShowError)) return;
         if (_closed || _closing || !IsVisible || WindowState == WindowState.Minimized || !SameOrigin(args.Uri)
             || !AllowedPage(_browser.Core?.Source ?? "") || args.PermissionKind is not (CoreWebView2PermissionKind.Camera or CoreWebView2PermissionKind.Microphone)) return;
         if (_allowedDevices.Contains(args.PermissionKind)) { args.State = CoreWebView2PermissionState.Allow; return; }

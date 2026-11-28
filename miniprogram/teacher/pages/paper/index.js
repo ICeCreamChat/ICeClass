@@ -2,6 +2,7 @@
 const api = require('../../lib/api');
 const ui = require('../../lib/ui');
 const reports = require('../../lib/report-data');
+const SESSION_PAGE_SIZE = 10;
 
 Page({
   data: {
@@ -9,7 +10,7 @@ Page({
     subjectNames: reports.SUBJECTS.map(s => s.name), subjectIndex: 0, subjectId: '',
     loading: false, detailLoading: false, exporting: false, loaded: false,
     error: '', sessionExpired: false, notice: '',
-    sessionRows: [], sessionPage: 1, sessionPages: 1, sessionTotal: 0, sessionId: '',
+    sessionRows: [], sessionPage: 1, hasNextPage: false, sessionTotal: 0, sessionId: '',
     detail: null, question: null, questionNames: [], questionIndex: 0,
     round: null, roundNames: [], roundIndex: 0,
     answerRows: [], answerPage: 1, answerPages: 1, answerTotal: 0,
@@ -43,35 +44,46 @@ Page({
       answerRows: [], answerTotal: 0, studentRows: [], studentTotal: 0, detailLoading: false });
   },
   clearResults() {
-    this._sessions = [];
+    this._sessionCursors = [null];
     this.clearDetail();
-    this.setData({ sessionRows: [], sessionId: '', sessionPage: 1, sessionPages: 1, sessionTotal: 0, loaded: false });
+    this.setData({ sessionRows: [], sessionId: '', sessionPage: 1, hasNextPage: false, sessionTotal: 0, loaded: false });
   },
-  async load(refreshClasses = false) {
+  async load(refreshClasses = false, page = this.data.sessionPage) {
     if (!this._visible || this.data.exporting) return;
     if (!api.getUser()) {
       this.setData({ sessionExpired: true });
       return;
     }
-    const selected = this.data.sessionId;
+    const selected = this.data.sessionId, previousClass = this.data.classId;
+    const cursors = this._sessionCursors || [null];
     const generation = reports.nextRead(this);
-    this.clearResults();
+    if (refreshClasses) this.clearResults();
     this.setData({ loading: true, error: '', sessionExpired: false, notice: '' });
     try {
       if (refreshClasses) await ui.loadClasses(reports.classReadTarget(this, generation), () => reports.currentRead(this, generation));
       if (!reports.currentRead(this, generation)) return;
-      const classId = this.data.classId;
+      const { classId, subjectId } = this.data;
       if (!classId) return;
-      const payload = await api.request('/api/card-quiz/sessions?' + ui.query({ classId, subjectId: this.data.subjectId }), { method: 'GET' });
+      if (classId !== previousClass) page = 1;
+      const query = ui.query({ classId, subjectId, limit: SESSION_PAGE_SIZE, ...cursors[page - 1] });
+      const payload = await api.request('/api/card-quiz/sessions?' + query, { method: 'GET' });
       if (!reports.currentRead(this, generation)) return;
-      const sessions = reports.paperSessions(payload, ui.formatTime);
-      if (sessions.some(session => session.classId !== classId)) throw new Error('课堂班级与当前选择不一致，请重新载入。');
-      this._sessions = sessions;
-      this.showSessions(1);
-      this.setData({ loaded: true, loading: false });
-      if (selected && sessions.some(s => s.id === selected)) await this.loadSession(selected);
+      const formatted = reports.paperSessions(payload, ui.formatTime);
+      if (payload.sessions.some(s => s.classId !== classId || subjectId && s.subjectId !== subjectId))
+        throw new Error('课堂班级或学科与当前选择不一致，请重新载入。');
+      // The shared formatter sorts tied IDs by locale. Keep the server's ID order across page boundaries.
+      const byId = new Map(formatted.map(s => [s.id, s]));
+      const sessionRows = payload.sessions.map(s => byId.get(s.id)).reverse();
+      this._sessionCursors = cursors.slice(0, page);
+      if (payload.nextCursor) this._sessionCursors.push(payload.nextCursor);
+      this.setData({ sessionRows, sessionPage: page, sessionId: classId === previousClass ? selected : '', hasNextPage: !!payload.nextCursor,
+        sessionTotal: payload.total ?? sessionRows.length, loaded: true, loading: false });
+      if (this.data.sessionId) await this.loadSession(this.data.sessionId);
     } catch (error) {
-      if (reports.currentRead(this, generation)) ui.fail(this, error);
+      if (reports.currentRead(this, generation)) {
+        if (error.status === 401 || error.status === 403) this.clearResults();
+        ui.fail(this, error);
+      }
     } finally {
       if (reports.currentRead(this, generation)) this.setData({ loading: false });
     }
@@ -93,24 +105,24 @@ Page({
     return this.load();
   },
   reload() { return this.load(true); },
-  showSessions(requestedPage) {
-    const result = reports.paginate(this._sessions || [], requestedPage, 10);
-    this.setData({ sessionRows: result.rows, sessionPage: result.page, sessionPages: result.pages, sessionTotal: result.total });
-  },
   onSessionPage(event) {
-    if (!this.data.exporting) this.showSessions(this.data.sessionPage + Number(event.currentTarget.dataset.step));
+    if (!this.data.loaded || this.data.loading || this.data.exporting || this.data.sessionId) return;
+    const page = this.data.sessionPage + Number(event.currentTarget.dataset.step);
+    if (page >= 1 && page <= this._sessionCursors.length) return this.load(false, page);
   },
   openSession(event) { return this.loadSession(event.currentTarget.dataset.id); },
   async loadSession(id) {
-    if (!this._visible || this.data.exporting || !(this._sessions || []).some(s => s.id === id)) return;
-    const generation = reports.nextRead(this), classId = this.data.classId;
+    if (!this._visible || this.data.loading || this.data.exporting || !id) return;
+    if (id !== this.data.sessionId && !this.data.sessionRows.some(s => s.id === id)) return;
+    const generation = reports.nextRead(this), { classId, subjectId } = this.data;
     this.clearDetail();
     this.setData({ sessionId: id, loading: false, detailLoading: true, error: '', notice: '' });
     try {
       const payload = await api.request('/api/card-quiz/sessions/' + encodeURIComponent(id), { method: 'GET' });
       if (!reports.currentRead(this, generation)) return;
       const detail = reports.paperDetail(payload, ui.formatTime);
-      if (detail.header.classId !== classId || detail.header.id !== id) throw new Error('课堂与当前选择不一致，请重新载入。');
+      if (detail.header.classId !== classId || detail.header.id !== id || subjectId && payload.session.subjectId !== subjectId)
+        throw new Error('课堂与当前选择不一致，请重新载入。');
       this._detail = detail;
       this.setData({ detail: detail.header, questionNames: detail.questions.map(q => '第 ' + q.number + ' 题 · ' + q.typeName) });
       this.selectQuestion(0);
@@ -161,7 +173,7 @@ Page({
   connectClassroom(event) {
     if (!this._visible || this.data.exporting || this.data.loading || !this.data.classId || !ui.requireLogin()) return;
     const sessionId = event && event.currentTarget && event.currentTarget.dataset.id || '';
-    if (sessionId && !(this._sessions || []).some(session => session.id === sessionId && session.statusText === '尚未结束')) return;
+    if (sessionId && !this.data.sessionRows.some(session => session.id === sessionId && session.statusText === '尚未结束')) return;
     wx.navigateTo({ url: '/pages/paper-round/index?' + ui.query({ classId: this.data.classId, sessionId }) });
   },
   openCards() {

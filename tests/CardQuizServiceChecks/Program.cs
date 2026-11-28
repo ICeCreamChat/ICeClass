@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -97,13 +98,18 @@ JsonObject Initial(string id) => new() {
     ["events"] = new JsonArray(), ["receipts"] = new JsonObject(), ["syncedSeq"] = 0, ["reviewError"] = null
 };
 JsonObject Advance(JsonObject input, string action, string? source = null, JsonObject? content = null) {
-    var j = input.DeepClone().AsObject(); var s = j["session"]!.AsObject(); var seq = s["seq"]!.GetValue<int>() + 1; var id = Guid.NewGuid().ToString();
+    var j = input.DeepClone().AsObject();
+    Append(j, action, source, content);
+    return j;
+}
+void Append(JsonObject j, string action, string? source = null, JsonObject? content = null) {
+    var s = j["session"]!.AsObject(); var seq = s["seq"]!.GetValue<int>() + 1; var id = Guid.NewGuid().ToString();
     var payload = content?.DeepClone().AsObject() ?? (source is null ? new JsonObject() : new JsonObject { ["source"] = "phone", ["sourceId"] = source });
     var command = new JsonObject { ["id"] = id, ["sessionId"] = s["id"]!.DeepClone(), ["action"] = action, ["payload"] = payload.DeepClone(), ["generation"] = s["generation"]!.DeepClone(), ["sourceId"] = s["sourceId"]!.DeepClone(), ["questionId"] = s["currentQuestionId"]?.DeepClone(), ["roundId"] = s["currentRoundId"]?.DeepClone() };
     j["events"]!.AsArray().Add(new JsonObject { ["id"] = id, ["seq"] = seq, ["action"] = action, ["at"] = 1000 + seq, ["payload"] = payload.DeepClone(), ["generation"] = command["generation"]!.DeepClone(), ["sourceId"] = command["sourceId"]!.DeepClone(), ["questionId"] = command["questionId"]?.DeepClone(), ["roundId"] = command["roundId"]?.DeepClone() });
     s["seq"] = seq; if (action is "add_question" or "start_round" or "end_round" or "resume_round" or "recover" or "set_source" or "set_multi_option" or "end_session") s["generation"] = s["generation"]!.GetValue<int>() + 1;
     if (source is not null) { s["source"] = "phone"; s["sourceId"] = source; }
-    j["receipts"]![id] = new JsonObject { ["fingerprint"] = command.ToJsonString(), ["result"] = new JsonObject { ["seq"] = seq, ["status"] = "confirmed", ["state"] = new JsonObject { ["sessionId"] = s["id"]!.DeepClone(), ["seq"] = seq, ["className"] = "", ["generation"] = s["generation"]!.DeepClone() } } }; return j;
+    j["receipts"]![id] = new JsonObject { ["fingerprint"] = command.ToJsonString(), ["result"] = new JsonObject { ["seq"] = seq, ["status"] = "confirmed", ["state"] = new JsonObject { ["sessionId"] = s["id"]!.DeepClone(), ["seq"] = seq, ["className"] = "", ["generation"] = s["generation"]!.DeepClone() } } };
 }
 JsonObject RelayBody(JsonObject journal, string className) {
     var requestId = journal["events"]!.AsArray().Last()!["id"]!.GetValue<string>();
@@ -111,7 +117,119 @@ JsonObject RelayBody(JsonObject journal, string className) {
     return new JsonObject { ["sessionId"] = journal["session"]!["id"]!.DeepClone(), ["state"] = result["state"]!.DeepClone(),
         ["receipts"] = new JsonArray(new JsonObject { ["id"] = requestId, ["result"] = result }) };
 }
+async Task CheckArchivePolling() {
+    const int lessons = 24, events = 276, iterations = 5;
+    var config = new ReceiverConfig { Endpoint = endpoint + "/" + Guid.NewGuid().ToString("N"), ClassId = "c1",
+        ClassName = "合成归档班", DeviceId = "d1", DeviceToken = "isolated-device-token" };
+    var root = Path.Combine(AppContext.BaseDirectory, "CardQuizData", CardQuizService.BindingKey(config));
+    var sessions = Directory.CreateDirectory(Path.Combine(root, "sessions"));
+    var cache = Directory.CreateDirectory(Path.Combine(root, "cache"));
+    string SeedArchive(int size, int delivered, bool phone = false) {
+        var id = Guid.NewGuid().ToString();
+        var j = Initial(id);
+        for (var i = 1; i < size; i++)
+            Append(j, i == 1 && phone ? "set_source" : "recover", i == 1 && phone ? "synthetic-phone" : null);
+        Append(j, "end_session");
+        j["session"]!["startedAt"] = 1000;
+        j["session"]!["endedAt"] = 1000 + size;
+        j["syncedSeq"] = size;
+        File.WriteAllText(Path.Combine(sessions.FullName, id + ".json"), j.ToJsonString());
+        if (delivered > 0)
+            File.WriteAllText(Path.Combine(cache.FullName, "receipt-" + id + ".json"), new JsonObject { ["seq"] = delivered }.ToJsonString());
+        return id;
+    }
+    var archived = Enumerable.Range(0, lessons).Select(_ => SeedArchive(events, events)).ToArray();
+    // Hold the background worker in its loopback bootstrap while driving its outbox passes below.
+    var pauseBootstrap = holdBootstrap = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    bootstrapStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    var service = CardQuizService.For(config);
+    await bootstrapStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    async Task<(double Milliseconds, double Bytes)> Measure(Func<Task> pass, int passes = iterations) {
+        var bytes = GC.GetTotalAllocatedBytes(true);
+        var timer = Stopwatch.StartNew();
+        for (var i = 0; i < passes; i++) await pass();
+        return (timer.Elapsed.TotalMilliseconds / passes, (GC.GetTotalAllocatedBytes(true) - bytes) / (double)passes);
+    }
+    var cold = await Measure(() => service.SyncPendingAsync(false, lifetime.Token), 1);
+    var idle = await Measure(() => service.SyncPendingAsync(false, lifetime.Token));
+    var poll = await Measure(() => Task.FromResult(service.Status(archived[0])));
+    Console.WriteLine($"24 x 276, cold outbox {cold.Milliseconds:F2} ms / {cold.Bytes:N0} B");
+    Console.WriteLine($"Mean of {iterations} warm passes: idle outbox {idle.Milliseconds:F2} ms / {idle.Bytes:N0} B; open completed lesson status {poll.Milliseconds:F2} ms / {poll.Bytes:N0} B");
+    Check(idle.Bytes < 1024 * 1024 && poll.Bytes < 1024 * 1024, "空队列和打开课堂的状态轮询均不反复解析已完成归档");
+
+    JsonNode Status(JsonObject snapshot, string id) => snapshot["journals"]!.AsArray().Single(j => j!["session"]!["id"]!.GetValue<string>() == id)!;
+    using (var held = File.Open(Path.Combine(sessions.FullName, archived[0] + ".json"), FileMode.Open, FileAccess.Read, FileShare.None)) {
+        var snapshot = service.Status(archived[0]);
+        var finished = snapshot["journals"]!.AsArray().Single()!;
+        Check(snapshot["errors"]!.AsArray().Count == 0 && finished["syncedSeq"]!.GetValue<int>() == events &&
+            finished["session"]!["id"]!.GetValue<string>() == archived[0] && finished["session"]!["endedAt"]!.GetValue<long>() == 1276 &&
+            finished["reviewError"] is null && finished["events"] is null && finished["receipts"] is null && finished["session"]!["questions"] is null,
+            "已同步的当前课堂仍可查状态，热轮询不打开其归档");
+        var reopened = new CardQuizStore(root, config.ClassId, config.DeviceId).Load(archived[1]);
+        var selected = reopened["journals"]!.AsArray().Single()!;
+        Check(reopened["errors"]!.AsArray().Count == 0 && JsonNode.DeepEquals(selected, service.Store.Read(archived[1])) &&
+            selected["events"]!.AsArray().Count == events && selected["receipts"]!.AsObject().Count == events &&
+            selected["session"]!["questions"] is JsonArray, "冷存储按选定编号恢复完整旧记录，独立于锁定的其他课堂");
+    }
+    var all = service.Load()["journals"]!.AsArray();
+    Check(all.Count == lessons && all.All(j => j!["events"]!.AsArray().Count == events && j["receipts"]!.AsObject().Count == events),
+        "未指定课堂的 load 始终返回每堂完整记录");
+
+    var orphan = SeedArchive(3, 0, phone: true);
+    var calls = received.Count;
+    using (var held = File.Open(Path.Combine(sessions.FullName, orphan + ".json"), FileMode.Open, FileAccess.Read, FileShare.None)) {
+        await service.SyncPendingAsync(false, lifetime.Token);
+        Check(received.Count == calls && service.Status(archived[0])["errors"]!.AsArray().Count == 1,
+            "首次发现但暂不可读的归档保留读取错误");
+    }
+    await service.SyncPendingAsync(false, lifetime.Token);
+    var upload = received.Last();
+    Check(received.Count == calls + 1 && upload["session"]!["id"]!.GetValue<string>() == orphan &&
+        upload["events"]!.AsArray().Count == 0 && upload["receipts"]!.AsArray().Count == 2 &&
+        service.Store.LoadCache("receipt-" + orphan)!["seq"]!.GetValue<int>() == 3,
+        "热队列发现旧格式的孤立归档，仅补传缺少进度的手机回执");
+
+    var review = SeedArchive(3, 1, phone: true);
+    service.Store.MarkReview(review, "待核对");
+    var live = Guid.NewGuid().ToString();
+    var journal = service.Store.Commit(Initial(live));
+    var backlog = service.Status(live)["journals"]!.AsArray();
+    var active = await Measure(() => Task.FromResult(service.Status(live)));
+    Console.WriteLine($"Active lesson status with review backlog, mean of {iterations}: {active.Milliseconds:F2} ms / {active.Bytes:N0} B");
+    Check(active.Bytes < 1024 * 1024 && backlog.Count == 2 && backlog.Any(j => j!["session"]!["id"]!.GetValue<string>() == live) &&
+        backlog.Any(j => j!["session"]!["id"]!.GetValue<string>() == review && j["reviewError"]!.GetValue<string>() == "待核对"),
+        "活动课堂反复轮询保留本堂和待核对列表，跳过已完成历史");
+    calls = received.Count;
+    var skipped = Status(await service.SyncAsync(false, lifetime.Token), review);
+    Check(received.Count == calls && skipped["reviewError"]!.GetValue<string>() == "待核对", "待核对的回执保留在列表且后台不重试");
+    var retried = Status(await service.SyncAsync(true, lifetime.Token), review);
+    Check(received.Count == calls + 1 && retried["reviewError"] is null && retried["syncedSeq"]!.GetValue<int>() == 3 &&
+        service.Store.LoadCache("receipt-" + review)!["seq"]!.GetValue<int>() == 3, "手动重试补齐回执并返回最新核对状态");
+
+    journal = service.Store.Commit(Advance(journal, "set_source", "synthetic-phone"));
+    heldSyncId = live;
+    heldSyncStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    releaseSync = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    var first = service.SyncPendingAsync(false, lifetime.Token);
+    try {
+        await heldSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        service.Store.Commit(Advance(journal, "recover"));
+    } finally {
+        releaseSync.TrySetResult();
+        await first;
+        heldSyncId = null;
+    }
+    var next = Status(await service.SyncAsync(false, lifetime.Token), live);
+    upload = received.Last();
+    Check(upload["session"]!["id"]!.GetValue<string>() == live && upload["fromSeq"]!.GetValue<int>() == 2 &&
+        upload["events"]!.AsArray().Count == 1 && upload["receipts"]!.AsArray().Count == 1 &&
+        next["syncedSeq"]!.GetValue<int>() == 2 && service.Store.LoadCache("receipt-" + live)!["seq"]!.GetValue<int>() == 2,
+        "上传期间追加的事件与手机回执由下一轮补齐");
+    CardQuizService.Stop();
+    pauseBootstrap.TrySetResult();
+}
 try {
+    if (args is ["--archive-checks"]) { await CheckArchivePolling(); Console.WriteLine($"{count} checks passed"); return; }
     var config = new ReceiverConfig { Endpoint = endpoint, ClassId = "c1", ClassName = "隔离服务检查班", DeviceId = "d1", DeviceToken = "isolated-device-token" };
     var service = CardQuizService.For(config); await bootstrap.Task.WaitAsync(TimeSpan.FromSeconds(5));
     Check(service.Matches(config) && ReferenceEquals(service, CardQuizService.For(config)), "运行时绑定复用不使用磁盘DPAPI保护副本");
@@ -258,6 +376,11 @@ try {
     var future = Initial(Guid.NewGuid().ToString()); future["publicationId"] = publicationId;
     Refuses(() => service.Commit(future), "已获知题单撤回后在原生首次提交处拒绝新课堂");
     Check((await service.PublicationAsync(publicationId, lifetime.Token, started["session"]!["id"]!.GetValue<string>()))["publication"]!["id"]!.GetValue<string>() == publicationId, "题单撤回保留已经建立的原课堂快照");
+    var deckSessionId = started["session"]!["id"]!.GetValue<string>();
+    service.Commit(Advance(started, "recover"));
+    await service.SyncSessionAsync(deckSessionId, lifetime.Token);
+    var deckUpload = received.Last(body => body["session"]!["id"]!.GetValue<string>() == deckSessionId);
+    Check(deckUpload["publicationId"]?.GetValue<string>() == publicationId, "原题单编号随课堂正常同步供课后报告读取");
 
     publications.Add(new JsonObject { ["id"] = publicationId });
     holdBootstrap = new(TaskCreationOptions.RunContinuationsAsynchronously); bootstrapStarted = new(TaskCreationOptions.RunContinuationsAsynchronously); var release = holdBootstrap;
@@ -317,7 +440,9 @@ try {
         "多选历史公开回执保留部分到完整计数且不注入个人选择");
     bootstrapStatus = 401; try { await service.BootstrapAsync(lifetime.Token); } catch (InvalidOperationException) { }
     Refuses(() => service.Commit(Advance(multi, "set_multi_option", content: new JsonObject { ["option"] = "A" })), "设备撤权仍拒绝多选换项动作");
-    CardQuizService.Stop(); Console.WriteLine($"{count} checks passed");
+    CardQuizService.Stop();
+    bootstrapStatus = 503; await CheckArchivePolling();
+    Console.WriteLine($"{count} checks passed");
 } catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
 finally { CardQuizService.Stop(); lifetime.Cancel(); listener.Stop(); await serving; await Task.WhenAll(handlers); }
 

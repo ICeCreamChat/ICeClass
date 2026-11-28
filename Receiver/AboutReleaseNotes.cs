@@ -3,6 +3,10 @@ namespace ICeClass.Receiver;
 internal static class AboutReleaseNotes
 {
     internal const string Text = """
+        2.5.31 · 2026-11-28
+        旧白板网页组件
+        · 教室端更新会携带白板网页组件。系统组件过旧或初始化失败时，使用经校验的随包组件。
+
         2.5.30 · 2026-11-26
         纸卡取景与手机重连
         · 手机和电脑取景随课堂圆盘一起缩放，拖动时继续收答。

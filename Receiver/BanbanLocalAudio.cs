@@ -127,7 +127,8 @@ internal static class BanbanVoiceModels
     }
 }
 
-internal sealed record BanbanSpeechResult(string Text, bool Final, bool Unrecognized = false, bool DuringPlayback = false, bool OtherSpeaker = false);
+internal sealed record BanbanSpeechResult(string Text, bool Final, bool Unrecognized = false, bool DuringPlayback = false,
+    bool OtherSpeaker = false, string? RawText = null);
 // Opt-in, text/level-only diagnostics. Never contains microphone samples.
 internal sealed record BanbanAudioObservation(string Kind, bool ControlsOnly, int Generation,
     string Text = "", bool Final = false, float Peak = 0, float Clipped = 0, int Frames = 0, double DelayMs = 0);
@@ -207,8 +208,8 @@ internal sealed class BanbanLocalAudio : IDisposable
         catch { _segmenter.Dispose(); _detector.Dispose(); throw; }
         try { _speakerFocus = new BanbanSpeakerFocus(); }
         catch { recognizer.Dispose(); _segmenter.Dispose(); _detector.Dispose(); throw; }
-        _decoder = new BanbanSpeechDecoder(samples => _speakerFocus.Matches(samples)
-            ? recognizer.Recognize(samples) : new("", true, OtherSpeaker: true), IsCurrent, Recognized, Fail,
+        _decoder = new BanbanSpeechDecoder(audio => _speakerFocus.Matches(audio.Samples)
+            ? recognizer.RecognizeDialogue(audio) : new("", audio.Final, OtherSpeaker: true), IsCurrent, Recognized, Fail,
             () => { recognizer.Dispose(); _speakerFocus.Dispose(); });
         _capture = new WaveInEvent { DeviceNumber = index, WaveFormat = new WaveFormat(16000, 16, 1), BufferMilliseconds = 50 };
         _capture.DataAvailable += Capture;

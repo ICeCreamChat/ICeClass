@@ -65,8 +65,8 @@ internal static class VoiceMemoryChecks
             var errors = new ConcurrentQueue<Exception>();
             var recognizedSamples = 0;
             var playbackProvenance = false;
-            using var decoder = new BanbanSpeechDecoder(samples => {
-                recognizedSamples = samples.Length;
+            using var decoder = new BanbanSpeechDecoder(audio => {
+                recognizedSamples = audio.Samples.Length;
                 return new("打开数学课件", true);
             }, generation => generation == 1, (_, result, _) => {
                 playbackProvenance = result.DuringPlayback; completed.Set();

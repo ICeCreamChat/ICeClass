@@ -2,7 +2,8 @@
     [string]$Endpoint = 'https://iceclass.icecreamchat.top',
     [switch]$Unconfigured,
     [string]$OutputDirectory = '',
-    [string]$DistributionDirectory = ''
+    [string]$DistributionDirectory = '',
+    [string]$WebView2Cab = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -53,7 +54,23 @@ foreach ($sheet in @('通用纸卡-1-2.pdf', '通用纸卡-1-40.pdf', '通用纸
 # Windows PowerShell 5.1 needs the BOM to display Chinese installer messages.
 [IO.File]::WriteAllText((Join-Path $classroom 'install.ps1'), (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'install-classroom.ps1') -Raw -Encoding UTF8), (New-Object Text.UTF8Encoding($true)))
 [IO.File]::WriteAllText((Join-Path $classroom '安装或升级.cmd'), "@echo off`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
-$classroomProgram = [ordered]@{ version = (Get-Item -LiteralPath $receiver).VersionInfo.FileVersion; size = (Get-Item -LiteralPath $receiver).Length; sha256 = (Get-FileHash -LiteralPath $receiver -Algorithm SHA256).Hash.ToLowerInvariant() } | ConvertTo-Json
+$runtime = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'classroom-webview2.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$runtimeDestination = Join-Path $classroom 'WebView2-x64.cab'
+if ($WebView2Cab) {
+    Copy-Item -LiteralPath $WebView2Cab -Destination $runtimeDestination -ErrorAction Stop
+} else {
+    Invoke-WebRequest -UseBasicParsing -Uri $runtime.url -OutFile $runtimeDestination
+}
+if ((Get-Item -LiteralPath $runtimeDestination).Length -ne $runtime.size -or
+    (Get-FileHash -LiteralPath $runtimeDestination -Algorithm SHA256).Hash -ine $runtime.sha256) {
+    throw 'WebView2 固定版组件与项目锁定的 Microsoft x64 发布文件不一致。'
+}
+$classroomProgram = [ordered]@{
+    version = (Get-Item -LiteralPath $receiver).VersionInfo.FileVersion
+    size = (Get-Item -LiteralPath $receiver).Length
+    sha256 = (Get-FileHash -LiteralPath $receiver -Algorithm SHA256).Hash.ToLowerInvariant()
+    webView2 = [ordered]@{ version = $runtime.version; size = $runtime.size; sha256 = $runtime.sha256 }
+} | ConvertTo-Json -Depth 3
 [IO.File]::WriteAllText((Join-Path $classroom 'program-manifest.json'), $classroomProgram, (New-Object Text.UTF8Encoding($false)))
 $desktopExecutable = Join-Path $distributionRoot 'desktop\ICeClass.Desktop.exe'
 if (Test-Path -LiteralPath $desktopExecutable) {
@@ -103,7 +120,7 @@ $classroomReadme = @'
 教室电脑一步使用
 
 1. 完整解压安装包。已有教室端时，先从托盘菜单“退出”，然后双击“安装或升级.cmd”；程序优先升级桌面图标指向的原目录，保留绑定和设置。首次安装使用当前用户的应用目录。
-2. 安装后会自动打开。也可以把整个教室端文件夹放到固定位置，双击 ICeClass.exe 使用。
+2. 安装器会把教室端专用的 WebView2 网页组件放进程序目录，再打开教室端。旧白板也用同一个安装入口。
 3. 若未预置网址，先输入管理员提供的 ICeClass 班伴 HTTPS 网址。
 4. 输入管理员提供的当前全校绑定码，点击“读取班级”，依次下拉选择年级、本教室班级。无需管理员逐班生成绑定码。
 5. 点击“绑定此教室”。以后电脑开机后会自动在后台连接平台。
@@ -121,7 +138,7 @@ $classroomReadme = @'
 早读陪伴
 
 点击教室首页或托盘菜单“打开早读陪伴”，内容直接在 ICeClass 班伴内铺满屏幕，全屏时隐藏两层顶栏。选择模式并点击开始，首次使用时允许麦克风。没有键盘时，在屏幕空白处长按 2 秒退出全屏，按住显示圆环进度，松手取消；滑动、双指、按钮和滑块不会触发退出。退出全屏后早读继续，点窗口里的“全屏”可恢复；点“返回”才会结束采音并返回教室首页，通知接收继续。键盘 Esc 仍可退出全屏。
-Windows 10/11 64 位电脑需有 Microsoft Edge WebView2；大多数电脑已安装。缺少时会给出“安装运行组件”入口，安装后重新打开 ICeClass 班伴即可。四种早读活动、视频、图片与字体已内置，绑定后无需联网也能打开；首次绑定和首次同步学校规则需要联网。
+Windows 10/11 64 位电脑使用 WebView2 显示早读和教室页面。完整包的“安装或升级.cmd”会准备随包组件，供缺少合适系统组件的白板使用。四种早读活动、视频、图片与字体已内置，绑定后可离线打开。首次绑定和首次同步学校规则需要联网。
 ICe 可在后台启用到点提醒。晨读时段内，新版教室端弹出“开始晨读 / 暂不开始”；同一时段只提醒一次，关闭提醒不会退出程序。开始后仍需选择模式并允许麦克风，提醒本身不计成绩。
 ICe 在后台设置统计时段和统计声量门槛。目标、时长、速度等玩法设置仍由原本地操作面板保存，后台不会覆盖。只有指定时段内、页面可见且正在运行的活动计入统计。统计先写入本机，重启后仍保留，联网后自动补传；最终成绩由服务器按活动发生时生效的规则计算。请不要清理本机 ICeClass 用户数据目录。
 
@@ -165,7 +182,7 @@ Set-Content -LiteralPath (Join-Path $delivery '网页端使用说明.txt') -Valu
 $adminReadme = @'
 ICeClass 班伴 交付包
 
-教室端：把“教室端”文件夹复制到每间教室电脑，双击 EXE，输入全校绑定码并选择本班。首次运行创建桌面快捷图标；窗口关闭后常驻托盘，仍接收通知。
+教室端：把完整的“教室端”文件夹复制到教室电脑，双击“安装或升级.cmd”。首次安装时输入全校绑定码并选择本班。升级沿用已有绑定。首次运行创建桌面快捷图标，关闭窗口后常驻托盘接收通知。
 网页端：打开管理员提供的网址或“网页端.url”，在浏览器中登录。
 Windows 教师端：安装“Windows教师端”文件夹中的应用，从桌面进入完整网页工作台，关闭后收起到托盘。沿用网页账号与权限，不需要教室绑定码。
 早读：从已绑定的教室端打开，四种模式共用管理员统计规则。
@@ -185,6 +202,6 @@ Write-Host ''
 Write-Host '交付包已生成：' -ForegroundColor Green
 Write-Host "  $delivery"
 if ($receiverVersion) { Write-Host "已包含教室端版本：$receiverVersion" }
-Write-Host '教室电脑只需复制“教室端”文件夹并双击 EXE。'
+Write-Host '将完整的“教室端”文件夹复制到教室电脑，双击“安装或升级.cmd”。'
 if ($Endpoint) { Write-Host '网页端：双击“网页端.url”；Windows 教师端：打开“Windows教师端”文件夹安装。' }
 else { Write-Host '客户端内置 ICeClass 班伴正式网址，也可在连接设置中修改。' }

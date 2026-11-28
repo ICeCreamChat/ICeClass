@@ -4,6 +4,7 @@ const api = require('../../lib/api');
 const ui = require('../../lib/ui');
 const notices = require('../../lib/notice-data');
 const audio = require('../../lib/notice-audio');
+const privacy = require('../../lib/device-privacy');
 
 function selectedIndex(event) {
   const dataset = event.currentTarget && event.currentTarget.dataset;
@@ -17,11 +18,9 @@ Page({
     loading: false, presenceLoading: false, recentLoading: false, presence: '', recent: [],
     error: '', sessionExpired: false, busy: false, phase: '', fileBusy: false,
     modeNames: ['文字通知', '教师原声'], modeIndex: 0,
-    text: '', textCount: 0, audioFile: null, audioState: '', previewing: false, presenceTone: '',
-    levelNames: notices.LEVELS.map(item => item.label), levelIndex: 0, levelMode: notices.LEVELS[0].mode,
+    text: '', textCount: 0, audioFile: null, audioState: '', privacyNeeded: false, previewing: false, presenceTone: '',
+    audioLevelNames: notices.LEVELS.slice(1).map(item => item.label), levelIndex: 1,
     durationNames: notices.DURATIONS.map(value => `${value} 秒`), durationIndex: 1,
-    speedNames: ['较慢', '正常', '较快', '很快'], speedIndex: 1,
-    volumeNames: ['静音（0%）', '25%', '50%', '75%', '100%'], volumeIndex: 4,
     showSettings: false, lastResult: null, uncertain: false, uncertainClassName: '', recordsOpened: false
   },
 
@@ -54,6 +53,7 @@ Page({
     this._visibilityGeneration += 1;
     this._sendReadGeneration += 1;
     this._fileGeneration += 1;
+    this.cancelDevicePrivacy();
     if (this._recording) this._recording.cancel();
     this._recording = null;
     this.stopPreview();
@@ -154,21 +154,16 @@ Page({
     const modeIndex = selectedIndex(event);
     if (![0, 1].includes(modeIndex)) return;
     this.stopPreview();
-    this.setData({ modeIndex, error: '' });
-    if (modeIndex === 1 && this.data.levelIndex === 0) this.applyLevel(1);
+    const level = notices.LEVELS[modeIndex === 1 ? this.data.levelIndex : 0];
+    this.setData({ modeIndex, error: '', ...(!this._durationEdited ? { durationIndex: notices.DURATIONS.indexOf(level.duration) } : {}) });
   },
 
   onLevelChange(event) {
-    if (this.data.busy || this.data.fileBusy) return;
+    if (this.data.busy || this.data.fileBusy || this.data.modeIndex !== 1) return;
     const index = selectedIndex(event);
-    if (this.data.modeIndex === 1 && index === 0) { this.setData({ error: '教师原声请选择“重要”或“紧急”。' }); return; }
-    this.applyLevel(index);
-  },
-
-  applyLevel(index) {
+    if (index !== 1 && index !== 2) return;
     const level = notices.LEVELS[index];
-    if (!level) return;
-    const patch = { levelIndex: index, levelMode: level.mode };
+    const patch = { levelIndex: index };
     if (!this._durationEdited) patch.durationIndex = notices.DURATIONS.indexOf(level.duration);
     this.setData(patch);
   },
@@ -181,32 +176,31 @@ Page({
     this.setData({ durationIndex: index });
   },
 
-  onSpeedChange(event) {
-    if (!this.data.busy && notices.SPEEDS[Number(event.detail.value)] !== undefined) this.setData({ speedIndex: Number(event.detail.value) });
-  },
-
-  onVolumeChange(event) {
-    if (!this.data.busy && notices.VOLUMES[Number(event.detail.value)] !== undefined) this.setData({ volumeIndex: Number(event.detail.value) });
-  },
-
   toggleSettings() { if (!this.data.busy) this.setData({ showSettings: !this.data.showSettings }); },
 
   markDraft() { ui.setDirty(Boolean(this.data.text || this.data.audioFile)); },
+  openDevicePrivacy() { privacy.openPolicy(this, wx); },
+  agreeDevicePrivacy() { privacy.settle(this, true); },
+  cancelDevicePrivacy() { privacy.settle(this, false); },
 
   async startVoice() {
     if (!this._visible || !this.sameUser() || this.data.busy || this.data.fileBusy || this.data.modeIndex !== 1) return;
     const generation = ++this._fileGeneration;
-    const current = () => this._visible && this.sameUser() && generation === this._fileGeneration;
+    const pending = () => this._visible && generation === this._fileGeneration;
+    const current = () => pending() && this.sameUser();
     this.stopPreview();
-    this.setData({ fileBusy: true, audioState: 'starting', error: '' });
+    this.setData({ fileBusy: true, error: '' });
     try {
-      await audio.authorizeRecording(wx, current);
+      if (!await privacy.authorize(this, wx, current) || !current()) return;
+      this.setData({ audioState: 'starting' });
+      await audio.authorizeRecording(wx);
       if (!current()) return;
       this._recording = audio.recorder(wx).start({
         start: () => { if (current()) this.setData({ audioState: 'recording' }); },
         finish: async (error, result) => {
-          if (!current()) return;
+          if (!pending()) return;
           this._recording = null;
+          if (!current()) { this.setData({ fileBusy: false, audioState: '', sessionExpired: true }); return; }
           this.setData({ audioState: 'saving' });
           try {
             if (error) throw error;
@@ -215,12 +209,14 @@ Page({
           } catch (failure) {
             if (current()) this.setData({ error: failure.message || '无法读取录音，请重新录制。' });
           } finally {
-            if (current()) this.setData({ fileBusy: false, audioState: '' });
+            if (pending()) this.setData({ fileBusy: false, audioState: '', ...(!current() ? { sessionExpired: true } : {}) });
           }
         }
       });
     } catch (error) {
-      if (current()) this.setData({ fileBusy: false, audioState: '', error: error.message || '录音未开始，请重试。' });
+      if (current()) this.setData({ error: error.message || '录音未开始，请重试。' });
+    } finally {
+      if (pending() && !this._recording) this.setData({ fileBusy: false, audioState: '', ...(!current() ? { sessionExpired: true } : {}) });
     }
   },
 
@@ -252,13 +248,15 @@ Page({
   },
 
   async chooseWav() {
-    if (this.data.busy || this.data.fileBusy) return;
+    if (!this._visible || !this.sameUser() || this.data.busy || this.data.fileBusy || this.data.modeIndex !== 1) return;
     if (typeof wx.chooseMessageFile !== 'function') { this.setData({ error: '当前微信版本不支持选择文件，请升级微信后选择 WAV。' }); return; }
     const generation = ++this._fileGeneration;
     this.stopPreview();
     this.setData({ fileBusy: true, error: '' });
-    const current = () => this._visible && generation === this._fileGeneration;
+    const pending = () => this._visible && generation === this._fileGeneration;
+    const current = () => pending() && this.sameUser();
     try {
+      if (!await privacy.authorize(this, wx, current) || !current()) return;
       const result = await new Promise((resolve, reject) => wx.chooseMessageFile({ count: 1, type: 'file', extension: ['wav'], success: resolve, fail: reject }));
       if (!current()) return;
       const file = result.tempFiles && result.tempFiles[0];
@@ -271,7 +269,7 @@ Page({
     } catch (error) {
       if (current() && !/cancel/i.test(error.errMsg || '')) this.setData({ error: error.message || 'WAV 文件读取失败，请重新选择。' });
     } finally {
-      if (current()) this.setData({ fileBusy: false });
+      if (pending()) this.setData({ fileBusy: false, ...(!current() ? { sessionExpired: true } : {}) });
     }
   },
 

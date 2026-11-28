@@ -1,0 +1,7 @@
+<view class="page theme-{{appearance}}">
+  <view class="panel">
+    <text class="title" aria-role="heading" aria-level="1">需要登录</text>
+    <text class="subtitle">请使用学校账号登录后继续。</text>
+    <button class="primary block-button" bindtap="relogin">重新登录</button>
+  </view>
+</view>

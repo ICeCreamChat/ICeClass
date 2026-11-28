@@ -1,7 +1,8 @@
 ﻿param(
     [switch]$SkipBuild,
     [string]$DistributionDirectory = '',
-    [string]$PreviousServerDirectory = ''
+    [string]$PreviousServerDirectory = '',
+    [string]$WebView2Cab = ''
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -38,7 +39,7 @@ $windowsRoot = Join-Path $stage 'ICeClass'
 $serverRoot = Join-Path $stage 'ICeClass-server'
 New-Item -ItemType Directory -Force -Path $windowsRoot, $serverRoot | Out-Null
 try {
-    & (Join-Path $PSScriptRoot 'prepare-delivery.ps1') -Unconfigured -OutputDirectory $windowsRoot -DistributionDirectory $distributionRoot
+    & (Join-Path $PSScriptRoot 'prepare-delivery.ps1') -Unconfigured -OutputDirectory $windowsRoot -DistributionDirectory $distributionRoot -WebView2Cab $WebView2Cab
     foreach ($directory in @('server', 'cloud\migrations', 'receiver_release', 'desktop_release', 'scripts')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $serverRoot $directory) | Out-Null
     }
@@ -74,6 +75,7 @@ try {
         '--project', (Join-Path $projectRoot 'Receiver\Receiver.csproj'),
         '--executable', $receiverCore,
         '--voice-directory', (Join-Path $projectRoot 'Receiver\Assets\Voice'),
+        '--webview2-cab', (Join-Path $windowsRoot '教室端\WebView2-x64.cab'),
         '--release-directory', (Join-Path $serverRoot 'receiver_release')
     )
     $desktopPayloadArguments = @(

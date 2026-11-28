@@ -1,13 +1,11 @@
 'use strict';
 
 const LEVELS = [
-  { value: 'info', label: '普通', mode: '静音展示', duration: 8 },
-  { value: 'warning', label: '重要', mode: '语音播报', duration: 12 },
-  { value: 'urgent', label: '紧急', mode: '语音播报并突出显示', duration: 20 }
+  { value: 'info', label: '普通', duration: 8 },
+  { value: 'warning', label: '重要', duration: 12 },
+  { value: 'urgent', label: '紧急', duration: 20 }
 ];
 const DURATIONS = [5, 8, 10, 12, 15, 20, 30, 45, 60];
-const SPEEDS = [-2, 0, 2, 4];
-const VOLUMES = [0, 0.25, 0.5, 0.75, 1];
 const STATUS_LABELS = {
   offline: '教室离线', sent: '已发往教室', received: '教室已收到',
   displayed: '已展示，待知晓', acknowledged: '教室已知晓', failed: '处理失败'
@@ -52,18 +50,18 @@ function validateWav(buffer) {
 
 function buildNotice(data, selectedClass) {
   if (!selectedClass || !selectedClass.id || selectedClass.id !== data.classId) throw new Error('请选择有权限的目标班级。');
-  const level = LEVELS[data.levelIndex];
-  const duration = DURATIONS[data.durationIndex], speed = SPEEDS[data.speedIndex], volume = VOLUMES[data.volumeIndex];
-  if (!level || duration === undefined || speed === undefined || volume === undefined) throw new Error('通知参数不正确，请重新选择。');
   const audio = data.modeIndex === 1;
+  // The receiver skips speech generation for info notices, independently of volume.
+  const level = audio ? LEVELS[data.levelIndex] : LEVELS[0];
+  const duration = DURATIONS[data.durationIndex];
+  if (!level || duration === undefined) throw new Error('通知参数不正确，请重新选择。');
   if (audio && level.value === 'info') throw new Error('教师原声请选择“重要”或“紧急”。');
   if (audio && (!data.audioFile || !data.audioFile.path)) throw new Error('请先录音或选择符合要求的 WAV 文件。');
   const originalText = String(data.text || ''), text = originalText.trim();
   if (!audio && (!text || Array.from(text).length > 500)) throw new Error('通知内容应为 1-500 个字符。');
   const values = {
     classId: selectedClass.id, alertLevel: level.value,
-    ttsVolume: level.value === 'info' ? 0 : volume,
-    ttsSpeed: audio || level.value === 'info' ? 0 : speed,
+    ttsVolume: audio ? 1 : 0, ttsSpeed: 0,
     displayDurationSec: duration
   };
   if (!audio) values.text = text;
@@ -72,16 +70,13 @@ function buildNotice(data, selectedClass) {
 
 function confirmationText(notice, quietPeriod) {
   const values = notice.values, level = LEVELS.find(item => item.value === values.alertLevel);
-  let mode = notice.audioFile ? '播放教师原声' : level.mode;
+  let mode = notice.audioFile ? '播放教师原声' : '静音展示';
   if (notice.audioFile && values.alertLevel === 'urgent') mode += '并突出显示';
-  if (values.alertLevel !== 'info' && values.ttsVolume === 0) mode += '（音量为 0）';
   const lines = [`目标：${notice.className}`, `级别：${level.label}`, `${mode}，展示 ${values.displayDurationSec} 秒`];
-  if (values.alertLevel !== 'info') lines.push(`音量：${Math.round(values.ttsVolume * 100)}%`);
-  if (!notice.audioFile && values.alertLevel !== 'info') lines.push(`语速：${values.ttsSpeed}`);
   lines.push(notice.audioFile ? `原声：${notice.audioFile.name}（${(notice.audioFile.durationMs / 1000).toFixed(1)} 秒）` : `正文：${values.text}`);
   if (quietPeriod) {
     lines.push(`禁言时间：${quietPeriod.name || '上课时间'} ${quietPeriod.startTime || ''}-${quietPeriod.endTime || ''}（北京时间）`);
-    lines.push(values.alertLevel === 'info' || values.ttsVolume === 0 ? '确认后将在禁言时间内静音展示。' : '确认后将在禁言时间内播放声音。');
+    lines.push(notice.audioFile ? '确认后将在禁言时间内播放声音。' : '确认后将在禁言时间内静音展示。');
   }
   lines.push(values.alertLevel === 'info' ? '通知将排队静音展示。' : '可能暂停正在展示的低等级通知。');
   lines.push('教室离线时不会补播。');
@@ -110,4 +105,4 @@ function mapHistoryItem(item, formatTime) {
   };
 }
 
-module.exports = { LEVELS, DURATIONS, SPEEDS, VOLUMES, STATUS_LABELS, MAX_AUDIO_BYTES, validateWav, buildNotice, confirmationText, mapHistoryItem };
+module.exports = { LEVELS, DURATIONS, STATUS_LABELS, MAX_AUDIO_BYTES, validateWav, buildNotice, confirmationText, mapHistoryItem };

@@ -5,13 +5,23 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const app = path.join(root, 'miniprogram', 'teacher');
-const output = path.join(root, 'output', 'wechat-native-20261119');
+const output = path.join(root, 'output', 'wechat-native-check');
 const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
 const files = walk(app);
 let checks = 0;
 const config = JSON.parse(fs.readFileSync(path.join(app, 'app.json'), 'utf8'));
+const routes = new Set(config.pages);
+const retired = /^(?:pages\/(?:banban|connection-settings|quota-settings|study)\/|lib\/(?:banban-data|banban-stream|study-settings)\.js$)/;
 for (const file of files) {
-  const text = /\.(js|json|wxml|wxss)$/.test(file) ? fs.readFileSync(file, 'utf8') : '';
+  const relative = path.relative(app, file).replaceAll('\\', '/');
+  const text = /\.(js|json|wxml|wxss)$/.test(file) && relative !== 'project.private.config.json' ? fs.readFileSync(file, 'utf8') : '';
+  if (retired.test(relative)) throw new Error('已下线的功能仍在小程序源码包中：' + relative);
+  if (/^pages\/[^/]+\/index\.(?:js|json|wxml|wxss)$/.test(relative) && !routes.has(relative.slice(0, relative.lastIndexOf('.')))) {
+    throw new Error('小程序源码包包含未注册页面：' + relative);
+  }
+  if (/\/api\/(?:self-study\b|banban\/(?!operations\b))|\benableChunked\s*:/.test(text)) {
+    throw new Error('小程序源码包包含已下线的模型或监测调用：' + relative);
+  }
   if (file.endsWith('.js')) { new vm.Script(text, { filename: file }); checks++; }
   if (file.endsWith('.json') && !file.endsWith('project.private.config.json')) { JSON.parse(text); checks++; }
   if (file.endsWith('.wxml') && /<web-view\b/i.test(text)) throw new Error('个人主体原生包中不能保留 web-view: ' + file);

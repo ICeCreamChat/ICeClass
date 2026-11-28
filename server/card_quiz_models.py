@@ -21,6 +21,10 @@ CREATE INDEX IF NOT EXISTS idx_card_quiz_question_owner ON card_quiz_questions(o
 CREATE TABLE IF NOT EXISTS card_quiz_question_versions (
  question_id TEXT NOT NULL REFERENCES card_quiz_questions(id), revision INTEGER NOT NULL,
  value TEXT NOT NULL, PRIMARY KEY(question_id,revision));
+CREATE TABLE IF NOT EXISTS card_quiz_followups (
+ question_id TEXT NOT NULL, revision INTEGER NOT NULL, exercises TEXT NOT NULL,
+ PRIMARY KEY(question_id,revision),
+ FOREIGN KEY(question_id,revision) REFERENCES card_quiz_question_versions(question_id,revision));
 CREATE TABLE IF NOT EXISTS card_quiz_decks (
  id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id),
  revision INTEGER NOT NULL, title TEXT NOT NULL, question_ids TEXT NOT NULL);
@@ -34,7 +38,8 @@ CREATE TABLE IF NOT EXISTS card_quiz_sessions (
  device_id TEXT NOT NULL REFERENCES devices(id), subject_id TEXT NOT NULL,
  started_at INTEGER NOT NULL, ended_at INTEGER, seq INTEGER NOT NULL,
  revision INTEGER NOT NULL, raw_value TEXT NOT NULL, value TEXT NOT NULL,
- teacher_id TEXT REFERENCES users(id), updated_at INTEGER NOT NULL);
+ teacher_id TEXT REFERENCES users(id), updated_at INTEGER NOT NULL,
+ publication_id TEXT REFERENCES card_quiz_publications(id));
 CREATE INDEX IF NOT EXISTS idx_card_quiz_session_class ON card_quiz_sessions(class_id,started_at);
 CREATE TABLE IF NOT EXISTS card_quiz_events (
  session_id TEXT NOT NULL REFERENCES card_quiz_sessions(id) ON DELETE CASCADE,

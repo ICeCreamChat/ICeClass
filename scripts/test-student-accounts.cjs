@@ -181,6 +181,7 @@ test('real student page supports keyboard login, personal statuses, self print a
     await page.locator('#loginPassword').fill(credentials[2].password);
     await page.locator('#loginPassword').press('Enter');
     await page.locator('#student-workspace:not([hidden])').waitFor();
+    await page.getByRole('button',{name:'所有作答记录'}).click();
     await page.locator('.student-record').first().waitFor();
     assert.equal(await page.locator('.student-record').count(),3);
     assert.equal(await page.locator('[data-status="abstained"]').count(),1);

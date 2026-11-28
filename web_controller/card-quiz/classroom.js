@@ -65,7 +65,7 @@
     if (!dialog || dismissAll) showPane('');
   }
   const relayReceipts = new Map();
-  const relayUnavailable = '手机连接暂时不可用，未确认的作答不会计为已收。';
+  const relayUnavailable = '正在重连学校服务，手机作答以白板确认为准。';
   function feedback(message, kind = '') {
     $('feedback').textContent = message; $('feedback').className = 'feedback ' + kind;
     const dialog = document.querySelector('dialog[open]');
@@ -208,7 +208,7 @@
         pause:collecting && !$('pause').disabled && canCapture(),
         seal:captureControls && (lesson.phase === 'paused' || lesson.primary !== 'collect') && !$('stop').disabled,
         options:multiple && !$('multi-option').disabled && canCapture(),
-        source:inDisc ? active() && canCapture() && !operation && !preview : undefined,
+        source:inDisc ? canChangeSource() && !preview : undefined,
         exempt:inDisc ? lesson.phase === 'result' && !$('exempt').disabled : undefined,
         edit:Boolean(q && active() && !operation),
         'end-session':ended || history ? !operation : undefined},
@@ -228,10 +228,11 @@
   }
   function activateWheel(id) {
     if (id === 'back' || id === 'dismiss') { back(id === 'dismiss'); return; }
-    if (operation || disposed || !wheel.actions?.some(action => action.id === id && action.enabled) || document.querySelector('dialog[open]')) return;
+    if (disposed || !wheel.actions?.some(action => action.id === id && action.enabled) || document.querySelector('dialog[open]')) return;
+    if (id === 'source') { void changeSource(); return; }
+    if (operation) return;
     const target = wheel.targets[id];
     if (id === 'end-session' && !active()) { showPane(session() ? 'summary' : 'history'); return; }
-    if (id === 'source') { changeSource(); return; }
     if (id === 'options') { showPane('options'); return; }
     if (id === 'camera') {
       showPane('capture');
@@ -259,6 +260,14 @@
   const liveVideo = new CardQuizClassroomVideo(native);
   let previewPeer = null, previewSetup = null, phoneLens = null, foldedPreview = '', nextPeerAt = 0, unsupportedScope = '';
   let cancelBoardOpen;
+  function canChangeSource() {
+    // The round is already saved while waiting for the physical camera.
+    return active() && canCapture() && (!operation || Boolean(cancelBoardOpen && scanner.starting && !scanner.running));
+  }
+  function stopBoardCamera() {
+    scanner.stop();
+    cancelBoardOpen?.(false);
+  }
   function previewScope() {
     const s = session();
     return companion && document.body.classList.contains('in-disc') && canCapture() && active() && round()?.status === 'collecting'
@@ -392,7 +401,7 @@
     const view = cameraPreview();
     if (!view || key !== view.key) return;
     if (action === 'preview-stop' && !view.phone && cancelBoardOpen) {
-      scanner.stop(); cancelBoardOpen(false); renderWheel(); return;
+      stopBoardCamera(); renderWheel(); return;
     }
     if (action === 'preview-fold' || action === 'preview-open') {
       foldedPreview = action === 'preview-fold' ? key : '';
@@ -405,7 +414,7 @@
         } else void run(pauseRound);
       }
       else $('camera-toggle').click();
-    } else if (!operation && action === (view.phone ? 'preview-board' : 'preview-phone')) {
+    } else if (action === (view.phone ? 'preview-board' : 'preview-phone')) {
       void changeSource();
     }
   }
@@ -644,8 +653,8 @@
     $('stop').disabled = readOnly || between;
     $('pause').hidden = !collecting || ended;
     $('pause').disabled = disabled || !collecting;
-    $('source').hidden = collecting;
-    $('source').disabled = disabled || collecting;
+    $('source').hidden = collecting && (s.source !== 'board' || scanner.running);
+    $('source').disabled = $('source').hidden || !canChangeSource();
     $('source').textContent = s.source === 'phone' ? '换回本机' : '使用手机';
     $('edit').hidden = !between || !q;
     $('edit').disabled = disabled || !between || !q;
@@ -687,7 +696,7 @@
     $('summary-questions').hidden = !ended || !companion;
     scanner.reset(`${s.id}/${s.currentRoundId}/${s.generation}`,q?.type==='multiple'?2:q?.options.length || 4,
       `${s.id}/${s.currentRoundId}/${s.sourceId}/${r?.activeOption || ''}`);
-    if (!collecting || s.source !== 'board' || frozen || ended) scanner.stop();
+    if (!collecting || s.source !== 'board' || !canCapture() || ended) stopBoardCamera();
     const next = nextFromDeck();
     $('next').textContent = !q ? '准备第一题' : next ? '题单下一题' : '下一道课件题';
     $('next').classList.toggle('primary',r?.status === 'closed');
@@ -734,9 +743,8 @@
     feedback('课堂已保存，可以开始收答。'); scheduleRelay(); scheduleSync();
   }
   async function restore(id) {
-    const latest = await request('load'), journal = latest.journals.find(j=>j.session.id===id);
+    const latest = await request('load',{sessionId:id}), journal = latest.journals.find(j=>j.session.id===id);
     if (!journal) throw new Error('本机课堂未找到，请核对记录。');
-    data = latest;
     const restored = newController(journal);
     let restoredDeck = null, issue = '';
     if (journal.publicationId) {
@@ -745,6 +753,7 @@
     }
     if (restored.session.endedAt === null) await commit(restored,command('recover',{},restored.session));
     resetSessionControls();
+    data = latest;
     controller = restored; deck = restoredDeck; frozen = false;
     const q = question(), template = q && `${q.type}:${q.options.length}`;
     if (slideTemplates.some(([value])=>value===template)) $('next-template').value = template;
@@ -766,7 +775,7 @@
     const current = controller;
     syncTimer = setTimeout(async () => {
       try {
-        const value = await request('load');
+        const value = await request('status',{sessionId:current.session.id});
         if (controller === current) mergeSync(value);
       } catch { /* Native outbox reports state on the next read. */ }
       if (controller === current) scheduleSync();
@@ -832,7 +841,7 @@
     } catch (error) {
       if (!isCurrent()) return;
       relayFailures = Math.min(5,relayFailures+1);
-      closePreviewPeer();
+      // Preview has its own transport and disconnect handling. Retry the school poll independently.
       if (session()?.source === 'phone') feedback(relayUnavailable,'warning');
     } finally { relayRunning = false; scheduleRelay(); }
   }
@@ -1048,7 +1057,7 @@
       let issue;
       const cancelled=new Promise(resolve=>{ cancelBoardOpen=resolve; });
       try {
-        const started=scanner.start(); renderWheel();
+        const started=scanner.start(); render();
         if (await Promise.race([started.then(()=>true),cancelled]) === false) return;
       } catch (error) { issue = error.message; }
       finally { cancelBoardOpen=null; }
@@ -1090,8 +1099,7 @@
     visibilityRevision++;
     if ($('pair-dialog').open) closePhoneInvite();
     closePreviewPeer(); foldedPreview = '';
-    cancelBoardOpen?.(false);
-    scanner.stop(); clearTimeout(relayTimer);
+    stopBoardCamera(); clearTimeout(relayTimer);
     suspension ??= savePause(retryPause).finally(() => { suspension = null; render(); });
     return suspension;
   }
@@ -1171,7 +1179,8 @@
   $('multi-option').onchange = event => switchMultiOption(event.target.value);
   $('multi-next').onclick = () => switchMultiOption(letters[letters.indexOf(round()?.activeOption)+1]);
   function changeSource() {
-    if (!active() || !canCapture() || operation || document.querySelector('dialog[open]')) return;
+    if (!canChangeSource() || document.querySelector('dialog[open]')) return;
+    if (operation) stopBoardCamera();
     return session().source === 'board' ? requestPhoneInvite() : run(switchBackToBoard,'正在换回本机…');
   }
   $('source').onclick = changeSource;

@@ -278,8 +278,8 @@ tbody tr:hover:not(.grade-divider) { background: #fafcff; }
 .user-permission-guide dl > div { display: flex; gap: 16px; }
 .user-permission-guide dt { flex: 0 0 84px; color: #415469; }
 .user-permission-guide dd { margin: 0; }
-.user-actions-popover { position: fixed; inset: auto; margin: 0; min-width: 160px; padding: 6px; border: 1px solid #dde5ef; border-radius: 10px; background: #fff; box-shadow: 0 8px 28px #1736541c; }
-.user-actions-popover:popover-open { display: grid; gap: 2px; }
+.user-actions-popover { position: fixed; z-index: 41; inset: auto; margin: 0; width: max-content; min-width: 160px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; overflow-wrap: anywhere; padding: 6px; border: 1px solid #dde5ef; border-radius: 10px; background: #fff; box-shadow: 0 8px 28px #1736541c; }
+.user-actions-popover:not([hidden]) { display: grid; gap: 2px; }
 .user-actions-popover .btn { justify-content: flex-start; min-height: 38px; border: 0; background: transparent; font-weight: 400; }
 .user-actions-popover .btn:hover { background: #f0f6ff; }
 .user-menu-title { color: var(--muted); font-size: 12px; padding: 5px 10px 7px; border-bottom: 1px solid var(--line); margin-bottom: 3px; }

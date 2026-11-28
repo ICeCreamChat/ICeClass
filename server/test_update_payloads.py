@@ -128,12 +128,18 @@ class UpdatePayloadTests(unittest.IsolatedAsyncioTestCase):
         model = b'voice model content'
         digest = self.payload_file('receiver', model)
         data['files'].append({'path': 'VoiceResources/Asr/model.int8.onnx', 'size': len(model), 'sha256': digest})
+        runtime = b'cabinet data'
+        runtime_hash = self.payload_file('receiver', runtime)
+        data['files'].append({'path': 'VoiceResources/WebView2-x64.cab', 'size': len(runtime), 'sha256': runtime_hash})
         self.write_plan('receiver', data)
         response = await self.client.get('/api/voice/resources/' + digest, headers={'Range': 'bytes=5-'})
         self.assertEqual(response.status, 206)
         self.assertEqual(await response.read(), b' model content')
         self.assertEqual(response.headers['Content-Range'], 'bytes 5-18/19')
-        for private in (data['files'][0]['sha256'], data['files'][0]['deltas'][0]['sha256'], 'a' * 64):
+        result = await self.payload('receiver', runtime_hash, headers={**self.headers, 'Range': 'bytes=4-'})
+        self.assertEqual(result.status, 206)
+        self.assertEqual(await result.read(), runtime[4:])
+        for private in (data['files'][0]['sha256'], data['files'][0]['deltas'][0]['sha256'], runtime_hash, 'a' * 64):
             response = await self.client.get('/api/voice/resources/' + private)
             self.assertEqual(response.status, 404)
             await response.read()

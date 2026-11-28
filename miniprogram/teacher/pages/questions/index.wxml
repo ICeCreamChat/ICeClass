@@ -1,10 +1,11 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header"><text class="title" aria-role="heading" aria-level="1">题库与题单</text></view>
   <view wx:if="{{!editor && !deckEditor}}" class="segment question-nav">
     <button wx:for="{{sections}}" wx:key="id" class="{{section === item.id ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="selectSection" disabled="{{busy}}" aria-pressed="{{section === item.id}}" aria-label="{{item.name}}{{section === item.id ? '，已选' : ''}}">{{item.name}}</button>
   </view>
   <view wx:if="{{section !== 'bank' && !editor && !deckEditor}}" class="field question-scope"><text class="label">发布班级</text><picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy || loading || !classes.length}}" aria-label="发布班级，{{classNames[classIndex] || '暂无可用班级'}}"><view class="picker">{{classNames[classIndex] || '暂无可用班级'}}</view></picker></view>
-  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text><button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin">重新登录</button><text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
+  <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text><text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
   <text wx:if="{{uncertain}}" class="status">上次提交结果尚未确认，已暂停写入。草稿仍在，请重新载入列表核对后再编辑。</text>
   <view wx:if="{{editor}}" class="panel">
     <text class="section-heading" aria-role="heading" aria-level="2">{{editor.id ? '编辑题目' : '新建题目'}}</text>
@@ -12,6 +13,7 @@
     <label class="field"><text class="label">题型</text><picker range="{{typeNames}}" value="{{editor.typeIndex}}" bindchange="type" disabled="{{busy}}" aria-label="题型"><view class="picker">{{typeNames[editor.typeIndex]}}</view></picker></label>
     <label class="field"><text class="label">题干</text><textarea class="textarea" value="{{editor.text}}" data-field="text" bindinput="inputQuestion" maxlength="20000" disabled="{{busy}}" aria-label="题干" /></label>
     <view class="button-row"><button class="secondary" bindtap="image" disabled="{{busy}}">{{editor.imageId ? '更换题图' : '添加题图'}}</button><button wx:if="{{editor.imageId}}" class="secondary" bindtap="previewImage" disabled="{{busy}}">查看题图</button><button wx:if="{{editor.imageId}}" class="danger" bindtap="removeImage" disabled="{{busy}}">移除题图</button></view>
+    <include src="../../templates/device-privacy.wxml" />
     <label wx:if="{{editor.type !== 'boolean'}}" class="field question-options"><text class="label">选项数量</text><picker range="{{countNames}}" value="{{editor.options.length - 2}}" bindchange="count" disabled="{{busy}}" aria-label="选项数量"><view class="picker">{{editor.options.length}} 个选项</view></picker></label>
     <label wx:for="{{editor.options}}" wx:key="index" class="field"><text class="label">选项 {{letters[index]}}</text><input class="input" value="{{item}}" data-index="{{index}}" bindinput="option" maxlength="2000" disabled="{{busy || editor.type === 'boolean'}}" aria-label="选项{{letters[index]}}" /></label>
     <label class="field"><text class="label">标准答案（留空则不评分）</text><input class="input" value="{{editor.answerText}}" data-field="answerText" bindinput="inputQuestion" maxlength="4" disabled="{{busy}}" aria-label="标准答案，单选填一个字母，多选例如AC，判断A正确B错误，留空不评分" placeholder="{{editor.type === 'multiple' ? '例如 AC' : editor.type === 'boolean' ? 'A 正确，B 错误' : '例如 A'}}" /></label>

@@ -243,9 +243,8 @@ for (const name of pageNames) {
     f.page.data.start = '2026-10-01';
     await f.page.onShow();
     assert.equal(f.calls.length, 0);
-    assert.equal(f.navigation[0].url, '/pages/login/index');
+    assert.equal(f.navigation.length, 0);
     assert.equal(f.page.data.start, '2026-10-01');
-    f.navigation.length = 0;
     f.page.relogin();
     assert.equal(f.navigation[0].url, '/pages/login/index');
   });
@@ -464,7 +463,7 @@ test('native templates have valid handlers, accessible filters and unescaped WXM
     for (const expression of markup.matchAll(/\{\{([\s\S]*?)\}\}/g)) assert.doesNotMatch(expression[1], /&(?:amp|lt|gt);/);
     for (const handler of markup.matchAll(/bind(?:tap|change)="([^"]+)"/g)) assert.equal(typeof f.page[handler[1]], 'function', name + ': ' + handler[1]);
     for (const picker of markup.matchAll(/<picker\b[^>]*?(?=>)/g)) assert.match(picker[0], /aria-label=/);
-    assert.match(markup, /bindtap="relogin"/);
+    assert.match(markup, /login-required\.wxml/);
     assert.match(style, /min-height:\s*44px/);
     assert.doesNotMatch(fs.readFileSync(path.join(dir, 'index.js'), 'utf8'), /setInterval\s*\(|setTimeout\s*\(/);
   }

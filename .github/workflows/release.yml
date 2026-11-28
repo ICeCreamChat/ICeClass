@@ -29,7 +29,7 @@ jobs:
   build:
     name: Check and build Windows packages
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 55
     defaults:
       run:
         shell: pwsh
@@ -162,6 +162,37 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
         run: python source/scripts/verify-release.py --directory source/dist/release --version "$env:RELEASE_VERSION" --output source/output/release-verification.json
+
+      - name: Verify classroom install, upgrade and old WebView2 fallback
+        if: ${{ hashFiles('source/scripts/verify-classroom-release.py') != '' }}
+        working-directory: source
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep the last release without the bundled update payload as the migration baseline.
+          $baseline = 'ICeClass-2.5.30-classroom.zip'
+          $checksums = 'SHA256SUMS-2.5.30.txt'
+          gh release download v2.5.30 --repo "$env:GITHUB_REPOSITORY" --pattern $baseline --pattern $checksums --dir output/compat-baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $expected = (Select-String -Path "output/compat-baseline/$checksums" -Pattern '^[a-f0-9]{64}  ICeClass-2\.5\.30-classroom\.zip$').Line -split '  '
+          if (-not $expected -or (Get-FileHash -LiteralPath "output/compat-baseline/$baseline").Hash -ine $expected[0]) {
+            throw 'Classroom migration baseline failed SHA-256 verification.'
+          }
+          $oldRuntime = 'output/compat-baseline/webview2-109.nupkg'
+          # This older runtime is only a version candidate. The test requires the bundled runtime's actual browser process.
+          Invoke-WebRequest -Uri 'https://api.nuget.org/v3-flatcontainer/webview2.runtime.x64/109.0.1518.78/webview2.runtime.x64.109.0.1518.78.nupkg' -OutFile $oldRuntime
+          dotnet build tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c Release --artifacts-path output/compat-build -p:EmbedVoiceResources=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/verify-classroom-release.py --directory dist/release --version "$env:RELEASE_VERSION" --previous "output/compat-baseline/$baseline" --checks output/compat-build/bin/ReceiverOfflineChecks/release/ICeClass.ReceiverOfflineChecks.dll --old-runtime $oldRuntime --output output/classroom-compatibility.json
+
+      - name: Verify whiteboard and phone classroom web flows
+        if: ${{ hashFiles('source/scripts/verify-classroom-release.py') != '' }}
+        working-directory: source
+        run: |
+          npm install --no-save --package-lock=false playwright@1.59.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test scripts/test-whiteboard-reads.cjs scripts/test-card-quiz-phone.cjs scripts/test-card-quiz-video.cjs scripts/test-card-quiz-classroom.cjs scripts/test-card-quiz-journal.cjs scripts/test-card-quiz-session-knowledge.cjs
 
       - name: Prepare release assets and checksums
         run: python tooling/scripts/github_release.py prepare --source source --tag "$env:RELEASE_TAG" --directory release-assets

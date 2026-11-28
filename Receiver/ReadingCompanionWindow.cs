@@ -15,14 +15,13 @@ internal sealed class ReadingCompanionWindow : Window
     private readonly ReceiverConfig _config;
     private readonly ReadingOfflineService _offline;
     private readonly Uri _origin;
-    private ReadingBrowser _browser = new() { IsVisible = false };
+    private ClassroomBrowser _browser = new() { IsVisible = false, AllowReadingFrames = true };
     private readonly Grid _surface = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _classLabel = ClassroomStyle.Text("", 14, true);
     private readonly TextBlock _errorTitle = ClassroomStyle.Text("正在打开早读陪伴", 28, true);
     private readonly TextBlock _errorText = ClassroomStyle.Text("正在载入本机活动，无需等待网络。", 16, muted: true);
     private readonly Button _retry = ClassroomStyle.Button("重新打开", true);
-    private readonly Button _runtime = ClassroomStyle.Button("安装运行组件");
     private readonly Button _fullscreen = ToolbarButton("全屏", true);
     private readonly Button _home = ToolbarButton("返回");
     private readonly Border _chrome;
@@ -60,11 +59,10 @@ internal sealed class ReadingCompanionWindow : Window
         _chrome = CreateToolbar(_classLabel, _home, _fullscreen);
         root.Children.Add(_chrome);
         _surface.Children.Add(_browser);
-        _retry.IsVisible = false; _runtime.IsVisible = false;
+        _retry.IsVisible = false;
         _retry.Click += async (_, _) => await LoadAsync();
-        _runtime.Click += (_, _) => Process.Start(new ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true });
         _errorTitle.TextAlignment = TextAlignment.Center; _errorText.TextAlignment = TextAlignment.Center;
-        var message = new StackPanel { Spacing = 16, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _errorTitle, _errorText, _retry, _runtime } };
+        var message = new StackPanel { Spacing = 16, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { DesktopStyle.Logo(64), _errorTitle, _errorText, _retry } };
         _notice = new Border { Classes = { "classroom-glass" }, CornerRadius = new CornerRadius(24), Background = Brushes.Transparent, Padding = new Thickness(28),
             Child = new ScrollViewer { Content = message,
                 HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
@@ -123,7 +121,7 @@ internal sealed class ReadingCompanionWindow : Window
     public async Task LoadAsync(CancellationToken token = default)
     {
         if (_loading || _closing) return;
-        _loading = true; _retry.IsVisible = false; _runtime.IsVisible = false;
+        _loading = true; _retry.IsVisible = false;
         _errorTitle.Text = "正在打开早读陪伴"; _errorText.Text = "正在载入本机活动，无需等待网络。";
         _notice.IsVisible = true;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
@@ -136,7 +134,7 @@ internal sealed class ReadingCompanionWindow : Window
             if (_browserFailed)
             {
                 _browser.DisposeBrowser(); _surface.Children.Remove(_browser);
-                _browser = new ReadingBrowser { IsVisible = false }; WireBrowser();
+                _browser = new ClassroomBrowser { IsVisible = false, AllowReadingFrames = true }; WireBrowser();
                 _surface.Children.Insert(0, _browser); _initialized = false; _browserFailed = false;
             }
             _browser.SetPageVisible(false); SendFullscreenState();
@@ -154,9 +152,6 @@ internal sealed class ReadingCompanionWindow : Window
                 core.Settings.IsPasswordAutosaveEnabled = false;
                 core.Settings.AreBrowserAcceleratorKeysEnabled = false;
                 core.NavigationStarting += (_, args) => { if (!AllowedPage(args.Uri)) args.Cancel = true; };
-                core.NewWindowRequested += (_, args) => args.Handled = true;
-                core.DownloadStarting += (_, args) => args.Cancel = true;
-                core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
                 core.PermissionRequested += PermissionRequested;
                 core.WebMessageReceived += (_, args) =>
                 {
@@ -221,15 +216,11 @@ internal sealed class ReadingCompanionWindow : Window
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested || _lifetime.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { if (!_initialized) _browserFailed = true; ShowError("活动载入超时", "请点击重新打开；无需等待教室网络恢复。"); }
-        catch (WebView2RuntimeNotFoundException)
-        {
-            ShowError("还差一个运行组件", "这台电脑需要安装 Microsoft Edge WebView2。点击下方按钮安装，完成后重新打开 ICeClass 班伴。");
-            _runtime.IsVisible = true;
-        }
         catch (Exception error)
         {
+            if (!_initialized) _browserFailed = true;
             AppLog.Error("Embedded reading failed", error);
-            ShowError("暂时无法打开本机活动", "请点击重新打开；仍无法载入时检查运行组件或重新安装客户端。");
+            ShowError("暂时无法打开本机活动", ClassroomWebViewRuntime.Recovery(error) ?? "请点击重新打开；仍无法载入时检查运行组件或重新安装客户端。");
         }
         finally
         {
@@ -305,16 +296,15 @@ internal sealed class ReadingCompanionWindow : Window
 
     private async void PermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs args)
     {
-        args.State = CoreWebView2PermissionState.Deny;
+        if (!ClassroomWebViewRuntime.PermissionForThisRequest(args, message => ShowError("无法使用麦克风", message))) return;
         if (_closing || args.PermissionKind != CoreWebView2PermissionKind.Microphone || !SameOrigin(args.Uri) || _permissionDialog is not null) return;
         using var deferral = args.GetDeferral();
-        args.SavesInProfile = false;
         try
         {
             var dialog = CreateMicrophonePermissionDialog(out var remember);
             _permissionDialog = dialog;
             var accepted = await dialog.ShowDialog<bool>(this);
-            if (!_closing && accepted) { args.State = CoreWebView2PermissionState.Allow; args.SavesInProfile = remember.IsChecked == true; }
+            if (!_closing && accepted) { args.SavesInProfile = remember.IsChecked == true; args.State = CoreWebView2PermissionState.Allow; }
         }
         catch (Exception error) { AppLog.Error("Reading microphone permission failed", error); }
         finally { _permissionDialog = null; }

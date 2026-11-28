@@ -47,10 +47,12 @@
 .teacher-clear-header .header-account .user-meta span { font-size: 13px; font-weight: 400; white-space: nowrap; }
 .teacher-clear-header .header-account-chevron { flex: none; width: 16px; height: 16px; }
 .teacher-clear-header .teacher-header-menu {
+  --header-menu-width: 248px;
   position: fixed;
-  inset: var(--header-menu-top, 112px) var(--header-menu-right, 28px) auto auto;
-  width: 248px;
-  max-width: calc(100vw - 32px);
+  inset: var(--header-menu-top, 112px) auto auto;
+  right: clamp(16px, calc(100% - var(--header-trigger-right, 100%)), calc(100% - var(--header-menu-width) - 16px));
+  width: var(--header-menu-width);
+  max-width: calc(100% - 32px);
   max-height: calc(100dvh - var(--header-menu-top, 112px) - 16px);
   overflow: auto;
   overscroll-behavior: contain;
@@ -115,7 +117,7 @@ html:has(.teacher-clear-header) { scroll-padding-top: 132px; }
   .teacher-clear-header .header-account .user-meta,
   .teacher-clear-header .header-account-chevron { display: none; }
   .teacher-clear-header .header-account .user-avatar { width: 34px; height: 34px; }
-  .teacher-clear-header .sidebar { top: 0; height: 100dvh; padding-top: 64px; z-index: 50; }
+  .teacher-clear-header .sidebar { top: 0; height: 100vh; height: 100dvh; padding-top: 64px; z-index: 50; }
   .teacher-clear-header .nav-backdrop { z-index: 45; }
   .teacher-clear-header main { padding-top: 12px; }
 }

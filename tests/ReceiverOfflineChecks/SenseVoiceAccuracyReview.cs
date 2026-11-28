@@ -17,6 +17,7 @@ internal static class SenseVoiceAccuracyReview
             var index = 0;
             foreach (var transcript in previous.RootElement.GetProperty("transcripts").EnumerateArray())
             {
+                if (transcript.TryGetProperty("test", out var test) && test.GetString() == "endpoint latency") continue;
                 var expected = transcript.GetProperty("expected").GetString()!;
                 var path = Path.Combine(corpus, "speech-" + index++ + ".wav");
                 if (expected is not ("Open Steam" or "等差数列的前n项和" or "等比数列的前n项和" or "把验收文字改成Hello class" or "Open Word" or "Set the volume to forty percent")) continue;

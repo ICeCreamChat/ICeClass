@@ -2,11 +2,10 @@
 // Production settings and composer, using isolated API fixtures only.
 const assert = require('node:assert/strict');
 const {test, before, after} = require('node:test');
-const {chromium} = require('playwright');
-const {open, navigate, settingsSection, moveBanbanAside} = require('./test-teacher-ui.cjs');
+const {open, navigate, settingsSection, moveBanbanAside, launchWorkbenchBrowser} = require('./test-teacher-ui.cjs');
 
 let browser;
-before(async () => { browser = await chromium.launch({channel:'msedge', headless:true}); });
+before(async () => { browser = await launchWorkbenchBrowser(); });
 after(async () => { await browser?.close(); });
 function configuration() {
   return {revision:1, month:'2026-11', resetsAt:1796054400000, deviceLimit:20, accountLimit:30, overrides:[],
@@ -154,4 +153,53 @@ test('composer shows live remaining quota and exhaustion offers refresh without 
   await page.locator('#bbQuota').filter({hasText:'10 / 40'}).waitFor();
   assert.equal(refreshed, true);
   assert.equal(await page.locator('#bbHistoryToggle').isEnabled(), true);
+});
+
+for (const stop of ['user', 'timeout']) test(`chat can retry after ${stop} interrupts a pending whiteboard catalog`, async t => {
+  const reply = '已收到本次提问。';
+  const {page, requests} = await setup(t, {handle:({url}) => {
+    if (url.pathname === '/api/banban/chat/cancel') return {json:{}};
+    if (url.pathname === '/api/banban/chat/stream') return {
+      contentType:'application/x-ndjson',
+      body:JSON.stringify({type:'done', message:{content:reply, mode:'local', cards:[]}}) + '\n'
+    };
+  }});
+  await page.locator('#bbLauncher').click();
+  await page.locator('#bbQuota').filter({hasText:'27 / 30'}).waitFor();
+  await page.evaluate(stop => {
+    let first = true;
+    window.ICeClassTeacherHost = {
+      async catalog() {
+        if (first) {
+          first = false;
+          await new Promise(resolve => { window.releaseFirstCatalog = resolve; });
+        }
+        return {clientId:'fixture-board', actions:[]};
+      },
+      execute() { throw new Error('This question has no native action'); }
+    };
+    if (stop === 'timeout') {
+      const timer = window.setTimeout;
+      window.setTimeout = function (handler, delay, ...args) {
+        if (delay === 100000) {
+          window.fireQuestionDeadline = handler;
+          window.setTimeout = timer;
+        }
+        return timer.call(window, handler, delay, ...args);
+      };
+    }
+  }, stop);
+  await page.locator('#bbInput').fill('请查看本节课的数据');
+  await page.getByRole('button', {name:'发送问题', exact:true}).click();
+  await page.waitForFunction(() => typeof window.releaseFirstCatalog === 'function');
+  if (stop === 'user') await page.getByRole('button', {name:'停止回答', exact:true}).click();
+  else await page.evaluate(() => window.fireQuestionDeadline());
+  await page.locator('#bbMessages [role=alert]').filter({hasText:stop === 'user' ? '已停止等待' : '等待时间较长'}).waitFor({timeout:5000});
+  const sent = () => requests.filter(r => r.path === '/api/banban/chat/stream').length;
+  assert.equal(sent(), 0);
+  await page.getByRole('button', {name:'重试这个问题', exact:true}).click();
+  await page.locator('#bbMessages[aria-busy=false] .bb-message-content').filter({hasText:reply}).waitFor();
+  await page.evaluate(() => window.releaseFirstCatalog());
+  assert.equal(sent(), 1);
+  assert.equal(requests.filter(r => r.path === '/api/banban/chat/cancel').length, stop === 'user' ? 1 : 0);
 });

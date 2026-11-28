@@ -74,13 +74,22 @@ def verify(args):
             hashes[filename] = manifest["sha256"]
             checks.append(directory + ": version, size and executable checksum")
         voice_files = []
+        runtime = None
         if lightweight:
-            plan = json.loads((server / 'receiver_release/update-plan.json').read_text('utf-8-sig'))
+            receiver_release = server / 'receiver_release'
+            plan = json.loads((receiver_release / 'update-plan.json').read_text('utf-8-sig'))
             core = next(item for item in plan['files'] if item['path'] == 'ICeClass.exe')
-            assert sha256(server / 'receiver_release/payloads' / core['sha256']) == core['sha256']
+            assert sha256(receiver_release / 'payloads' / core['sha256']) == core['sha256']
             voice_files = [item for item in plan['files'] if item['path'] in (
                 'VoiceResources/Asr/model.int8.onnx', 'VoiceResources/Asr/tokens.txt')]
             assert len(voice_files) == 2
+            if tuple(map(int, version.split('.'))) >= (2, 5, 31):
+                runtime = json.loads((receiver_release / 'program-manifest.json').read_text('utf-8-sig'))['webView2']
+                update = next(item for item in plan['files'] if item['path'] == 'VoiceResources/WebView2-x64.cab')
+                assert all(update[key] == runtime[key] for key in ('size', 'sha256')), 'WebView2 update metadata mismatch'
+                cabinet = receiver_release / 'payloads' / update['sha256']
+                assert cabinet.stat().st_size == runtime['size'] and sha256(cabinet) == runtime['sha256']
+                checks.append('classroom update includes the installation package WebView2 cabinet')
         if tuple(map(int, version.split("."))) >= (2, 5, 1):
             for filename in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
                 assert (server / "receiver_release" / filename).is_file(), "server classroom download missing " + filename
@@ -151,6 +160,14 @@ def verify(args):
                     assert tuple(map(int, manifest["version"].split(".")))[:3] == tuple(map(int, version.split(".")))
                     assert manifest["size"] == archive.getinfo(names[0]).file_size
                     assert manifest["sha256"] == expected
+                    if runtime is not None:
+                        assert manifest.get('webView2') == (None if kind == 'classroom' else runtime), kind
+                    if 'webView2' in manifest:
+                        assert kind != 'classroom', 'Lightweight classroom includes a runtime prerequisite'
+                        cabinet_name = directory + 'WebView2-x64.cab'
+                        assert archive.getinfo(cabinet_name).file_size == manifest['webView2']['size']
+                        with archive.open(cabinet_name) as stream:
+                            assert hashlib.file_digest(stream, 'sha256').hexdigest() == manifest['webView2']['sha256']
                     checks.append(kind + ": classroom installer encoding, entry point and verified program manifest")
                 if lightweight and filename == 'ICeClass.Desktop.exe':
                     assert 'install-voice-resources.ps1' in archive.read(directory + 'install.ps1').decode('utf-8-sig')

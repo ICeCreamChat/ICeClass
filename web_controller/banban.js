@@ -614,8 +614,18 @@
   async function streamQuestion(text, signal, receive, inputMode = 'text') {
     const page = document.querySelector('#mainNav button.active')?.dataset.view || 'reading';
     const navigation = navigationRevision;
-    const teacherClient = await window.ICeClassBanbanOperations?.clientCatalog();
-    signal.throwIfAborted();
+    const abortReason = () => signal.reason ?? new DOMException('已停止等待。', 'AbortError');
+    if (signal.aborted) throw abortReason();
+    let cancelCatalog;
+    const cancelled = new Promise((_, reject) => { cancelCatalog = () => reject(abortReason()); });
+    signal.addEventListener('abort', cancelCatalog, {once:true});
+    let teacherClient;
+    try {
+      teacherClient = await Promise.race([window.ICeClassBanbanOperations?.clientCatalog(), cancelled]);
+    } finally {
+      signal.removeEventListener('abort', cancelCatalog);
+    }
+    if (signal.aborted) throw abortReason();
     if (disposed || navigation !== navigationRevision) throw new Error('页面已切换，请在当前页面重新提问。');
     const response = await fetch('/api/banban/chat/stream', {method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.ICeClass.state.csrf}, body: JSON.stringify({message: text, scope: {...scope}, page, conversationId, ...(teacherClient ? {teacherClient} : {}), ...(inputMode === 'voice' ? {voice: voice?.context() || {mode:'voice'}} : {})}), signal});
@@ -714,7 +724,17 @@
     reply.querySelector('.bb-message-body').append(waiting); waiting.hidden = false;
     $('bbPresenceTitle').textContent = '正在思考…';
     $('bbHeaderStatus').textContent = '正在连接';
-    const controller = new AbortController(); pending = controller; busy(true); scrollBottom();
+    const controller = new AbortController();
+    // Older whiteboards can abort a fetch but do not expose the reason on its signal.
+    const request = {
+      reason: undefined,
+      abort(reason) {
+        if (controller.signal.aborted) return;
+        this.reason = reason;
+        controller.abort(reason);
+      }
+    };
+    pending = request; busy(true); scrollBottom();
     voice?.begin(inputMode);
     const scroller = $('bbScroll'); let followAnswer = true;
     const readingAbove = e => { if (e.type !== 'wheel' || e.deltaY < 0) followAnswer = false; else if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60) followAnswer = true; };
@@ -724,10 +744,10 @@
     scroller.addEventListener('scroll', resumeAtEnd, {passive: true});
     const ensureReply = () => reply ||= appendMessage('assistant', '', replyMode);
     const slowTimer = setTimeout(() => {
-      if (revision !== rev || pending !== controller) return;
+      if (revision !== rev || pending !== request) return;
       if (!answer && !waiting.hidden) $('bbPresenceTitle').textContent = '仍在处理，可随时停止…';
     }, 8100);
-    let timer = setTimeout(() => controller.abort('timeout'), 100000);
+    let timer = setTimeout(() => request.abort('timeout'), 100000);
     try {
       await streamQuestion(text, controller.signal, event => {
         if (revision !== rev || controller.signal.aborted) return;
@@ -744,7 +764,7 @@
         } else if (event.type === 'confirmation') {
           confirming = Boolean(event.waiting);
           clearTimeout(timer);
-          timer = setTimeout(() => controller.abort('timeout'), event.waiting ? 310000 : 100000);
+          timer = setTimeout(() => request.abort('timeout'), event.waiting ? 310000 : 100000);
           $('bbMessages').setAttribute('aria-busy', String(!event.waiting));
           if (event.waiting) {
             clearTimeout(slowTimer);
@@ -790,18 +810,18 @@
       if (revision !== rev) return;
       applyQuota(e.quota);
       waiting.hidden = true;
-      $('bbHeaderStatus').textContent = e.code === 'banban_quota_exhausted' ? '本月班班次数已用完' : controller.signal.aborted && controller.signal.reason !== 'timeout' ? '问题还在，随时可以继续' : '这次没连上，陪您再试一次';
-      if (!controller.signal.aborted || controller.signal.reason === 'timeout') character?.fail();
+      $('bbHeaderStatus').textContent = e.code === 'banban_quota_exhausted' ? '本月班班次数已用完' : controller.signal.aborted && request.reason !== 'timeout' ? '问题还在，随时可以继续' : '这次没连上，陪您再试一次';
+      if (!controller.signal.aborted || request.reason === 'timeout') character?.fail();
       else character?.reset();
       if (!completed) {
         lastIncomplete = reply; reply.classList.remove('bb-streaming');
         if (answer) reply.querySelector('.bb-message-body').append(node('small', '回复未完成', 'bb-incomplete'));
       }
-      if (controller.signal.aborted && controller.signal.reason === 'voice') {
+      if (request.reason === 'voice') {
         if (!reply.querySelector('.bb-operation')) renderAnswer(reply.querySelector('.bb-message-content'), '已停止。');
         return;
       }
-      const error = node('div', controller.signal.aborted ? (controller.signal.reason === 'timeout' ? '等待时间较长，问题已保留，可以稍后重试。' : '已停止等待，问题已保留。') : e.message, 'bb-error');
+      const error = node('div', controller.signal.aborted ? (request.reason === 'timeout' ? '等待时间较长，问题已保留，可以稍后重试。' : '已停止等待，问题已保留。') : e.message, 'bb-error');
       if (inputMode === 'voice' && !controller.signal.aborted) voice?.failed(e.message);
       error.setAttribute('role', 'alert');
       if (e.code !== 'banban_quota_exhausted') error.append(button('重试这个问题', 'bb-source', () => {
@@ -1267,8 +1287,7 @@
     window.addEventListener('pagehide', dispose, {once: true});
     composeState(); dragLauncher(); dragPanel(); fromPage(); conversationReady = restoreConversation();
   }
-  window.addEventListener('iceclass-ready', init);
+  window.ICeClassBanban = {init};
   window.addEventListener('iceclass-banban-quota-changed', () => { if (initialized && !$('bbPanel').hidden) void refreshQuota(); });
   window.addEventListener('iceclass-classes-changed', () => { if (initialized) { if (!classesForAnalysis().some(c => c.id === scope.classId)) scope.classId = ''; syncScope(); loadContext(); } });
-  if (window.ICeClass?.state.user) init();
 })();

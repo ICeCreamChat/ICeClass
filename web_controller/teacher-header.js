@@ -20,41 +20,69 @@
   function position(menu, trigger) {
     const rect = trigger.getBoundingClientRect();
     menu.style.setProperty('--header-menu-top', Math.min(rect.bottom + 10, innerHeight - 64) + 'px');
-    menu.style.setProperty('--header-menu-right', Math.max(16, innerWidth - rect.right) + 'px');
+    menu.style.setProperty('--header-trigger-right', rect.right + 'px');
   }
-  function closeMenus(restoreFocus = false) {
-    for (const [menu, trigger] of menus) if (menu.matches(':popover-open')) {
-      menu.hidePopover();
-      if (restoreFocus) trigger.focus();
-    }
+  let currentMenu = null;
+  function closeMenu(restoreFocus = false) {
+    if (!currentMenu) return;
+    const {menu, trigger} = currentMenu;
+    currentMenu = null;
+    menu.hidePopover?.();
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger.focus({preventScroll:true});
   }
   const ui = window.ICeClassUI;
   for (const [menu, trigger] of menus) {
-    let focusLast = false;
-    menu.addEventListener('beforetoggle', event => {
-      trigger.setAttribute('aria-expanded', String(event.newState === 'open'));
-      if (event.newState === 'open') position(menu, trigger);
-    });
-    menu.addEventListener('toggle', event => {
-      if (event.newState === 'open') { ui.focusMenu(menu, focusLast); focusLast = false; }
-    });
+    // Use the top layer when available. Both engines use HTML hidden for the closed state.
+    if (menu.showPopover) menu.popover = 'manual';
+    function openMenu(last = false) {
+      if (menu.hidden) {
+        closeMenu();
+        position(menu, trigger);
+        menu.hidden = false;
+        menu.showPopover?.({source:trigger});
+        currentMenu = {menu, trigger};
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+      ui.focusMenu(menu, last);
+    }
+    trigger.addEventListener('click', () => { if (menu.hidden) openMenu(); else closeMenu(true); });
     trigger.addEventListener('keydown', event => {
-      if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-      event.preventDefault(); focusLast = event.key === 'ArrowUp';
-      if (!menu.matches(':popover-open')) menu.showPopover({source:trigger});
-      else { ui.focusMenu(menu, focusLast); focusLast = false; }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        openMenu(event.key === 'ArrowUp');
+      } else if (event.key === 'Escape' && !menu.hidden) {
+        event.preventDefault();
+        closeMenu(true);
+      }
     });
-    ui.menuKeys(menu, closeMenus);
+    ui.menuKeys(menu, closeMenu);
   }
-  function positionOpenMenus() {
-    for (const [menu, trigger] of menus) if (menu.matches(':popover-open')) position(menu, trigger);
+  function dismissOutside(event) {
+    if (currentMenu && !currentMenu.menu.contains(event.target) && !currentMenu.trigger.contains(event.target)) closeMenu();
   }
-  window.addEventListener('resize', positionOpenMenus);
-  window.addEventListener('scroll', positionOpenMenus, {passive: true});
+  document.addEventListener('pointerdown', dismissOutside, true);
+  document.addEventListener('focusin', dismissOutside, true);
+  function positionOpenMenu() {
+    if (!currentMenu) return;
+    const {menu, trigger} = currentMenu;
+    if (trigger.getClientRects().length) position(menu, trigger);
+    else {
+      closeMenu();
+      $('teacherRefresh').focus({preventScroll:true});
+    }
+  }
+  window.addEventListener('resize', positionOpenMenu);
+  window.addEventListener('scroll', positionOpenMenu, {passive:true});
+  window.addEventListener('iceclass-view-changed', () => closeMenu(true));
+  window.addEventListener('iceclass-logout', () => closeMenu());
+  window.addEventListener('iceclass-session-expired', () => closeMenu());
+  window.addEventListener('pagehide', () => closeMenu());
 
   const pending = new Set();
   document.querySelectorAll('[data-header-native]').forEach(button => button.addEventListener('click', async () => {
-    closeMenus(true);
+    closeMenu(true);
     if (!native) {
       if (button.dataset.headerNative !== 'teacher.refresh') return;
       const token = crypto.randomUUID();
@@ -76,14 +104,14 @@
     }
   }));
   document.querySelectorAll('[data-header-account]').forEach(button => button.addEventListener('click', async () => {
-    closeMenus(true);
+    closeMenu(true);
     const settings = $('mainNav').querySelector('[data-view="settings"]');
     if (!await window.ICeClass.selectView(settings)) return;
     if (button.dataset.headerAccount === 'password') window.ICeClassSettings?.select('account');
     (button.dataset.headerAccount === 'password' ? $('currentPassword') : $('mainContent')).focus({preventScroll:false});
   }));
-  $('logoutButton').addEventListener('click', () => closeMenus(true), {capture:true});
-  $('menuToggle').addEventListener('click', () => closeMenus());
+  $('logoutButton').addEventListener('click', () => closeMenu(true), {capture:true});
+  $('menuToggle').addEventListener('click', () => closeMenu());
   window.addEventListener('iceclass-ready', () => {
     const user = window.ICeClass.state.user;
     $('headerAccountName').textContent = user.displayName;

@@ -30,19 +30,24 @@
   }
   function clear() { prepared = false; $('cards').replaceChildren(); controls(); }
   async function request(path, method = 'GET', body) {
-    const response = await fetch(path, {
-      method, credentials:'same-origin', cache:'no-store',
-      headers:method === 'GET' ? {} : {'Content-Type':'application/json','X-CSRF-Token':csrf},
-      ...(body ? {body:JSON.stringify(body)} : {}),
-      ...(method === 'GET' ? {signal:AbortSignal.timeout(15000)} : {})
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      const error = new Error(data.error || `请求失败 (${response.status})`);
-      error.status = response.status;
-      throw error;
+    const controller = method === 'GET' ? new AbortController() : null;
+    const timer = controller && setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(path, {
+        method, credentials:'same-origin', cache:'no-store', signal:controller?.signal,
+        headers:method === 'GET' ? {} : {'Content-Type':'application/json','X-CSRF-Token':csrf},
+        ...(body ? {body:JSON.stringify(body)} : {})
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const error = new Error(data.error || `请求失败 (${response.status})`);
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    } finally {
+      if (controller) clearTimeout(timer);
     }
-    return data;
   }
   async function load() {
     if (busy) return;
@@ -69,7 +74,7 @@
     } catch (error) {
       if (current !== lifecycle) return;
       roster = undefined;
-      feedback(error.name === 'TimeoutError' ? '读取超时，请检查连接后重新载入名单。' : error.message, true);
+      feedback(error.name === 'AbortError' ? '读取超时，请检查连接后重新载入名单。' : error.message, true);
     } finally { if (current === lifecycle) { busy = false; controls(); } }
   }
   $('prepare').onclick = () => {

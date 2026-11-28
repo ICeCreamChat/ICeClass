@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}} account-page">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}} account-page">
   <view class="page-header"><text class="title" aria-role="heading" aria-level="1">账号设置</text></view>
   <view wx:if="{{user}}" class="panel identity-panel">
     <image src="/assets/app-icon.png" mode="aspectFit" aria-hidden="true" />
@@ -15,24 +16,15 @@
   </view>
 
   <view class="panel">
-    <text class="section-heading" aria-role="heading" aria-level="2">班班</text>
-    <view class="button-row">
-      <button class="secondary" data-setting="connection" bindtap="openBanbanSetting" disabled="{{busy || sessionExpired}}" aria-label="班班 AI 连接">AI 连接</button>
-      <button class="secondary" data-setting="quota" bindtap="openBanbanSetting" disabled="{{busy || sessionExpired}}" aria-label="本月班班用量">我的用量</button>
-    </view>
-  </view>
-
-  <view class="panel">
     <text class="section-heading" aria-role="heading" aria-level="2">账号与安全</text>
     <label class="field"><text class="label">当前密码</text><input class="input" password value="{{currentPassword}}" data-field="currentPassword" bindinput="input" maxlength="128" disabled="{{busy}}" aria-label="当前密码" /></label>
     <label class="field"><text class="label">新密码</text><input class="input" password value="{{newPassword}}" data-field="newPassword" bindinput="input" maxlength="256" disabled="{{busy}}" aria-label="新密码，10 到 128 个字符，同时包含字母和数字" /></label>
     <label class="field"><text class="label">再次输入新密码</text><input class="input" password value="{{repeatPassword}}" data-field="repeatPassword" bindinput="input" maxlength="256" disabled="{{busy}}" aria-label="再次输入新密码" /></label>
     <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
-    <button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin">重新登录</button>
-    <button wx:else class="primary" bindtap="password" loading="{{busy}}" disabled="{{busy}}">修改密码</button>
+    <button class="primary" bindtap="password" loading="{{busy}}" disabled="{{busy}}">修改密码</button>
   </view>
   <view class="button-row">
-    <button class="secondary" bindtap="privacy">隐私说明</button>
-    <button class="danger" bindtap="logout" disabled="{{busy}}">退出登录</button>
+    <button class="secondary" data-document="privacy" bindtap="openAgreement">隐私政策</button>
+    <button wx:if="{{user && !sessionExpired}}" class="danger" bindtap="logout" disabled="{{busy}}">退出登录</button>
   </view>
 </view>

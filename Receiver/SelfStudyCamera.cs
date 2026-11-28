@@ -24,28 +24,24 @@ internal static class SelfStudyCamera
         {
             var profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ICeClass", "SelfStudyCamera");
-            var environment = await CoreWebView2Environment.CreateAsync(null, profile);
-            token.ThrowIfCancellationRequested();
-            controller = await environment.CreateCoreWebView2ControllerAsync(parent);
+            controller = await ClassroomWebViewRuntime.CreateControllerAsync(parent, profile, token);
             token.ThrowIfCancellationRequested();
             controller.Bounds = new System.Drawing.Rectangle(0, 0, 1, 1);
             var core = controller.CoreWebView2;
             core.Settings.AreDevToolsEnabled = false; core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
-            core.NewWindowRequested += (_, e) => e.Handled = true;
             core.NavigationStarting += (_, e) => { if (e.Uri != CapturePage || token.IsCancellationRequested) e.Cancel = true; };
             core.PermissionRequested += (_, e) =>
             {
-                e.SavesInProfile = false;
-                e.State = !token.IsCancellationRequested && IsCaptureOrigin(e.Uri) &&
-                    e.PermissionKind == CoreWebView2PermissionKind.Camera
-                    ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
+                if (!ClassroomWebViewRuntime.PermissionForThisRequest(e, message => result.TrySetException(new InvalidOperationException(message)))) return;
+                if (!token.IsCancellationRequested && IsCaptureOrigin(e.Uri) && e.PermissionKind == CoreWebView2PermissionKind.Camera)
+                    e.State = CoreWebView2PermissionState.Allow;
                 diagnostic?.Invoke($"Camera permission: {e.PermissionKind}, {e.Uri}, {e.State}");
             };
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += (_, e) =>
             {
-                e.Response = environment.CreateWebResourceResponse(
+                e.Response = core.Environment.CreateWebResourceResponse(
                     new MemoryStream(Encoding.UTF8.GetBytes(e.Request.Uri == CapturePage ? Html : "")),
                     e.Request.Uri == CapturePage ? 200 : 403, "OK",
                     "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; media-src blob:; connect-src 'none'");

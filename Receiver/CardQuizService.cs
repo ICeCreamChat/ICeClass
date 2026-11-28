@@ -82,7 +82,7 @@ internal sealed class CardQuizService : IDisposable
             else if (response.StatusCode == HttpStatusCode.Forbidden)
             {
                 // A paired teacher or one resource can lose access while this device remains valid.
-                try { await BootstrapAsync(token); }
+                try { await RefreshContextAsync(token); }
                 catch (Exception error) when (error is not OutOfMemoryException && !token.IsCancellationRequested) { }
             }
             throw new ApiFailure(message, response.StatusCode);
@@ -98,7 +98,7 @@ internal sealed class CardQuizService : IDisposable
                 _revoked = true; _authorizationVersion++; _lastError = message;
                 var context = Store.LoadCache("context") ?? new JsonObject { ["classId"] = _config.ClassId };
                 context["revoked"] = true; Store.SaveCache("context", context);
-                foreach (var journal in Store.Load()["journals"]!.AsArray().OfType<JsonObject>())
+                foreach (var journal in Store.LoadStatus()["journals"]!.AsArray().OfType<JsonObject>())
                     if (journal["syncedSeq"]!.GetValue<int>() < journal["session"]!["seq"]!.GetValue<int>()) Store.MarkReview(journal["session"]!["id"]!.GetValue<string>(), message);
             }
         }
@@ -149,9 +149,11 @@ internal sealed class CardQuizService : IDisposable
         if (action == "end_session") expected["endedAt"] = entry["at"]!.DeepClone();
         if (!JsonNode.DeepEquals(expected, incoming)) throw new InvalidOperationException("授权失效后仅可暂停或封存原记录，不能继续采集或修改题目。");
     }
-    internal JsonObject Load()
+    internal JsonObject Load(string? sessionId = null) => WithContext(Store.Load(sessionId));
+    internal JsonObject Status(string? sessionId = null) => WithContext(Store.LoadStatus(sessionId));
+    private JsonObject WithContext(JsonObject data)
     {
-        var data = Store.Load(); var context = Store.LoadCache("context");
+        var context = Store.LoadCache("context");
         if (_revoked) { context ??= new JsonObject { ["classId"] = _config.ClassId }; context["revoked"] = true; }
         if (context is not null)
         {
@@ -166,11 +168,16 @@ internal sealed class CardQuizService : IDisposable
     }
     internal async Task<JsonObject> BootstrapAsync(CancellationToken token)
     {
+        await RefreshContextAsync(token);
+        return Load();
+    }
+    private async Task RefreshContextAsync(CancellationToken token)
+    {
         await _bootstrap.WaitAsync(token);
-        try { return await BootstrapCoreAsync(token); }
+        try { await BootstrapCoreAsync(token); }
         finally { _bootstrap.Release(); }
     }
-    private async Task<JsonObject> BootstrapCoreAsync(CancellationToken token)
+    private async Task BootstrapCoreAsync(CancellationToken token)
     {
         long authorizationVersion; lock (_authorization) authorizationVersion = _authorizationVersion;
         try
@@ -182,7 +189,6 @@ internal sealed class CardQuizService : IDisposable
             {
                 if (authorizationVersion == _authorizationVersion) { Store.SaveCache("context", context); _revoked = false; _lastError = null; }
             }
-            return Load();
         }
         catch (ApiFailure error) when (error.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
@@ -191,7 +197,7 @@ internal sealed class CardQuizService : IDisposable
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
         {
             _lastError = "暂时无法连接学校服务；已缓存的名单和题单可离线使用。";
-            if (Store.LoadCache("context") is not null) return Load(); throw new InvalidOperationException(_lastError);
+            if (Store.LoadCache("context") is null) throw new InvalidOperationException(_lastError);
         }
     }
     internal async Task<JsonObject> PublicationAsync(string id, CancellationToken token, string? sessionId = null)
@@ -214,7 +220,7 @@ internal sealed class CardQuizService : IDisposable
                 if (response.StatusCode == HttpStatusCode.Unauthorized) Revoke("设备授权已失效，已停止采集。");
                 else if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    try { await BootstrapAsync(token); }
+                    try { await RefreshContextAsync(token); }
                     catch (Exception error) when (error is not OutOfMemoryException && !token.IsCancellationRequested) { }
                 }
                 throw new InvalidOperationException("题目图片下载失败，尚不能离线使用，请联网重试。");
@@ -253,16 +259,19 @@ internal sealed class CardQuizService : IDisposable
     }
     internal async Task<JsonObject> SyncAsync(bool retry, CancellationToken token)
     {
+        await SyncPendingAsync(retry, token);
+        return Status();
+    }
+    internal async Task SyncPendingAsync(bool retry, CancellationToken token)
+    {
         await _outbox.WaitAsync(token);
         try
         {
-            foreach (var item in Store.Load()["journals"]!.AsArray().OfType<JsonObject>())
+            foreach (var id in Store.PendingSessionIds(retry))
             {
-                var id = item["session"]!["id"]!.GetValue<string>();
                 try { await SyncJournalAsync(id, retry, token); }
                 catch (ApiFailure error) when (NeedsReview(error)) { /* Keep syncing other lessons. */ }
             }
-            return Load();
         }
         finally { _outbox.Release(); }
     }
@@ -276,7 +285,7 @@ internal sealed class CardQuizService : IDisposable
         await gate.WaitAsync(token);
         try
         {
-            var item = Store.Read(id) ?? throw new InvalidDataException("本机课堂不存在。");
+            var item = Store.ReadJournal(id);
             var session = item["session"]!.AsObject();
             var seq = session["seq"]!.GetValue<int>(); var synced = item["syncedSeq"]?.GetValue<int>() ?? 0;
             if (!retry && !string.IsNullOrEmpty(item["reviewError"]?.GetValue<string>())) return synced;
@@ -313,7 +322,10 @@ internal sealed class CardQuizService : IDisposable
             if (synced != seq || receipts.Count > 0)
             {
                 var events = new JsonArray(item["events"]!.AsArray().Where(e => e!["seq"]!.GetValue<int>() > synced).Select(e => e!.DeepClone()).ToArray());
-                var response = await SendAsync("device/sync", new JsonObject { ["session"] = session.DeepClone(), ["events"] = events, ["fromSeq"] = synced + 1, ["receipts"] = receipts }, token);
+                var response = await SendAsync("device/sync", new JsonObject {
+                    ["session"] = session.DeepClone(), ["publicationId"] = item["publicationId"]?.DeepClone(),
+                    ["events"] = events, ["fromSeq"] = synced + 1, ["receipts"] = receipts
+                }, token);
                 if (response["syncedSeq"]?.GetValue<int>() != seq) throw new InvalidDataException("同步回执不完整，记录已保留待核对。");
                 if (receipts.Count > 0 && (response["receiptIds"] is not JsonArray ids ||
                     !ids.Select(n => n!.GetValue<string>()).Order().SequenceEqual(receipts.Select(n => n!["id"]!.GetValue<string>()).Order())))
@@ -399,8 +411,8 @@ internal sealed class CardQuizService : IDisposable
             try
             {
                 if (DateTimeOffset.UtcNow >= _nextBootstrap)
-                { _nextBootstrap = DateTimeOffset.UtcNow.AddMinutes(1); await BootstrapAsync(token); }
-                await SyncAsync(false, token); failures = 0;
+                { _nextBootstrap = DateTimeOffset.UtcNow.AddMinutes(1); await RefreshContextAsync(token); }
+                await SyncPendingAsync(false, token); failures = 0;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (Exception error) when (error is not OutOfMemoryException)

@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header"><text class="title" aria-role="heading" aria-level="1">学校禁言时间</text><text class="subtitle">全校共用，时间均为北京时间</text></view>
   <view class="panel">
     <text class="row-title">{{activeName ? '读取时处于：' + activeName : '读取时不在禁言时段'}}</text>
@@ -9,7 +10,6 @@
     <text wx:if="{{loaded && !canEdit}}" class="status">当前账号可查看；仅学校管理员可编辑全校禁言时间表。</text>
   </view>
   <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
-  <button wx:if="{{sessionExpired}}" class="primary recovery" bindtap="relogin" disabled="{{busy}}" aria-label="重新登录并保留禁言时间草稿">重新登录，保留草稿</button>
   <text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
   <block wx:if="{{loaded}}">
     <view class="panel">

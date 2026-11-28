@@ -18,11 +18,14 @@ internal static class UpdateResourceChecks
         using var client = new HttpClient(transport);
         var prepared = await IncrementalUpdates.PrepareAsync(new Uri("https://school.example/"), plan, install,
             "ICeClass.exe", client, "fixture", VoiceResourceFiles.OpenUpdateResource, null, default);
-        if (transport.Requests.Count != 1 || transport.Requests[0] != "/payload/" + plan.Files[0].Sha256)
+        var runtime = plan.Files.SingleOrDefault(f => f.Path == ClassroomWebViewPackage.UpdatePath);
+        var expectedDownloads = plan.Files.Where(f => f.Path == "ICeClass.exe" || f == runtime)
+            .Select(f => "/payload/" + f.Sha256);
+        if (!transport.Requests.SequenceEqual(expectedDownloads))
             throw new Exception("Full offline resources caused redundant network downloads.");
         if (prepared.Files.Count != plan.Files.Count || File.ReadAllText(existing) != "previous full offline application")
             throw new Exception("Resource preparation changed installed files or lost a required file.");
-        var resources = prepared.Files.Where(f => f.Path.StartsWith("VoiceResources/")).ToList();
+        var resources = prepared.Files.Where(f => f.Path.StartsWith("VoiceResources/") && f.Path != runtime?.Path).ToList();
         foreach (var file in resources)
         {
             if (!IncrementalUpdates.MatchesAsync(file.StagedPath, file.Size, file.Sha256, default).GetAwaiter().GetResult())
@@ -30,7 +33,7 @@ internal static class UpdateResourceChecks
         }
         var report = new {
             passed = true, version = plan.Version, requiredFiles = plan.Files.Count,
-            modelRequests = 0, applicationRequests = transport.Requests.Count,
+            modelRequests = 0, applicationRequests = 1, runtimeRequests = runtime is null ? 0 : 1,
             reusedResourceBytes = resources.Sum(f => f.Size), applicationBytes = plan.Files[0].Size,
             preservedOriginal = true, readyForNextStartup = UpdateInstaller.LoadPending(install, "ICeClass.exe")?.Version == plan.Version
         };

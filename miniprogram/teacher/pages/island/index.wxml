@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header">
     <text class="title" aria-role="heading" aria-level="1">课表与浮岛</text>
     <text class="subtitle">查看作息、课程和教室同步回执</text>
@@ -6,51 +7,35 @@
   <view class="panel">
     <view class="field">
       <text class="label">班级</text>
-      <picker range="{{classNames}}" value="{{classIndex}}" disabled="{{busy || loading || !classes.length}}" bindchange="onClassChange" aria-label="选择课表班级">
+      <picker range="{{classNames}}" value="{{classIndex}}" disabled="{{loading || sessionExpired || !classes.length}}" bindchange="onClassChange" aria-label="选择课表班级">
         <view class="picker">{{classNames[classIndex] || '暂无可用班级'}}</view>
       </picker>
     </view>
-    <button class="secondary" disabled="{{busy || loading}}" bindtap="onRefresh" aria-label="刷新课表与同步状态">刷新课表与状态</button>
+    <button class="secondary" disabled="{{loading || sessionExpired}}" bindtap="load" aria-label="刷新课表与同步状态">刷新课表与状态</button>
     <text wx:if="{{loading}}" class="status" aria-role="status">正在读取课表与同步状态…</text>
     <text wx:if="{{!loading && !classes.length && !error}}" class="empty">暂无可用班级，请联系学校管理员核对授权。</text>
   </view>
   <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
-  <button wx:if="{{sessionExpired}}" class="primary recovery" bindtap="relogin" disabled="{{busy}}" aria-label="重新登录并保留课表草稿">重新登录，保留草稿</button>
-  <text wx:if="{{status}}" class="status" aria-role="status">{{status}}</text>
   <block wx:if="{{loaded}}">
     <view class="panel">
-      <view class="switch-row">
-        <view class="row-main"><text class="row-title">启用教室浮岛</text><text class="row-meta">保存后同步至本班教室</text></view>
-        <switch checked="{{enabled}}" disabled="{{!canEdit || busy || loading || sessionExpired}}" bindchange="onEnabledChange" aria-label="启用当前班级教室浮岛" color="#0866cb" />
+      <view class="lesson-heading">
+        <text class="row-title">教室浮岛</text>
+        <text class="badge">{{enabled ? '已启用' : '未启用'}}</text>
       </view>
-      <text class="row-meta">编辑版本 {{revision}} · 更新于 {{updatedText}}</text>
-      <text wx:if="{{revision === 0}}" class="status">本班尚未保存配置，当前为服务端默认作息。</text>
-      <text wx:if="{{!canEdit}}" class="status">当前账号可查看；本班配置仅限班主任和管理范围内的上级修改。</text>
-      <text wx:if="{{dirty}}" class="status" aria-role="status">本班有未保存草稿。切换班级后仍会保留；重新登录后可继续编辑。</text>
-      <text wx:if="{{uncertain}}" class="error" aria-role="alert">保存结果尚未确认，请先刷新核对。不会自动重试写入。</text>
-      <view class="button-row" wx:if="{{canEdit || dirty}}">
-        <button class="primary" bindtap="onSave" loading="{{busy}}" disabled="{{!canEdit || !dirty || busy || loading || conflict || uncertain || sessionExpired}}" aria-label="保存当前班级完整课表与浮岛配置">保存配置</button>
-        <button class="secondary" bindtap="onDiscard" disabled="{{busy || loading || sessionExpired}}" aria-label="放弃本班草稿并重新载入最新配置">重新载入最新配置</button>
-      </view>
+      <text class="row-meta">更改课表或浮岛设置，请联系学校管理员。</text>
+      <text wx:if="{{syncRevision === 0}}" class="status">本班当前使用默认作息。</text>
     </view>
     <view class="panel">
       <text class="section-heading" aria-role="heading" aria-level="2">每周课程</text>
       <text class="row-meta">首周周一：{{weekAnchor}}。单周、双周和循环值班分别显示，临时调课仍按原配置生效。</text>
-      <picker range="{{weekdays}}" value="{{weekdayIndex}}" disabled="{{busy || loading}}" bindchange="onWeekdayChange" aria-label="选择课表星期">
+      <picker range="{{weekdays}}" value="{{weekdayIndex}}" disabled="{{loading}}" bindchange="onWeekdayChange" aria-label="选择课表星期，{{weekdays[weekdayIndex]}}">
         <view class="picker weekday-picker">{{weekdays[weekdayIndex]}}</view>
       </picker>
       <text wx:if="{{!rows.length}}" class="empty">尚未设置作息，请先在教师工作台设置本班作息时间。</text>
       <view class="lesson" wx:for="{{rows}}" wx:key="key">
         <view class="lesson-heading"><text class="row-title">{{item.slotLabel}}</text><text class="badge">{{item.weekLabel}}</text></view>
         <text class="row-meta">{{item.timeLabel}}{{item.location ? ' · ' + item.location : ''}}</text>
-        <view class="lesson-fields">
-          <view class="field"><text class="label">科目</text>
-            <input class="input" value="{{item.subject}}" maxlength="40" placeholder="填写科目" disabled="{{!canEdit || busy || loading || sessionExpired}}" data-key="{{item.key}}" data-field="subject" bindinput="onLessonInput" aria-label="{{weekdays[weekdayIndex] + item.slotLabel + item.weekLabel + '科目'}}" />
-          </view>
-          <view class="field"><text class="label">教师</text>
-            <input class="input" value="{{item.teacher}}" maxlength="40" placeholder="教师姓名，可留空" disabled="{{!canEdit || busy || loading || sessionExpired}}" data-key="{{item.key}}" data-field="teacher" bindinput="onLessonInput" aria-label="{{weekdays[weekdayIndex] + item.slotLabel + item.weekLabel + '教师'}}" />
-          </view>
-        </view>
+        <text class="lesson-subject">{{item.subject || '暂无安排'}}{{item.teacher ? ' · ' + item.teacher : ''}}</text>
       </view>
     </view>
     <view class="panel">

@@ -9,9 +9,15 @@ from aiohttp import web
 
 from card_quiz_events import replay
 from card_quiz_models import (DEVICE_REASON, MAX_SYNC_BODY, answer_complete, array, bank_link, dumps, fail, fingerprint,
-                              identifier, obj, revision, validate_events, validate_question,
+                              identifier, integer, obj, revision, validate_events, validate_question,
                               validate_session, validate_transition)
 from teacher_capabilities import teacher_action, teacher_manual, teacher_read
+
+
+def query_integer(value, label, minimum, maximum):
+    if isinstance(value, str) and len(value) <= len(str(maximum)) and value.isascii() and value.isdecimal():
+        value = int(value)
+    return integer(value, label, minimum, maximum)
 
 
 def counts(multiple=False):
@@ -205,10 +211,20 @@ class SessionHandlers:
         if any(e['at'] < session['startedAt'] or session['endedAt'] is not None and e['at'] > session['endedAt'] for e in events):
             fail('事件时间不在课堂范围内。')
         incoming_fingerprint = fingerprint(body['session'])
+        publication = body.get('publicationId')
+        if publication is not None:
+            publication = identifier(publication)
         with self.db.transaction():
             row = self.db.one('SELECT * FROM card_quiz_sessions WHERE id=?', (session['id'],))
             if row and (row['class_id'] != device['class_id'] or row['device_id'] != device['id']):
                 fail('这个课堂属于其他设备或班级。', 403)
+            if publication is not None:
+                if row and row['publication_id'] and row['publication_id'] != publication:
+                    fail('课堂的原题单不能替换。', 409)
+                if not self.db.one("""SELECT 1 FROM card_quiz_publications WHERE id=? AND class_id=?
+                        AND json_extract(value,'$.questions[0].subjectId')=?""",
+                                   (publication, session['classId'], session['subjectId'])):
+                    fail('题单不属于本班或本学科。', 403)
             known_batch = self.db.one('SELECT fingerprint FROM card_quiz_batches WHERE session_id=? AND seq=?',
                                      (session['id'], session['seq']))
             if known_batch and known_batch['fingerprint'] != incoming_fingerprint:
@@ -224,6 +240,8 @@ class SessionHandlers:
                 if duplicate and duplicate['seq'] != e['seq']:
                     fail('相同请求编号不能用于其他事件。', 409)
             if known_batch:
+                if publication and row['publication_id'] is None:
+                    self.db.run('UPDATE card_quiz_sessions SET publication_id=? WHERE id=?', (publication, session['id']))
                 receipt_ids = self.restore_receipts(row, receipts)
                 return self.reply({'syncedSeq': stored_seq, 'receiptIds': receipt_ids})
             if row and session['seq'] <= stored_seq:
@@ -239,12 +257,14 @@ class SessionHandlers:
             self.validate_snapshot_refs(session, old)
             encoded = dumps(session)
             self.db.run('''INSERT INTO card_quiz_sessions
-                (id,class_id,device_id,subject_id,started_at,ended_at,seq,revision,raw_value,value,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+                (id,class_id,device_id,subject_id,started_at,ended_at,seq,revision,raw_value,value,updated_at,publication_id)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                 ended_at=excluded.ended_at,seq=excluded.seq,revision=excluded.revision,
-                raw_value=excluded.raw_value,value=excluded.value,updated_at=excluded.updated_at''',
+                raw_value=excluded.raw_value,value=excluded.value,updated_at=excluded.updated_at,
+                publication_id=COALESCE(card_quiz_sessions.publication_id,excluded.publication_id)''',
                         (session['id'], device['class_id'], device['id'], session['subjectId'], session['startedAt'],
-                         session['endedAt'], session['seq'], row['revision'] + 1 if row else 1, encoded, encoded, self.service.now_ms()))
+                         session['endedAt'], session['seq'], row['revision'] + 1 if row else 1, encoded, encoded,
+                         self.service.now_ms(), publication))
             for e in events:
                 if e['seq'] > stored_seq:
                     self.db.run('INSERT INTO card_quiz_events(session_id,seq,id,value) VALUES(?,?,?,?)',
@@ -258,27 +278,44 @@ class SessionHandlers:
             receipt_ids = self.restore_receipts(saved, receipts)
         return self.reply({'syncedSeq': session['seq'], 'receiptIds': receipt_ids})
 
-    def summary(self, row):
-        value = json.loads(row['value'])
-        return {'id': row['id'], 'classId': row['class_id'], 'deviceId': row['device_id'], 'subjectId': row['subject_id'],
-                'startedAt': row['started_at'], 'endedAt': row['ended_at'], 'seq': row['seq'], 'revision': row['revision'],
-                'teacherId': row['teacher_id'], 'questionCount': len(value['questions']),
-                'studentCount': len(value['roster']), 'syncedSeq': row['seq']}
-
-    def selected_sessions(self, request, user):
+    def session_filter(self, request):
+        user = self.staff(request)
         cid = identifier(request.query.get('classId'))
         self.access(user, cid)
         subject = request.query.get('subjectId')
-        where, args = 'class_id=?', [cid]
-        if subject is not None:
-            where += ' AND subject_id=?'
-            args.append(identifier(subject))
-        return self.limited('SELECT * FROM card_quiz_sessions WHERE ' + where + ' ORDER BY started_at,id', tuple(args))
+        if subject is None:
+            return 'class_id=?', (cid,)
+        return 'class_id=? AND subject_id=?', (cid, identifier(subject))
 
-    @teacher_read('card-quiz.sessions', '查看纸卡课堂列表', fields='classId subjectId')
+    def session_page(self, query, where, args):
+        limit = query_integer(query.get('limit', '50'), '每页课堂数', 1, 100)
+        started, sid = query.get('beforeStartedAt'), query.get('beforeId')
+        if (started is None) != (sid is None):
+            fail('翻页位置需要课堂开始时间和编号。')
+        boundary, position = '', ()
+        if started is not None:
+            boundary = ' AND (started_at,id)<(?,?)'
+            position = (query_integer(started, '课堂开始时间', 0, 9_007_199_254_740_991), identifier(sid))
+        rows = self.db.all(f'''SELECT id,class_id AS classId,device_id AS deviceId,subject_id AS subjectId,
+            started_at AS startedAt,ended_at AS endedAt,seq,revision,teacher_id AS teacherId,seq AS syncedSeq,
+            json_array_length(value,'$.questions') AS questionCount,json_array_length(value,'$.roster') AS studentCount
+            FROM card_quiz_sessions WHERE {where}{boundary} ORDER BY started_at DESC,id DESC LIMIT ?''',
+                           (*args, *position, limit + 1))
+        next_cursor = None
+        if len(rows) > limit:
+            rows.pop()
+            next_cursor = {'beforeStartedAt': rows[-1]['startedAt'], 'beforeId': rows[-1]['id']}
+        # Legacy clients reverse this array. Select the newest page, then keep its original chronological order.
+        rows.reverse()
+        total = self.db.one(f'SELECT COUNT(*) AS n FROM card_quiz_sessions WHERE {where}', args)['n']
+        return {'sessions': rows, 'nextCursor': next_cursor, 'total': total}
+
+    def report_rows(self, where, args):
+        return self.db.run(f'SELECT id,class_id,value FROM card_quiz_sessions WHERE {where} ORDER BY started_at,id', args)
+
+    @teacher_read('card-quiz.sessions', '查看纸卡课堂列表', fields='classId subjectId limit beforeStartedAt beforeId')
     async def list_sessions(self, request):
-        user = self.staff(request)
-        return self.reply({'sessions': [self.summary(row) for row in self.selected_sessions(request, user)]})
+        return self.reply(self.session_page(request.query, *self.session_filter(request)))
 
     def session_payload(self, row):
         value = json.loads(row['value'])
@@ -361,32 +398,31 @@ class SessionHandlers:
                 key = (row['class_id'], s['id'], session['subjectId'], identity)
                 order = (session['startedAt'], a['confirmedAt'], r['endedAt'], session['id'], r['id'])
                 if key not in latest or order > latest[key][0]:
-                    latest[key] = (order, q, s, status)
-        for (cid, sid, subject, identity), (_, q, student, status) in latest.items():
+                    latest[key] = (order, q['tags'], q['type'], status)
+        for (cid, sid, subject, identity), (_, tags, kind, status) in latest.items():
             add_count(students[(cid, sid)], status)
-            for tag in q['tags']:
+            for tag in tags:
                 key = (subject, tag)
                 row = knowledge.setdefault(key, {'subjectId': subject, 'tag': tag, 'questionCount': 0,
-                                                 'answers': 0, **counts(q['type'] == 'multiple')})
-                if q['type'] == 'multiple':
+                                                 'answers': 0, **counts(kind == 'multiple')})
+                if kind == 'multiple':
                     row.setdefault('incomplete', 0)
                 question_ids.setdefault(key, set()).add(identity)
                 row['questionCount'] = len(question_ids[key])
                 row['answers'] += 1
                 add_count(row, status)
-        return {'sessions': [self.summary(row) for row in rows],
-                'students': [rate(row) for key, row in students.items() if key in named_students],
+        return {'students': [rate(row) for key, row in students.items() if key in named_students],
                 'knowledge': [rate(row) for row in knowledge.values()]}
 
-    @teacher_read('card-quiz.report', '查看纸卡答题学生与知识点统计', fields='classId subjectId')
+    @teacher_read('card-quiz.report', '查看纸卡答题学生与知识点统计', fields='classId subjectId limit beforeStartedAt beforeId')
     async def report(self, request):
-        user = self.staff(request)
-        return self.reply(self.report_data(self.selected_sessions(request, user)))
+        where, args = self.session_filter(request)
+        page = self.session_page(request.query, where, args)
+        return self.reply({**page, **self.report_data(self.report_rows(where, args))})
 
     @teacher_action('card-quiz.export', '导出纸卡答题 CSV', confirm=False, workflow='download', fields='classId subjectId')
     async def export(self, request):
-        user = self.staff(request)
-        rows = self.selected_sessions(request, user)
+        rows = self.report_rows(*self.session_filter(request))
         output = io.StringIO(newline='')
         writer = csv.writer(output)
         writer.writerow(['班级编号', '课堂编号', '学科', '题目', '题干', '轮次', '用途', '学生编号', '学生', '作答', '标准答案', '状态', '标签'])

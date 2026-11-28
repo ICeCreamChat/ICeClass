@@ -15,6 +15,7 @@
   const date = at => new Date(at).toLocaleString('zh-CN',{hour12:false});
   let owner = '', cid = '', tab = 'cards', subject = '', generation = 0, busy = false, changed = false, conflict = false;
   let cards, cardsDraft, bank = [], decks = [], publications = [], report, detail, editor, message = '', failed = false;
+  let reportCursors = [null];
   let accounts, accountsError = '', accountsConflict = false, credentials = [], accountSelection = new Set();
   const entryYear = String(new Date().getFullYear());
   let accountClassCode = '', accountDraft = newAccountDraft();
@@ -320,10 +321,41 @@
       return `<details class="cq-round"><summary>第 ${index+1} 轮 · ${r.purpose==='practice'?'练习':'正式'} · 已封存</summary><p class="cq-note">${participation.join(' · ')}</p>${chart}${table(['学生','作答','状态'],r.students.map(x=>`<tr><td>${esc(x.studentName)}</td><td>${esc(responseText(x,snapshot,round))}</td><td>${esc(statuses[x.status]||x.status)}</td></tr>`),'本题作答明细')}</details>`;
     }).join('')}</article>`;}).join('')}</section><section class="cq-panel"><h2>本课学生汇总</h2>${statistics(detail.report.students,'学生')}</section>`;
   }
+  function reportQuery(classId, subjectId, cursor) {
+    return new URLSearchParams({classId, ...(subjectId ? {subjectId} : {}), limit: '20', ...cursor});
+  }
+  function reportPagination() {
+    const page = reportCursors.length;
+    if (page === 1 && !report.nextCursor) return '';
+    return `<nav class="cq-actions" aria-label="课堂记录分页">
+      ${button('previous-sessions', '上一页课堂', false, page === 1 ? 'disabled' : '')}
+      <span class="cq-note" role="status">第 ${page} 页</span>
+      ${button('next-sessions', '下一页课堂', false, report.nextCursor ? '' : 'disabled')}
+    </nav>`;
+  }
+  async function turnReportPage(action) {
+    const next = action === 'next-sessions';
+    if (!report || (next ? !report.nextCursor : reportCursors.length < 2)) return;
+    const cursors = next ? [...reportCursors, report.nextCursor] : reportCursors.slice(0, -1);
+    const current = ++generation;
+    const success = await work(async () => {
+      const page = await api('/sessions?' + reportQuery(cid, subject, cursors[cursors.length - 1]));
+      if (current !== generation) return;
+      report = {...report, ...page};
+      reportCursors = cursors;
+      notify();
+    });
+    if (current === generation && (document.activeElement === document.body || root.contains(document.activeElement))) {
+      const selector = success ? '[data-cq-action="open-session"], [data-cq-action="previous-sessions"]:enabled'
+        : `[data-cq-action="${action}"]`;
+      root.querySelector(selector)?.focus();
+    }
+  }
   function renderReports() {
     if(detail)return renderDetail();
     if(!report)return'<p class="cq-empty">请选择班级查询课堂记录。</p>';
-    return `<section class="cq-panel"><div class="cq-item-head"><h2>课堂记录</h2>${button('export','导出明细 CSV')}</div><div class="cq-list">${[...report.sessions].reverse().map(s=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}<br><small>${s.questionCount} 题 · ${s.endedAt?'已结束':'尚未结束'} · ${s.teacherId?'已认领':'待认领'}</small></p>${button('open-session','查看与修订',false,`data-id="${esc(s.id)}"`)}</div></article>`).join('')||'<p class="cq-empty">本班暂无已同步课堂。</p>'}</div></section><section class="cq-panel"><h2>学生汇总</h2><p class="cq-note">同人、同题、同版本取最近的有效正式作答。正确率按已判定的作答计算。</p>${statistics(report.students,'学生')}</section><section class="cq-panel"><h2>知识点表现</h2><p class="cq-note">按教师确认的知识点汇总，请结合判定样本数看正确率。</p>${table(['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','已答正确率'],report.knowledge.map(k=>`<tr><td>${esc(names[k.subjectId]||k.subjectId)}</td><td>${esc(k.tag)}</td><td>${k.questionCount}</td><td>${k.answers}</td><td>${k.samples}</td><td>${k.correct}</td><td>${k.wrong}</td><td>${k.incomplete||0}</td><td>${rate(k.accuracy)}</td></tr>`),'知识点样本与正确率')}</section>`;
+    return `<section class="cq-panel"><div class="cq-item-head"><h2>课堂记录</h2>${button('export','导出明细 CSV')}</div><div class="cq-list">${[...report.sessions].reverse().map(s=>`<article class="cq-item"><div class="cq-item-head"><p>${esc(names[s.subjectId]||s.subjectId)} · ${date(s.startedAt)}<br><small>${s.questionCount} 题 · ${s.endedAt?'已结束':'尚未结束'} · ${s.teacherId?'已认领':'待认领'}</small></p>${button('open-session','查看与修订',false,`data-id="${esc(s.id)}"`)}</div></article>`).join('')||'<p class="cq-empty">本班暂无已同步课堂。</p>'}</div>${reportPagination()}</section>
+      <section class="cq-panel"><h2>学生汇总</h2><p class="cq-note">同人、同题、同版本取最近的有效正式作答。正确率按已判定的作答计算。</p>${statistics(report.students,'学生')}</section><section class="cq-panel"><h2>知识点表现</h2><p class="cq-note">按教师确认的知识点汇总，请结合判定样本数看正确率。</p>${table(['学科','知识点','题数','作答数','判定样本','正确','错误','未完成','已答正确率'],report.knowledge.map(k=>`<tr><td>${esc(names[k.subjectId]||k.subjectId)}</td><td>${esc(k.tag)}</td><td>${k.questionCount}</td><td>${k.answers}</td><td>${k.samples}</td><td>${k.correct}</td><td>${k.wrong}</td><td>${k.incomplete||0}</td><td>${rate(k.accuracy)}</td></tr>`),'知识点样本与正确率')}</section>`;
   }
   function render() {
     ui.preserveFocus(root, renderContent, () => root.querySelector('[data-cq-tab][aria-pressed="true"]'));
@@ -337,17 +369,18 @@
   async function fetchTab({classId=cid, nextTab=tab, nextSubject=subject, replace=false}={}) {
     if (replace && editor?.kind === 'import') editor.cancelRequest();
     const current=++generation, base='/classes/'+encodeURIComponent(classId);
+    const cursors = classId === cid && nextTab === tab && nextSubject === subject ? reportCursors : [null];
     const [questions, lists, published, freshCards, freshReport] = await Promise.all([
       api('/questions'), api('/decks'), classId?api(base+'/publications'):null,
       classId&&nextTab==='cards'?api(base+'/cards'):null,
-      classId&&nextTab==='reports'?api('/report?'+new URLSearchParams({classId,...(nextSubject?{subjectId:nextSubject}:{})})):null
+      classId&&nextTab==='reports'?api('/report?'+reportQuery(classId,nextSubject,cursors[cursors.length-1])):null
     ]);
     if(current!==generation)return;
     if(classId!==cid){cards=cardsDraft=accounts=undefined;accountClassCode='';accountsConflict=false;accountsError='';}
     if(replace || classId!==cid){discard();detail=undefined;}
     cid=classId;tab=nextTab;subject=nextSubject;
     bank=questions.questions;decks=lists.decks;publications=published?.publications||[];
-    if(nextTab==='reports')report=freshReport;
+    if(nextTab==='reports'){report=freshReport;reportCursors=cursors;}
     if(nextTab==='cards'&&freshCards){cards=freshCards;cardsDraft=clone(cards.students);await readAccounts();}
     conflict=false;
   }
@@ -427,9 +460,12 @@
         throw new Error('图片仅支持 PNG、JPEG、WebP，最多 2 MiB。');
       dataUrl = await fileData(target.file);
     } else if (target.sourceImageId) {
-      const response = await fetch('/api/card-quiz/images/'+encodeURIComponent(target.sourceImageId),{credentials:'same-origin',signal:AbortSignal.timeout(15000)});
-      if (!response.ok) throw new Error('配图未能复制，请重新载入后再试。');
-      dataUrl = await fileData(await response.blob());
+      const blob = await app().withReadTimeout(null, async signal => {
+        const response = await fetch('/api/card-quiz/images/'+encodeURIComponent(target.sourceImageId),{credentials:'same-origin',signal});
+        if (!response.ok) throw new Error('配图未能复制，请重新载入后再试。');
+        return response.blob();
+      });
+      dataUrl = await fileData(blob);
     }
     if (!currentBankEditor(target)) return;
     if (dataUrl) {
@@ -513,6 +549,7 @@
     }
     const action=control.dataset.cqAction,id=control.dataset.id;
     if(!action)return;
+    if(action==='previous-sessions'||action==='next-sessions'){await turnReportPage(action);return;}
     if (action === 'open-import') {
       editor = new window.ICeClassQuestionImport(subject || 'math', fileData);
       changed = conflict = false; notify(); render(); focusImport('[data-cq-action="choose-screenshot"]'); return;
@@ -583,6 +620,7 @@
   });
   function destroy(){
     workEpoch++;
+    reportCursors = [null];
     if (editor?.kind === 'import') editor.dispose();
     generation++;owner=cid='';tab='cards';subject='';cards=cardsDraft=report=detail=editor=accounts=undefined;credentials=[];accountSelection=new Set();accountsError='';accountsConflict=false;accountClassCode='';accountDraft=newAccountDraft();bank=[];decks=[];publications=[];changed=conflict=busy=failed=false;message='';root.replaceChildren();
   }

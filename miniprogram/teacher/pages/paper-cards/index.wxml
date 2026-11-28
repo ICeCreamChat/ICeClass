@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header"><text class="title" aria-role="heading" aria-level="1">纸卡编号与名单</text><text class="subtitle">一个卡号对应一名学生，历史课堂使用原名单快照</text></view>
   <view class="panel">
     <view class="field"><text class="label">班级</text><picker range="{{classNames}}" value="{{classIndex}}" bindchange="changeClass" disabled="{{busy || uncertain || !classes.length}}" aria-label="纸卡名单所属班级"><view class="picker">{{classNames[classIndex] || '暂无可访问班级'}}</view></picker></view>
@@ -7,7 +8,6 @@
     <text wx:if="{{loaded && !canEdit}}" class="status">当前账号可以查看名单与卡面，不能修改本班纸卡编号。</text>
   </view>
   <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
-  <button wx:if="{{sessionExpired}}" class="primary" bindtap="relogin">重新登录</button>
   <view wx:if="{{status}}" class="status" aria-live="polite">{{status}}</view>
   <view wx:if="{{conflict}}" class="status">版本有冲突，草稿已保留。请重新读取服务端卡号并核对。</view>
   <view wx:if="{{uncertain}}" class="status">保存结果未确认，已暂停写入。重新读取成功前不会解除保护。</view>

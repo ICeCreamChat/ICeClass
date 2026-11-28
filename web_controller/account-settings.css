@@ -120,9 +120,11 @@
 #view-settings .quota-tabs button { min-height: 38px; min-width: 150px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--muted); display: flex; justify-content: center; align-items: center; gap: 9px; font-size: 14px; padding: 6px 14px; }
 #view-settings .quota-tabs button[aria-selected=true] { border-color: #ffffffd9; background: #f8fcff; color: var(--blue); box-shadow: 0 2px 5px #19476e0d; }
 #view-settings .quota-tabs button span { font-size: 12px; min-width: 18px; font-variant-numeric: tabular-nums; color: var(--muted); }
-#view-settings .default-rule { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--teacher-table-head); border: 1px solid var(--line); border-radius: var(--radius); }
+#view-settings .default-rule { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 12px; background: var(--teacher-table-head); border: 1px solid var(--line); border-radius: var(--radius); }
+#view-settings .default-rule > div:first-child { flex-grow: 1; }
+#view-settings .default-rule .button { margin-inline-start: auto; }
 #view-settings .default-rule .muted { margin-top: 3px; }
-#view-settings .default-value { display: flex; align-items: baseline; gap: 6px; margin-inline-start: auto; white-space: nowrap; }
+#view-settings .default-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; white-space: nowrap; }
 #view-settings .default-value strong { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.4; }
 #view-settings .default-value > span:not(.draft-label) { font-size: 14px; color: var(--muted); }
 #view-settings .draft-label { color: var(--orange); font-size: 12px; margin-left: 4px; }
@@ -133,31 +135,35 @@
 #view-settings .search-field { display: flex; align-items: center; position: relative; }
 #view-settings .search-field > .icon { position: absolute; left: 12px; color: #57758e; width: 18px; height: 18px; pointer-events: none; }
 #view-settings .search-field input { padding-left: 38px; width: 246px; font-size: 14px; font-weight: 400; }
+#view-settings .quota-section {
+  --quota-compact-grid: "identity identity action" auto "usage remaining rule" auto / minmax(0, 1.15fr) minmax(min-content, .85fr) minmax(0, 1fr);
+}
 #view-settings .quota-table-head, #view-settings .quota-overview { display: grid; grid-template-columns: minmax(142px, 1.8fr) minmax(82px, 1fr) minmax(64px, .75fr) minmax(64px, .85fr) 64px; align-items: center; column-gap: 12px; text-align: center; }
 #view-settings :is(.quota-table-head > :first-child, .target-identity, .device-table-head > :first-child, .device-copy) { text-align: start; }
 #view-settings .quota-table-head, #view-settings .device-table-head, #view-settings .log-table-head { background: #dcebf67a; color: var(--muted); font-size: 13px; padding: 11px 14px; border-radius: 8px; }
 #view-settings .quota-list > li { border-bottom: 1px solid var(--line); }
-#view-settings .quota-overview { min-height: 64px; padding: 9px 14px; }
+#view-settings .quota-overview { grid-template-areas: "identity usage remaining rule action"; min-height: 64px; padding: 9px 14px; }
 #view-settings .quota-overview:hover { background: #f8fcff66; }
 #view-settings .quota-list > li.editing { background: #e5f1fb; }
-#view-settings .target-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#view-settings .target-identity { grid-area: identity; align-self: center; display: flex; align-items: center; gap: 8px; min-width: 0; }
 #view-settings .target-identity > .icon { color: #6a8da9; width: 22px; height: 22px; }
 #view-settings .target-copy { min-width: 0; }
 #view-settings .target-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 #view-settings .target-copy .muted { font-size: 13px; display: block; overflow-wrap: anywhere; }
 #view-settings :is(.quota-cell-label,.device-seen-caption) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#view-settings .usage { grid-area: usage; }
 #view-settings .usage-number { font-variant-numeric: tabular-nums; font-size: 16px; line-height: 1.5; }
 #view-settings .usage-number span { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
 #view-settings .usage-progress { height: 4px; margin: 4px auto 0; border-radius: 3px; background: #c3d8e8; width: 124px; max-width: 100%; overflow: hidden; }
 #view-settings .usage-progress i { display: block; height: 100%; border-radius: inherit; background: #478ac4; width: var(--used-percent, 0%); }
 #view-settings .usage-progress.warning i { background: #ae7a2e; }
 #view-settings .usage-progress.danger i { background: #b36260; }
-#view-settings .remaining { font-variant-numeric: tabular-nums; font-size: 15px; }
+#view-settings .remaining { grid-area: remaining; font-variant-numeric: tabular-nums; font-size: 15px; }
 #view-settings .remaining.warning { color: var(--orange); }
 #view-settings .remaining.danger { color: var(--red); }
-#view-settings .rule-source { color: var(--muted); font-size: 13px; }
+#view-settings .rule-source { grid-area: rule; color: var(--muted); font-size: 13px; }
 #view-settings .rule-source .draft-label { display: block; margin-left: 0; }
-#view-settings .row-adjust { min-height: 44px; font-size: 14px; padding: 10px 8px; border-radius: 8px; border: 1px solid transparent; color: var(--blue); background: transparent; display: flex; align-items: center; justify-content: center; gap: 2px; }
+#view-settings .row-adjust { grid-area: action; min-height: 44px; font-size: 14px; padding: 10px 8px; border-radius: 8px; border: 1px solid transparent; color: var(--blue); background: transparent; display: flex; align-items: center; justify-content: center; gap: 2px; }
 #view-settings .row-adjust:hover { background: #dbeafb; }
 #view-settings .row-adjust .icon { width: 15px; height: 15px; }
 #view-settings .row-adjust[aria-expanded=true] .icon { transform: rotate(180deg); }
@@ -311,9 +317,8 @@ html[data-teacher-material=white] #view-settings .save-strip { background: #f8fa
 #view-settings .month .icon { width: 16px; height: 16px; }
 #view-settings .quota-tabs { width: 100%; }
 #view-settings .quota-tabs button { min-width: 0; flex: 1; min-height: 40px; padding: 6px 10px; gap: 7px; }
-#view-settings .default-rule { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding-bottom: 20px; }
-#view-settings .default-rule > div:first-child { grid-column: 1 / -1; }
-#view-settings .default-value { margin-left: 0; }
+#view-settings .default-rule { padding-bottom: 20px; }
+#view-settings .default-rule > div:first-child { flex-basis: 100%; }
 #view-settings .default-value strong { font-size: 24px; }
 #view-settings .default-rule .button { padding: 9px 13px; font-size: 14px; }
 #view-settings .list-toolbar { gap: 14px; margin-top: 20px; margin-bottom: 2px; }
@@ -358,14 +363,24 @@ html[data-teacher-material=white] #view-settings .save-strip { background: #f8fa
 }
 @container account-settings (max-width: 620px) {
 #view-settings .quota-table-head { display: none; }
-#view-settings .quota-overview { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr) minmax(0, 1fr); grid-template-areas: "identity identity action" "usage remaining rule"; gap: 4px 8px; padding: 8px 2px 12px; align-items: start; text-align: start; }
-#view-settings .target-identity { grid-area: identity; align-self: center; }
-#view-settings .usage { grid-area: usage; }
+#view-settings .quota-overview { grid-template: var(--quota-compact-grid); gap: 4px 8px; padding: 8px 2px 12px; align-items: start; text-align: start; }
 #view-settings .usage-progress { margin-inline: 0; width: 80px; }
-#view-settings .remaining { grid-area: remaining; }
-#view-settings .rule-source { grid-area: rule; }
-#view-settings .row-adjust { grid-area: action; justify-self: end; }
+#view-settings .row-adjust { justify-self: end; }
 #view-settings .quota-cell-label { display: block; position: static; width: auto; height: auto; margin: 0 0 2px; clip-path: none; color: var(--muted); font-size: 12px; }
+}
+@supports not (container-type: inline-size) {
+  @media (max-width: 680px) {
+    #view-settings .quota-section :is(.list-toolbar, .list-footer, .save-strip, .action-group) { flex-wrap: wrap; }
+    #view-settings .quota-tabs, #view-settings .quota-section .filters, #view-settings .quota-section .search-field input { width: 100%; }
+    #view-settings .quota-tabs button, #view-settings .quota-section .search-field { flex: 1; min-width: 0; }
+    #view-settings .quota-tabs button { gap: 4px; padding-inline: 6px; }
+    #view-settings .default-rule > div:first-child { flex-basis: 100%; }
+    #view-settings .quota-table-head { display: none; }
+    #view-settings .quota-overview { grid-template: var(--quota-compact-grid); gap: 4px 8px; padding: 8px 2px 12px; align-items: start; text-align: start; }
+    #view-settings .usage-progress { margin-inline: 0; width: 80px; }
+    #view-settings .row-adjust { justify-self: end; }
+    #view-settings .quota-cell-label { display: block; position: static; width: auto; height: auto; margin: 0 0 2px; clip-path: none; color: var(--muted); font-size: 12px; }
+  }
 }
 @media (prefers-reduced-motion: reduce) {
 #view-settings *, #view-settings *::before, #view-settings *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }

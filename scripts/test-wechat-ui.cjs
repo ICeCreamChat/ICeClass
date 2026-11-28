@@ -10,10 +10,10 @@ function loadPage(name, supplied = {}) {
   let definition;
   const actions = [];
   const api = Object.assign({ getUser: () => ({ id: 'test-teacher', permissions: {} }), getPersistenceWarning: () => '', request: async () => ({}) }, supplied.api);
-  const ui = Object.assign({ requireLogin: () => true, confirm: async () => true, setDirty() {}, fail(page, error) { page.setData({ error: error.message }); }, relogin() {}, query: () => '', formatTime: () => '', toast() {} }, supplied.ui);
+  const ui = Object.assign({ requireLogin: () => true, confirm: async () => true, setDirty() {}, fail(page, error) { page.setData({ error: error.message }); }, relogin() {}, openAgreement() {}, applyAppearance() {}, query: () => '', formatTime: () => '', toast() {} }, supplied.ui);
   const runtime = Object.assign({ navigateBack: () => actions.push('back'), navigateTo: options => actions.push(options.url), reLaunch: options => actions.push(options.url), stopPullDownRefresh() {} }, supplied.wx);
   const filename = path.join(appRoot, 'pages', name, 'index.js');
-  const context = vm.createContext({ Page: value => { definition = value; }, wx: runtime, getCurrentPages: () => [null, definition], console, setTimeout, clearTimeout, require: name => name.endsWith('/api') ? api : name.endsWith('/ui') ? ui : require(path.resolve(path.dirname(filename), name)) });
+  const context = vm.createContext({ Page: value => { definition = value; }, wx: runtime, getCurrentPages: supplied.getCurrentPages || (() => [null, definition]), console, setTimeout, clearTimeout, require: name => name.endsWith('/api') ? api : name.endsWith('/ui') ? ui : require(path.resolve(path.dirname(filename), name)) });
   new vm.Script(fs.readFileSync(filename, 'utf8'), { filename }).runInContext(context);
   definition.data = JSON.parse(JSON.stringify(definition.data || {}));
   definition.setData = values => {
@@ -32,22 +32,134 @@ test('all registered native pages and template event handlers exist', () => {
   for (const route of config.pages) {
     const name = route.split('/')[1];
     const { page } = loadPage(name);
-    const template = fs.readFileSync(path.join(appRoot, route + '.wxml'), 'utf8');
-    for (const match of template.matchAll(/(?:bind|catch):?(?:tap|input|change|submit|confirm|blur|focus|longpress)="([A-Za-z_$][\w$]*)"/g)) {
+    const filename = path.join(appRoot, route + '.wxml');
+    const template = fs.readFileSync(filename, 'utf8').replace(/<include src="([^"]+)"\s*\/>/g,
+      (_, relative) => fs.readFileSync(path.resolve(path.dirname(filename), relative), 'utf8'));
+    for (const match of template.matchAll(/(?:bind|catch):?(?:tap|input|change|submit|confirm|blur|focus|longpress|agreeprivacyauthorization)="([A-Za-z_$][\w$]*)"/g)) {
       assert.equal(typeof page[match[1]], 'function', `${route}: missing ${match[1]}`);
     }
     assert.ok(!/<web-view\b/.test(template));
   }
 });
 
+const tap = dataset => ({ currentTarget: { dataset } });
+const consent = (page, accepted = true) => page.changeConsent({ detail: { value: accepted ? ['agree'] : [] } });
+
+test('login waits for an unchecked-by-default consent choice before contacting the school', async () => {
+  let submissions = 0;
+  const { page } = loadPage('login', { api: { login: async () => { submissions++; } } });
+  page.setData({ username: 'school-teacher', password: 'school-password' });
+  assert.equal(page.data.accepted, false);
+  await page.submit();
+  assert.match(page.data.error, /先阅读协议并勾选同意/);
+  consent(page); consent(page, false);
+  await page.submit();
+  assert.equal(submissions, 0);
+});
+
 test('teacher login preserves password characters and returns to the retained page', async () => {
   let credentials;
   const { page, actions } = loadPage('login', { api: { login: async (...args) => { credentials = args; } } });
   page.setData({ username: ' teacher ', password: ' aPassword123 ' });
+  consent(page);
   await page.submit();
-  assert.deepEqual(credentials, [' teacher ', ' aPassword123 ']);
+  assert.deepEqual(credentials.slice(0, 2), [' teacher ', ' aPassword123 ']);
+  assert.equal(credentials[2](), false);
   assert.equal(page.data.password, '');
   assert.deepEqual(actions, ['back']);
+});
+
+test('both agreements open independently before login without checking consent', () => {
+  const targets = [];
+  const shared = sharedUi({}, { navigateTo: options => targets.push(options.url) }, []);
+  const { page } = loadPage('login', { ui: shared });
+  page.openAgreement(tap({ document: 'terms' }));
+  page.openAgreement(tap({ document: 'privacy' }));
+  assert.deepEqual(targets, ['/pages/privacy/index?document=terms', '/pages/privacy/index']);
+  for (const document of ['terms', 'privacy']) {
+    const { page: agreement } = loadPage('privacy');
+    agreement.onLoad({ document });
+    assert.equal(agreement.data.terms, document === 'terms');
+  }
+  assert.equal(page.data.accepted, false);
+});
+
+test('logged out workbench stays public after cancelling or backing out of login', () => {
+  let restores = 0, opens = 0;
+  const { page: home, actions } = loadPage('workbench', {
+    api: { getUser: () => null, restoreSession: () => { restores++; } },
+    ui: { relogin: () => { opens++; } }
+  });
+  home.onShow(); home.onPullDownRefresh();
+  home.relogin();
+  const { page: login, actions: loginActions } = loadPage('login');
+  login.leave();
+  home.onShow();
+  home.relogin();
+  const { page: nextLogin } = loadPage('login');
+  nextLogin.onHide(); nextLogin.onUnload(); home.onShow();
+  home.open(tap({ page: 'notices' }));
+  assert.equal(opens, 2);
+  assert.equal(restores, 0);
+  assert.equal(home.data.user, null);
+  assert.equal(home.data.classes.length, 0);
+  assert.deepEqual(loginActions, ['back']);
+  assert.deepEqual(actions, []);
+});
+
+test('a login entered as the first page can still be cancelled to the public workbench', () => {
+  const { page, actions } = loadPage('login', { getCurrentPages: () => [{}] });
+  page.leave();
+  assert.deepEqual(actions, ['/pages/workbench/index']);
+});
+
+test('cancelling or leaving before a login response never persists the late session', async () => {
+  const { createClient } = require('../miniprogram/teacher/lib/api');
+  for (const exit of ['button', 'system-back', 'hidden']) {
+    let response;
+    const storage = new Map();
+    const api = createClient({
+      getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key),
+      request: options => { response = options; }
+    });
+    const { page, actions } = loadPage('login', { api });
+    page.setData({ username: 'teacher', password: 'secret' });
+    consent(page);
+    const pending = page.submit();
+    if (exit === 'button') page.leave();
+    else { page.onHide(); if (exit === 'system-back') page.onUnload(); }
+    response.success({ statusCode: 200, cookies: ['iceclass_session=test-cookie; Max-Age=600'],
+      data: { user: { id: 'teacher', csrfToken: 'test-csrf' } } });
+    await pending;
+    assert.equal(page.data.password, '');
+    assert.equal(api.getUser(), null);
+    assert.equal(storage.size, 0);
+    assert.deepEqual(actions, exit === 'button' ? ['back'] : []);
+  }
+});
+
+test('only one login navigation happens while a tap is still being handled', () => {
+  let count = 0;
+  let complete;
+  const pages = [{ route: 'pages/workbench/index' }];
+  const ui = sharedUi({}, { navigateTo: options => { count++; complete = options.complete; } }, pages);
+  ui.relogin(); ui.relogin();
+  assert.equal(count, 1);
+  pages.push({ route: 'pages/login/index' }); complete();
+  ui.relogin();
+  assert.equal(count, 1);
+});
+
+test('workbench clears previous class data when a restored session expires', async () => {
+  let current = { id: 'teacher' };
+  const { page, actions } = loadPage('workbench', { api: { getUser: () => current, restoreSession: async () => current },
+    ui: { loadClasses: async () => { current = null; throw Object.assign(new Error('Expired'), { status: 401 }); } } });
+  page.setData({ user: current, classes: [{ id: 'private' }], classNames: ['上次班级'], classId: 'private' });
+  await page.load();
+  assert.equal(page.data.user, null);
+  assert.equal(page.data.classId, '');
+  assert.equal(page.data.classNames.length, 0);
+  assert.deepEqual(actions, []);
 });
 
 test('a paper question conflict retains the draft and blocks repeated save until reloaded', async () => {
@@ -61,6 +173,48 @@ test('a paper question conflict retains the draft and blocks repeated save until
   assert.equal(page.data.editor.text, '尚未保存的修改');
   assert.equal(page.data.conflict, true);
   await page.saveQuestion(); assert.equal(count, 1);
+});
+
+test('question photo selection never sends a file without permission and upload confirmation', async () => {
+  const model = require('../miniprogram/teacher/lib/question-data');
+  for (const stop of ['privacy', 'picker', 'confirm', 'leave-during-read', 'success']) {
+    let reads = 0, picked = 0, uploaded = 0, finishRead;
+    const { page } = loadPage('questions', {
+      api: { request: async (url, options) => {
+        assert.equal(url, '/api/card-quiz/images');
+        assert.equal(options.data.dataUrl, 'data:image/png;base64,YQ==');
+        uploaded++; return { id: 'new-image' };
+      } },
+      ui: { confirm: async () => stop !== 'confirm' },
+      wx: {
+        getPrivacySetting: options => options.success({ needAuthorization: stop === 'privacy' }),
+        chooseMessageFile(options) {
+          picked++;
+          if (stop === 'picker') options.fail({ errMsg: 'chooseMessageFile:fail cancel' });
+          else options.success({ tempFiles: [{ path: '/test/file.png', name: 'file.png', size: 10 }] });
+        },
+        getFileSystemManager: () => ({ readFile(options) {
+          reads++;
+          if (stop === 'leave-during-read') finishRead = options.success;
+          else options.success({ data: 'YQ==' });
+        } })
+      }
+    });
+    const draft = model.draft();
+    draft.text = '原题目'; draft.imageId = 'old-image';
+    page.setData({ editor: draft, dirty: true });
+    const pending = page.image();
+    await new Promise(setImmediate);
+    if (stop === 'privacy') { assert.equal(page.data.privacyNeeded, true); page.cancelDevicePrivacy(); }
+    if (stop === 'leave-during-read') { page.onHide(); finishRead({ data: 'YQ==' }); }
+    await pending;
+    assert.equal(picked, stop === 'privacy' ? 0 : 1, stop);
+    assert.equal(reads, ['leave-during-read', 'success'].includes(stop) ? 1 : 0, stop);
+    assert.equal(uploaded, stop === 'success' ? 1 : 0, stop);
+    assert.equal(page.data.editor.text, '原题目');
+    assert.equal(page.data.editor.imageId, stop === 'success' ? 'new-image' : 'old-image');
+    assert.equal(page.data.busy, false);
+  }
 });
 
 test('an ambiguous new question save preserves its draft and blocks a duplicate creation', async () => {
@@ -82,59 +236,6 @@ test('leaving during publication or deletion confirmation cannot dispatch those 
     page.onHide(); finish(true); await pending;
     assert.equal(count, 0, action); assert.equal(page.data.busy, false);
   }
-});
-
-test('classroom analysis waits for the current class context before using AI quota', async () => {
-  let count = 0;
-  const { page } = loadPage('banban', { api: { request: async () => { count++; } } });
-  page.setData({ classId: 'class-1', input: '分析本班', loading: true });
-  await page.send();
-  assert.equal(count, 0); assert.equal(page.data.input, '分析本班');
-});
-
-test('Banban requires the teacher to review changed operation parameters', async () => {
-  const { operationView } = require('../miniprogram/teacher/lib/banban-data');
-  const raw = { id: 'op-1', kind: 'platform', title: '设置通知', target: '演示班', impact: '发送前确认通知', status: 'awaiting_confirmation', parameters: { text: '最初内容' } };
-  let confirmations = 0, writes = 0;
-  const { page } = loadPage('banban', {
-    api: { request: async (_, options) => {
-      if (options?.method === 'POST') writes++;
-      return { ...raw, parameters: { text: '内容已改变' } };
-    } },
-    ui: { confirm: async () => { confirmations++; return true; } }
-  });
-  page._visible = true; page._generation = 1;
-  page.setData({ operations: [operationView(raw, String)], reviewingId: raw.id });
-  await page.commitOperation({ currentTarget: { dataset: { id: raw.id, decision: 'confirm' } } });
-  assert.match(page.data.operationWarning, /重新核对/);
-  assert.equal(page.data.operations[0].fields[0].value, '内容已改变');
-  assert.equal(confirmations, 0);
-  assert.equal(writes, 0);
-});
-
-test('Banban protects a confirmation with no response until a fresh service status arrives', async () => {
-  const { operationView } = require('../miniprogram/teacher/lib/banban-data');
-  const raw = { id: 'op-1', kind: 'platform', title: '设置通知', target: '演示班', impact: '发送前确认通知', status: 'awaiting_confirmation', parameters: { text: '通知内容' } };
-  let writes = 0;
-  const { page } = loadPage('banban', { api: { request: async (url, options) => {
-    if (options?.method === 'POST') {
-      writes++;
-      throw Object.assign(new Error('未能确认操作结果'), { ambiguous: true });
-    }
-    return url.endsWith('/operations') ? { operations: [{ ...raw, status: 'succeeded' }] } : raw;
-  } } });
-  page._visible = true; page._generation = 1;
-  page.setData({ operations: [operationView(raw, String)], reviewingId: raw.id });
-  const event = { currentTarget: { dataset: { id: raw.id, decision: 'confirm' } } };
-  await page.commitOperation(event);
-  assert.equal(page.data.uncertainOperationId, raw.id);
-  await page.commitOperation(event);
-  assert.equal(writes, 1);
-  await page.refreshOperations();
-  assert.equal(page.data.operations[0].statusText, '已完成');
-  assert.equal(page.data.uncertainOperationId, '');
-  await page.commitOperation(event);
-  assert.equal(writes, 1);
 });
 
 test('a classroom voice confirmation is locked and cancelled when the page is hidden', async () => {
@@ -179,6 +280,20 @@ test('home navigation is limited to registered local pages', () => {
   assert.deepEqual(actions, ['/pages/paper/index']);
 });
 
+test('teachers and administrators get the same classroom tools with management still scoped to their role', async () => {
+  for (const user of [{ id: 'teacher', role: 'teacher' }, { id: 'admin', role: 'superadmin', permissions: { manageClasses: true, manageUsers: true, controlClassrooms: true } }]) {
+    const { page, actions } = loadPage('workbench', { api: { restoreSession: async () => user }, ui: { loadClasses: async () => [] } });
+    await page.load();
+    for (const entry of ['paper', 'questions', 'notices', 'reading', 'homework', 'island']) {
+      page.open({ currentTarget: { dataset: { page: entry } } });
+      assert.equal(actions.at(-1), '/pages/' + entry + '/index');
+    }
+    for (const entry of ['banban', 'study', 'connection-settings', 'quota-settings']) page.open({ currentTarget: { dataset: { page: entry } } });
+    assert.equal(actions.length, 6);
+    assert.equal(page.data.management.length, user.role === 'superadmin' ? 3 : 0);
+  }
+});
+
 function sharedUi(api, runtime, pages) {
   const module = { exports: {} };
   const filename = path.join(appRoot, 'lib/ui.js');
@@ -189,9 +304,27 @@ function sharedUi(api, runtime, pages) {
 
 test('returning to an existing page after switching account opens a fresh workbench', () => {
   const actions = [];
-  const ui = sharedUi({ getUser: () => ({ id: 'new' }) }, { reLaunch: options => actions.push(options.url) }, [{ _iceclassOwner: 'old' }]);
+  const page = { _iceclassOwner: 'old', data: {}, setData(values) { Object.assign(this.data, values); } };
+  const ui = sharedUi({ getUser: () => ({ id: 'new' }) }, { reLaunch: options => actions.push(options.url) }, [page]);
   assert.equal(ui.requireLogin(), false);
+  assert.equal(page.data.sessionExpired, true);
   assert.deepEqual(actions, ['/pages/workbench/index']);
+});
+
+test('an expired protected page allows same-account re-login without losing its draft', () => {
+  let user = { id: 'teacher' };
+  const page = { route: 'pages/notices/index', data: { text: '待发送草稿' }, setData(values) { Object.assign(this.data, values); } };
+  const ui = sharedUi({ getUser: () => user }, {}, [page]);
+  assert.equal(ui.requireLogin(), true);
+  user = null;
+  assert.equal(ui.requireLogin(), false);
+  assert.equal(page.data.sessionExpired, true);
+  ui.fail(page, new Error('Some older asynchronous error'));
+  assert.equal(page.data.sessionExpired, true);
+  user = { id: 'teacher' };
+  assert.equal(ui.requireLogin(), true);
+  assert.equal(page.data.sessionExpired, false);
+  assert.equal(page.data.text, '待发送草稿');
 });
 
 test('stale class reads cannot update hidden pages or change the shared selection', async () => {

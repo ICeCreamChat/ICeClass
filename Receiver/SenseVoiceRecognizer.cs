@@ -22,10 +22,13 @@ internal sealed class SenseVoiceRecognizer : IDisposable
         _recognizer = new OfflineRecognizer(config);
     }
 
-    internal string Recognize(float[] samples)
+    internal string Recognize(float[] samples) => Recognize(samples, withoutItn: false);
+
+    internal string Recognize(float[] samples, bool withoutItn)
     {
         if (samples.Length == 0) return "";
         using var stream = _recognizer.CreateStream();
+        if (withoutItn) stream.SetOption("use_itn", "0");
         stream.AcceptWaveform(16000, samples);
         _recognizer.Decode(stream);
         return stream.Result.Text.Trim();

@@ -1,14 +1,11 @@
-<view class="page theme-{{appearance}} notice-page">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}} notice-page">
   <view class="page-header notice-heading">
     <text class="title" aria-role="heading" aria-level="1">班级通知</text>
     <button class="secondary" bindtap="openHistory" disabled="{{busy || fileBusy}}">通知记录</button>
   </view>
 
   <view wx:if="{{error}}" class="error" aria-role="alert"><text selectable>{{error}}</text></view>
-  <view wx:if="{{sessionExpired}}" class="status" aria-role="status">
-    <text>登录已失效，草稿已保留。</text>
-    <button class="primary" bindtap="relogin" disabled="{{busy || fileBusy}}">重新登录</button>
-  </view>
   <view wx:if="{{uncertain}}" class="panel send-protection" aria-role="alert">
     <text class="section-heading" aria-role="heading" aria-level="2">发送结果尚不明确</text>
     <text class="notice-copy">{{uncertainClassName}} 的通知可能已经发出。草稿已保留，请先核对记录。</text>
@@ -42,9 +39,11 @@
       <view wx:if="{{modeIndex === 0}}" class="field">
         <view class="compose-label"><text class="label">通知正文</text><text class="row-meta count">{{textCount}}/500</text></view>
         <textarea class="textarea notice-text" value="{{text}}" maxlength="500" bindinput="onTextInput" disabled="{{busy}}" placeholder="输入要在教室大屏显示的通知…" aria-label="通知正文，最多 500 字" />
+        <text class="row-meta field-note">文字通知在教室大屏静音展示。</text>
       </view>
       <view wx:else class="field voice-field">
         <text class="label">教师原声</text>
+        <include src="../../templates/device-privacy.wxml" />
         <text wx:if="{{audioState}}" class="status" aria-role="status">{{audioState === 'recording' ? '正在录音，最长 30 秒' : audioState === 'starting' ? '正在开启麦克风…' : '正在保存录音…'}}</text>
         <view wx:if="{{audioFile && !audioState}}" class="audio-draft">
           <text class="row-title">{{audioFile.name}}</text>
@@ -62,12 +61,12 @@
         <text class="row-meta field-note">录音 0.5-30 秒。导入支持单声道 16 位 PCM WAV，最大 4 MB。</text>
       </view>
 
-      <view class="field">
+      <view wx:if="{{modeIndex === 1}}" class="field">
         <text class="label">通知级别</text>
         <view class="segment">
-          <button wx:for="{{levelNames}}" wx:key="*this" class="{{levelIndex === index ? 'selected' : ''}}" data-index="{{index}}" bindtap="onLevelChange" disabled="{{busy || fileBusy || (modeIndex === 1 && index === 0)}}" aria-pressed="{{levelIndex === index}}" aria-label="{{item}}{{levelIndex === index ? '，已选' : ''}}">{{item}}</button>
+          <button wx:for="{{audioLevelNames}}" wx:key="*this" class="{{levelIndex === index + 1 ? 'selected' : ''}}" data-index="{{index + 1}}" bindtap="onLevelChange" disabled="{{busy || fileBusy}}" aria-pressed="{{levelIndex === index + 1}}" aria-label="{{item}}{{levelIndex === index + 1 ? '，已选' : ''}}">{{item}}</button>
         </view>
-        <text class="row-meta field-note" aria-role="status">{{modeIndex === 1 ? (levelIndex === 2 ? '播放教师原声并突出显示' : '播放教师原声') : levelMode}}</text>
+        <text class="row-meta field-note" aria-role="status">{{levelIndex === 2 ? '播放教师原声并突出显示' : '播放教师原声'}}</text>
       </view>
 
       <button class="disclosure quiet-button" bindtap="toggleSettings" disabled="{{busy || fileBusy}}" aria-expanded="{{showSettings}}">
@@ -79,18 +78,6 @@
           <text class="label">显示时长</text>
           <picker mode="selector" range="{{durationNames}}" value="{{durationIndex}}" bindchange="onDurationChange" disabled="{{busy || fileBusy}}" aria-label="通知显示时长">
             <view class="picker">{{durationNames[durationIndex]}}</view>
-          </picker>
-        </view>
-        <view wx:if="{{levelIndex !== 0}}" class="field">
-          <text class="label">播放音量</text>
-          <picker mode="selector" range="{{volumeNames}}" value="{{volumeIndex}}" bindchange="onVolumeChange" disabled="{{busy || fileBusy}}" aria-label="通知播放音量">
-            <view class="picker">{{volumeNames[volumeIndex]}}</view>
-          </picker>
-        </view>
-        <view wx:if="{{modeIndex === 0 && levelIndex !== 0}}" class="field">
-          <text class="label">文字播报语速</text>
-          <picker mode="selector" range="{{speedNames}}" value="{{speedIndex}}" bindchange="onSpeedChange" disabled="{{busy || fileBusy}}" aria-label="文字播报语速">
-            <view class="picker">{{speedNames[speedIndex]}}</view>
           </picker>
         </view>
       </view>

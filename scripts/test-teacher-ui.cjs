@@ -93,11 +93,17 @@ async function moveBanbanAside(page) {
   await page.mouse.move(12 + box.width / 2, box.y + box.height / 2, {steps:8});
   await page.mouse.up();
 }
-module.exports = {open,navigate,settingsSection,moveBanbanAside,fixture,historyItem};
+function launchWorkbenchBrowser(options = {}) {
+  const executablePath = process.env.ICECLASS_WHITEBOARD_CHROMIUM;
+  return chromium.launch({...options, ...(executablePath ? {executablePath} : {channel:'msedge'})});
+}
+module.exports = {open,navigate,settingsSection,moveBanbanAside,fixture,historyItem,launchWorkbenchBrowser};
 
 if (require.main === module) {
   let browser;
-  before(async () => { browser = await chromium.launch({channel:'msedge',headless:true,args:['--use-fake-device-for-media-stream']}); });
+  before(async () => {
+    browser = await launchWorkbenchBrowser({args:['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream']});
+  });
   after(async () => { await browser?.close(); });
   async function setup(t,options) {
     const result = await open(browser,options);
@@ -109,6 +115,32 @@ if (require.main === module) {
     await page.locator('#previewNotice').waitFor();
     assert.equal(requests.filter(r => r.path === '/api/session').length,1);
   });
+  test('纸卡管理首次打开时载入，失败可原地重试，重复进入复用模块', async t => {
+    const {page} = await setup(t);
+    const paper = page.locator('#mainNav [data-view="card-quiz"]');
+    const loaded = () => page.evaluate(() => Boolean(window.ICeClassCardQuiz));
+    assert.equal(await loaded(), false);
+    let downloads = 0;
+    await page.route('**/card-quiz-admin.js*', route => ++downloads === 1 ? route.abort() : route.fallback());
+    await paper.click();
+    await page.locator('#toastRegion').getByText(/重试/).waitFor();
+    assert.equal(await page.locator('#view-card-quiz').isVisible(), false);
+    await navigate(page, 'card-quiz');
+    await page.locator('[data-cq-action=initialize]').waitFor();
+    await navigate(page, 'history');
+    await navigate(page, 'card-quiz');
+    assert.equal(downloads, 2);
+  });
+  test('教师首页按入口加载账号管理和设置资源', async t => {
+    const {page} = await setup(t);
+    const modules = () => page.evaluate(() => performance.getEntriesByType('resource')
+      .map(r => new URL(r.name).pathname).filter(p => ['/users.js','/client-diagnostics.js'].includes(p)).sort());
+    assert.deepEqual(await modules(), []);
+    await navigate(page, 'teachers');
+    assert.deepEqual(await modules(), ['/users.js']);
+    await navigate(page, 'settings');
+    assert.deepEqual(await modules(), ['/client-diagnostics.js','/users.js']);
+  });
   test('Login shows a recoverable error and password visibility keeps an accessible name',async t=>{
     const {page}=await setup(t,{authenticated:false,handle:({url,request})=>url.pathname==='/api/auth/login'&&request.method()==='POST'?{status:401,json:{error:'账号或密码不正确，请重试。'}}:undefined});
     await page.locator('#loginUsername').fill('review');await page.locator('#loginPassword').fill('fixture-password');
@@ -117,6 +149,91 @@ if (require.main === module) {
     await page.locator('#loginSubmit').click();await page.locator('#loginError').filter({hasText:'账号或密码不正确'}).waitFor();
     assert.equal(await page.locator('#loginSubmit').isEnabled(),true);
     assert.equal(await page.locator('#loginPassword').inputValue(),'fixture-password');
+  });
+  async function signIn(page) {
+    await page.locator('#loginUsername').fill('review');
+    await page.locator('#loginPassword').fill('fixture-password');
+    await page.locator('#loginPassword').press('Enter');
+  }
+  test('登录资源中断仍可提交，重试工作台重新核对账号且不重复登录', async t => {
+    let user = null;
+    const {page,requests} = await setup(t, {authenticated:false, handle:({url}) => {
+      if (url.pathname === '/api/session') return {json:{authenticated:!!user,user}};
+      if (url.pathname === '/api/auth/login') {
+        user = fixture(new URL('/api/session', origin), 'teacher').user;
+        return {json:{user}};
+      }
+    }});
+    await page.route('**/assets/page-assets.js*', route => route.abort());
+    await page.reload();
+    await page.locator('#loginForm').waitFor({timeout:5000});
+    await signIn(page);
+    const retry = page.getByRole('button', {name:'重新载入工作台'});
+    await retry.waitFor({timeout:5000});
+    assert.equal(await page.locator('#appShell').isVisible(), false);
+    assert.match(await page.getByRole('alert').innerText(), /工作台.*载入/);
+    assert.equal(await retry.evaluate(button => button === document.activeElement), true);
+    user = {...user, id:'second', displayName:'另一位教师'};
+    await page.unroute('**/assets/page-assets.js*');
+    await retry.press('Enter');
+    await page.getByRole('button', {name:'另一位教师，账号菜单'}).waitFor();
+    assert.equal(requests.filter(call => call.path === '/api/auth/login').length, 1);
+  });
+  test('班班动画慢加载时教师可打开纸卡，班班失败后可单独重试', async t => {
+    const user = fixture(new URL('/api/session', origin), 'teacher').user;
+    const {page,requests} = await setup(t, {authenticated:false, handle:({url}) => {
+      if (url.pathname === '/api/auth/login') return {json:{user}};
+    }});
+    let motion, attempts = 0, rigs = 0, mounts = 0;
+    page.on('request', request => {
+      const path = new URL(request.url()).pathname;
+      if (path === '/banban-rig.js') rigs++;
+      if (path === '/banban.js') mounts++;
+    });
+    await page.route('**/banban-motion.js*', route => { attempts++; motion = route; });
+    await signIn(page);
+    await page.locator('#appShell').waitFor({timeout:5000});
+    await navigate(page, 'card-quiz');
+    await page.locator('[data-cq-action=initialize]').waitFor();
+    assert.equal(attempts, 1);
+    assert.equal(await page.locator('#bbLauncher').count(), 0);
+    await motion.abort();
+    const retry = page.getByRole('button', {name:'重新载入班班'});
+    await retry.waitFor();
+    await retry.press('Enter');
+    await retry.press('Enter');
+    assert.equal(attempts, 2);
+    await motion.fallback();
+    await page.getByRole('button', {name:'打开班班'}).click();
+    assert.equal(await page.locator('#bbPanel').isVisible(), true);
+    assert.equal(await page.locator('#view-card-quiz').isVisible(), true);
+    assert.equal(await retry.isVisible(), false);
+    assert.equal(rigs, 1);
+    assert.equal(mounts, 1);
+    assert.equal(requests.filter(call => call.path === '/api/auth/login').length, 1);
+  });
+  test('账号过期后返回的班班脚本不会启动旧账号的助手', async t => {
+    const user = fixture(new URL('/api/session', origin), 'teacher').user;
+    let expired = false, pending;
+    const {page,requests} = await setup(t, {authenticated:false, handle:({url}) => {
+      if (url.pathname === '/api/auth/login') return {json:{user}};
+      if (expired && url.pathname === '/api/history') return {status:401,json:{}};
+    }});
+    await page.route('**/banban.js?*', route => { pending = route; });
+    await signIn(page);
+    await page.locator('#appShell').waitFor({timeout:5000});
+    await navigate(page, 'history');
+    await page.locator('#historyContainer tbody').waitFor();
+    expired = true;
+    await page.locator('#refreshHistory').press('Enter');
+    await page.locator('#sessionExpired').waitFor();
+    const loaded = page.evaluate(() => new Promise(resolve => {
+      document.querySelector('script[src*="/banban.js?"]').addEventListener('load', () => setTimeout(resolve, 0), {once:true});
+    }));
+    await pending.fallback();
+    await loaded;
+    assert.equal(await page.locator('#bbLauncher').count(), 0);
+    assert.equal(requests.some(call => call.path.startsWith('/api/banban/')), false);
   });
   for (const [width,height] of [[1280,850],[390,740],[320,560]]) {
     test(`Login role switching holds the form in place at ${width} × ${height}`, async t => {
@@ -173,14 +290,27 @@ if (require.main === module) {
     assert.match(await page.locator('#settingsAccount').textContent(),/测试教师/);
   });
   test('Hold-to-record keeps the playable recording after a failed or offline send', async t => {
-    const sentAudio = [];
+    let sendAttempts = 0;
     const {page,context} = await setup(t,{handle:({url,request}) => {
       if (url.pathname !== '/api/shouts' || request.method() !== 'POST') return;
-      sentAudio.push(request.postDataBuffer());
-      if (sentAudio.length === 1) return {status:503,json:{error:'发送暂时失败，请重试。'}};
-      if (sentAudio.length === 2) return {json:{id:'voice-offline',status:'offline',detail:'演示教室离线'}};
+      sendAttempts++;
+      if (sendAttempts === 1) return {status:503,json:{error:'发送暂时失败，请重试。'}};
+      if (sendAttempts === 2) return {json:{id:'voice-offline',status:'offline',detail:'演示教室离线'}};
       return {json:{id:'voice-sent',status:'sent'}};
     }});
+    await page.evaluate(() => {
+      // Older browser protocols omit file parts from inspected multipart requests.
+      const fetch = window.fetch.bind(window);
+      window.sentRecordings = [];
+      window.fetch = async (input, options) => {
+        const audio = options?.body instanceof FormData && options.body.get('audio');
+        if (audio instanceof File) {
+          const header = new Uint8Array(await audio.slice(0, 44).arrayBuffer());
+          window.sentRecordings.push({name:audio.name, header:[...header], size:audio.size});
+        }
+        return fetch(input, options);
+      };
+    });
     await context.grantPermissions(['microphone'],{origin});
     await navigate(page,'console');
     await page.getByRole('tab',{name:'语音通知'}).click();
@@ -212,10 +342,14 @@ if (require.main === module) {
     await confirm.click();
     await record.waitFor();
     assert.equal(await preview.getAttribute('src'),null);
-    assert.equal(sentAudio.length,3);
-    const wav = (body) => body.subarray(body.indexOf('RIFF'),body.indexOf('RIFF')+44);
-    assert.ok(sentAudio.every(body=>body.includes('filename="voice.wav"') && body.includes('RIFF')));
-    for (const body of sentAudio.slice(1)) assert.deepEqual(wav(body),wav(sentAudio[0]));
+    assert.equal(sendAttempts,3);
+    const recordings = await page.evaluate(() => window.sentRecordings);
+    assert.equal(recordings.length,3);
+    const first = recordings[0];
+    assert.equal(first.name,'voice.wav');
+    assert.equal(Buffer.from(first.header).toString('ascii',0,4),'RIFF');
+    assert.ok(first.size > 44);
+    for (const audio of recordings.slice(1)) assert.deepEqual(audio,first);
   });
   test('A stale quiet-hours check cannot open a confirmation after leaving the composer', async t => {
     let holdCheck=false, release;
@@ -375,7 +509,7 @@ if (require.main === module) {
     await navigate(page,'history');
     delayed=true; await page.locator('#historyClass').selectOption('c1'); await entered;
     await page.locator('#historyClass').selectOption('c2');
-    await page.getByText('高二（1）班',{exact:true}).filter({visible:true}).first().waitFor();
+    await page.locator('#historyContainer').getByRole('cell',{name:'高二（1）班',exact:true}).waitFor();
     release(); await page.waitForTimeout(100);
     assert.match(await page.locator('#historyContainer').innerText(),/高二/);
     assert.doesNotMatch(await page.locator('#historyContainer').innerText(),/slow-old-class/);
@@ -428,15 +562,23 @@ if (require.main === module) {
     assert.doesNotMatch(await page.locator('#historyContainer').innerText(),/高一/);
     assert.equal(await page.locator('#historyContainer .load-more').isEnabled(),true);
   });
-  test('User action popover supports arrow keys and Escape restores the trigger', async t => {
+  test('User actions support arrow keys and dismiss on Escape or an outside click', async t => {
     const {page} = await setup(t); await navigate(page,'teachers');
+    const menu = page.locator('#userActionsPopover');
     const trigger=page.getByRole('button',{name:'林老师的更多操作'}); await trigger.click();
     assert.equal(await trigger.getAttribute('aria-expanded'),'true');
+    await menu.waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement.textContent),'重置密码');
     await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(() => document.activeElement.textContent),'停用账号');
     await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#userActionsPopover').evaluate(e => e.matches(':popover-open')),false);
+    await menu.waitFor({state:'hidden'});
     assert.equal(await trigger.evaluate(e => e === document.activeElement),true);
+    assert.equal(await trigger.getAttribute('aria-expanded'),'false');
+    await trigger.press('ArrowUp');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent),'删除账号');
+    await page.locator('#userSearch').click();
+    await menu.waitFor({state:'hidden'});
     assert.equal(await trigger.getAttribute('aria-expanded'),'false');
     assert.equal(await page.getByRole('region',{name:'用户列表，可左右滚动'}).getAttribute('tabindex'),'0');
   });
@@ -473,8 +615,12 @@ if (require.main === module) {
     for (const view of ['reading','homework','ideas','island','console','controls','history','classroom-voice','quiet','classes','teachers','settings']) {
       await navigate(page,view);
       if (view === 'homework') await page.locator('[data-hw-action="query"]:enabled').waitFor();
+      if (view === 'island') {
+        await page.locator('#islandTabContent .table-wrap').first().waitFor({timeout:5000});
+        assert.equal(await page.locator('#islandError').textContent(),'');
+      }
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),view);
-      if (width === 390) assert.equal(await page.locator('#mainContent').evaluate(e => e === document.activeElement),true);
+      if (width === 390) assert.equal(await page.locator('#mainContent').evaluate(e => e === document.activeElement),true,view);
     }
   });
   for(const role of ['teacher','subject_teacher','grade_leader','principal'])test(`Teacher navigation preserves the ${role} role boundary`,async t=>{

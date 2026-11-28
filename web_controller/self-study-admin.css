@@ -135,6 +135,13 @@
   #selfStudyRoot .ss-event-status{justify-self:end}
   #selfStudyRoot .ss-event .ss-actions{justify-content:flex-start}
 }
+@supports not (container-type:inline-size){
+  @media(max-width:650px){
+    #selfStudyRoot .ss-event{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"time status" "copy copy";row-gap:6px}
+    #selfStudyRoot .ss-event-status{justify-self:end}
+    #selfStudyRoot .ss-event .ss-actions{grid-area:auto / 1 / auto / -1;justify-content:flex-start}
+  }
+}
 @media(max-width:1250px){
   #selfStudyRoot .ss-page-head{gap:16px}
   #selfStudyRoot .ss-layout{grid-template-columns:minmax(0,1.45fr) minmax(280px,1fr);gap:20px}

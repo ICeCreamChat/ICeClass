@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance || 'glass'}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance || 'glass'}}">
   <view class="page-header"><view class="title">早读统计</view><view class="subtitle">查看有效发声、完成量和同步状态</view></view>
   <view wx:if="{{canManageReading}}" class="panel"><view class="section-heading">全校早读规则</view><view class="row-meta">维护全校统计时段、声量门槛和到点提醒。</view><view class="button-row"><button class="secondary" bindtap="openSettings" disabled="{{exporting || sessionExpired}}" aria-label="进入全校早读规则，仅校长或超级管理员可编辑">设置早读规则</button></view></view>
   <view class="panel">
@@ -23,7 +24,6 @@
     <view class="muted report-note">导出当前日期范围，由你选择文件收件人。</view>
   </view>
   <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
-  <view wx:if="{{sessionExpired}}" class="status"><view>登录会话已失效，筛选条件已保留。</view><button class="primary" bindtap="relogin">重新登录</button></view>
   <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
   <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入早读统计…</view>
   <view wx:if="{{!loading && !classes.length && !error && !sessionExpired}}" class="empty">当前账号没有可访问班级。</view>

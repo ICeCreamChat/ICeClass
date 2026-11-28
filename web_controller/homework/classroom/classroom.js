@@ -31,14 +31,21 @@
   }
   async function api(path, body) {
     if (window.ICeClassNativeHome) return window.ICeClassHost.request('homework', {path,body});
-    const response = await fetch('/api/homework/classroom' + path, {
-      method: body ? 'PUT' : 'GET', credentials:'omit', cache:'no-store',
-      headers: body ? {'Content-Type':'application/json'} : {},
-      body: body ? JSON.stringify(body) : undefined, signal:AbortSignal.timeout(25000)
-    });
-    const value = await response.json();
-    if (!response.ok) throw new Error(value.error || '请求失败，请稍后重试。');
-    return value;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+    try {
+      const response = await fetch('/api/homework/classroom' + path, {
+        method: body ? 'PUT' : 'GET', credentials:'omit', cache:'no-store', signal:controller.signal,
+        headers: body ? {'Content-Type':'application/json'} : {},
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error || '请求失败，请稍后重试。');
+      return value;
+    } catch (error) {
+      if (controller.signal.aborted) throw new DOMException('连接超时。', 'TimeoutError');
+      throw error;
+    } finally { clearTimeout(timer); }
   }
   function lock() {
     modal.querySelectorAll('button,input,select').forEach(control => { control.disabled = busy; });

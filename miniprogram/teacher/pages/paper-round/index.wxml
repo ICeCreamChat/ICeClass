@@ -1,7 +1,7 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header"><text class="title">纸卡课堂</text><text class="subtitle">{{className || '正在核对班级'}}</text></view>
   <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
-  <button wx:if="{{sessionExpired}}" class="primary" bindtap="relogin">重新登录</button>
   <view wx:if="{{status}}" class="status" aria-live="polite">{{status}}</view>
   <view wx:if="{{loading}}" class="status">正在核对课堂连接与回执…</view>
 

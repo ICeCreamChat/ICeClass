@@ -45,6 +45,14 @@ if ((Test-Path -LiteralPath $classroomTarget) -and [version](Get-Item -LiteralPa
     throw '本机已安装更新的版本，本安装包不会将它降级。'
 }
 New-Item -ItemType Directory -Force -Path $classroomInstall | Out-Null
+if ($classroomManifest.webView2) {
+    $cab = Join-Path $PSScriptRoot 'WebView2-x64.cab'
+    Write-Host '正在校验并准备教室端自带的白板网页组件…'
+    & $classroomSource '--install-classroom-webview2' $classroomInstall $cab | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw '无法准备白板网页组件。请完整解压教室端安装包，检查磁盘空间与程序目录写入权限后重试。'
+    }
+}
 $classroomStaged = Join-Path $classroomInstall ('ICeClass-install-' + [Guid]::NewGuid().ToString('N') + '.tmp')
 $classroomBackup = $classroomTarget + '.previous'
 $classroomUpdates = Join-Path $classroomInstall '.updates'

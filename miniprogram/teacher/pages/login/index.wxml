@@ -9,12 +9,13 @@
         <text class="title" aria-role="heading" aria-level="1">欢迎回来</text>
         <text class="subtitle">使用学校账号，进入教师工作台。</text>
       </view>
-      <image class="login-mascot" src="/assets/banban/{{passwordFocus && passwordHidden ? 'login-cover' : 'login-rest'}}.webp" mode="aspectFit" aria-hidden="true" />
+      <image wx:if="{{passwordFocus && passwordHidden}}" class="login-mascot" src="/assets/banban/login-cover.png" mode="aspectFit" aria-hidden="true" />
+      <image wx:else class="login-mascot" src="/assets/banban/login-rest.png" mode="aspectFit" aria-hidden="true" />
     </view>
-    <form bindsubmit="submit">
+    <view>
       <label class="field">
         <text class="label">学校账号</text>
-        <input class="input" value="{{username}}" name="username" data-field="username" bindinput="input" maxlength="64" disabled="{{busy}}" aria-label="学校账号" confirm-type="next" bindconfirm="focusPassword" placeholder="请输入学校账号" />
+        <input id="login-username" class="input" value="{{username}}" name="username" data-field="username" bindinput="input" maxlength="64" disabled="{{busy}}" aria-label="学校账号" confirm-type="next" bindconfirm="focusPassword" placeholder="请输入学校账号" />
       </label>
       <view class="field">
         <label class="label" for="login-password">密码</label>
@@ -23,9 +24,23 @@
           <button class="password-toggle quiet-button" bindtap="togglePassword" disabled="{{busy}}" aria-label="{{passwordHidden ? '显示密码' : '隐藏密码'}}">{{passwordHidden ? '显示' : '隐藏'}}</button>
         </view>
       </view>
+      <view class="login-agreements">
+        <view class="agreement-links">
+          <button id="login-terms" class="quiet-button" data-document="terms" bindtap="openAgreement" disabled="{{busy}}">用户服务协议</button>
+          <button id="login-privacy" class="quiet-button" data-document="privacy" bindtap="openAgreement" disabled="{{busy}}">隐私政策</button>
+        </view>
+        <checkbox-group bindchange="changeConsent">
+          <label class="agreement-choice">
+            <checkbox value="agree" color="#075aa8" checked="{{accepted}}" disabled="{{busy}}" aria-label="我已阅读并同意用户服务协议和隐私政策" />
+            <text aria-hidden="true">我已阅读并同意以上协议</text>
+          </label>
+        </checkbox-group>
+      </view>
       <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
-      <button class="primary block-button" form-type="submit" loading="{{busy}}" disabled="{{busy}}">{{busy ? '正在登录…' : '进入工作台'}}</button>
-    </form>
+      <view class="button-row login-actions">
+        <button class="primary" bindtap="submit" loading="{{busy}}" disabled="{{busy}}">{{busy ? '正在登录…' : '登录'}}</button>
+        <button class="secondary" bindtap="leave">取消登录</button>
+      </view>
+    </view>
   </view>
-  <button class="privacy-button quiet-button" bindtap="privacy">隐私说明</button>
 </view>

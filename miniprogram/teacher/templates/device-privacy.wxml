@@ -1,0 +1,8 @@
+<view wx:if="{{privacyNeeded}}" class="status">
+  <text>请先阅读并同意微信公示的隐私保护指引。</text>
+  <view class="button-row">
+    <button class="secondary" bindtap="openDevicePrivacy">阅读隐私保护指引</button>
+    <button id="device-privacy-agree" class="primary" open-type="agreePrivacyAuthorization" bindagreeprivacyauthorization="agreeDevicePrivacy">同意并继续</button>
+    <button class="secondary" bindtap="cancelDevicePrivacy">取消</button>
+  </view>
+</view>

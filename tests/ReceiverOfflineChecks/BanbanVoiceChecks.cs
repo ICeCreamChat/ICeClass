@@ -8,8 +8,11 @@ using ICeClass.Receiver;
 
 internal static class BanbanVoiceChecks
 {
-    internal static void Run(string output, string? modelFolder = null, bool boundariesOnly = false)
+    internal static void Run(string output, string? modelFolder = null, bool boundariesOnly = false, string? replayCorpus = null)
     {
+        if (replayCorpus is not null && Path.TrimEndingDirectorySeparator(Path.GetFullPath(replayCorpus)).Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(output)), StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Choose a separate output directory to preserve the recorded corpus.");
         Directory.CreateDirectory(output);
         var checks = new List<object>();
         var transcripts = new List<object>();
@@ -22,7 +25,7 @@ internal static class BanbanVoiceChecks
         }
         void Save() => File.WriteAllText(Path.Combine(output, "speech-checks.json"), JsonSerializer.Serialize(new {
             engine = BanbanSpeechRecognizer.EngineName, transcripts,
-            source = "synthetic Chinese, English and code-switched speech; not a human classroom microphone test", checks
+            source = "synthetic Chinese, English and code-switched speech; not a human classroom microphone test", replayCorpus, checks
         }, new JsonSerializerOptions { WriteIndented = true }));
         var unstartedEcho = new BanbanEchoMicrophone((_, _) => { }, _ => { });
         unstartedEcho.Dispose(); unstartedEcho.Dispose();
@@ -57,6 +60,20 @@ internal static class BanbanVoiceChecks
             Check(BanbanVoiceService.HasUnrecognizedSpeech(text) && BanbanVoiceService.SpeechControl(text) is null
                 && !BanbanLocalAudio.CanBargeIn(text, "正在播报"), "unknown speech cannot become a control or barge-in task: " + text);
         Check(!BanbanVoiceService.HasUnrecognizedSpeech("Open Word, Excel, PowerPoint and Chrome"), "ordinary English is valid recognized text");
+
+        static string UnexpectedRetry() => throw new InvalidOperationException("Unexpected second acoustic decode.");
+        foreach (var ordinary in new[] {
+            "Open team.", "Open Teams.", "We have an Openteam meeting.", "Do not open Steam.",
+            "钱老师向同学们问好。", "等差数列的前 N 项和后 N 项分别是多少？",
+            "等比数列的钱，N 项和是多少？", "请抄写“等差数列的钱N向和”。", "等差数列的钱N项和预算无关。"
+        })
+            Check(BanbanSpeechRecognizer.ApplyClassroomContext(ordinary, UnexpectedRetry) == ordinary,
+                "ordinary or quoted speech keeps the exact transcript: " + ordinary);
+        foreach (var verbatim in new[] { "open team", "open teams", "do not open steam", "open steam deck", "" })
+            Check(BanbanSpeechRecognizer.ApplyClassroomContext("Openteam.", () => verbatim) == "Openteam.",
+                "a fused word needs independent whole-command acoustic evidence: '" + verbatim + "'");
+        Check(BanbanSpeechRecognizer.ApplyClassroomContext("请问，等比数列的钱 n 向和的公式是什么？", UnexpectedRetry)
+            == "请问，等比数列的前 n 项和的公式是什么？", "a sequence question retains its wording, variable and punctuation");
 
         string SynthesizeSegments(string name, params (string Text, string Language)[] segments)
         {
@@ -106,13 +123,27 @@ internal static class BanbanVoiceChecks
             ("等比数列的前n项和", [("等比数列的前", "zh"), ("n", "en"), ("项和", "zh")]),
             ("Hello class", [("Hello class", "en")]),
         };
-        foreach (var sample in corpus.Where(_ => !boundariesOnly))
+        var contextCases = new (string Expected, (string Text, string Language)[] Segments)[] {
+            ("Open team", [("Open team", "en")]), ("Open Teams", [("Open Teams", "en")]),
+            ("Please open Steam", [("Please open Steam", "en")]),
+            ("We have an open team", [("We have an open team", "en")]),
+            ("钱老师向同学们问好", [("钱老师向同学们问好", "zh")]),
+            ("等差数列的公差是多少", [("等差数列的公差是多少", "zh")]),
+            ("等比数列的前n项和公式", [("等比数列的前", "zh"), ("n", "en"), ("项和公式", "zh")]),
+        };
+        foreach (var sample in corpus.Concat(contextCases).Where(_ => !boundariesOnly))
         {
             segmenter.Reset();
             var sentence = sample.Expected;
-            var path = SynthesizeSegments("speech-" + transcripts.Count, sample.Segments);
+            var name = "speech-" + transcripts.Count;
+            var path = Path.Combine(output, name + ".wav");
+            if (replayCorpus is not null && transcripts.Count < corpus.Length)
+                File.Copy(Path.Combine(replayCorpus, name + ".wav"), path, overwrite: true);
+            else
+                SynthesizeSegments(name, sample.Segments);
             var updates = new List<BanbanSpeechResult>();
             var endpoints = new List<object>(); var audioSamples = 0;
+            BanbanSpeechAudio? firstUtterance = null;
             var watch = Stopwatch.StartNew();
             segmenter.Accept(new float[8000]);
             foreach (var samples in Frames(path))
@@ -120,11 +151,13 @@ internal static class BanbanVoiceChecks
                 audioSamples += samples.Length;
                 var audio = segmenter.Accept(samples);
                 if (audio is null) continue;
-                var result = asr.Recognize(audio.Samples);
+                firstUtterance ??= audio;
+                var result = asr.RecognizeDialogue(audio);
                 updates.Add(result); endpoints.Add(new { seconds = audioSamples / 16000d, result.Text });
             }
             var finals = updates.Where(r => r.Final && r.Text.Length > 0).Select(r => r.Text).ToArray();
             var actual = string.Join("", finals);
+            var raw = string.Concat(updates.Where(r => r.Final).Select(r => r.RawText ?? r.Text));
             using var waveform = new WaveFileReader(path);
             var audioSeconds = waveform.TotalTime.TotalSeconds;
             var milliseconds = watch.ElapsedMilliseconds;
@@ -133,13 +166,19 @@ internal static class BanbanVoiceChecks
             var unitsPreserved = sentence != "Set the volume to forty percent"
                 || actual.Contains('%') || actual.Contains("percent", StringComparison.OrdinalIgnoreCase);
             var matches = unitsPreserved && alternatives.Any(expected => BanbanVoiceService.Normalize(actual) == BanbanVoiceService.Normalize(expected));
+            if (sentence is "Open Steam" or "Please open Steam" or "Open team" or "Open Teams")
+                matches &= string.Equals(actual.TrimEnd('.', '!', '?'), sentence, StringComparison.OrdinalIgnoreCase);
             var unsegmented = matches ? null : asr.Recognize(Frames(path).SelectMany(frame => frame).ToArray()).Text;
-            transcripts.Add(new { expected = sentence, actual, exactMatch = matches, milliseconds, audioSeconds,
+            transcripts.Add(new { expected = sentence, raw, actual, exactMatch = matches, milliseconds, audioSeconds,
                 realTimeFactor = milliseconds / (audioSeconds * 1000), endpoints, updates, unsegmented });
-            Console.WriteLine("ASR " + sentence + " => " + actual);
+            Console.WriteLine("ASR " + sentence + " => " + actual + (raw == actual ? "" : " (raw: " + raw + ")"));
             Save();
             if (unsegmented is not null) Console.WriteLine("WHOLE " + unsegmented);
-            Check(matches, "actual neural decoding: " + sentence);
+            Check(matches, "final classroom transcript: " + sentence);
+            if (sentence is "Open Steam" or "等比数列的前n项和")
+                Check(firstUtterance is not null && asr.RecognizeDialogue(firstUtterance with { Final = false })
+                    is { Final: false, RawText: null } partial && partial.Text == raw,
+                    "the same PCM submitted as a playback preview keeps its first-pass transcript: " + sentence);
             if (sentence == "退下吧") Check(BanbanVoiceService.Intent(actual) == "leave"
                 && BanbanVoiceService.SpeechControl(actual) == "再见班班", "decoded departure reaches the local control during listening or playback");
             Check(finals.Length == 1, "one complete utterance is finalized exactly once: " + sentence);
@@ -172,7 +211,7 @@ internal static class BanbanVoiceChecks
                      .Concat(Voiced(english)).Concat(Enumerable.Range(0, 50).Select(_ => new float[800])))
             if (segmenter.Accept(frame) is { } audio) paused.Add(audio);
         Check(paused.Count == 1 && paused[0].Final
-            && BanbanVoiceService.Normalize(asr.Recognize(paused[0].Samples).Text) == "帮我打开powerpoint",
+            && BanbanVoiceService.Normalize(asr.RecognizeDialogue(paused[0]).Text) == "帮我打开powerpoint",
             "a 500 ms pause before the English app name stays one complete instruction");
         segmenter.Reset();
         foreach (var samples in Frames(unfinished))
@@ -191,8 +230,8 @@ internal static class BanbanVoiceChecks
             && bargeAudio.Last().Samples.Length > bargeAudio.First().Samples.Length
             && bargeAudio.All(a => a.DuringPlayback),
             "playback has one bounded preview and preserves the beginning for the final utterance");
-        var preview = asr.Recognize(bargeAudio.First().Samples);
-        Check(BanbanLocalAudio.CanBargeIn(preview.Text, "您可以问我其他问题"), "a real SenseVoice preview can identify an ordinary new arrangement: " + preview.Text);
+        var preview = asr.RecognizeDialogue(bargeAudio.First());
+        Check(!preview.Final && BanbanLocalAudio.CanBargeIn(preview.Text, "您可以问我其他问题"), "a real SenseVoice preview can identify an ordinary new arrangement: " + preview.Text);
 
         segmenter.Reset();
         var boundaryResults = new List<BanbanSpeechAudio>(); var playbackEnded = false;
@@ -203,7 +242,7 @@ internal static class BanbanVoiceChecks
             if (audio is not null) boundaryResults.Add(audio);
         }
         Check(boundaryResults.Count == 1 && boundaryResults[0] is { Final: true, DuringPlayback: true }
-            && BanbanVoiceService.Normalize(asr.Recognize(boundaryResults[0].Samples).Text) == "打开数学课件",
+            && BanbanVoiceService.Normalize(asr.RecognizeDialogue(boundaryResults[0]).Text) == "打开数学课件",
             "speech starting just before playback ends keeps its opening words and playback provenance");
 
         segmenter.Reset(); boundaryResults.Clear();
@@ -226,9 +265,9 @@ internal static class BanbanVoiceChecks
         {
             var generation = 1; var calls = 0; var delivered = new ConcurrentQueue<int>(); var errors = new ConcurrentQueue<Exception>();
             var retainedProvenance = false;
-            using var decoder = new BanbanSpeechDecoder(samples => {
+            using var decoder = new BanbanSpeechDecoder(audio => {
                 if (Interlocked.Increment(ref calls) == 1) { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); }
-                return new("任务 " + samples[0], true);
+                return new("任务 " + audio.Samples[0], audio.Final);
             }, value => value == Volatile.Read(ref generation), (job, result, _) => {
                 retainedProvenance = result.DuringPlayback; delivered.Enqueue(job.Generation); completed.Set();
             }, errors.Enqueue, () => { });

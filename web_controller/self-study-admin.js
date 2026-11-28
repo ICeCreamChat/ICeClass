@@ -5,7 +5,7 @@
   const app = () => window.ICeClass;
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clone = v => JSON.parse(JSON.stringify(v));
-  const format = (at, options = {}) => at ? new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai',
+  const format = (at, options = {}) => at ? new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai',hourCycle:'h23',
     month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',...options}).format(new Date(at)) : '尚无记录';
   const visible = () => !document.getElementById('view-self-study').classList.contains('hidden');
   const allowed = () => app()?.state.user && app().state.user.role !== 'subject_teacher' &&
@@ -61,6 +61,8 @@
     node.setAttribute('role',error?'alert':'status');
   }
   function updateSave() {
+    const empty=root.querySelector('#ss-empty');
+    if(empty)empty.hidden=loading||retryClass!==null;
     const button=root.querySelector('[data-ss-save]');if(!button)return;
     button.disabled=saving||loading||conflict||!draft;
     button.textContent=saving?'正在保存…':loading?'正在载入…':'保存设置';
@@ -110,7 +112,7 @@
         '<details id="ss-budget" class="ss-disclosure"><summary><span>AI 额度</span><small id="ss-budget-caption">每日上限</small></summary><div class="ss-budget-fields"><label for="ss-calls">每日复核'+number('dailyCalls','ss-calls','每日复核（次）',0,4,draft.dailyCalls,'次')+'</label><label for="ss-tokens">每日 token'+number('dailyTokens','ss-tokens','每日 token',1500,2400,draft.dailyTokens)+'</label></div><p id="ss-budget-note" class="ss-note"></p></details>'+
         '<dl class="ss-usage"><div><dt>今日复核</dt><dd id="ss-usage-calls"></dd></div><div><dt>今日 token</dt><dd id="ss-usage-tokens"></dd></div></dl></section></div></fieldset></form>'+
         '<section class="panel ss-events" aria-labelledby="ss-events-title"><div class="ss-events-head"><div><h2 id="ss-events-title">待核实记录</h2><span>最近 7 天</span></div><span id="ss-pending" role="status"></span></div><p id="ss-events-feedback" class="list-feedback" role="status" hidden></p><div id="ss-event-list" tabindex="-1" aria-busy="false"></div><div class="ss-events-foot"><span class="wb-inline-label">'+ui.icon('camera')+'识别供核实 · 照片保留 24 小时</span><div class="ss-actions"><button type="button" class="btn" data-ss-events-retry hidden>重试记录</button><button type="button" class="btn" data-ss-schedule>'+ui.icon('calendar')+'晚自习安排</button></div></div></section>'
-        :'<div class="panel ss-settings"><p class="muted" role="status">'+(classes.length?'正在载入设置…':'当前没有可管理的班级。')+'</p></div>');
+        :'<div id="ss-empty" class="panel ss-settings" hidden><p class="muted" role="status">当前没有可管理的班级。</p></div>');
     expanded.forEach(id=>{const node=document.getElementById(id);if(node)node.open=true;});
     updateSave();renderRules();renderRuntime();
   }
@@ -146,11 +148,14 @@
     eventsLoading=false;loading=true;retryClass=null;
     if(!root.childElementCount)render();
     feedback('正在载入晚自习设置…');updateSave();
-    const className=classes.find(c=>c.id===requestedClass)?.name;
+    let listLoaded=false, className=classes.find(c=>c.id===requestedClass)?.name;
     try{
       const data=await api('/classes');
       if(current!==generation)return;
-      const next=data.classes.some(c=>c.id===requestedClass)?requestedClass:data.classes[0]?.id||'';
+      listLoaded=true;
+      const selected=data.classes.find(c=>c.id===requestedClass)||data.classes[0];
+      const next=selected?.id||'';
+      className=selected?.name;
       const value=next?await api('/classes/'+encodeURIComponent(next)):undefined;
       if(current!==generation||!allowed()||app().state.user.id!==identity)return;
       closePhoto();if(schedule.open)schedule.close();
@@ -160,7 +165,7 @@
     }catch(error){
       if(error.name!=='AbortError'&&current===generation){
         retryClass=requestedClass;
-        feedback((className?'未能载入 '+className+'。':'设置载入失败。')+(profile?'当前设置和修改已保留。':'')+' '+error.message,true);
+        feedback((!listLoaded?'班级列表载入失败，请重试。':className?'未能载入 '+className+' 的设置。':'设置载入失败。')+(profile?'当前设置和修改已保留。':'')+' '+error.message,true);
       }
     }finally{if(current===generation){loading=false;updateSave();}}
   }
@@ -224,12 +229,13 @@
     photo.innerHTML='<div class="dialog-head"><h2 id="ss-photo-title">教室现场照片</h2><button class="btn icon" type="button" data-ss-close-photo aria-label="关闭">×</button></div><div class="dialog-body"><p class="muted" role="status">正在载入…</p></div><div class="dialog-actions"><button type="button" class="btn" data-ss-close-photo autofocus>关闭照片</button></div>';photo.showModal();
     photoEvent=id;refreshPhotoLifetime();if(!photo.open)return;
     photoController=new AbortController();
-    const signal=AbortSignal.any([photoController.signal,AbortSignal.timeout(15000)]);
     const body=photo.querySelector('.dialog-body');
     try{
-      const response=await fetch('/api/self-study/events/'+encodeURIComponent(id)+'/photo',{credentials:'same-origin',cache:'no-store',signal});
-      if(!response.ok)throw new Error('照片不可用或已过期，请重新载入记录。');
-      const blob=await response.blob();
+      const blob=await app().withReadTimeout(photoController.signal,async signal=>{
+        const response=await fetch('/api/self-study/events/'+encodeURIComponent(id)+'/photo',{credentials:'same-origin',cache:'no-store',signal});
+        if(!response.ok)throw new Error('照片不可用或已过期，请重新载入记录。');
+        return response.blob();
+      });
       if(current!==generation||version!==photoVersion||!photo.open||identity!==app()?.state.user?.id)return;
       photoUrl=URL.createObjectURL(blob);
       const img=document.createElement('img');img.src=photoUrl;img.alt='本班晚自习事件现场，供教师核实';img.width=1280;img.height=720;

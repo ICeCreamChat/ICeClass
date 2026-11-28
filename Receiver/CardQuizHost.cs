@@ -14,7 +14,7 @@ internal sealed class CardQuizHost : IDisposable
     private const string Page = "https://" + Host + "/card-quiz/classroom.html#banban";
     private readonly CardQuizService _service;
     private readonly ReceiverConfig _config;
-    internal ReadingBrowser Browser { get; } = new() { Width = 1, Height = 1, Focusable = false,
+    internal ClassroomBrowser Browser { get; } = new() { Width = 1, Height = 1, Focusable = false,
         IsHitTestVisible = false, HandleEscapeKey = false, HandleFullscreenKey = false };
     private readonly CancellationTokenSource _lifetime = new();
     private TaskCompletionSource<bool>? _leave;
@@ -67,16 +67,13 @@ internal sealed class CardQuizHost : IDisposable
             core.Settings.IsStatusBarEnabled = false; core.Settings.IsGeneralAutofillEnabled = false;
             core.Settings.IsPasswordAutosaveEnabled = false; core.Settings.AreBrowserAcceleratorKeysEnabled = false;
             core.NavigationStarting += (_, args) => { if (!AllowedPage(args.Uri)) args.Cancel = true; };
-            core.NewWindowRequested += (_, args) => args.Handled = true;
-            core.DownloadStarting += (_, args) => args.Cancel = true;
-            core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
             core.PermissionRequested += (_, args) =>
             {
+                if (!ClassroomWebViewRuntime.PermissionForThisRequest(args, Fail)) return;
                 var origin = Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) && uri.Scheme == "https" &&
                     uri.Host == Host && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo);
-                args.State = _visible && !_service.IsRevoked && origin && AllowedPage(core.Source) && args.PermissionKind == CoreWebView2PermissionKind.Camera
-                    ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
-                args.SavesInProfile = false;
+                if (_visible && !_service.IsRevoked && origin && AllowedPage(core.Source) && args.PermissionKind == CoreWebView2PermissionKind.Camera)
+                    args.State = CoreWebView2PermissionState.Allow;
             };
             core.WebMessageReceived += async (_, args) => await ReceiveAsync(core, args);
             core.ProcessFailed += (_, _) =>
@@ -86,7 +83,11 @@ internal sealed class CardQuizHost : IDisposable
             core.Navigate(Page);
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) { Fail("无法打开纸卡答题：" + error.Message); AppLog.Error("Open card quiz failed", error); }
+        catch (Exception error)
+        {
+            AppLog.Error("Open card quiz failed", error);
+            Fail(ClassroomWebViewRuntime.Recovery(error) ?? "无法打开纸卡答题，请重新读取本机记录。");
+        }
     }
 
     private void Post(object value)
@@ -176,7 +177,8 @@ internal sealed class CardQuizHost : IDisposable
             object? result;
             switch (message["action"]?.GetValue<string>())
             {
-                case "load": result = await Task.Run(_service.Load, _lifetime.Token); break;
+                case "load": result = await Task.Run(() => _service.Load(body["sessionId"]?.GetValue<string>()), _lifetime.Token); break;
+                case "status": result = await Task.Run(() => _service.Status(body["sessionId"]?.GetValue<string>()), _lifetime.Token); break;
                 case "bootstrap": result = await _service.BootstrapAsync(_lifetime.Token); break;
                 case "publication": result = await _service.PublicationAsync(body["id"]!.GetValue<string>(), _lifetime.Token, body["sessionId"]?.GetValue<string>()); break;
                 case "commit":

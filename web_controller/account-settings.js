@@ -23,7 +23,7 @@
     const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', '#settings-i-' + name); svg.append(use); return svg;
   }
   function selectSection(section, {updateUrl = false} = {}) {
-    selected = Object.hasOwn(panes, section) && allowed(section) ? section : 'account';
+    selected = Object.prototype.hasOwnProperty.call(panes, section) && allowed(section) ? section : 'account';
     for (const [name, id] of Object.entries(panes)) $(id).hidden = name !== selected || !allowed(name);
     root.querySelectorAll('[data-section]').forEach(link => {
       link.hidden = !allowed(link.dataset.section);

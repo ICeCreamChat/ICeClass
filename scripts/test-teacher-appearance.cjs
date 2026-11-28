@@ -9,9 +9,17 @@ const {selfStudyFixture}=require('./measure-teacher-ui.cjs');
 let browser;
 before(async()=>{browser=await chromium.launch({channel:'msedge',headless:true});});
 after(async()=>{await browser?.close();});
-async function setup(t,{width=1280,initial,blockStorage=false,native=false,handle=selfStudyFixture}={}){
+async function setup(t,{width=1280,initial,blockStorage=false,native=false,hasTouch=false,withoutPopover=false,handle=selfStudyFixture}={}){
   const prepared={async newContext(options){
-    const context=await browser.newContext(options);
+    const context=await browser.newContext({...options,hasTouch});
+    if (withoutPopover) await context.addInitScript(() => {
+      for (const key of ['popover', 'showPopover', 'hidePopover', 'togglePopover']) delete HTMLElement.prototype[key];
+      const matches = Element.prototype.matches;
+      Element.prototype.matches = function(selector) {
+        if (selector.includes(':popover-open')) throw new DOMException('Unsupported :popover-open', 'SyntaxError');
+        return matches.call(this, selector);
+      };
+    });
     if(native)await context.addInitScript(()=>{
       window.ICeClassTeacherHost={workbenchHeader:true,setWorkbenchHeader(visible){window.__nativeHeaderVisible=visible;},async execute(){return {success:true};}};
     });
@@ -170,6 +178,98 @@ test('Appearance changes synchronize between open teacher tabs',async t=>{
   const {page,context}=await setup(t);const second=await context.newPage();await second.goto('http://127.0.0.1/');await second.locator('#appShell:not(.hidden)').waitFor();
   await settingsSection(page,'appearance');await page.getByRole('radio',{name:'原版白色',exact:true}).check();
   await second.waitForFunction(()=>document.documentElement.dataset.teacherMaterial==='white');await waitForFilterCount(second,0);
+});
+
+async function assertHeaderMenus(page, openId) {
+  for (const [triggerId, menuId] of [['headerAccount', 'headerAccountMenu'], ['headerToolsToggle', 'headerToolsMenu']]) {
+    const trigger = page.locator('#' + triggerId), menu = page.locator('#' + menuId);
+    const open = menuId === openId;
+    assert.equal(await trigger.getAttribute('aria-controls'), menuId);
+    assert.equal(await trigger.getAttribute('aria-expanded'), String(open));
+    assert.equal(await menu.isVisible(), open, menuId + ' visibility');
+    assert.equal(await menu.evaluate(element => element.hidden), !open, menuId + ' HTML hidden state');
+  }
+}
+const focused = locator => locator.evaluate(element => element === document.activeElement);
+
+test('Website header menus on the paper-card page support keyboard dismissal and navigation', async t => {
+  const {page} = await setup(t);
+  await navigate(page, 'card-quiz');
+  const account = page.locator('#headerAccount'), tools = page.locator('#headerToolsToggle');
+  const settings = page.getByRole('menuitem', {name:'账号设置'}), password = page.getByRole('menuitem', {name:'修改密码'});
+  const logout = page.locator('#logoutButton');
+  await assertHeaderMenus(page);
+  await account.press('ArrowUp');
+  assert.ok(await focused(logout));
+  await page.keyboard.press('Home');
+  assert.ok(await focused(settings));
+  await page.keyboard.press('ArrowDown');
+  assert.ok(await focused(password));
+  await page.keyboard.press('End');
+  assert.ok(await focused(logout));
+  await page.keyboard.press('Escape');
+  assert.ok(await focused(account));
+  await assertHeaderMenus(page);
+
+  await account.press('Enter');
+  assert.ok(await focused(settings));
+  await page.keyboard.press('Shift+Tab');
+  assert.ok(await focused(tools));
+  await tools.press('Space');
+  assert.ok(await focused(page.getByRole('menuitem', {name:'刷新页面'})));
+  await page.keyboard.press('Tab');
+  assert.ok(await focused(account));
+  await assertHeaderMenus(page);
+
+  await account.press('ArrowDown');
+  await account.press('Escape');
+  await assertHeaderMenus(page);
+  await account.click();
+  const paperCards = page.locator('#mainNav [data-view="card-quiz"]');
+  await paperCards.focus();
+  await assertHeaderMenus(page);
+  assert.ok(await focused(paperCards));
+  await account.click();
+  await assertHeaderMenus(page, 'headerAccountMenu');
+  const anchor = await account.boundingBox(), menu = await page.locator('#headerAccountMenu').boundingBox();
+  assert.ok(Math.abs(anchor.x + anchor.width - menu.x - menu.width) <= 1, 'Menu aligns with the account button beside the scrollbar');
+  await page.evaluate(() => window.ICeClass.selectView(document.querySelector('#mainNav [data-view="reading"]')));
+  await page.locator('#view-reading').waitFor();
+  await assertHeaderMenus(page);
+});
+
+for (const withoutPopover of [false, true]) test(`Website header touch menus switch and navigate ${withoutPopover ? 'without' : 'with'} the Popover API`, async t => {
+  const {page} = await setup(t, {width:320, hasTouch:true, withoutPopover});
+  await navigate(page, 'card-quiz');
+  const account = page.locator('#headerAccount'), tools = page.locator('#headerToolsToggle');
+  await assertHeaderMenus(page);
+  await account.tap();
+  await assertHeaderMenus(page, 'headerAccountMenu');
+  await account.tap();
+  await assertHeaderMenus(page);
+  await account.tap();
+  await tools.tap();
+  await assertHeaderMenus(page, 'headerToolsMenu');
+  const box = await page.locator('#headerToolsMenu').boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 320, 'All tool menu items fit inside the viewport');
+  await account.tap();
+  await assertHeaderMenus(page, 'headerAccountMenu');
+  await page.locator('.header-brand strong').tap();
+  await assertHeaderMenus(page);
+  await account.tap();
+  await page.locator('#menuToggle').tap();
+  await assertHeaderMenus(page);
+  await page.locator('#sidebarClose').tap();
+  await account.tap();
+  await page.getByRole('menuitem', {name:'修改密码'}).tap();
+  await page.locator('#settingsAccountSection').waitFor();
+  await assertHeaderMenus(page);
+  assert.ok(await focused(page.locator('#currentPassword')));
+  await tools.tap();
+  await page.setViewportSize({width:1440, height:850});
+  await page.locator('#headerToolsMenu').waitFor({state:'hidden'});
+  await assertHeaderMenus(page);
+  assert.ok(await focused(page.locator('#teacherRefresh')));
 });
 
 for(const width of [1440,1361,1360,1024,881,880,390,320])test(`Native workbench header fits and its menu returns focus at ${width}px`,async t=>{

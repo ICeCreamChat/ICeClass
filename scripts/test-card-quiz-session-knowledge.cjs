@@ -83,10 +83,12 @@ test('学生切换课堂时只更新本节证据，跨课统计及原题号可�
   const {page, context, requests, errors} = await open(browser, {authenticated: false, width: 390, handle: ({url}) => {
     if (url.pathname === '/api/student/session') return {json: {authenticated: true, student: identity}};
     if (url.pathname === '/api/student/report') return {json: report};
+    if (url.pathname === '/api/student/report/earlier/analysis') return {json: {accountId: identity.id, sessionId: earlier.id, status: 'insufficient'}};
   }});
   t.after(() => context.close());
   const priorRequests = requests.length;
   await page.goto('http://127.0.0.1/card-quiz/student.html');
+  await page.getByRole('button', {name: '所有作答记录'}).click();
   const recordText = await page.locator('.student-record summary').innerText();
   assert.match(recordText, /第 3 题.*数轴上的点/);
   assert.match(recordText, /本节正式记录 · 跨课汇总已采用后续作答/);

@@ -539,7 +539,7 @@ test('native templates expose names, re-login and 44px controls, with no web-vie
     const style = fs.readFileSync(path.join(folder, 'index.wxss'), 'utf8');
     const js = fs.readFileSync(path.join(folder, 'index.js'), 'utf8');
     const config = JSON.parse(fs.readFileSync(path.join(folder, 'index.json'), 'utf8'));
-    assert.equal(config.enablePullDownRefresh, true); assert.match(markup, /bindtap="relogin"/);
+    assert.equal(config.enablePullDownRefresh, true); assert.match(markup, /login-required\.wxml/);
     assert.doesNotMatch(markup, /<web-view\b|&amp;|&lt;|&gt;/i);
     for (const input of markup.match(/<(?:input|picker|checkbox)\b[^>]*>/g) || []) assert.match(input, /aria-label="[^"]+"/);
     assert.match(style, /min-height:\s*44px/);

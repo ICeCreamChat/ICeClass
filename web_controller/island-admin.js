@@ -2,6 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const api = (...args) => window.ICeClass.api(...args);
+  const copyConfig = value => value == null ? value : JSON.parse(JSON.stringify(value));
   const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const weekNames = { all: '每周', odd: '单周', even: '双周' };
   const tabs = ['timetable', 'duties', 'slots', 'overrides', 'settings', 'components', 'automation'];
@@ -325,7 +326,7 @@
     return node;
   }
   function prepareConfig(raw) {
-    const next = structuredClone(raw);
+    const next = copyConfig(raw);
     next.appearance.material ??= 'glass';
     next.dutyRotations ||= {};
     for (const kind of Object.keys(dutyNames)) next.dutyRotations[kind] ||= {
@@ -1288,7 +1289,7 @@
           ...Object.values(data.config.dutyRotations).flatMap(duty => duty.slotIds.map(slotId => ({ slotId })))];
         if (referenced.some(row => !currentSlots.has(row.slotId))) throw new Error('当前未保存的作息与模板不一致，请先保存作息设置，再重新导入课表。');
       }
-      for (const key of ['weekAnchor', 'lessons', 'overrides', ...(data.scheduleOnly ? [] : ['slots'])]) config[key] = structuredClone(data.config[key]);
+      for (const key of ['weekAnchor', 'lessons', 'overrides', ...(data.scheduleOnly ? [] : ['slots'])]) config[key] = copyConfig(data.config[key]);
       if (data.dutiesIncluded) { config.dutyRotations = prepareConfig(data.config).dutyRotations; dutyDrafts = {}; }
       tab = 'timetable'; mark(); render();
       const parts = [`日常课程 ${config.lessons.length} 节`];
@@ -1341,7 +1342,7 @@
     (body.querySelector('input') || actions.querySelector('.primary')).focus({ preventScroll: true });
 
     function buildEditor() {
-      const source = structuredClone(profile.config), sourceId = loadedClass, sourceRevision = profile.revision, sourceName = className();
+      const source = copyConfig(profile.config), sourceId = loadedClass, sourceRevision = profile.revision, sourceName = className();
       const classes = bulkClasses().map(c => ({ ...c, grade: window.ICeClass.classGrade(c.name) }));
       const sectionNames = { enabled: '浮岛开关', slots: '作息时间', timetable: '周课表', duties: '值班安排', overrides: '临时调课',
         reminders: '提醒设置', appearance: '浮岛外观', visibility: '课堂隐藏', components: '轮播信息', automation: '自动化' };

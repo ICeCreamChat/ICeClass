@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header">
     <text class="title" aria-role="heading" aria-level="1">纸卡课堂</text>
     <view class="subtitle">接入教室收答，核对纸卡与课堂统计</view>
@@ -33,10 +34,6 @@
   </view>
 
   <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
-  <view wx:if="{{sessionExpired}}" class="status">
-    <view>登录会话已失效，当前筛选条件已保留。</view>
-    <button class="primary" bindtap="relogin">重新登录</button>
-  </view>
   <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
   <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入课堂记录…</view>
   <view wx:if="{{!loading && !classes.length && !error && !sessionExpired}}" class="empty">当前账号没有可访问班级。</view>
@@ -48,14 +45,14 @@
     <view wx:for="{{sessionRows}}" wx:key="id" class="report-item">
       <view class="row-title">{{item.subjectName}} · {{item.startedText}}</view>
       <view class="row-meta">{{item.questionCount}} 题 · {{item.studentCount}} 人 · {{item.statusText}}</view>
-      <button class="secondary" data-id="{{item.id}}" bindtap="openSession" disabled="{{exporting || sessionExpired}}" aria-label="{{'查看' + item.startedText + item.subjectName + '课堂统计'}}">查看本课统计</button>
+      <button class="secondary" data-id="{{item.id}}" bindtap="openSession" disabled="{{loading || exporting || sessionExpired}}" aria-label="{{'查看' + item.startedText + item.subjectName + '课堂统计'}}">查看本课统计</button>
       <button wx:if="{{item.statusText === '尚未结束'}}" class="primary" data-id="{{item.id}}" bindtap="connectClassroom" disabled="{{loading || exporting || sessionExpired}}">接入这节课堂</button>
     </view>
-    <view wx:if="{{sessionPages > 1}}" class="report-pagination">
-      <view class="muted">第 {{sessionPage}} / {{sessionPages}} 页</view>
+    <view wx:if="{{sessionPage > 1 || hasNextPage}}" class="report-pagination">
+      <view class="muted" aria-live="polite">第 {{sessionPage}} 页</view>
       <view class="button-row">
-        <button class="secondary" data-step="-1" bindtap="onSessionPage" disabled="{{sessionPage <= 1 || exporting}}">上一页课堂</button>
-        <button class="secondary" data-step="1" bindtap="onSessionPage" disabled="{{sessionPage >= sessionPages || exporting}}">下一页课堂</button>
+        <button class="secondary" data-step="-1" bindtap="onSessionPage" disabled="{{sessionPage <= 1 || loading || exporting}}">上一页课堂</button>
+        <button class="secondary" data-step="1" bindtap="onSessionPage" disabled="{{!hasNextPage || loading || exporting}}">下一页课堂</button>
       </view>
     </view>
   </view>

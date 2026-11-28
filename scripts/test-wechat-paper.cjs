@@ -66,9 +66,80 @@ function fixture(name, overrides = {}) {
   const filename = path.join(nativeRoot, 'pages', name, 'index.js');
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { Page: value => { page = value; }, require: id => id === '../../lib/api' ? api : id === '../../lib/ui' ? ui : require(path.resolve(path.dirname(filename), id)), wx, setTimeout: fn => { const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id), Date, console });
   page.data = plain(page.data); page.setData = (patch, callback) => { for (const [key, value] of Object.entries(patch)) { const parts = key.split('.'); let target = page.data; while (parts.length > 1) { const part = parts.shift(); target = target[part] || (target[part] = {}); } target[parts[0]] = value; } if (callback) callback(); };
-  page.onLoad({ classId: 'class-a' }); page.data.classId = 'class-a'; page._visible = true; page._ownerId = actor.id;
+  page.onLoad?.({ classId: 'class-a' }); page.data.classId = 'class-a'; page._visible = true; page._ownerId = actor.id;
   return { page, api, ui, wx, calls, timers, actor, expire() { loggedIn = false; }, restore() { loggedIn = true; } };
 }
+
+test('paper history requests older pages on demand and resets the cursor for another subject', async () => {
+  const summary = (id, subjectId = 'math') => ({ id, classId: 'class-a', subjectId, startedAt: 50,
+    endedAt: 60, questionCount: 1, studentCount: 2 });
+  const cursor = { beforeStartedAt: 50, beforeId: 'B' };
+  const firstIds = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'a', 'z'];
+  const older = deferred();
+  let holdOlder = false;
+  let failOlder = true;
+  const f = fixture('paper', { request: async url => {
+    const query = new URL(url, 'https://fixture.invalid').searchParams;
+    if (query.get('subjectId') === 'history') return { sessions: [summary('historic', 'history')], total: 1, nextCursor: null };
+    if (query.get('beforeId')) {
+      if (failOlder) { failOlder = false; throw new Error('课堂读取中断'); }
+      if (holdOlder) return older.promise;
+      return { sessions: [summary('A')], total: 11, nextCursor: null };
+    }
+    return { sessions: firstIds.map(id => summary(id)), total: 11, nextCursor: cursor };
+  } });
+  f.ui.formatTime = String;
+  const step = value => ({ currentTarget: { dataset: { step: value } } });
+  await f.page.onShow();
+  assert.equal(f.page.data.sessionTotal, 11);
+  assert.deepEqual(plain(f.page.data.sessionRows.map(row => row.id)), firstIds.slice().reverse());
+  assert.equal(f.calls.length, 1);
+  await f.page.onSessionPage(step(1));
+  assert.equal(f.page.data.sessionPage, 1);
+  assert.equal(f.page.data.sessionRows.length, 10);
+  assert.equal(f.page.data.error, '课堂读取中断');
+  await f.page.onSessionPage(step(1));
+  assert.equal(f.page.data.sessionPage, 2);
+  assert.equal(f.page.data.error, '');
+  assert.deepEqual(plain(f.page.data.sessionRows.map(row => row.id)), ['A']);
+  const query = new URL(f.calls[1].url, 'https://fixture.invalid').searchParams;
+  assert.equal(query.get('classId'), 'class-a');
+  assert.equal(query.get('limit'), '10');
+  assert.equal(query.get('beforeId'), 'B');
+  assert.equal(query.get('beforeStartedAt'), '50');
+  await f.page.onSessionPage(step(1));
+  assert.equal(f.calls.length, 3);
+  await f.page.onSessionPage(step(-1));
+  assert.equal(f.page.data.sessionPage, 1);
+  holdOlder = true;
+  const pending = f.page.onSessionPage(step(1));
+  const history = require('../miniprogram/teacher/lib/report-data').SUBJECTS.findIndex(s => s.id === 'history');
+  await f.page.onSubjectChange(event(history));
+  older.resolve({ sessions: [summary('stale')], total: 11, nextCursor: null });
+  await pending;
+  assert.deepEqual(plain(f.page.data.sessionRows.map(row => row.id)), ['historic']);
+  assert.equal(f.page.data.sessionPage, 1);
+  assert.doesNotMatch(f.calls.at(-1).url, /beforeId|beforeStartedAt/);
+});
+
+test('refreshing an open historic classroom keeps its detail when newer lessons shift its list page', async () => {
+  const lesson = { id: 'old', classId: 'class-a', subjectId: 'math', startedAt: 1, endedAt: 2,
+    questionCount: 0, studentCount: 0 };
+  const lessons = [lesson, ...Array.from({ length: 9 }, (_, i) => ({ ...lesson, id: 'lesson-' + i, startedAt: 3 + i, endedAt: 4 + i }))];
+  const f = fixture('paper', { request: async url => url.endsWith('/sessions/old')
+    ? { session: { ...lesson, questions: [], roster: [] }, revision: 1, report: { questions: [], students: [], totals: {} } }
+    : { sessions: lessons.slice(-10), total: lessons.length, nextCursor: lessons.length > 10
+      ? { beforeStartedAt: lessons[1].startedAt, beforeId: lessons[1].id } : null } });
+  f.ui.formatTime = String;
+  await f.page.onShow();
+  await f.page.openSession({ currentTarget: { dataset: { id: 'old' } } });
+  assert.equal(f.page.data.detail.id, 'old');
+  lessons.push({ ...lesson, id: 'new', startedAt: 20, endedAt: 21 });
+  await f.page.reload();
+  assert.equal(f.page.data.detail?.id, 'old');
+  f.page.closeSession();
+  assert.equal(f.page.data.sessionRows[0].id, 'new');
+});
 
 function connected(f, changes) {
   f.page._pair = { pairId: 'pair-a', classId: 'class-a', sessionId: 'session-a', expiresAt: Date.now() + 60000 };
@@ -168,6 +239,27 @@ test('privacy approval is required before mounting the camera and does not reque
 test('denied camera permission keeps the manual workflow available without mounting camera', async () => {
   const f = fixture('paper-round', { wx: { authorize: o => o.fail({}) } }); connected(f, { roundId: 'r1', roundStatus: 'collecting' });
   await f.page.startCamera(); assert.equal(f.page.data.cameraOn, false); assert.equal(f.page.data.cameraDenied, true); assert.equal(f.page.data.collecting, true);
+});
+
+test('cancelled camera consent and a late permission callback cannot open the camera', async () => {
+  let authorize;
+  const f = fixture('paper-round', { wx: {
+    getPrivacySetting: options => options.success({ needAuthorization: true }),
+    authorize: options => { authorize = options.success; }
+  } });
+  connected(f, { roundId: 'r1', roundStatus: 'collecting' });
+  await f.page.startCamera();
+  f.page.stopCamera();
+  await f.page.agreeCameraPrivacy();
+  assert.equal(authorize, undefined);
+  assert.equal(f.page.data.collecting, true);
+  await f.page.startCamera();
+  const pending = f.page.agreeCameraPrivacy();
+  f.page.onHide();
+  authorize({});
+  await pending;
+  assert.equal(f.page.data.cameraOn, false);
+  assert.equal(f.page.data.privacyNeeded, false);
 });
 
 test('account changes during confirmation prevent classroom and card writes', async () => {

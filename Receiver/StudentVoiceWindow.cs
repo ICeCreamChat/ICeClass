@@ -140,7 +140,7 @@ public sealed class StudentVoiceWindow : Window
         && uri.Scheme == "https" && uri.Host == Host && uri.IsDefaultPort && uri.AbsolutePath == "/homework/classroom/index.html";
     private ReadingBrowser CreateBrowser()
     {
-        var browser = new ReadingBrowser {HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false};
+        var browser = new ClassroomBrowser {HandleEscapeKey = false, HandleFullscreenKey = false, IsVisible = false};
         browser.FocusOutside += next => {
             if (!_closed && ReferenceEquals(browser, _browser))
                 browser.FocusPage(next ? CoreWebView2MoveFocusReason.Next : CoreWebView2MoveFocusReason.Previous);
@@ -173,9 +173,6 @@ public sealed class StudentVoiceWindow : Window
                 core.Settings.IsPasswordAutosaveEnabled = false; core.Settings.AreBrowserAcceleratorKeysEnabled = false;
                 await core.AddScriptToExecuteOnDocumentCreatedAsync("window.ICeClassNativeHome=true;");
                 core.NavigationStarting += (_, args) => { if (!AllowedPage(args.Uri)) args.Cancel = true; };
-                core.NewWindowRequested += (_, args) => args.Handled = true;
-                core.DownloadStarting += (_, args) => args.Cancel = true;
-                core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
                 core.PermissionRequested += (_, args) => args.State = CoreWebView2PermissionState.Deny;
                 core.WebMessageReceived += async (_, args) => await ReceiveAsync(core, args);
                 core.ProcessFailed += (_, _) => {
@@ -197,7 +194,7 @@ public sealed class StudentVoiceWindow : Window
         catch (OperationCanceledException) when (_closed || _pageLifetime.IsCancellationRequested) { }
         catch (Exception error) {
             _failed = true; AppLog.Error("Open classroom home failed", error);
-            ShowError(error is WebView2RuntimeNotFoundException ? "请先安装 Microsoft Edge WebView2，再打开教室端。" : "暂时无法打开教室首页，请重新打开。早读和浮岛仍可从托盘使用。");
+            ShowError(ClassroomWebViewRuntime.Recovery(error) ?? "暂时无法打开教室首页，请重新打开。早读和浮岛仍可从托盘使用。");
         }
         finally { _ready = null; }
     }

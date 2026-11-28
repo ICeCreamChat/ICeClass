@@ -2,13 +2,15 @@
 // Exercises the actual API against the explicitly started localhost demonstration only.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const { createClient, BASE_URL } = require('../miniprogram/teacher/lib/api');
 const homework = require('../miniprogram/teacher/lib/homework-data');
 const paper = require('../miniprogram/teacher/lib/paper-data');
 const paperAccounts = require('../miniprogram/teacher/lib/paper-accounts-data');
-const study = require('../miniprogram/teacher/lib/study-settings');
 const reading = require('../miniprogram/teacher/lib/reading-settings');
 const settings = require('../miniprogram/teacher/lib/settings-data');
+const manage = require('../miniprogram/teacher/lib/manage-data');
+const { buildNotice } = require('../miniprogram/teacher/lib/notice-data');
 const previewPort = Number(process.env.ICECLASS_WECHAT_TEST_PORT || 8843);
 assert.ok(Number.isInteger(previewPort) && previewPort >= 1024 && previewPort <= 65535, 'Invalid local preview port.');
 const ORIGIN = `http://127.0.0.1:${previewPort}`;
@@ -27,31 +29,12 @@ function client() {
       fetch(ORIGIN + target.pathname + target.search, { method: options.method, headers: options.header, body: options.data === undefined ? undefined : JSON.stringify(options.data), redirect: 'error' })
         .then(async response => {
           assert.equal(response.headers.get('x-iceclass-preview'), '1', 'Only the isolated demonstration server is allowed.');
-          options.success({ statusCode: response.status, data: options.dataType === 'text' ? await response.text() : await response.json(), header: { 'Set-Cookie': response.headers.get('set-cookie') || '' } });
+          options.success({ statusCode: response.status, data: await response.json(), header: { 'Set-Cookie': response.headers.get('set-cookie') || '' } });
         })
         .catch(error => options.fail({ errMsg: error.message }));
     }
   });
 }
-
-test('mobile Banban receives a complete platform turn and restores it from school history', async () => {
-  const api = client();
-  await api.login('teacher1', 'LocalTeacher2026');
-  const prior = await api.request('/api/banban/conversation');
-  const events = [];
-  await api.request('/api/banban/chat/stream', {
-    method: 'POST', data: { message: '你是谁？', scope: {}, ...(prior.id ? { conversationId: prior.id } : {}) },
-    onEvent: event => events.push(event)
-  });
-  const complete = events.at(-1);
-  assert.equal(complete.type, 'done');
-  assert.equal(typeof complete.message.content, 'string');
-  assert.ok(complete.message.content.length > 0);
-  const saved = await api.request('/api/banban/conversation?conversationId=' + complete.conversationId);
-  assert.deepEqual(saved.messages.slice(-2).map(message => message.role), ['user', 'assistant']);
-  assert.equal(saved.messages.at(-2).content, '你是谁？');
-  await api.logout();
-});
 
 test('native login, role scope, teaching reports and offline notice use the real isolated school handlers', async () => {
   const api = client();
@@ -60,7 +43,8 @@ test('native login, role scope, teaching reports and offline notice use the real
   assert.equal((await api.restoreSession()).id, user.id);
   const classes = (await api.request('/api/classes')).classes;
   assert.ok(classes.length > 0);
-  const cid = classes.find(item => item.canEditIsland).id;
+  const selectedClass = classes.find(item => item.canEditIsland);
+  const cid = selectedClass.id;
   const responses = await Promise.all([
     api.request('/api/quiet-hours'),
     api.request('/api/island/classes/' + cid),
@@ -75,13 +59,15 @@ test('native login, role scope, teaching reports and offline notice use the real
   assert.ok(responses[1].config);
   assert.ok(Array.isArray(responses[5].questions));
   assert.ok(Array.isArray(responses[6].decks));
-  let result;
-  try { result = await api.request('/api/shouts', { method: 'POST', data: { classId: cid, text: '隔离演示库内的微信接口验证', alertLevel: 'info', displayDurationSec: 10 } }); }
-  catch (error) {
-    assert.equal(error.code, 'quiet_confirmation_required');
-    result = await api.request('/api/shouts', { method: 'POST', data: { classId: cid, text: '隔离演示库内的微信接口验证', alertLevel: 'info', displayDurationSec: 10, quietAcknowledged: true } });
-  }
+  const text = '隔离演示库内的微信接口验证';
+  const notice = buildNotice({ classId: cid, modeIndex: 0, levelIndex: 2, durationIndex: 1, text }, selectedClass);
+  const result = await api.request('/api/shouts', { method: 'POST', data: { ...notice.values, quietAcknowledged: Boolean(responses[0].activePeriod) } });
   assert.equal(result.status, 'offline');
+  const { history } = await api.request('/api/history?classId=' + cid + '&limit=5&offset=0');
+  const sent = history.find(item => item.id === result.id);
+  assert.equal(sent.content_type, 'text');
+  assert.equal(sent.alert_level, 'info');
+  assert.equal(sent.text, text);
   await api.logout(); assert.equal(api.getUser(), null);
 });
 
@@ -105,31 +91,42 @@ test('native management pages can read their real school responses without widen
   const api = client();
   await api.login('teacher1', 'LocalTeacher2026');
   try {
-    const { classes } = await api.request('/api/self-study/classes');
-    const cid = classes[0].id;
-    const [homeworkProfile, cards, studentAccounts, studyProfile, connection] = await Promise.all([
+    const { classes } = await api.request('/api/classes');
+    const ownClass = classes.find(item => item.canEditIsland);
+    const cid = ownClass.id;
+    const [homeworkProfile, cards, studentAccounts] = await Promise.all([
       api.request('/api/homework/classes/' + cid + '/profile'),
       api.request('/api/card-quiz/classes/' + cid + '/cards'),
-      api.request('/api/card-quiz/classes/' + cid + '/students'),
-      api.request('/api/self-study/classes/' + cid),
-      api.request('/api/banban/connection')
+      api.request('/api/card-quiz/classes/' + cid + '/students')
     ]);
     assert.equal(homework.readProfile(homeworkProfile, cid).canEdit, true);
     assert.equal(paper.readCards(cards, cid).canEdit, true);
     assert.equal(paperAccounts.readAccounts(studentAccounts, cid).canEdit, true);
-    assert.equal(study.profileFrom(studyProfile, cid).classId, cid);
-    assert.equal(settings.accountConnection(connection).canManageSchool, false);
     await assert.rejects(api.request('/api/reading/settings'), { status: 403 });
     await assert.rejects(api.request('/api/devices'), { status: 403 });
+    await assert.rejects(manage.updateClass(api.request, ownClass, { enabled: false }, () => true), { status: 403 });
   } finally { await api.logout(); }
 
   await api.login('ICe', 'LocalDemo2026');
   try {
-    const [readingProfile, devices, quota] = await Promise.all([
-      api.request('/api/reading/settings'), api.request('/api/devices'), api.request('/api/banban/quotas')
-    ]);
+    const [readingProfile, devices] = await Promise.all([api.request('/api/reading/settings'), api.request('/api/devices')]);
     assert.equal(typeof reading.profileFrom(readingProfile).config.enabled, 'boolean');
     assert.ok(settings.devicesFrom(devices).length > 0);
-    assert.ok(settings.quotasFrom(quota).targets.length > 0);
+  } finally { await api.logout(); }
+});
+
+test('class and device edits still confirm the existing fixed school operations', async () => {
+  const api = client();
+  await api.login('ICe', 'LocalDemo2026');
+  try {
+    const devices = settings.devicesFrom(await api.request('/api/devices'));
+    const device = devices[0];
+    const className = device.class_name;
+    const note = '微信小程序设备回归';
+    await settings.updateDevice(api.request, device, { note }, className, () => true);
+    assert.equal(settings.devicesFrom(await api.request('/api/devices')).find(row => row.id === device.id).binding_note, note);
+    const name = '微信回归测试班 ' + randomUUID().slice(0, 8);
+    await manage.updateClass(api.request, { id: device.class_id, name: className }, { name }, () => true);
+    assert.equal(settings.classesFrom(await api.request('/api/classes')).find(row => row.id === device.class_id).name, name);
   } finally { await api.logout(); }
 });

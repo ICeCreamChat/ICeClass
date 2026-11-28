@@ -2,13 +2,14 @@
 const api = require('../../lib/api');
 const ui = require('../../lib/ui');
 const model = require('../../lib/question-data');
+const privacy = require('../../lib/device-privacy');
 Page({
   data: { classes: [], classNames: [], classIndex: 0, classId: '', bank: [], decks: [], publications: [], editor: null, deckEditor: null,
     sections: [{ id: 'bank', name: '我的题库' }, { id: 'decks', name: '我的题单' }, { id: 'published', name: '已发布' }], section: 'bank',
-    subjectNames: model.subjects.map(item => item[1]), typeNames: model.types.map(item => item[1]), letters: ['A', 'B', 'C', 'D'], countNames: ['2', '3', '4'], error: '', status: '', loading: false, busy: false, dirty: false, conflict: false, uncertain: false, sessionExpired: false },
+    subjectNames: model.subjects.map(item => item[1]), typeNames: model.types.map(item => item[1]), letters: ['A', 'B', 'C', 'D'], countNames: ['2', '3', '4'], error: '', status: '', loading: false, busy: false, dirty: false, conflict: false, uncertain: false, sessionExpired: false, privacyNeeded: false },
   onShow() { if (ui.requireLogin() && !this.data.dirty && !this.data.busy) this.load(); },
-  onHide() { this._generation = (this._generation || 0) + 1; this.setData({ loading: false }); },
-  onUnload() { this.onHide(); ui.setDirty(false); },
+  onHide() { this._generation = (this._generation || 0) + 1; this.cancelDevicePrivacy(); this.setData({ loading: false }); },
+  onUnload() { this.onHide(); this._unloaded = true; ui.setDirty(false); },
   onPullDownRefresh() { this.reload(); },
   async reload() { if (this.data.busy) { wx.stopPullDownRefresh(); return; } if (this.data.dirty && !await ui.confirm('重新载入', '这会放弃当前尚未保存的题目或题单修改。请在列表中核对之前的提交结果。', '放弃并载入')) { wx.stopPullDownRefresh(); return; } this.setData({ editor: null, deckEditor: null, dirty: false, conflict: false, uncertain: false }); ui.setDirty(false); await this.load(); },
   async load() {
@@ -48,20 +49,43 @@ Page({
     this.setData({ 'editor.type': type, 'editor.typeIndex': index, 'editor.options': type === 'boolean' ? ['正确', '错误'] : ['', '', '', ''], 'editor.answerText': '' }); this.markDirty();
   },
   count(event) { const length = Number(event.detail.value) + 2; const options = this.data.editor.options.slice(0, length); while (options.length < length) options.push(''); this.setData({ 'editor.options': options, 'editor.answerText': '' }); this.markDirty(); },
+  openDevicePrivacy() { privacy.openPolicy(this, wx); },
+  agreeDevicePrivacy() { privacy.settle(this, true); },
+  cancelDevicePrivacy() { privacy.settle(this, false); },
   async image() {
-    if (this.data.busy || !this.data.editor) return;
+    if (this.data.busy || !this.data.editor || !ui.requireLogin()) return;
+    if (typeof wx.chooseMessageFile !== 'function') { this.setData({ error: '当前微信版本不支持选取文件，请更新微信后重试。' }); return; }
+    const owner = api.getUser(), generation = this._generation;
+    const current = () => {
+      const user = api.getUser();
+      return generation === this._generation && owner && user && user.id === owner.id;
+    };
     this.setData({ busy: true, error: '' });
     try {
-      const file = await new Promise((resolve, reject) => wx.chooseMessageFile({ count: 1, type: 'file', extension: ['png', 'jpg', 'jpeg', 'webp'], success: result => resolve(result.tempFiles[0]), fail: error => reject(new Error(/cancel/i.test(error.errMsg || '') ? '已取消选择图片。' : '无法选择图片，请重试。')) }));
-      if (!file || file.size > 2 * 1024 * 1024) throw new Error('题目图片最多 2 MiB。');
-      const extension = file.name.split('.').pop().toLowerCase();
+      if (!await privacy.authorize(this, wx, current) || !current()) return;
+      const result = await new Promise((resolve, reject) => wx.chooseMessageFile({
+        count: 1, type: 'file', extension: ['png', 'jpg', 'jpeg', 'webp'], success: resolve, fail: reject
+      }));
+      if (!current()) return;
+      const file = result && result.tempFiles && result.tempFiles[0];
+      if (!file || !file.path) throw new Error('没有选中图片，请重新选择。');
+      if (file.size > 2 * 1024 * 1024) throw new Error('题目图片最多 2 MiB。');
+      const extension = (file.name || '').split('.').pop().toLowerCase();
       const mime = extension === 'jpg' ? 'jpeg' : extension;
       if (!['png', 'jpeg', 'webp'].includes(mime)) throw new Error('请选择 PNG、JPEG 或 WebP 图片。');
+      if (!await ui.confirm('上传题目配图', '选中的图片将上传到学校服务。请确认图片不含无关的个人信息。', '上传图片') || !current()) return;
       const base64 = await new Promise((resolve, reject) => wx.getFileSystemManager().readFile({ filePath: file.path, encoding: 'base64', success: result => resolve(result.data), fail: () => reject(new Error('图片读取失败。')) }));
-      const result = await api.request('/api/card-quiz/images', { method: 'POST', data: { dataUrl: `data:image/${mime};base64,${base64}` }, timeout: 30000 });
-      this.setData({ 'editor.imageId': result.id }); this.markDirty();
-    } catch (error) { ui.fail(this, error); }
-    finally { this.setData({ busy: false }); }
+      if (!current()) return;
+      const uploaded = await api.request('/api/card-quiz/images', { method: 'POST', data: { dataUrl: `data:image/${mime};base64,${base64}` }, timeout: 30000 });
+      if (current()) { this.setData({ 'editor.imageId': uploaded.id }); this.markDirty(); }
+    } catch (error) {
+      if (generation === this._generation && !/cancel/i.test(error.errMsg || '')) ui.fail(this, error.message ? error : new Error('无法选择图片，请重试。'));
+    } finally {
+      if (!this._unloaded) {
+        if (!api.getUser()) this.setData({ sessionExpired: true });
+        this.setData({ busy: false });
+      }
+    }
   },
   removeImage() { this.setData({ 'editor.imageId': null }); this.markDirty(); },
   async previewImage() { try { const path = await api.download(`/api/card-quiz/images/${encodeURIComponent(this.data.editor.imageId)}`); wx.previewImage({ urls: [path] }); } catch (error) { ui.fail(this, error); } },

@@ -20,6 +20,17 @@ internal static class Program
     public static void Main(string[] args)
     {
         if (args is ["--banban-computer-worker"]) { ClassroomAgentWorker.Run(); return; }
+        if (args is ["--install-classroom-webview2", var destination, var cabinet])
+        {
+            try { ClassroomWebViewPackage.EnsureAsync(destination, cabinet, CancellationToken.None).GetAwaiter().GetResult(); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                Console.Error.WriteLine(error.Message);
+                AppLog.Error("Classroom WebView2 installation failed", error);
+                Environment.ExitCode = 1;
+            }
+            return;
+        }
         var launchArgs = args.Where(value => !IsUpdateArgument(value)).ToArray();
         var confirmingUpdate = launchArgs.Length != args.Length;
         var openPaper = launchArgs.Contains(PaperClassroom);
@@ -54,6 +65,7 @@ internal static class Program
                     "ICeClass.exe", ReceiverUpdateService.RestartArguments(), ReceiverUpdateService.CurrentVersionText)) return;
             }
             catch (Exception error) { AppLog.Error("Could not apply prepared update at startup", error); }
+            if (UpdateInstaller.IsUpdateLaunch) ClassroomWebViewRuntime.PrepareAfterUpdate();
             var app = BuildAvaloniaApp();
             if (PaperBinding is not null && confirmingUpdate)
             {

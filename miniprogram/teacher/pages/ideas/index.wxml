@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}} ideas-page">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}} ideas-page">
   <view class="page-header ideas-heading">
     <text class="title" aria-role="heading" aria-level="1">创意计划</text>
     <button class="secondary" bindtap="load" loading="{{loading}}" disabled="{{loading || draft || sessionExpired}}">刷新</button>
@@ -11,7 +12,6 @@
   </view>
   <text wx:if="{{error && !draft}}" class="error" aria-role="alert">{{error}}</text>
   <text wx:if="{{notice}}" class="status" aria-role="status">{{notice}}</text>
-  <button wx:if="{{sessionExpired && !draft}}" class="secondary" bindtap="relogin">重新登录</button>
   <text wx:if="{{!items.length && !error}}" class="empty" aria-role="status">{{loading ? '正在读取创意…' : '当前没有符合条件的创意。'}}</text>
   <view wx:for="{{items}}" wx:key="id" class="panel">
     <view class="ideas-heading">
@@ -42,7 +42,6 @@
       </block>
       <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
       <text wx:if="{{conflict}}" class="status">已保留草稿。请复制需要保留的内容，再退出评审、刷新记录并核对。</text>
-      <button wx:if="{{sessionExpired}}" class="secondary" bindtap="relogin" disabled="{{saving}}">重新登录</button>
       <view class="button-row">
         <button class="secondary" bindtap="discard" disabled="{{saving}}">退出评审</button>
         <button class="primary" bindtap="save" loading="{{saving}}" disabled="{{saving || conflict || sessionExpired}}">保存评审</button>

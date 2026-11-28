@@ -1,10 +1,18 @@
 <view class="page theme-{{appearance}}">
-  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">隐私说明</text><text class="subtitle">班伴教师工作台</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">账号与班级数据</text><text>教师使用学校分配的账号登录。账号、通知、答题记录和统计请求发送至学校现有的 ICeClass 服务，查看与操作范围由学校账号权限决定。</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">本机保存</text><text>小程序在本机保存学校登录会话、所选班级和外观偏好。不会保存账号密码。退出登录时会向学校服务注销会话，并清除本机登录状态。</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">录音与扫码</text><text>选择录音后才会使用麦克风，确认发送后才上传原声。选择纸卡扫描后才会使用相机；画面在手机内识别，只提交纸卡编号和所选答案。</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">教室来音与核验照片</text><text>有权限的教师可以播放教室来音、查看晚自习核验照片。来音从发送起最多可播放 30 分钟，核验照片从采集起最多可查看 24 小时。</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">班班对话</text><text>学校服务按账号保存对话，供你查看历史。学校启用外部 AI 模型时，生成答复所需的对话和课堂资料会发送给学校配置的模型服务。</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">班级文件</text><text>题图和创意附件只在你主动选择或打开时处理。下载的统计包含班级信息，分享前请核对收件人。</text></view>
-  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">联系与数据管理</text><text>账号分配、权限调整和学校业务数据的更正、删除，请联系分配账号的学校管理员。微信平台的隐私保护指引和小程序备案仍须由运营主体按实际情况填写。</text></view>
+  <view class="page-header"><text class="title" aria-role="heading" aria-level="1">{{terms ? '用户服务协议' : '隐私政策'}}</text><text class="subtitle">班伴教师工作台</text></view>
+  <block wx:if="{{terms}}">
+    <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">服务与账号</text><text>班伴班班为学校教师提供纸卡答题、班级通知、作业和早读统计等课堂工具。使用学校发放的账号登录，具体功能和班级范围由学校授予的权限决定。</text></view>
+    <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">课堂资料</text><text>请保管账号和密码，仅在教学和班级管理所需范围内使用你有权访问的名单、答题记录、音频及文件。未经许可，请勿对外分享这些资料。</text></view>
+    <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">退出与帮助</text><text>你可以取消登录，也可以在登录后到「账号设置」退出。需要调整账号或权限时，请联系发放账号的学校管理员。小程序如何处理个人信息，请阅读《隐私政策》。</text></view>
+  </block>
+  <block wx:else>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">账号与班级数据</text><text>教师使用学校分配的账号登录。学校班伴服务验证账号和密码，按权限处理教学所需的班级名单、纸卡编号、作答、早读、作业及通知记录。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">本机保存</text><text>小程序在本机保存学校登录会话、所选班级和外观偏好，不保存密码。退出登录时会向学校服务注销会话，并清除本机登录状态。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">纸卡扫码</text><text>你主动开启并授权后才会使用相机。画面在手机内识别，小程序将卡号和答案提交给已配对课堂，扫描画面不上传。你也可以手工录入。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">录音与文件</text><text>你主动录音并授权后才会使用麦克风。确认发送后，录音或选取的 WAV 原声才上传至学校服务并下发到教室。你选取的题图也会上传至学校服务，用于题目配图。文字通知只在教室大屏静音展示。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">教室来音与导出</text><text>有权限的教师可按需播放教室端发送的来音，录音从发送起最多可播放 30 分钟。打开创意附件或导出教学统计也需要相应权限。</text></view>
+  <view class="panel"><text class="section-heading" aria-role="heading" aria-level="2">联系与数据管理</text><text>如需查阅、更正、删除相关信息或申请注销账号，请联系分配账号的学校管理员，或使用本小程序《用户隐私保护指引》公布的联系方式。</text></view>
+    <button class="secondary block-button" bindtap="openPlatformPrivacy">查看微信公示的隐私保护指引</button>
+    <text wx:if="{{error}}" class="error" aria-role="alert">{{error}}</text>
+  </block>
 </view>

@@ -35,6 +35,18 @@ def create_archives(root: Path, output: Path):
             raise ValueError('Invalid client checksum')
     full = verified(receiver / 'ICeClass.exe', classroom_manifest)
     lightweight = verified(receiver / 'payloads' / core['sha256'], core)
+    install_manifest = receiver / 'program-manifest.json'
+    runtime_metadata = json.loads(install_manifest.read_text('utf-8-sig')).get('webView2') if install_manifest.is_file() else None
+    runtime = None
+    runtime_item = entries.get('VoiceResources/WebView2-x64.cab')
+    if runtime_item is not None:
+        digest = runtime_item['sha256']
+        if (runtime_metadata is None or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)
+                or any(runtime_item[key] != runtime_metadata[key] for key in ('sha256', 'size'))):
+            raise ValueError('WebView2 update payload does not match the installation manifest')
+        runtime = verified(receiver / 'payloads' / digest, runtime_metadata)
+    elif runtime_metadata:
+        runtime = verified(receiver / 'WebView2-x64.cab', runtime_metadata)
     teacher_app = verified(teacher / 'ICeClass.Desktop.exe', teacher_manifest) if teacher_manifest is not None else None
     models = []
     kinds = ['classroom', 'classroom-offline']
@@ -58,9 +70,13 @@ def create_archives(root: Path, output: Path):
                     archive.write(full if offline else lightweight, prefix + 'ICeClass.exe')
                     for name in ('install.ps1', '安装或升级.cmd'):
                         archive.write(receiver / name, prefix + name)
-                    archive.writestr(prefix + 'program-manifest.json', json.dumps(classroom_manifest if offline else {
+                    program = dict(classroom_manifest) if offline else {
                         'version': plan['version'], 'size': core['size'], 'sha256': core['sha256'],
-                    }, ensure_ascii=False))
+                    }
+                    if offline and runtime:
+                        archive.write(runtime, prefix + 'WebView2-x64.cab', compress_type=zipfile.ZIP_STORED)
+                        program['webView2'] = runtime_metadata
+                    archive.writestr(prefix + 'program-manifest.json', json.dumps(program, ensure_ascii=False))
                     sheets = receiver / '纸卡'
                     if sheets.is_dir():
                         for name in ('通用纸卡-1-2.pdf', '通用纸卡-1-40.pdf', '通用纸卡-1-60.pdf'):
@@ -78,10 +94,15 @@ def create_archives(root: Path, output: Path):
                         ]}, ensure_ascii=False))
                 preparation = ('已包含本客户端所需的全部离线语音资源。' if offline else
                     '这是轻量安装包。语音资源会在课间空闲时自动下载，也可在程序内点击“下载语音资源”。')
+                if classroom and offline and runtime:
+                    preparation += ' 旧白板请运行“安装或升级”，安装器会将随包的 Microsoft WebView2 放入教室端程序目录。'
+                elif classroom and runtime_item is not None:
+                    preparation += ' 旧白板首次安装请使用教室端完整包，随包准备白板网页组件。'
                 client_version = plan['version'] if classroom else teacher_manifest['version']
                 archive.writestr(prefix + '一步使用说明.txt', '\ufeff' + '\r\n'.join([
                     'ICeClass 班伴 ' + client_version, preparation,
-                    '完整解压后运行安装脚本；直接运行 EXE 也请保留同目录文件。',
+                    '完整解压后，打开“教室端”文件夹，双击“安装或升级.cmd”。' if classroom else
+                    '完整解压后，打开“Windows教师端”文件夹，双击“安装到本机.cmd”。',
                     '资源未就绪时仍可使用文字和原声录音等功能；语音准备页面显示进度，可暂停、重试和续传。',
                     '已有程序先从托盘退出再安装，绑定、账号资料和设置会保留。',
                     '首次绑定、账号登录和学校同步需要联网；离线资源不代表学校在线服务可离线使用。',

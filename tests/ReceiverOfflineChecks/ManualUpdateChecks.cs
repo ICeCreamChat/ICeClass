@@ -39,19 +39,11 @@ internal static class ManualUpdateChecks
 
     internal static async Task<int> Run()
     {
-        var root = Path.Combine(Path.GetTempPath(), "ICeClass-ManualUpdate-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        // Only this copied harness and harmless fixture are shut down or replaced.
-        foreach (var source in Directory.EnumerateFiles(AppContext.BaseDirectory, "*", SearchOption.AllDirectories))
-        {
-            var relative = Path.GetRelativePath(AppContext.BaseDirectory, source);
-            if (relative.Split(Path.DirectorySeparatorChar)[0].StartsWith('.')) continue;
-            var target = Path.Combine(root, relative); Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(source, target);
-        }
-        var fixtureSource = Path.Combine(root, "Fixture.cs");
+        var work = Path.Combine(Path.GetTempPath(), "ICeClass-ManualUpdate-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        var fixtureSource = Path.Combine(work, "Fixture.cs");
         await File.WriteAllTextAsync(fixtureSource, Fixture, new UTF8Encoding(true));
-        var fixtureExe = Path.Combine(root, "NewVersion.exe");
+        var fixtureExe = Path.Combine(work, "NewVersion.exe");
         var compiler = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Microsoft.NET/Framework64/v4.0.30319/csc.exe");
         await RunProcess(compiler, ["/nologo", "/target:winexe", "/out:" + fixtureExe, fixtureSource]);
         var bytes = await File.ReadAllBytesAsync(fixtureExe);
@@ -89,6 +81,16 @@ internal static class ManualUpdateChecks
         {
             foreach (var mode in new[] { "ready", "download" })
             {
+                // Each installation starts from its own old executable and update state.
+                var root = Path.Combine(work, mode);
+                foreach (var source in Directory.EnumerateFiles(AppContext.BaseDirectory, "*", SearchOption.AllDirectories))
+                {
+                    var relative = Path.GetRelativePath(AppContext.BaseDirectory, source);
+                    if (relative.Split(Path.DirectorySeparatorChar)[0].StartsWith('.')) continue;
+                    var target = Path.Combine(root, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(source, target);
+                }
                 await File.WriteAllTextAsync(Path.Combine(root, "ICeClass.exe"), "old fixture version");
                 await File.WriteAllTextAsync(Path.Combine(root, "config.json"), "existing classroom binding");
                 await File.WriteAllTextAsync(Path.Combine(root, "island-settings.json"), "existing local preferences");

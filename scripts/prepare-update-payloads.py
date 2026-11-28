@@ -181,7 +181,8 @@ def _store_payload(source: Path, directory: Path, info: dict):
 
 def prepare_release(project_file: Path, executable: Path, release_directory: Path, *,
                     voice_directory: Path | None = None,
-                    previous_release_directory: Path | None = None) -> dict:
+                    previous_release_directory: Path | None = None,
+                    webview2_cab: Path | None = None) -> dict:
     """Always publish full file payloads; advertise only smaller, verified RAW patches."""
     versions = {element.text.strip() for element in ET.parse(project_file).getroot().iter()
                 if element.tag.rsplit("}", 1)[-1] == "Version" and element.text and element.text.strip()}
@@ -194,6 +195,21 @@ def prepare_release(project_file: Path, executable: Path, release_directory: Pat
     if voice_directory is not None:
         for relative, value in _voice_files(voice_directory.resolve()).items():
             sources["VoiceResources/" + relative] = value
+        manifest_path = _safe_child(release_directory, "program-manifest.json")
+        runtime = json.loads(manifest_path.read_text("utf-8-sig")).get("webView2") if manifest_path.is_file() else None
+        if runtime is not None or webview2_cab is not None:
+            try:
+                _validate_info(runtime)
+                if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", str(runtime.get("version", ""))):
+                    raise ValueError("Invalid fixed runtime version")
+                cab = webview2_cab or _safe_child(release_directory, "WebView2-x64.cab")
+                info = _file_info(cab)
+                if not info["size"] or info != {"size": runtime["size"], "sha256": runtime["sha256"]}:
+                    raise ValueError("Cabinet size or checksum mismatch")
+            except ValueError as error:
+                raise ValueError(f"Invalid WebView2 update payload: {error}") from error
+            # The existing classroom updater accepts this resource path, including on pre-WebView2 releases.
+            sources["VoiceResources/WebView2-x64.cab"] = (cab.resolve(), info)
     previous = _previous_files(previous_release_directory)
     if previous_release_directory is not None and release_directory.resolve() == previous_release_directory.resolve():
         raise ValueError("Previous and new release directories must differ")
@@ -208,7 +224,7 @@ def prepare_release(project_file: Path, executable: Path, release_directory: Pat
             _store_payload(source, payload_directory, info)
             entry = {"path": relative, **info, "deltas": []}
             old = previous.get(relative.casefold())
-            if old is not None and old["sha256"] != info["sha256"]:
+            if old is not None and old["sha256"] != info["sha256"] and relative != "VoiceResources/WebView2-x64.cab":
                 old_source = _safe_child(previous_release_directory, "payloads/" + old["sha256"])
                 if _file_info(old_source) != {"size": old["size"], "sha256": old["sha256"]}:
                     raise ValueError(f"Previous payload checksum or size mismatch: {relative}")
@@ -239,11 +255,13 @@ def main():
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--release-directory", type=Path, required=True)
     parser.add_argument("--voice-directory", type=Path)
+    parser.add_argument("--webview2-cab", type=Path)
     parser.add_argument("--previous-release-directory", type=Path)
     args = parser.parse_args()
     plan = prepare_release(args.project, args.executable, args.release_directory,
                            voice_directory=args.voice_directory,
-                           previous_release_directory=args.previous_release_directory)
+                           previous_release_directory=args.previous_release_directory,
+                           webview2_cab=args.webview2_cab)
     delta_count = sum(len(entry["deltas"]) for entry in plan["files"])
     print(f"Update {plan['version']}: {len(plan['files'])} files, {delta_count} verified MSDelta patches; {args.release_directory}")
 

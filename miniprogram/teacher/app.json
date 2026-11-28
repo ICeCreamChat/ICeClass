@@ -5,9 +5,7 @@
     "pages/paper-cards/index", "pages/paper-accounts/index", "pages/questions/index",
     "pages/homework/index", "pages/homework-manage/index", "pages/reading/index", "pages/reading-settings/index",
     "pages/classes/index", "pages/users/index", "pages/controls/index", "pages/device-settings/index",
-    "pages/connection-settings/index", "pages/quota-settings/index",
-    "pages/island/index", "pages/quiet/index", "pages/study/index",
-    "pages/voice/index", "pages/banban/index", "pages/ideas/index"
+    "pages/island/index", "pages/quiet/index", "pages/voice/index", "pages/ideas/index"
   ],
   "window": {
     "navigationBarTitleText": "班伴教师工作台",

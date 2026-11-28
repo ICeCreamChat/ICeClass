@@ -35,6 +35,12 @@ class CardQuiz(SessionHandlers, RelayHandlers):
         self.preview_offers = {}
         self.preview_turn = PreviewTurn(os.environ.get('ICECLASS_VIDEOBOOTH_CONNECT_URL', ''))
         self.db.db.executescript(SCHEMA)
+        self.db.run('''CREATE INDEX IF NOT EXISTS idx_card_quiz_history
+            ON card_quiz_sessions(class_id,started_at,id)''')
+        self.db.run('''CREATE INDEX IF NOT EXISTS idx_card_quiz_subject_history
+            ON card_quiz_sessions(class_id,subject_id,started_at,id)''')
+        if 'publication_id' not in {row['name'] for row in self.db.all('PRAGMA table_info(card_quiz_sessions)')}:
+            self.db.run('ALTER TABLE card_quiz_sessions ADD COLUMN publication_id TEXT REFERENCES card_quiz_publications(id)')
         if 'scan_key_hash' not in {row['name'] for row in self.db.all('PRAGMA table_info(card_quiz_pairs)')}:
             self.db.run('ALTER TABLE card_quiz_pairs ADD COLUMN scan_key_hash TEXT')
         if 'rejection_origin' not in {row['name'] for row in self.db.all('PRAGMA table_info(card_quiz_commands)')}:

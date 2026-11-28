@@ -8,7 +8,7 @@ using NAudio.Wave.SampleProviders;
 
 internal static class SpeakerFocusChecks
 {
-    internal static void Run(string output)
+    internal static void Run(string output, string? replayCorpus = null)
     {
         Directory.CreateDirectory(output);
         var checks = new List<object>();
@@ -130,6 +130,24 @@ internal static class SpeakerFocusChecks
             clicked.Feed(otherQuestion, waitForResult: false);
             Check(clicked.Delivered.Count == clickedBefore && clicked.Failures.IsEmpty,
                 "ending a clicked conversation clears speaker enrollment and does not accept another speaker");
+            if (replayCorpus is not null)
+            {
+                clicked.EchoAvailable(false);
+                foreach (var (file, expected) in new[] {
+                    ("speech-9.wav", "Open Steam"), ("speech-20.wav", "等差数列的前n项和"), ("speech-21.wav", "等比数列的前n项和")
+                })
+                {
+                    var previous = clicked.Delivered.Count;
+                    clicked.StartManually();
+                    using var reader = new AudioFileReader(Path.Combine(replayCorpus, file));
+                    clicked.Feed(Read(new WdlResamplingSampleProvider(reader, 16000)));
+                    var delivered = clicked.Delivered.Skip(previous).ToArray();
+                    Check(delivered is [{ Final: true, Unrecognized: false } result] && clicked.Failures.IsEmpty
+                        && string.Equals(result.Text.TrimEnd('.', '。'), expected, StringComparison.OrdinalIgnoreCase),
+                        "recorded PCM through speaker focus and the dialogue worker: " + expected + " => " +
+                        string.Join(" / ", delivered.Select(r => r.Text)));
+                }
+            }
         }
         Check(input.Failures.IsEmpty, "the complete input path finishes without capture or inference errors");
         File.WriteAllText(Path.Combine(output, "speaker-focus-checks.json"), JsonSerializer.Serialize(new {

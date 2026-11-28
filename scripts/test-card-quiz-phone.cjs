@@ -10,13 +10,15 @@ before(async()=>{browser=await chromium.launch({channel:process.platform==='win3
 after(async()=>{await browser?.close();});
 const copy=x=>JSON.parse(JSON.stringify(x));
 const scanInvite='T'.repeat(32);
-async function open({unknown=false,status='pending',roundStatus='collecting',questionType='single',optionCount=4,previousPair=false,manualLogin=false,setupCamera,scan}={}){
+async function open({unknown=false,status='pending',roundStatus='collecting',questionType='single',optionCount=4,
+  previousPair=false,manualLogin=false,setupCamera,scan,withoutQuerySize=false}={}){
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'}),page=await context.newPage();
   const fixture={unknown,status,pollStatus:200,commands:[],receipts:[],errors:[],claims:[],state:{sessionId:'session-1',className:'测试班',subjectId:'math',questionId:'question-1',questionNumber:1,questionType:'single',optionCount:4,roundId:'round-1',roundStatus:'collecting',source:'phone',sourceId:'pair-1',generation:2,seq:3,received:0,expected:2,ended:false}};
   fixture.state.roundStatus=roundStatus;
   fixture.state.questionType=questionType;fixture.state.optionCount=optionCount;
   fixture.sessionChecks=0;fixture.scanKeys=[];fixture.scanClaims=[];fixture.waiting=scan?.waiting;
   if(questionType==='multiple'){fixture.state.activeOption='A';fixture.state.optionReceived=0;}
+  if(withoutQuerySize)await page.addInitScript(()=>{delete URLSearchParams.prototype.size;});
   if(setupCamera)await page.addInitScript(setupCamera);
   else await page.addInitScript(()=>{window.CardQuizScanner=class{
     constructor(options){window.testScanner=this;this.options=options;this.running=false;this.starts=0;}
@@ -59,7 +61,9 @@ async function open({unknown=false,status='pending',roundStatus='collecting',que
         fixture.state.sourceId==='pair-1' && !fixture.state.ended;
       const requested=url.searchParams.get('preview');
       const preview=requested && fixture.preview ? (requested===fixture.preview.id ? {id:requested} : fixture.preview) : undefined;
-      return fixture.pollStatus===200?fulfill({state:fixture.waiting?null:copy(fixture.state),connected:!fixture.waiting&&connected,boardOnline:fixture.waiting?fixture.boardOnline!==false:undefined,receipts:copy(fixture.receipts),preview}):fulfill({error:'配对授权已失效'},fixture.pollStatus);
+      const ids=new Set(url.searchParams.getAll('commandId'));
+      const receipts=fixture.receipts.filter(receipt=>ids.has(receipt.id));
+      return fixture.pollStatus===200?fulfill({state:fixture.waiting?null:copy(fixture.state),connected:!fixture.waiting&&connected,boardOnline:fixture.waiting?fixture.boardOnline!==false:undefined,receipts,preview}):fulfill({error:'配对授权已失效'},fixture.pollStatus);
     }
     if(url.pathname==='/api/card-quiz/pairs/pair-1/preview'){
       const {id}=route.request().postDataJSON();
@@ -93,7 +97,7 @@ async function open({unknown=false,status='pending',roundStatus='collecting',que
 }
 
 test('扫白板新码直接进入收答，丢失领取回执或刷新后仍使用同一把手机密钥',async()=>{
-  const {page,context,fixture}=await open({previousPair:true,scan:{loseFirst:true,waiting:true},questionType:'multiple'});
+  const {page,context,fixture}=await open({previousPair:true,scan:{loseFirst:true,waiting:true},questionType:'multiple',withoutQuerySize:true});
   try {
     await page.getByText('正在连接白板',{exact:true}).waitFor();
     assert.equal(new URL(page.url()).hash,'');
@@ -123,6 +127,54 @@ test('扫白板新码直接进入收答，丢失领取回执或刷新后仍使�
     assert.deepEqual(fixture.scanClaims,[scanInvite,scanInvite]);
     assert.match(fixture.scanKeys[0],/^[0-9a-f]{64}$/);
     assert.equal(new Set(fixture.scanKeys).size,1);
+    assert.deepEqual(fixture.errors,[]);
+  } finally { await context.close(); }
+});
+
+test('缺少 URLSearchParams.size 时 52 张卡逐条确认，超过一分钟仍可取景收答',{timeout:20000},async()=>{
+  const {page,context,fixture}=await open({scan:{},withoutQuerySize:true});
+  try {
+    await page.getByRole('button',{name:'关闭相机'}).waitFor();
+    assert.equal(await page.evaluate(()=>'size' in new URLSearchParams()),false);
+    const submittedAt=Date.now();
+    await page.clock.setFixedTime(submittedAt);
+    const cards=Array.from({length:52},(_,index)=>index+1);
+    fixture.state.expected=cards.length;
+    const posted=page.waitForResponse(response=>response.url().endsWith('/commands') && fixture.commands.length===cards.length);
+    await page.evaluate(numbers=>{
+      window.cardResults=Promise.allSettled(numbers.map(cardNumber=>testScanner.options.onRead({cardNumber,option:'A'})));
+    },cards);
+    await posted;
+    await page.getByText('52 条待白板确认',{exact:true}).waitFor();
+    assert.equal(await page.locator('#received').innerText(),'0');
+
+    const isPairPoll=request=>new URL(request.url()).pathname==='/api/card-quiz/pairs/pair-1';
+    const poll=page.waitForResponse(async response=>
+      isPairPoll(response) && (await response.json()).state.received===cards.length);
+    fixture.receipts=fixture.commands.map(({id},index)=>{
+      const state={...fixture.state,seq:fixture.state.seq+index+1,received:index+1};
+      return {id,status:'confirmed',result:{seq:state.seq,status:'confirmed',state}};
+    });
+    fixture.state=fixture.receipts.at(-1).result.state;
+    const query=new URL((await poll).url()).searchParams;
+    await page.locator('#progress-ring[aria-valuenow="52"]').waitFor();
+
+    await page.clock.setFixedTime(submittedAt+61000);
+    const later=new URL((await page.waitForResponse(isPairPoll)).url()).searchParams;
+    const outcome=await page.evaluate(async()=>({
+      confirmed:(await window.cardResults).filter(result=>result.status==='fulfilled').length,
+      scanning:testScanner.running,
+      submission:document.getElementById('submission-status').textContent
+    }));
+    const ids=query.getAll('commandId');
+    assert.deepEqual({requested:ids.length,preview:query.get('preview'),...outcome},
+      {requested:52,preview:'open',confirmed:52,scanning:true,submission:''});
+    assert.equal(new Set(ids).size,52);
+    assert.deepEqual(ids.sort(),fixture.commands.map(command=>command.id).sort());
+    assert.deepEqual(fixture.commands.map(command=>command.payload.cardNumber).sort((a,b)=>a-b),cards);
+    assert.deepEqual([...later],[['preview','open']]);
+    await page.getByRole('button',{name:'关闭相机'}).click();
+    assert.equal((await page.waitForRequest(isPairPoll)).url(),origin+'/api/card-quiz/pairs/pair-1');
     assert.deepEqual(fixture.errors,[]);
   } finally { await context.close(); }
 });
@@ -268,7 +320,7 @@ test('扫码收四项沿用同一镜头，封存释放，下一题跟随白板�
 });
 
 test('教师登录后手动配对，白板确认再开放相机，轮间工具不占收答画面',async()=>{
-  const {page,context,fixture}=await open({manualLogin:true});
+  const {page,context,fixture}=await open({manualLogin:true,withoutQuerySize:true});
   try{
     assert.equal(await page.locator('#question-form').isVisible(),false);
     await page.getByLabel('账号',{exact:true}).fill('teacher');
@@ -463,7 +515,7 @@ async function connectPreviewBoard(page,fixture,{video,legacyPhone=false}){
 }
 
 test('扫码手机短时断网后复用镜头和取景，丢失的发送回执按原请求查询',async()=>{
-  const {page,context,fixture}=await open({scan:{},setupCamera:previewCamera});
+  const {page,context,fixture}=await open({scan:{},setupCamera:previewCamera,withoutQuerySize:true});
   try{
     await page.getByRole('button',{name:'关闭相机'}).waitFor();
     await connectPreviewBoard(page,fixture,{video:true});
@@ -587,7 +639,7 @@ test('扫描新二维码优先配对新课堂，不沿用手机上的旧连接',
 });
 
 test('手机接力可恢复白板暂停的同一轮，确认前不打开相机',async()=>{
-  const {context,page,fixture}=await open({roundStatus:'paused'});
+  const {context,page,fixture}=await open({roundStatus:'paused',withoutQuerySize:true});
   try {
     assert.equal(await page.locator('#start').innerText(),'恢复本轮');
     assert.equal(await page.locator('#camera').isVisible(),false);

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 namespace ICeClass.Receiver;
 
@@ -8,6 +9,12 @@ internal sealed class BanbanSpeechRecognizer : IDisposable
 {
     internal const string EngineName = "sherpa-onnx SenseVoiceSmall INT8 (local utterance recognition)";
     private readonly SenseVoiceRecognizer _recognizer;
+    private static readonly Regex AmbiguousSteamCommand = new(
+        @"\A(?<verb>(?:please )?open)(?:s?team| steamam)(?<end>[.!?]?)\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex SequenceSumRequest = new(
+        @"\A(?<topic>(?:请问[，, ]*|请)?(?:求|计算)?等[差比]数列的)[前钱](?<index> *[nN] *)[项向]和" +
+        @"(?<end>(?:的?公式)?(?:是什么|是多少|怎么求|怎么算)?[。？！.!?]?)\z");
 
     internal BanbanSpeechRecognizer(string? modelFolder = null, string language = "auto", bool useInverseTextNormalization = true)
     {
@@ -23,6 +30,28 @@ internal sealed class BanbanSpeechRecognizer : IDisposable
         return new(_recognizer.Recognize(samples), true);
     }
 
+    internal BanbanSpeechResult RecognizeDialogue(BanbanSpeechAudio audio)
+    {
+        var firstPass = Recognize(audio.Samples);
+        if (!audio.Final) return firstPass with { Final = false };
+        if (firstPass.Text.Length == 0) return firstPass;
+        var text = ApplyClassroomContext(firstPass.Text, () => _recognizer.Recognize(audio.Samples, withoutItn: true));
+        return text == firstPass.Text ? firstPass : firstPass with { Text = text, RawText = firstPass.Text };
+    }
+
+    internal static string ApplyClassroomContext(string text, Func<string> recognizeVerbatim)
+    {
+        var command = AmbiguousSteamCommand.Match(text);
+        if (!command.Success)
+            return SequenceSumRequest.Replace(text, "${topic}前${index}项和${end}");
+
+        // Only restore a launch request if a second decoding of the same PCM
+        // independently contains the verb and the separate application name.
+        var verb = command.Groups["verb"].Value;
+        return string.Equals(recognizeVerbatim(), verb + " steam", StringComparison.OrdinalIgnoreCase)
+            ? verb + " Steam" + command.Groups["end"].Value : text;
+    }
+
     public void Dispose() => _recognizer.Dispose();
 }
 
@@ -34,7 +63,7 @@ internal sealed record BanbanSpeechJob(BanbanSpeechAudio Audio, int Generation, 
 internal sealed class BanbanSpeechDecoder : IDisposable
 {
     private readonly BlockingCollection<BanbanSpeechJob> _jobs = new(2);
-    private readonly Func<float[], BanbanSpeechResult> _recognize;
+    private readonly Func<BanbanSpeechAudio, BanbanSpeechResult> _recognize;
     private readonly Func<int, bool> _current;
     private readonly Action<BanbanSpeechJob, BanbanSpeechResult, double> _complete;
     private readonly Action<Exception> _failed;
@@ -43,7 +72,7 @@ internal sealed class BanbanSpeechDecoder : IDisposable
     private int _stopped;
     private bool _started;
 
-    internal BanbanSpeechDecoder(Func<float[], BanbanSpeechResult> recognize, Func<int, bool> current,
+    internal BanbanSpeechDecoder(Func<BanbanSpeechAudio, BanbanSpeechResult> recognize, Func<int, bool> current,
         Action<BanbanSpeechJob, BanbanSpeechResult, double> complete, Action<Exception> failed, Action release)
     {
         _recognize = recognize; _current = current; _complete = complete; _failed = failed; _release = release;
@@ -77,7 +106,7 @@ internal sealed class BanbanSpeechDecoder : IDisposable
     {
         if (!_current(job.Generation)) return;
         var start = Environment.TickCount64;
-        var result = _recognize(job.Audio.Samples) with {
+        var result = _recognize(job.Audio) with {
             Final = job.Audio.Final, DuringPlayback = job.ControlsOnly || job.Audio.DuringPlayback
         };
         if (Volatile.Read(ref _stopped) == 0 && _current(job.Generation))

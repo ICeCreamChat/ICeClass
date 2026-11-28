@@ -56,6 +56,10 @@ if (args is [("--card-check-small" or "--card-check-review"), var cardOutput, va
 if (args is ["--homework-review", var compactBinding, "--compact"]) { HomeworkReview.Run(compactBinding, compact: true); return; }
 if (args is ["--classroom-home-checks"]) { await ClassroomHomeChecks.Run(); return; }
 if (args is ["--classroom-ui-checks", var classroomUiOutput]) { ClassroomUiChecks.Run(classroomUiOutput); return; }
+if (args is ["--classroom-webview-checks", var expectedRuntime, var installedCandidate, var runtimeCheckVideo])
+{ ClassroomWebViewChecks.Run(expectedRuntime, installedCandidate == "system" ? null : installedCandidate, runtimeCheckVideo); return; }
+if (args is ["--classroom-package-update", var releaseEndpoint, var previousVersion, var isolatedBinding])
+{ await ClassroomWebViewChecks.UpgradeAsync(releaseEndpoint, previousVersion, isolatedBinding); return; }
 if (args is ["--acknowledgements-checks", var acknowledgementsOutput])
 {
     try { await AcknowledgementClientChecks.Run(acknowledgementsOutput); }
@@ -183,15 +187,15 @@ if (args is ["--neural-formula-review", var formulaInput, var formulaOutput])
     return;
 }
 
-if (args is ["--voice-checks", var voiceOutput])
+if (args is ["--voice-checks", _] or ["--voice-checks", _, "--replay", _])
 {
-    try { BanbanVoiceChecks.Run(voiceOutput); }
+    try { BanbanVoiceChecks.Run(args[1], replayCorpus: args.Length == 4 ? args[3] : null); }
     catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     return;
 }
-if (args is ["--speaker-focus-checks", var speakerOutput])
+if (args is ["--speaker-focus-checks", _] or ["--speaker-focus-checks", _, "--replay", _])
 {
-    try { SpeakerFocusChecks.Run(speakerOutput); }
+    try { SpeakerFocusChecks.Run(args[1], replayCorpus: args.Length == 4 ? args[3] : null); }
     catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     return;
 }

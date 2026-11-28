@@ -9,6 +9,24 @@ internal sealed class CardQuizStore
 {
     private readonly string _root, _classId, _deviceId;
     private readonly object _gate = new();
+    private readonly Dictionary<string, (FileStamp Stamp, JournalStatus Status)> _statuses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (FileStamp Stamp, int Seq)> _receiptProgress = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly record struct FileStamp(long Length, DateTime LastWrite)
+    {
+        internal static FileStamp Of(FileInfo file) => new(file.Length, file.LastWriteTimeUtc);
+    }
+
+    // Keep just the fields used by the status line and the list of recoverable lessons.
+    private sealed record JournalStatus(string Id, int Seq, int SyncedSeq, string? ReviewError,
+        string? SubjectId, long? StartedAt, long? EndedAt)
+    {
+        internal JsonObject ToJson() => new() {
+            ["session"] = new JsonObject { ["id"] = Id, ["seq"] = Seq, ["subjectId"] = SubjectId,
+                ["startedAt"] = StartedAt, ["endedAt"] = EndedAt },
+            ["syncedSeq"] = SyncedSeq, ["reviewError"] = ReviewError
+        };
+    }
     internal CardQuizStore(string root, string classId, string deviceId)
     {
         _root = Path.GetFullPath(root); _classId = classId; _deviceId = deviceId;
@@ -27,23 +45,89 @@ internal sealed class CardQuizStore
             return File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : null;
         }
     }
-    internal JsonObject Load()
+    private JsonObject ReadJournal(FileInfo file)
+    {
+        var stamp = FileStamp.Of(file);
+        var journal = JsonNode.Parse(File.ReadAllText(file.FullName)) as JsonObject ?? throw new InvalidDataException("课堂记录格式无效。");
+        Validate(journal);
+        var session = journal["session"]!;
+        var id = session["id"]!.GetValue<string>();
+        if (!string.Equals(file.Name, id + ".json", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("课堂编号与本机记录不匹配。");
+        _statuses[file.FullName] = (stamp, new JournalStatus(id, session["seq"]!.GetValue<int>(),
+            journal["syncedSeq"]?.GetValue<int>() ?? 0, journal["reviewError"]?.GetValue<string>(),
+            session["subjectId"]?.GetValue<string>(), session["startedAt"]?.GetValue<long>(), session["endedAt"]?.GetValue<long>()));
+        return journal;
+    }
+    internal JsonObject ReadJournal(string id)
     {
         lock (_gate)
         {
-            var journals = new JsonArray(); var errors = new JsonArray();
-            foreach (var file in Directory.EnumerateFiles(Path.Combine(_root, "sessions"), "*.json"))
+            try { return ReadJournal(new FileInfo(SessionPath(id))); }
+            catch (FileNotFoundException) { throw new InvalidDataException("本机课堂不存在。"); }
+        }
+    }
+    private JournalStatus Status(FileInfo file)
+    {
+        if (_statuses.TryGetValue(file.FullName, out var cached) && cached.Stamp == FileStamp.Of(file)) return cached.Status;
+        ReadJournal(file);
+        return _statuses[file.FullName].Status;
+    }
+    private IEnumerable<T> ReadSessions<T>(Func<FileInfo, T> read, JsonArray? errors = null)
+    {
+        foreach (var file in new DirectoryInfo(Path.Combine(_root, "sessions")).EnumerateFiles("*.json"))
+        {
+            T value;
+            try { value = read(file); }
+            catch (Exception error) when (error is JsonException or InvalidDataException or InvalidOperationException
+                or IOException or UnauthorizedAccessException or FormatException or OverflowException)
             {
-                try
-                {
-                    var journal = JsonNode.Parse(File.ReadAllText(file))!.AsObject(); Validate(journal);
-                    journals.Add(journal);
-                }
-                catch (Exception error) when (error is JsonException or InvalidDataException or InvalidOperationException or IOException)
-                { errors.Add($"课堂 {Path.GetFileNameWithoutExtension(file)} 的本机记录无法读取，原文件已保留，请核对。"); }
+                errors?.Add($"课堂 {Path.GetFileNameWithoutExtension(file.Name)} 的本机记录无法读取，原文件已保留，请核对。");
+                continue;
             }
+            yield return value;
+        }
+    }
+    internal JsonObject Load(string? sessionId = null)
+    {
+        lock (_gate)
+        {
+            var errors = new JsonArray();
+            var journals = sessionId is null ? new JsonArray(ReadSessions(ReadJournal, errors).ToArray()) : new JsonArray(ReadJournal(sessionId));
             return new JsonObject { ["journals"] = journals, ["errors"] = errors };
         }
+    }
+    internal JsonObject LoadStatus(string? currentId = null)
+    {
+        lock (_gate)
+        {
+            var errors = new JsonArray();
+            var journals = ReadSessions(Status, errors).Where(s => currentId is null ||
+                string.Equals(s.Id, currentId, StringComparison.OrdinalIgnoreCase) ||
+                s.EndedAt is null || s.SyncedSeq < s.Seq || !string.IsNullOrEmpty(s.ReviewError));
+            return new JsonObject { ["journals"] = new JsonArray(journals.Select(s => s.ToJson()).ToArray()), ["errors"] = errors };
+        }
+    }
+    internal string[] PendingSessionIds(bool retry)
+    {
+        lock (_gate)
+            return ReadSessions(Status).Where(s => (retry || string.IsNullOrEmpty(s.ReviewError)) &&
+                (s.SyncedSeq != s.Seq || ReceiptSequence(s.Id) != s.Seq)).Select(s => s.Id).ToArray();
+    }
+    private int? ReceiptSequence(string id)
+    {
+        var file = new FileInfo(CachePath("receipt-" + id));
+        if (!file.Exists) return 0; // Legacy journals may have events on the server but no receipt checkpoint.
+        try
+        {
+            var stamp = FileStamp.Of(file);
+            if (_receiptProgress.TryGetValue(file.FullName, out var cached) && cached.Stamp == stamp) return cached.Seq;
+            var seq = LoadCache("receipt-" + id)?["seq"]?.GetValue<int>() ?? 0;
+            _receiptProgress[file.FullName] = (stamp, seq);
+            return seq;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or IOException or FormatException)
+        { return null; } // Let the sync attempt report the unreadable checkpoint and retry it.
     }
     private void Validate(JsonObject journal)
     {
@@ -131,7 +215,7 @@ internal sealed class CardQuizStore
             }
             var json = journal.ToJsonString();
             if (Encoding.UTF8.GetByteCount(json) > 16 * 1024 * 1024) throw new InvalidDataException("本课堂记录已达到保存上限，请结束后另开课堂。");
-            Write(SessionPath(id), json); return journal;
+            WriteJournal(id, json); return journal;
         }
     }
     private static bool StartsWithQuestion(JsonNode session, JsonNode entry)
@@ -157,7 +241,7 @@ internal sealed class CardQuizStore
             var journal = Read(id) ?? throw new InvalidDataException("本机课堂不存在。");
             if (through < (journal["syncedSeq"]?.GetValue<int>() ?? 0) || through > journal["session"]!["seq"]!.GetValue<int>())
                 throw new InvalidDataException("同步回执序号无效。");
-            journal["syncedSeq"] = through; journal["reviewError"] = null; Write(SessionPath(id), journal.ToJsonString());
+            journal["syncedSeq"] = through; journal["reviewError"] = null; WriteJournal(id, journal.ToJsonString());
         }
     }
     internal void MarkReview(string id, string reason)
@@ -165,8 +249,14 @@ internal sealed class CardQuizStore
         lock (_gate)
         {
             var journal = Read(id) ?? throw new InvalidDataException("本机课堂不存在。");
-            journal["reviewError"] = reason; Write(SessionPath(id), journal.ToJsonString());
+            journal["reviewError"] = reason; WriteJournal(id, journal.ToJsonString());
         }
+    }
+    private void WriteJournal(string id, string json)
+    {
+        var path = SessionPath(id);
+        Write(path, json);
+        _statuses.Remove(path);
     }
     private string CachePath(string name)
     {
@@ -180,7 +270,15 @@ internal sealed class CardQuizStore
     {
         lock (_gate) { var path = CachePath(name); return File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : null; }
     }
-    internal void SaveCache(string name, JsonObject value) { lock (_gate) Write(CachePath(name), value.ToJsonString()); }
+    internal void SaveCache(string name, JsonObject value)
+    {
+        lock (_gate)
+        {
+            var path = CachePath(name);
+            Write(path, value.ToJsonString());
+            _receiptProgress.Remove(path);
+        }
+    }
     private static void Write(string path, string value)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

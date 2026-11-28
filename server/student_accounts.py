@@ -12,6 +12,8 @@ from aiohttp import web
 
 from card_quiz_models import QuizError, array, fail, identifier, integer, new_id, revision, unique
 from homework import SHANGHAI, school_year_start, today
+from student_report_demo import PAGE as DEMO_PAGE, TOKEN_PREFIX as DEMO_TOKEN_PREFIX, StudentReportDemo
+from student_lesson_analysis import StudentLessonAnalysis
 from student_reports import StudentReports
 from teacher_capabilities import teacher_action, teacher_manual, teacher_read
 
@@ -54,6 +56,7 @@ class StudentAccounts(StudentReports):
     def __init__(self, app, service, quiz):
         self.service, self.quiz, self.db = service, quiz, app[service.STORE_KEY]
         self.db.db.executescript(SCHEMA)
+        self.demo = StudentReportDemo(self, COOKIE)
         with self.db.transaction():
             if 'holder_card_number' not in {col['name'] for col in self.db.all('PRAGMA table_info(student_accounts)')}:
                 self.db.run('ALTER TABLE student_accounts ADD COLUMN holder_card_number INTEGER CHECK(holder_card_number BETWEEN 1 AND 157)')
@@ -272,11 +275,14 @@ class StudentAccounts(StudentReports):
         return await self.write_number_cards(request, reset=True)
 
     async def new_passwords(self, accounts):
+        demo_hashes = {row['account_id']: row['password_hash'] for row in
+                       self.db.all('SELECT account_id,password_hash FROM student_report_demo_access')}
         def prepare():
             result = []
             for account in accounts:
                 password = f'{secrets.randbelow(1_000_000):06d}'
-                if account.get('password_hash') and self.service.verify_password(password, account['password_hash']):
+                reserved = (account.get('password_hash'), demo_hashes.get(account['id']))
+                while any(encoded and self.service.verify_password(password, encoded) for encoded in reserved):
                     password = f'{(int(password) + 1) % 1_000_000:06d}'
                 result.append((password, self.service.hash_password(password)))
             return result
@@ -434,13 +440,18 @@ class StudentAccounts(StudentReports):
         fail('密码输入错误次数过多，请稍后重试。' if blocked else '学生编号或密码错误。',
              429 if blocked else 401, 'rate_limited' if blocked else 'invalid_credentials')
 
-    async def check_password(self, request, account, password, username):
+    async def check_password(self, request, account, password, username, *, demo_hash=None):
         context = self.failure_context(request, username)
-        if (not isinstance(password, str) or not re.fullmatch(r'[0-9]{6}', password)
-                or not account or not await asyncio.to_thread(self.service.verify_password, password, account['password_hash'])):
+        if not account or not isinstance(password, str) or not re.fullmatch(r'[0-9]{6}', password):
             self.wrong_password(*context)
+        demo = False
+        if not await asyncio.to_thread(self.service.verify_password, password, account['password_hash']):
+            if not demo_hash or not await asyncio.to_thread(self.service.verify_password, password, demo_hash):
+                self.wrong_password(*context)
+            demo = True
         self.failure_context(request, username)
         self.db.run('DELETE FROM login_failures WHERE key=?', (context[0],))
+        return demo
 
     @teacher_manual(STUDENT_REASON)
     async def login(self, request):
@@ -449,22 +460,30 @@ class StudentAccounts(StudentReports):
         username = username.strip() if isinstance(username, str) else ''
         if not re.fullmatch(r'[0-9]{7,9}', username):
             username = ''
-        account = self.db.one(f'''SELECT a.* FROM student_accounts a JOIN classes c ON c.id=a.class_id
+        account = self.db.one(f'''SELECT a.*,d.password_hash AS demo_hash FROM student_accounts a JOIN classes c ON c.id=a.class_id
+            LEFT JOIN student_report_demo_access d ON d.account_id=a.id AND a.holder_card_number IS NOT NULL
             WHERE a.username=? AND a.enabled=1 AND c.enabled=1
             AND (holder_card_number IS NULL OR {NUMBER_CARD_LOGIN})''', (username,))
-        await self.check_password(request, account, body.get('password'), username)
+        demo_hash = account['demo_hash'] if account else None
+        demo = await self.check_password(request, account, body.get('password'), username, demo_hash=demo_hash)
         token, csrf = self.service.random_token(), self.service.random_token(24)
         timestamp = self.service.now_ms()
+        expires = timestamp + self.service.SESSION_DAYS * 86_400_000
         with self.db.transaction():
             current = self.db.one('SELECT * FROM student_accounts WHERE id=? AND username=? AND enabled=1',
                                   (account['id'], username))
             if not current or current['revision'] != account['revision'] or not self.class_info(current['class_id'])['enabled']:
                 fail('账号已变化，请重新登录。', 401)
-            self.db.run('INSERT INTO student_sessions(token_hash,account_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,?)',
-                        (self.service.sha256(token), account['id'], csrf,
-                         timestamp + self.service.SESSION_DAYS * 86_400_000, timestamp))
-        account['csrf_token'] = csrf
-        response = self.quiz.reply({'student': self.public_student(account)})
+            if demo:
+                token = DEMO_TOKEN_PREFIX + token
+                self.demo.start(account, demo_hash, token, csrf, expires)
+                student = {'username': username, 'reportExample': True, 'csrfToken': csrf}
+            else:
+                self.db.run('INSERT INTO student_sessions(token_hash,account_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,?)',
+                            (self.service.sha256(token), account['id'], csrf, expires, timestamp))
+                account['csrf_token'] = csrf
+                student = self.public_student(account)
+        response = self.quiz.reply({'student': student})
         response.set_cookie(COOKIE, token, path='/', httponly=True, secure=True, samesite='Strict',
                             max_age=self.service.SESSION_DAYS * 86_400)
         return response
@@ -481,8 +500,11 @@ class StudentAccounts(StudentReports):
 
     @teacher_manual(STUDENT_REASON)
     async def logout(self, request):
-        account = self.require_student(request)
-        self.db.run('DELETE FROM student_sessions WHERE token_hash=?', (account['token_hash'],))
+        if self.demo.has_cookie(request):
+            self.demo.logout(request)
+        else:
+            account = self.require_student(request)
+            self.db.run('DELETE FROM student_sessions WHERE token_hash=?', (account['token_hash'],))
         response = self.quiz.reply({'ok': True})
         response.del_cookie(COOKIE, path='/', secure=True, httponly=True, samesite='Strict')
         return response
@@ -521,11 +543,21 @@ class StudentAccounts(StudentReports):
         return self.quiz.reply({'card': self.credential(current, body['password'])})
 
 
-def install(app, service, quiz):
+def install(app, service, quiz, banban):
     feature = StudentAccounts(app, service, quiz)
+    lesson_analysis = StudentLessonAnalysis(feature, banban)
+    app.on_cleanup.append(lesson_analysis.close)
 
     @web.middleware
     async def errors(request, handler):
+        if request.method in {'GET', 'HEAD'}:
+            if request.path == DEMO_PAGE and not feature.demo.session(request):
+                raise web.HTTPFound(location='/student', headers={'Cache-Control': 'no-store'})
+            if request.path in {'/student', '/student/', '/card-quiz/student.html'}:
+                if not request.cookies.get(COOKIE):
+                    raise web.HTTPFound(location='/?login=student', headers={'Cache-Control': 'no-store'})
+                if feature.demo.session(request):
+                    raise web.HTTPFound(location=DEMO_PAGE, headers={'Cache-Control': 'no-store'})
         if not request.path.startswith('/api/student/'):
             return await handler(request)
         try:
@@ -545,8 +577,10 @@ def install(app, service, quiz):
     app.router.add_post(base + '/number-cards/reset', feature.reset_number_cards)
     for method, path, handler in (
         ('POST', '/login', feature.login), ('GET', '/session', feature.session),
+        ('GET', '/report-example', feature.demo.report),
         ('POST', '/logout', feature.logout), ('PUT', '/password', feature.change_password),
         ('POST', '/card', feature.card), ('GET', '/report', feature.report), ('GET', '/images/{id}', feature.image),
+        ('POST', '/report/{id}/analysis', lesson_analysis.analyze),
     ):
         app.router.add_route(method, '/api/student' + path, handler)
     return feature

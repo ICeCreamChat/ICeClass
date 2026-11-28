@@ -1,8 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const {test,before,after} = require('node:test');
-const {chromium} = require('playwright');
-const {open,navigate,settingsSection,moveBanbanAside} = require('./test-teacher-ui.cjs');
+const {open,navigate,settingsSection,moveBanbanAside,launchWorkbenchBrowser} = require('./test-teacher-ui.cjs');
 
 function createSettingsFixture(extra) {
   const writes = [];
@@ -58,8 +57,21 @@ module.exports = {createSettingsFixture};
 
 if (require.main === module) {
   let browser;
-  before(async()=>{browser=await chromium.launch({channel:'msedge',headless:true});});
+  before(async()=>{browser=await launchWorkbenchBrowser();});
   after(async()=>{await browser?.close();});
+  test('a confirmation requested immediately after closing another keeps its own title and decision', async t => {
+    const {page} = await setup(t);
+    await page.evaluate(() => {
+      const first = window.ICeClassUI.ask({title:'切换班级', message:'第一次确认'});
+      document.getElementById('workbenchConfirmCancel').click();
+      const second = window.ICeClassUI.ask({title:'再次切换班级', message:'第二次确认'});
+      window.switchDecisions = Promise.all([first, second]);
+    });
+    const dialog = page.getByRole('dialog', {name:'再次切换班级', exact:true});
+    await dialog.waitFor({timeout:3000});
+    await dialog.getByRole('button', {name:'确认', exact:true}).press('Enter');
+    assert.deepEqual(await page.evaluate(() => window.switchDecisions), [false, true]);
+  });
   async function setup(t,options={}) {
     const fixture = createSettingsFixture(options.handle);
     const result = await open(browser,{...options,handle:fixture.handle});
@@ -73,6 +85,20 @@ if (require.main === module) {
     await settingsSection(page,'quota'); await page.locator('#quotaWorkspace:enabled').waitFor();
     await page.locator('#editDefault').click(); await page.locator('#defaultEditor input[type=number]').fill('450');
   }
+  test('settings opens permitted sections and falls back to account without Object.hasOwn', async t => {
+    const {page} = await setup(t, {role:'teacher'});
+    await page.addInitScript(() => { Object.defineProperty(Object, 'hasOwn', {value:undefined}); });
+    await page.reload();
+    await page.locator('#readingRanking[aria-busy="false"]').waitFor();
+    assert.equal(await page.evaluate(() => typeof Object.hasOwn), 'undefined');
+    await settingsSection(page, 'appearance');
+    await page.locator('#teacherAppearance:not([hidden])').waitFor();
+    for (const section of ['unknown', 'constructor', 'quota']) {
+      await page.evaluate(name => { location.hash = '#settings/' + name; }, section);
+      await page.waitForFunction(() => location.hash === '#settings/account');
+      assert.equal(await page.locator('#settingsAccountSection').isVisible(), true);
+    }
+  });
   test('six sections keep drafts, expose only one work area, and defer administration requests',async t=>{
     const {page,requests}=await setup(t); await navigate(page,'settings');
     assert.equal(await page.locator('#view-settings .section-nav a:not([hidden])').count(),6);

@@ -439,9 +439,12 @@
   async function poll(){
     if(polling||!pair||disposed)return;polling=true;const pairId=pair.pairId;
     try{
-      const query=new URLSearchParams();for(const id of pending.keys())query.append('commandId',id);
-      if(scanner.running || scan?.openOnConnect || followRounds)query.set('preview',previewPeer?.id || 'open');
-      const value=await api('/api/card-quiz/pairs/'+encodeURIComponent(pair.pairId)+(query.size?'?'+query:''),undefined,pollTimeout);
+      const query = new URLSearchParams();
+      for (const id of pending.keys()) query.append('commandId', id);
+      if (scanner.running || scan?.openOnConnect || followRounds) query.set('preview', previewPeer?.id || 'open');
+      const search = query.toString();
+      const path = '/api/card-quiz/pairs/' + encodeURIComponent(pairId);
+      const value = await api(search ? path + '?' + search : path, undefined, pollTimeout);
       if(pair?.pairId!==pairId||disposed)return;
       if (scan && value.state === null) {
         connected=false; failures=0; state=null; waitingOffline=value.boardOnline===false;

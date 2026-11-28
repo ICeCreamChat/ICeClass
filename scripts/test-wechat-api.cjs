@@ -23,6 +23,23 @@ async function signedIn(f, id) {
   await promise;
 }
 
+test('sessions saved before active consent cannot be restored, but an accepted session can', async () => {
+  const f = fixture();
+  const key = 'iceclass.wechat.session.v1';
+  f.storage.set(key, { cookie: 'iceclass_session=previous', user: user(), expiresAt: Date.now() + 30000 });
+  const upgraded = createClient(f.runtime);
+  assert.equal(await upgraded.restoreSession(), null);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.storage.has(key), false);
+
+  await signedIn(f);
+  const restarted = createClient(f.runtime);
+  const restored = restarted.restoreSession();
+  assert.equal(f.calls.at(-1).header.Cookie, 'iceclass_session=session-token');
+  f.calls.at(-1).success({ statusCode: 200, data: { authenticated: true, user: user() } });
+  assert.equal((await restored).id, user().id);
+});
+
 test('login retains only the school session cookie, never the password', async () => {
   const f = fixture();
   await signedIn(f);

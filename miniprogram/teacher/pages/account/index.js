@@ -46,17 +46,11 @@ Page({
     try {
       if (!await ui.confirm('退出登录', '退出后需要重新输入学校账号和密码。', '退出登录')) return;
       if (!this._visible || !api.getUser() || api.getUser().id !== owner.id) return;
-      await api.logout(); ui.setDirty(false); wx.reLaunch({ url: '/pages/login/index' });
+      await api.logout(); ui.setDirty(false); wx.reLaunch({ url: '/pages/workbench/index' });
     }
     catch (error) { ui.fail(this, error); }
     finally { this.setData({ busy: false }); }
   },
-  openBanbanSetting(event) {
-    const setting = event.currentTarget.dataset.setting;
-    if (['connection', 'quota'].includes(setting) && !this.data.busy && ui.requireLogin()) {
-      wx.navigateTo({ url: '/pages/' + setting + '-settings/index', fail: () => ui.toast('暂时无法打开设置。') });
-    }
-  },
-  privacy() { wx.navigateTo({ url: '/pages/privacy/index' }); },
+  openAgreement: ui.openAgreement,
   relogin: ui.relogin
 });

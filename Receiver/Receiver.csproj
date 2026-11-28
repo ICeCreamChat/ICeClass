@@ -7,7 +7,7 @@
     <UseWPF>false</UseWPF>
     <AssemblyName>ICeClass</AssemblyName>
     <RootNamespace>ICeClass.Receiver</RootNamespace>
-    <Version>2.5.30</Version>
+    <Version>2.5.31</Version>
     <EmbedVoiceResources Condition="'$(EmbedVoiceResources)' == ''">true</EmbedVoiceResources>
     <Product>ICeClass 班伴</Product>
     <Title>ICeClass 班伴 · 教室端</Title>
@@ -22,6 +22,7 @@
   <ItemGroup>
     <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\acknowledgements-default.json" LogicalName="ICeClass.About.acknowledgements.json" />
+    <EmbeddedResource Include="..\scripts\classroom-webview2.json" LogicalName="ICeClass.Classroom.WebView2.json" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets\Icons\*.svg" LogicalName="ICeClass.Classroom.Icons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\web_controller\assets\banban\icons\chevron-down.svg" LogicalName="ICeClass.Classroom.Icons.chevron-down.svg" />

@@ -395,10 +395,10 @@ test('voice confirmation and cancellation support the new states without dispatc
 test('chat sends only the fresh client catalog and an aborted catalog continuation never submits chat', async () => {
   const start = chatSource.indexOf('  async function streamQuestion('), end = chatSource.indexOf('  function navigate(', start);
   const streamSource = chatSource.slice(start, end) + '\nwindow.streamQuestion = streamQuestion;';
-  for (const abort of [false, true]) {
+  for (const legacy of [false, true]) for (const abort of [false, true]) {
     const h = setup({native:false}), gate = defer(), requests = []; h.page('ideas', '创意计划');
     h.window.ICeClassBanbanOperations.clientCatalog = () => gate.promise;
-    Object.assign(h.context, {scope:{}, conversationId:'local-conversation', navigationRevision:0, disposed:false, voice:null, TextDecoder,
+    Object.assign(h.context, {scope:{}, conversationId:'local-conversation', navigationRevision:0, disposed:false, voice:null, TextDecoder, DOMException,
       fetch:async (url, settings) => {
         requests.push({url, settings}); let sent = false;
         return {ok:true, headers:{get:() => 'application/x-ndjson'}, body:{getReader:() => ({
@@ -406,9 +406,16 @@ test('chat sends only the fresh client catalog and an aborted catalog continuati
         })}};
       }});
     vm.runInContext(streamSource, h.context);
-    const controller = new AbortController(), pending = h.window.streamQuestion('打开创意计划', controller.signal, () => {});
-    if (abort) controller.abort(); gate.resolve({clientId:documentId, actions:[{id:'teacher.page.ideas', title:'创意计划', fields:[], confirmation:false}]});
-    if (abort) await assert.rejects(pending); else await pending;
+    const controller = new AbortController();
+    if (legacy) Object.defineProperties(controller.signal, {throwIfAborted:{value:undefined}, reason:{value:undefined}});
+    const pending = h.window.streamQuestion('打开创意计划', controller.signal, () => {});
+    if (abort) {
+      const reason = new Error('教师已停止');
+      controller.abort(reason);
+      await assert.rejects(pending, legacy ? {name:'AbortError'} : error => error === reason);
+    }
+    gate.resolve({clientId:documentId, actions:[{id:'teacher.page.ideas', title:'创意计划', fields:[], confirmation:false}]});
+    if (abort) await flush(); else await pending;
     assert.equal(requests.length, abort ? 0 : 1);
     if (!abort) assert.equal(JSON.parse(requests[0].settings.body).teacherClient.actions[0].id, 'teacher.page.ideas');
   }

@@ -3,7 +3,7 @@
 const BASE_URL = 'https://iceclass.icecreamchat.top';
 const LOGIN_PATH = '/api/auth/login';
 const STORAGE_KEY = 'iceclass.wechat.session.v1';
-const streamEvents = require('./banban-stream').events;
+const AGREEMENTS_VERSION = 1;
 
 class ApiError extends Error {
   constructor(message, status = 0, data = {}, ambiguous = false) {
@@ -25,7 +25,8 @@ function createClient(runtime) {
 
   try {
     const saved = runtime && runtime.getStorageSync(STORAGE_KEY);
-    if (saved && /^iceclass_session=[A-Za-z0-9_-]+$/.test(saved.cookie) && validUser(saved.user) && saved.expiresAt > Date.now()) session = saved;
+    if (saved && saved.agreementsVersion !== AGREEMENTS_VERSION) runtime.removeStorageSync(STORAGE_KEY);
+    else if (saved && /^iceclass_session=[A-Za-z0-9_-]+$/.test(saved.cookie) && validUser(saved.user) && saved.expiresAt > Date.now()) session = saved;
   } catch (_) { /* A blocked storage area does not prevent an in-memory login. */ }
 
   function persist() {
@@ -119,38 +120,16 @@ function createClient(runtime) {
       try { validatePath(path); header = headers(auth, method); } catch (error) { reject(error); return; }
       if (!runtime || typeof runtime.request !== 'function') { reject(new ApiError('微信网络功能暂不可用。')); return; }
       const requestEpoch = epoch;
-      const listener = typeof options.onEvent === 'function' ? streamEvents(options.onEvent) : null;
-      let streamFailure = null;
-      if (listener) header.Accept = 'application/x-ndjson';
-      const task = runtime.request({
+      runtime.request({
         url: BASE_URL + path, method, data: options.data, header, timeout: options.timeout || 15000,
-        ...(listener ? { enableChunked: true, dataType: 'text', responseType: 'text' } : {}),
         success(response) {
           try {
-            if (listener && response.statusCode >= 200 && response.statusCode < 300) {
-              if (requestEpoch !== epoch) throw new ApiError('账号已切换，本次结果已丢弃。', 0, { code: 'session_changed' });
-              try {
-                if (streamFailure) throw streamFailure;
-                listener.finish(response.data);
-              } catch (_) {
-                throw new ApiError('回复未完整收到。请先核对历史对话和操作结果，再决定是否重试。', 0, {}, true);
-              }
-              resolve();
-              return;
-            }
             const data = checked(response, auth, requestEpoch, method);
             resolve(options.response ? { data, response } : data);
           } catch (error) { reject(error); }
         },
         fail(failure) { reject(requestEpoch !== epoch ? new ApiError('账号已切换。', 0, { code: 'session_changed' }) : networkError(method, path, failure)); }
       });
-      if (listener && task && typeof task.onChunkReceived === 'function') {
-        task.onChunkReceived(event => {
-          if (requestEpoch !== epoch || streamFailure) return;
-          try { listener.chunk(event.data); }
-          catch (failure) { streamFailure = failure; }
-        });
-      }
     });
   }
 
@@ -175,14 +154,15 @@ function createClient(runtime) {
     return null;
   }
 
-  async function login(username, password) {
+  async function login(username, password, isCurrent = () => true) {
     clearSession();
     const loginEpoch = epoch;
     const result = await request(LOGIN_PATH, { method: 'POST', data: { username: String(username).trim(), password }, auth: false, response: true });
     if (loginEpoch !== epoch) throw new ApiError('账号已切换。', 0, { code: 'session_changed' });
+    if (!isCurrent()) return null;
     const cookie = extractCookie(result.response);
     if (!cookie || !validUser(result.data.user)) throw new ApiError('未能建立有效登录会话，请重试或联系学校管理员。');
-    session = { ...cookie, user: result.data.user, classId: '' };
+    session = { ...cookie, user: result.data.user, classId: '', agreementsVersion: AGREEMENTS_VERSION };
     persist();
     return session.user;
   }

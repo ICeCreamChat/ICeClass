@@ -9,5 +9,9 @@
 .password-field:focus-within { box-shadow: var(--focus); }
 .password-field .input { flex: 1; min-width: 0; height: 44px; border: 0; background: transparent; box-shadow: none; }
 .password-toggle { flex: none; min-width: 58px; border: 0; font-size: 15px; }
-.privacy-button { margin: 6px auto 0; font-size: 15px; }
+.login-agreements { border-top: 1px solid var(--line); padding-top: 3px; }
+.agreement-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.agreement-links button { padding-right: 3px; padding-left: 3px; font-size: 15px; }
+.agreement-choice { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--label); font-size: 15px; cursor: pointer; }
+.login-actions button { flex: 1 1 0; }
 @media (max-width: 350px) { .login-mascot { width: 64px; height: 74px; } }

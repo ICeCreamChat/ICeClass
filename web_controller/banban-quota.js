@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const icon = name => `<svg class="icon" aria-hidden="true"><use href="#settings-i-${name}"/></svg>`;
-  const clone = value => structuredClone(value);
+  const clone = value => ({defaults:{...value.defaults}, overrides:{...value.overrides}});
   const feedback = (id, message, type = '') => {
     $(id).textContent = message; $(id).className = `feedback ${type}`;
     $(id).setAttribute('role', type === 'error' ? 'alert' : 'status');
@@ -20,7 +20,7 @@
   const openEditors = {device:null, account:null};
   const editorDrafts = {};
   const pageSize = 5;
-  const custom = target => Object.hasOwn(quota.overrides, target.id);
+  const custom = target => Object.prototype.hasOwnProperty.call(quota.overrides, target.id);
   const limitOf = target => custom(target) ? quota.overrides[target.id] : quota.defaults[kind];
   const serialize = value => JSON.stringify({defaults:value.defaults, overrides:Object.entries(value.overrides).sort(([a],[b]) => a.localeCompare(b))});
   const quotaDirty = () => serialize(quota) !== serialize(savedQuota);
@@ -85,7 +85,7 @@
       const limit = limitOf(target), source = custom(target) ? '单独设置' : '沿用默认';
       const remaining = limit === null ? null : Math.max(0, limit - target.used);
       const tone = limit > 0 && remaining === 0 ? 'danger' : limit > 0 && remaining / limit < .1 ? 'warning' : '';
-      const changed = custom(target) !== Object.hasOwn(savedQuota.overrides, target.id)
+      const changed = custom(target) !== Object.prototype.hasOwnProperty.call(savedQuota.overrides, target.id)
         || custom(target) && quota.overrides[target.id] !== savedQuota.overrides[target.id];
       const editing = openEditors[kind] === target.id;
       const li = document.createElement('li'); li.dataset.id = target.id; li.classList.toggle('editing', editing);

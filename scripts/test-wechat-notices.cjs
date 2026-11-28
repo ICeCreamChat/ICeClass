@@ -44,6 +44,7 @@ function fixture(name = 'notices', options = {}) {
   const runtime = {
     stopPullDownRefresh() { stopped += 1; },
     navigateTo(value) { navigations.push(value.url); if (value.success) value.success(); },
+    getPrivacySetting(value) { if (options.getPrivacySetting) return options.getPrivacySetting(value); value.success({ needAuthorization: false }); },
     chooseMessageFile(value) {
       if (options.chooseMessageFile) return options.chooseMessageFile(value);
       value.success({ tempFiles: [{ name: '教师原声.wav', path: '/mock/voice.wav', size: wav().length }] });
@@ -51,7 +52,8 @@ function fixture(name = 'notices', options = {}) {
     getFileSystemManager() { return { readFile(value) {
       if (options.readFile) return options.readFile(value);
       value.success({ data: wav() });
-    } }; }
+    } }; },
+    ...options.wx
   };
   const api = {
     getUser: () => currentUser,
@@ -110,6 +112,7 @@ function fixture(name = 'notices', options = {}) {
       if (id === '../../lib/ui') return ui;
       if (id === '../../lib/notice-data') return data;
       if (id === '../../lib/notice-audio') return require('../miniprogram/teacher/lib/notice-audio');
+      if (id === '../../lib/device-privacy') return require('../miniprogram/teacher/lib/device-privacy');
       throw new Error(`Unexpected module: ${id}`);
     }
   }, { filename: `pages/${name}/index.js` });
@@ -124,21 +127,21 @@ function fixture(name = 'notices', options = {}) {
   };
 }
 
-test('text payload matches the real server fields, trims content and keeps silent notices silent', () => {
-  const notice = data.buildNotice({ classId: 'class-a', modeIndex: 0, text: '  请准备上课\n ', levelIndex: 0, durationIndex: 1, speedIndex: 3, volumeIndex: 4 }, classes[0]);
+test('text always uses the silent protocol even with a previous urgent audio selection', () => {
+  const notice = data.buildNotice({ classId: 'class-a', modeIndex: 0, text: '  请准备上课\n ', levelIndex: 2, durationIndex: 1 }, classes[0]);
   assert.deepEqual(notice.values, { classId: 'class-a', alertLevel: 'info', ttsVolume: 0, ttsSpeed: 0, displayDurationSec: 8, text: '请准备上课' });
   assert.equal(notice.originalText, '  请准备上课\n ');
   assert.throws(() => data.buildNotice({ classId: 'class-b' }, classes[0]), /目标班级/);
-  assert.throws(() => data.buildNotice({ classId: 'class-a', modeIndex: 0, text: ' ', levelIndex: 0, durationIndex: 1, speedIndex: 1, volumeIndex: 4 }, classes[0]), /1-500/);
+  assert.throws(() => data.buildNotice({ classId: 'class-a', modeIndex: 0, text: ' ', durationIndex: 1 }, classes[0]), /1-500/);
 });
 
 test('audio requires an actual file and a sound-capable level', () => {
-  const draft = { classId: 'class-a', modeIndex: 1, text: '文字草稿', levelIndex: 0, durationIndex: 3, speedIndex: 3, volumeIndex: 3 };
+  const draft = { classId: 'class-a', modeIndex: 1, text: '文字草稿', levelIndex: 0, durationIndex: 3 };
   assert.throws(() => data.buildNotice(draft, classes[0]), /重要.*紧急/);
   assert.throws(() => data.buildNotice({ ...draft, levelIndex: 1 }, classes[0]), /WAV/);
   const notice = data.buildNotice({ ...draft, levelIndex: 1, audioFile: { path: '/mock/a.wav', name: 'a.wav', durationMs: 1000 } }, classes[0]);
   assert.equal(notice.values.ttsSpeed, 0);
-  assert.equal(notice.values.ttsVolume, 0.75);
+  assert.equal(notice.values.ttsVolume, 1);
   assert.ok(!Object.hasOwn(notice.values, 'text'));
 });
 
@@ -195,10 +198,25 @@ test('send locks duplicate clicks and class/parameter controls until the write f
   const send = f.page.sendNotice(); await tick();
   await f.page.sendNotice(); f.page.onClassChange({ detail: { value: '1' } });
   f.page.onTextInput({ detail: { value: '修改' } }); f.page.onLevelChange({ detail: { value: '2' } });
-  assert.equal(f.writes().length, 1); assert.equal(f.page.data.classId, 'class-a'); assert.equal(f.page.data.text, '通知一'); assert.equal(f.page.data.levelIndex, 0);
+  assert.equal(f.writes().length, 1); assert.equal(f.page.data.classId, 'class-a'); assert.equal(f.page.data.text, '通知一'); assert.equal(f.writes()[0].data.alertLevel, 'info');
   pending.resolve({ id: 'one', status: 'sent' }); await send;
   assert.equal(f.page.data.text, ''); assert.equal(f.page.data.busy, false);
   assert.match(f.page.data.lastResult.label, /尚未确认送达/);
+});
+
+test('switching urgent original audio back to text sends a silent notice, leaving the recording in the draft', async () => {
+  const f = fixture('notices'); await f.ready();
+  f.page.onModeChange({ detail: { value: '1' } });
+  f.page.onLevelChange({ detail: { value: '2' } });
+  f.page.setData({ audioFile: { path: '/mock/voice.wav', name: '原声.wav', durationMs: 1000 } });
+  f.page.onModeChange({ detail: { value: '0' } });
+  f.page.onTextInput({ detail: { value: '请看黑板' } });
+  await f.page.sendNotice();
+  assert.equal(f.uploads.length, 0);
+  assert.deepEqual(plain(f.writes()[0].data), { classId: 'class-a', alertLevel: 'info', ttsVolume: 0, ttsSpeed: 0,
+    displayDurationSec: 8, text: '请看黑板', quietAcknowledged: false });
+  assert.match(f.confirmations[0].content, /静音展示/);
+  assert.equal(f.page.data.audioFile.path, '/mock/voice.wav');
 });
 
 test('known quiet hours require an explicit warning before quietAcknowledged is true', async () => {
@@ -303,10 +321,49 @@ test('invalid or cancelled file choices preserve the previously selected WAV', a
       },
       readFile(value) { value.success({ data: Buffer.alloc(100) }); }
     });
-    await f.ready(); f.page.setData({ audioFile: previous }); await f.page.chooseWav();
+    await f.ready(); f.page.onModeChange({ detail: { value: '1' } }); f.page.setData({ audioFile: previous }); await f.page.chooseWav();
     assert.equal(f.page.data.audioFile.path, previous.path); assert.equal(f.uploads.length, 0); assert.equal(f.page.data.fileBusy, false);
     assert.equal(Boolean(f.page.data.error), !cancel);
   }
+});
+
+test('cancelling the privacy prompt or leaving it never records or selects a file', async () => {
+  for (const action of ['startVoice', 'chooseWav']) {
+    let permissions = 0, pickerCalls = 0;
+    const f = fixture('notices', {
+      getPrivacySetting: options => options.success({ needAuthorization: true }),
+      chooseMessageFile() { pickerCalls++; },
+      wx: { authorize() { permissions++; }, getRecorderManager() { assert.fail('Recorder must stay closed'); } }
+    });
+    await f.ready(); f.page.onModeChange({ detail: { value: '1' } });
+    f.page.setData({ text: '原文字草稿', audioFile: { path: '/mock/original.wav' } });
+    for (const exit of ['cancelDevicePrivacy', 'onHide']) {
+      const pending = f.page[action]();
+      await tick();
+      assert.equal(f.page.data.privacyNeeded, true);
+      f.page[exit]();
+      await pending;
+      f.page.agreeDevicePrivacy();
+      assert.equal(f.page.data.fileBusy, false);
+      assert.equal(f.page.data.privacyNeeded, false);
+      assert.equal(f.page.data.audioFile.path, '/mock/original.wav');
+      assert.equal(f.page.data.text, '原文字草稿');
+    }
+    assert.equal(permissions, 0); assert.equal(pickerCalls, 0); assert.equal(f.uploads.length, 0);
+  }
+});
+
+test('microphone denial after accepting the privacy notice leaves the WAV and text options available', async () => {
+  const f = fixture('notices', {
+    getPrivacySetting: options => options.success({ needAuthorization: true }),
+    wx: { authorize(options) { assert.equal(options.scope, 'scope.record'); options.fail({}); }, getRecorderManager() { assert.fail('Recorder must stay closed'); } }
+  });
+  await f.ready(); f.page.onModeChange({ detail: { value: '1' } });
+  const pending = f.page.startVoice();
+  await tick(); f.page.agreeDevicePrivacy(); await pending;
+  assert.match(f.page.data.error, /麦克风/); assert.equal(f.page.data.fileBusy, false);
+  f.page.onModeChange({ detail: { value: '0' } });
+  assert.equal(f.page.data.modeIndex, 0);
 });
 
 test('offline and ambiguous audio uploads keep the selected file without retrying', async () => {
@@ -418,7 +475,7 @@ test('page lifecycle requires login and keeps all tests isolated from live endpo
     const config = JSON.parse(fs.readFileSync(path.join(root, 'pages', name, 'index.json'), 'utf8'));
     assert.equal(config.enablePullDownRefresh, true);
     const wxml = fs.readFileSync(path.join(root, 'pages', name, 'index.wxml'), 'utf8');
-    assert.doesNotMatch(wxml, /web-view|<webview/i); assert.match(wxml, /bindtap="relogin"/);
+    assert.doesNotMatch(wxml, /web-view|<webview/i); assert.match(wxml, /login-required\.wxml/);
     const controls = wxml.match(/<(?:input|textarea|picker|checkbox-group)\b[^>]*>/g) || [];
     controls.forEach(control => assert.match(control, /aria-label="[^"]+"/));
   }

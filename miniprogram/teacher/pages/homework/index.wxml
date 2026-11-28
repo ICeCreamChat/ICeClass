@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header">
     <text class="title" aria-role="heading" aria-level="1">作业统计</text>
     <view class="subtitle">按作业或学生查看上交情况</view>
@@ -40,7 +41,6 @@
     <view class="muted report-note">导出当前筛选下的全部记录，由你选择文件收件人。</view>
   </view>
   <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
-  <view wx:if="{{sessionExpired}}" class="status"><view>登录会话已失效，筛选条件已保留。</view><button class="primary" bindtap="relogin">重新登录</button></view>
   <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>
   <view wx:if="{{loading}}" class="status" aria-live="polite">正在载入作业统计…</view>
   <view wx:if="{{!loading && !classes.length && !error && !sessionExpired}}" class="empty">当前账号没有可访问班级。</view>

@@ -6,6 +6,7 @@
   const hasRole = (user, role) => user.role === role || role === 'subject_teacher' && user.role === 'teacher' && !!user.teachingClasses?.length;
   const filters = {role: 'all', page: 1};
   const pageSize = 12;
+  const menu = $('userActionsPopover');
   let context;
   let menuTrigger;
   function node(tag, text, cls) {
@@ -43,19 +44,19 @@
     const item = node('button', text, cls); item.type = 'button'; item.onclick = handler; return item;
   }
   function closeMenu(returnFocus = false) {
-    const menu = $('userActionsPopover');
-    if (menu?.matches(':popover-open')) menu.hidePopover();
-    if (returnFocus && menuTrigger?.isConnected) menuTrigger.focus({preventScroll:true});
+    if (!menuTrigger) return;
+    const trigger = menuTrigger;
+    menuTrigger = null;
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (returnFocus && trigger.isConnected) trigger.focus({preventScroll:true});
   }
   function more(user, anchor, last = false, toggle = true) {
-    const menu = $('userActionsPopover');
-    const alreadyOpen = menu.matches(':popover-open') && menu.dataset.user === user.id;
+    const alreadyOpen = menuTrigger === anchor;
     closeMenu();
     if (alreadyOpen && toggle) { anchor.focus({preventScroll:true}); return; }
     menuTrigger = anchor;
-    menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', user.display_name + '的账号操作');
-    menu.dataset.user = user.id;
     menu.replaceChildren(node('span', user.display_name + '的账号', 'user-menu-title'));
     for (const [label, action, danger] of [
       ['重置密码', () => context.onPassword(user)],
@@ -63,17 +64,20 @@
       ['删除账号', () => context.onDelete(user), true]
     ]) {
       const item = button(label, () => { closeMenu(true); action(); }, 'btn' + (danger ? ' danger' : ''));
-      item.setAttribute('role', 'menuitem'); menu.append(item);
+      item.setAttribute('role', 'menuitem');
+      item.tabIndex = -1;
+      menu.append(item);
     }
-    menu.showPopover({source:anchor});
+    menu.hidden = false;
     const box = anchor.getBoundingClientRect(), menuBox = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(innerWidth - menuBox.width - 8, box.right - menuBox.width)) + 'px';
     menu.style.top = (box.bottom + menuBox.height + 8 <= innerHeight ? box.bottom + 6 : Math.max(8, box.top - menuBox.height - 6)) + 'px';
+    anchor.setAttribute('aria-expanded', 'true');
     window.ICeClassUI.focusMenu(menu, last);
   }
   function draw() {
     if (!context) return;
-    closeMenu($('userActionsPopover').contains(document.activeElement));
+    closeMenu(menu.contains(document.activeElement));
     const container = $('teachersContainer');
     window.ICeClassUI.preserveFocus(container, drawRows, () => $('userSearch'));
   }
@@ -156,11 +160,18 @@
   $('userClearFilters').onclick = reset;
   $('userPrevPage').onclick = () => { filters.page--; draw(); };
   $('userNextPage').onclick = () => { filters.page++; draw(); };
-  $('userActionsPopover').addEventListener('beforetoggle', event => menuTrigger?.setAttribute('aria-expanded', String(event.newState === 'open')));
-  window.ICeClassUI.menuKeys($('userActionsPopover'), closeMenu);
-  const dismissMenu = () => { const menu = $('userActionsPopover'); if (menu.matches(':popover-open')) closeMenu(menu.contains(document.activeElement)); };
+  window.ICeClassUI.menuKeys(menu, closeMenu);
+  const dismissMenu = () => closeMenu(menu.contains(document.activeElement));
+  function dismissOutside(event) {
+    if (menuTrigger && !menu.contains(event.target) && !menuTrigger.contains(event.target)) closeMenu();
+  }
+  document.addEventListener('pointerdown', dismissOutside, true);
+  document.addEventListener('focusin', dismissOutside, true);
   window.addEventListener('resize', dismissMenu);
-  window.addEventListener('scroll', event => { if (!$('userActionsPopover').contains(event.target)) dismissMenu(); }, true);
+  window.addEventListener('scroll', event => { if (!menu.contains(event.target)) dismissMenu(); }, true);
+  for (const event of ['iceclass-view-changed', 'iceclass-logout', 'iceclass-session-expired', 'pagehide']) {
+    window.addEventListener(event, () => closeMenu());
+  }
   window.ICeClassUsers = {render(value) { context = value; draw(); }};
   window.dispatchEvent(new Event('iceclass-users-ready'));
 })();

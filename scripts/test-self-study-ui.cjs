@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fixturePhoto = require('node:fs').readFileSync(path.join(__dirname,'..','branding','banban','thinking.jpg'));
 const {test,before,after} = require('node:test');
-const {chromium} = require('playwright');
-const {open,navigate,settingsSection} = require('./test-teacher-ui.cjs');
+const {open,navigate,settingsSection,launchWorkbenchBrowser} = require('./test-teacher-ui.cjs');
+const realTimers = Boolean(process.env.ICECLASS_WHITEBOARD_CHROMIUM);
 let browser;
-before(async()=>{browser=await chromium.launch({channel:'msedge',headless:true});});
+before(async()=>{browser=await launchWorkbenchBrowser();});
 after(async()=>{await browser?.close();});
 const snapshot = () => ({revision:1,config:{enabled:false,authorized:false,aiEnabled:false,photoEnabled:true,dailyCalls:4,dailyTokens:2400,
   sensitivity:'balanced',voiceTriggerMs:600,observationSeconds:10,reminderWaitSeconds:90,confirmationsAfterReminder:1},
@@ -44,7 +44,7 @@ async function setup(t,{width=1280,saveStatus=200,photo=false,photoValid=true,ph
     if(url.pathname==='/api/self-study/events/event1/photo')return {contentType:'image/jpeg',body:photoValid?fixturePhoto:Buffer.from('/9j/2Q==','base64')};
   }});
   t.after(async()=>{await result.context.close();assert.deepEqual(result.errors,[]);});
-  if(clock){
+  if(clock && !realTimers){
     await result.page.clock.install({time:new Date(1794226200000)});
     await result.page.clock.pauseAt(new Date(1794226201000));
   }
@@ -174,7 +174,8 @@ test('An open photo closes and revokes its URL at its server retention deadline'
   await page.evaluate(()=>{window.revokedPhotos=0;const original=URL.revokeObjectURL;URL.revokeObjectURL=url=>{window.revokedPhotos++;original.call(URL,url);};});
   await page.getByRole('button',{name:'查看照片',exact:true}).click();
   await page.locator('#ss-photo[open] img').waitFor();
-  await page.clock.runFor(2001);
+  if (realTimers) await page.locator('#ss-photo[open]').waitFor({state:'hidden', timeout:5000});
+  else await page.clock.runFor(2001);
   assert.equal(await page.locator('#ss-photo img').count(),0);
   assert.equal(await page.locator('#ss-photo').evaluate(el=>el.open),false);
   assert.equal(await page.evaluate(()=>window.revokedPhotos),1);

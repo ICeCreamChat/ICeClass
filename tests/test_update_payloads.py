@@ -90,6 +90,33 @@ class UpdatePayloadTests(unittest.TestCase):
         self.assertEqual(self.read_plan()["files"], [{"path": "ICeClass.Desktop.exe", "size": 14,
                                                      "sha256": checksum(b"MZ teacher app"), "deltas": []}])
 
+    def test_classroom_update_delivers_same_webview2_cab_as_installer(self):
+        self.release.mkdir()
+        cabinet = b"MSCF offline WebView2 fixture"
+        (self.release / "WebView2-x64.cab").write_bytes(cabinet)
+        (self.release / "program-manifest.json").write_text(json.dumps({"webView2": {
+            "version": "158.0.4370.45", "size": len(cabinet), "sha256": checksum(cabinet)
+        }}), encoding="utf-8")
+
+        self.prepare()
+
+        runtime_files = [entry for entry in self.read_plan()["files"]
+                         if entry["path"].endswith(".cab")]
+        self.assertEqual(runtime_files, [{"path": "VoiceResources/WebView2-x64.cab", "size": len(cabinet),
+                                          "sha256": checksum(cabinet), "deltas": []}])
+        self.assertEqual((self.release / "payloads" / checksum(cabinet)).read_bytes(), cabinet)
+
+    def test_invalid_webview2_cab_cannot_reach_update_plan(self):
+        self.release.mkdir()
+        (self.release / "WebView2-x64.cab").write_bytes(b"MSCF damaged")
+        (self.release / "program-manifest.json").write_text(json.dumps({"webView2": {
+            "version": "158.0.4370.45", "size": 12, "sha256": checksum(b"MSCF correct")
+        }}), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "WebView2"):
+            self.prepare()
+        self.assertFalse((self.release / "update-plan.json").exists())
+
     @unittest.skipUnless(os.name == "nt", "MSDelta is built into Windows")
     def test_real_msdelta_roundtrip_accepts_unicode_paths(self):
         source = self.root / "旧版本.bin"
@@ -287,6 +314,11 @@ class UpdatePayloadTests(unittest.TestCase):
                      "install-classroom.ps1", "install-desktop.ps1", "install-voice-resources.ps1",
                      "create-client-archives.py", "update-ubuntu.sh"):
             shutil.copyfile(ROOT / "scripts" / name, workspace / "scripts" / name)
+        runtime = workspace / "fixture.cab"
+        runtime.write_bytes(b"fixture fixed runtime")
+        (workspace / "scripts/classroom-webview2.json").write_text(json.dumps({
+            "version": "158.0.4370.45", "size": runtime.stat().st_size, "sha256": checksum(runtime.read_bytes())
+        }))
         shutil.copyfile(self.project, workspace / "Receiver/Receiver.csproj")
         shutil.copyfile(self.project, workspace / "Desktop/ICeClass.Desktop.csproj")
         shutil.copytree(self.voice, workspace / "Receiver/Assets/Voice")
@@ -317,7 +349,7 @@ class UpdatePayloadTests(unittest.TestCase):
         # PowerShell 7's module path must not hide Windows PowerShell's built-in modules.
         environment.pop("PSMODULEPATH", None)
         result = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                                 str(workspace / "scripts/package-release.ps1"), "-SkipBuild"],
+                                 str(workspace / "scripts/package-release.ps1"), "-SkipBuild", "-WebView2Cab", str(runtime)],
                                 capture_output=True, timeout=90, env=environment)
         self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode(errors="replace"))
         with zipfile.ZipFile(distribution / "release/ICeClass-9.8.7-server.zip") as archive:
@@ -358,6 +390,7 @@ class UpdatePayloadTests(unittest.TestCase):
         (distribution / "receiver-core/ICeClass.exe").write_bytes(self.executable.read_bytes() + b"new release")
         result = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                                  str(workspace / "scripts/package-release.ps1"), "-SkipBuild",
+                                 "-WebView2Cab", str(runtime),
                                  "-PreviousServerDirectory", str(previous / "ICeClass-server")],
                                 capture_output=True, timeout=90, env=environment)
         self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode(errors="replace"))

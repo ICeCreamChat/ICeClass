@@ -4,35 +4,69 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#e5f0f8">
-  <title>我的课堂 · ICeClass 班伴</title>
+  <title>课后报告 · ICeClass 班伴</title>
   <link rel="icon" href="/favicon.ico?v=5">
   <link rel="stylesheet" href="../assets/typography.css">
-  <link rel="stylesheet" href="print.css?v=5">
-  <link rel="stylesheet" href="student.css?v=4">
+  <link rel="stylesheet" data-style-group="print" data-href="print.css?v=5">
+  <link rel="stylesheet" href="student.css?v=7">
   <link rel="stylesheet" href="../assets/control-focus.css">
-  <script src="vendor/cv.js" defer></script>
-  <script src="vendor/aruco.js" defer></script>
-  <script src="cards.js?v=2" defer></script>
-  <script src="vendor/qrcodegen.js" defer></script>
-  <script src="qr-code.js" defer></script>
-  <script src="print-card.js?v=6" defer></script>
-  <script src="student.js?v=4" defer></script>
+  <script src="student-math.js?v=1" defer></script>
+  <script src="student.js?v=8" defer></script>
 </head>
 <body class="student-page">
   <a class="student-skip" href="#student-main">跳到主要内容</a>
-  <header class="student-header"><a class="student-brand" href="/student">ICeClass 班伴</a><a href="/">教师工作台</a></header>
-  <main id="student-main" class="student-main">
+  <header class="student-header">
+    <div class="student-header-inner">
+      <a class="student-brand" href="/student">ICeClass 班伴</a><span class="student-breadcrumb">课后报告</span>
+      <a id="student-menu-link" href="#student-navigation" hidden>课堂与记录</a>
+    </div>
+  </header>
+  <main id="student-main" class="student-main" tabindex="-1">
     <p id="student-feedback" class="student-feedback" role="status" aria-live="polite" tabindex="-1">正在核对学生登录状态…</p>
     <button type="button" id="student-session-retry" hidden>重新核对登录</button>
     <div id="student-workspace" hidden>
-      <div class="student-heading"><div><h1>我的课堂</h1><p id="student-identity" class="student-note"></p></div><button type="button" id="student-logout">退出登录</button></div>
-      <section class="student-panel" aria-labelledby="student-analysis-title">
-        <div class="student-section-heading"><h2 id="student-analysis-title">个人课堂分析</h2><div class="student-report-tools"><label for="student-subject">学科</label><select id="student-subject"><option value="">全部学科</option><option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option><option value="physics">物理</option><option value="chemistry">化学</option><option value="biology">生物</option><option value="politics">政治</option><option value="history">历史</option><option value="geography">地理</option></select><button type="button" id="student-report-reload">重新载入</button></div></div>
-        <p id="student-report-feedback" class="student-feedback" role="status" aria-live="polite" tabindex="-1"></p>
-        <div id="student-totals"></div>
-        <p class="student-note student-denominator">正确率 = 正确 /（正确 + 错误）。只统计已判定的有效正式作答。</p>
-        <div class="student-tabs" role="group" aria-label="个人课堂分析内容"><button type="button" data-student-view="records" aria-pressed="true">作答记录</button><button type="button" data-student-view="wrong" aria-pressed="false">错题回顾</button><button type="button" data-student-view="knowledge" aria-pressed="false">知识点统计</button></div>
-        <div id="student-report" aria-busy="false"></div>
+      <p id="student-report-feedback" class="student-feedback" role="status" tabindex="-1"></p>
+      <article aria-labelledby="student-analysis-title">
+        <div class="student-panel">
+          <div class="student-lesson-heading">
+            <h1 id="student-analysis-title" tabindex="-1">课后报告</h1>
+            <div id="student-session-field" class="student-field" hidden>
+              <label for="student-knowledge-session">选择课堂</label>
+              <select id="student-knowledge-session"></select>
+            </div>
+          </div>
+          <p id="student-lesson-meta" class="student-meta" hidden></p>
+          <div id="student-lesson-counts" class="student-counts" hidden></div>
+          <div id="student-statistics" hidden>
+            <div id="student-totals"></div>
+            <p class="student-note student-denominator">正确率 = 正确 /（正确 + 错误）。只统计已判定的有效正式作答。</p>
+          </div>
+          <div id="student-report" aria-busy="false"></div>
+        </div>
+        <section id="student-ai" class="student-panel student-analysis" aria-labelledby="student-ai-title" hidden>
+          <h2 id="student-ai-title" tabindex="-1">AI 学情报告</h2>
+          <p id="student-ai-state" role="status"></p>
+          <div id="student-ai-content"></div>
+          <button id="student-ai-action" type="button" hidden></button>
+        </section>
+      </article>
+      <nav id="student-navigation" class="student-panel" aria-labelledby="student-navigation-title" tabindex="-1">
+        <h2 id="student-navigation-title">课堂与记录</h2>
+        <div class="student-tabs" role="group" aria-label="报告内容">
+          <button type="button" data-student-view="lesson" aria-pressed="true">本节复习</button>
+          <button type="button" data-student-view="records" aria-pressed="false">所有作答记录</button>
+          <button type="button" data-student-view="wrong" aria-pressed="false">跨课错题</button>
+          <button type="button" data-student-view="knowledge" aria-pressed="false">知识点统计</button>
+        </div>
+        <div class="student-report-tools">
+          <label for="student-subject">学科</label><select id="student-subject"><option value="">全部学科</option><option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option><option value="physics">物理</option><option value="chemistry">化学</option><option value="biology">生物</option><option value="politics">政治</option><option value="history">历史</option><option value="geography">地理</option></select>
+          <button type="button" id="student-report-reload">重新载入</button>
+        </div>
+      </nav>
+      <section class="student-panel" aria-labelledby="student-account-title">
+        <h2 id="student-account-title">我的账号</h2>
+        <p id="student-identity" class="student-note"></p>
+        <div class="student-actions"><button type="button" id="student-logout">退出登录</button><a href="/">教师工作台</a></div>
       </section>
       <section class="student-panel" aria-labelledby="student-card-title">
         <h2 id="student-card-title">补印我的纸卡</h2>

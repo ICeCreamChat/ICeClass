@@ -79,7 +79,15 @@ class ServerInstallerTests(unittest.TestCase):
             }).encode())
             self.write(f"{directory}/payloads/{digest}", core)
             self.write(f"{directory}/payloads/{patch_digest}", patch)
-        for name in ("install.ps1", "安装或升级.cmd", "program-manifest.json", "一步使用说明.txt"):
+        receiver = self.package / "receiver_release"
+        program = json.loads((receiver / "manifest.json").read_bytes())
+        runtime = b"fixture WebView2 cabinet"
+        program["webView2"] = {
+            "version": "1.2.3.4", "size": len(runtime), "sha256": hashlib.sha256(runtime).hexdigest(),
+        }
+        self.write("receiver_release/WebView2-x64.cab", runtime)
+        self.write("receiver_release/program-manifest.json", json.dumps(program).encode())
+        for name in ("install.ps1", "安装或升级.cmd", "一步使用说明.txt"):
             self.write(f"receiver_release/{name}", name.encode("utf-8"))
         for name in ("install.ps1", "install-voice-resources.ps1", "安装到本机.cmd"):
             self.write(f"desktop_release/{name}", name.encode("utf-8"))
@@ -150,12 +158,25 @@ chown() { :; }
             for path in (self.package / directory).rglob("*"):
                 if path.is_file():
                     self.assert_file_equal(installed, path.relative_to(self.package).as_posix())
+        receiver = self.package / "receiver_release"
+        prefix = "ICeClass/教室端/"
         for kind in ("classroom", "classroom-offline", "teacher", "teacher-offline"):
             with zipfile.ZipFile(installed / f"client-downloads/ICeClass-{kind}.zip") as archive:
                 self.assertIsNone(archive.testzip())
                 if kind == "classroom":
-                    self.assertEqual(archive.read("ICeClass/教室端/ICeClass.exe"),
-                                     b"MZ incremental core\x00receiver_release")
+                    core = archive.read(prefix + "ICeClass.exe")
+                    self.assertEqual(core, b"MZ incremental core\x00receiver_release")
+                    program = json.loads(archive.read(prefix + "program-manifest.json"))
+                    self.assertEqual(program["version"], "2.5.2")
+                    self.assertEqual(program["size"], len(core))
+                    self.assertEqual(program["sha256"], hashlib.sha256(core).hexdigest())
+                    self.assertNotIn("webView2", program)
+                    self.assertNotIn(prefix + "WebView2-x64.cab", archive.namelist())
+                elif kind == "classroom-offline":
+                    for name in ("ICeClass.exe", "WebView2-x64.cab"):
+                        self.assertEqual(archive.read(prefix + name), (receiver / name).read_bytes())
+                    self.assertEqual(json.loads(archive.read(prefix + "program-manifest.json")),
+                                     json.loads((receiver / "program-manifest.json").read_bytes()))
                 elif kind == "teacher-offline":
                     self.assertEqual(archive.read("Windows教师端/VoiceResources/Asr/model.int8.onnx"),
                                      b"verified model fixture")

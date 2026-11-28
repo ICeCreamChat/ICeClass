@@ -8,7 +8,7 @@ using Microsoft.Web.WebView2.Core;
 namespace ICeClass.Receiver;
 
 /// <summary>Windows WebView2 child, sharing Avalonia's STA dispatcher.</summary>
-internal sealed class ReadingBrowser : NativeControlHost
+internal class ReadingBrowser : NativeControlHost
 {
     private readonly TaskCompletionSource<IntPtr> _handleReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private CoreWebView2Controller? _controller;
@@ -31,13 +31,18 @@ internal sealed class ReadingBrowser : NativeControlHost
         return new PlatformHandle(handle, "HWND");
     }
 
+    protected virtual async Task<CoreWebView2Controller> CreateControllerAsync(IntPtr handle, string profileDirectory, CancellationToken token)
+    {
+        var environment = await CoreWebView2Environment.CreateAsync(null, profileDirectory);
+        token.ThrowIfCancellationRequested();
+        return await environment.CreateCoreWebView2ControllerAsync(handle);
+    }
+
     public async Task InitializeAsync(string profileDirectory, CancellationToken token)
     {
         var handle = await _handleReady.Task.WaitAsync(token);
-        var environment = await CoreWebView2Environment.CreateAsync(null, profileDirectory);
-        token.ThrowIfCancellationRequested();
         if (_disposed) throw new OperationCanceledException();
-        var controller = await environment.CreateCoreWebView2ControllerAsync(handle);
+        var controller = await CreateControllerAsync(handle, profileDirectory, token);
         if (_disposed || token.IsCancellationRequested) { controller.Close(); token.ThrowIfCancellationRequested(); throw new OperationCanceledException(); }
         _controller = controller;
         if (_contentScale != 1) controller.ZoomFactor = _contentScale;

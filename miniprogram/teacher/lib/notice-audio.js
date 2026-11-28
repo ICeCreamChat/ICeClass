@@ -3,16 +3,10 @@
 const { validateWav } = require('./notice-data');
 const recorders = new WeakMap();
 
-async function authorizeRecording(runtime, current) {
+async function authorizeRecording(runtime) {
   if (typeof runtime.getRecorderManager !== 'function' || typeof runtime.authorize !== 'function') {
     throw new Error('当前设备无法录音，请选择 WAV 文件。');
   }
-  if (typeof runtime.requirePrivacyAuthorize === 'function') {
-    await new Promise((resolve, reject) => runtime.requirePrivacyAuthorize({
-      success: resolve, fail: () => reject(new Error('未获得微信隐私授权，无法录音。你仍可使用文字通知。'))
-    }));
-  }
-  if (!current()) return;
   await new Promise((resolve, reject) => runtime.authorize({
     scope: 'scope.record', success: resolve,
     fail: () => reject(new Error('无法使用麦克风。请在微信小程序设置中允许录音，或选择 WAV 文件。'))

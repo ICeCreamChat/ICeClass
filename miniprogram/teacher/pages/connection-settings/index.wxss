@@ -1,7 +1,0 @@
-.workspace { margin-bottom: 16px; }
-.segment button { min-height: 44px; }
-.toolbar { justify-content: space-between; margin-bottom: 16px; }
-.toolbar .section-heading { margin: 0; }
-.source { margin: 16px 0; }
-.check-option { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 0; }
-.boundary { margin-top: 16px; }

@@ -201,7 +201,8 @@ def install_update_payloads(app, root, *, executable, prefix, reply, parse_versi
             except ValueError:
                 return reply({'error': '语音资源不存在。'}, 404)
             release = await payloads.load()
-            if release is None or not any(item['path'].startswith('VoiceResources/') and item['sha256'] == digest
+            if release is None or not any(item['path'].startswith('VoiceResources/')
+                                          and item['path'] != 'VoiceResources/WebView2-x64.cab' and item['sha256'] == digest
                                           for item in release[0]['files']):
                 return reply({'error': '语音资源不存在。'}, 404)
             return PayloadResponse(payloads.root / 'payloads' / digest, headers={

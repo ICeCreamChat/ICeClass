@@ -7,6 +7,7 @@ const appearances = [
   { id: 'solid', label: '降低透明度', bar: '#edf4fa', background: '#edf4fa' }
 ];
 let activeAppearance;
+let openingLogin = false;
 
 function applyAppearance(page, requested) {
   if (requested !== undefined) activeAppearance = appearances.find(item => item.id === requested);
@@ -32,24 +33,43 @@ function setAppearance(page, selected) {
 
 function relogin() {
   const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
-  if (pages.length && pages[pages.length - 1].route === 'pages/login/index') return;
-  wx.navigateTo({ url: '/pages/login/index' });
+  if (openingLogin || pages.length && pages[pages.length - 1].route === 'pages/login/index') return;
+  openingLogin = true;
+  wx.navigateTo({ url: '/pages/login/index', fail: () => toast('未能打开登录页，请重试。'), complete: () => { openingLogin = false; } });
+}
+
+function openAgreement(event) {
+  const terms = event.currentTarget.dataset.document === 'terms';
+  wx.navigateTo({
+    url: terms ? '/pages/privacy/index?document=terms' : '/pages/privacy/index',
+    fail: () => toast('未能打开协议，请重试。')
+  });
 }
 
 function requireLogin() {
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+  const page = pages[pages.length - 1];
   const user = api.getUser();
-  if (user) {
-    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
-    const page = pages[pages.length - 1];
-    if (page && page._iceclassOwner && page._iceclassOwner !== user.id) {
-      wx.reLaunch({ url: '/pages/workbench/index' });
-      return false;
+  if (!user) {
+    if (page && page.route !== 'pages/workbench/index') {
+      applyAppearance(page);
+      if (!page.data.sessionExpired) page.setData({
+        sessionExpired: true, error: page._iceclassOwner ? '登录已过期，当前页面内容已保留。' : '请先登录学校账号。'
+      });
     }
-    if (page) { page._iceclassOwner = user.id; applyAppearance(page); }
-    return true;
+    return false;
   }
-  relogin();
-  return false;
+  if (page && page._iceclassOwner && page._iceclassOwner !== user.id) {
+    page.setData({ sessionExpired: true });
+    wx.reLaunch({ url: '/pages/workbench/index', fail: () => toast('未能返回工作台，请退出此页后重试。') });
+    return false;
+  }
+  if (page) {
+    page._iceclassOwner = user.id;
+    applyAppearance(page);
+    if (page.data && page.data.sessionExpired) page.setData({ sessionExpired: false, error: '' });
+  }
+  return true;
 }
 
 async function loadClasses(page, isCurrent = () => true) {
@@ -80,7 +100,7 @@ function chooseClass(page, value) {
 
 function fail(page, error) {
   if (error && error.code === 'session_changed') return;
-  page.setData({ error: error && error.message || '暂时无法完成操作，请重试。', sessionExpired: Boolean(error && error.status === 401) });
+  page.setData({ error: error && error.message || '暂时无法完成操作，请重试。', sessionExpired: Boolean(page.data.sessionExpired || error && error.status === 401) });
 }
 
 function query(values) {
@@ -109,4 +129,4 @@ function setDirty(dirty) {
   else if (!dirty && wx.disableAlertBeforeUnload) wx.disableAlertBeforeUnload();
 }
 
-module.exports = { requireLogin, relogin, loadClasses, chooseClass, fail, query, confirm, formatTime, dateISO, toast, setDirty, applyAppearance, setAppearance, appearances };
+module.exports = { requireLogin, relogin, openAgreement, loadClasses, chooseClass, fail, query, confirm, formatTime, dateISO, toast, setDirty, applyAppearance, setAppearance, appearances };

@@ -259,7 +259,7 @@ Page({
   },
   cameraAllowed(consent) { return Boolean(consent && this.current() && this._pair && this._pair.expiresAt > Date.now() && consent.intent === this._cameraIntent && consent.key === paper.contextKey(this.data.state) && this.data.collecting && this.data.connected && !this.data.unknownCount); },
   async startCamera() {
-    if (!this.current() || !this.data.collecting || this.data.busy || this.data.pendingCount || this.data.loading || this.data.cameraOn) return;
+    if (!this.current() || !this.data.collecting || this.data.busy || this.data.pendingCount || this.data.loading || this.data.cameraOn || this.data.cameraOpening || this.data.privacyNeeded) return;
     this.stopCamera(); this.setData({ cameraOpening: true, error: '' });
     const consent = { intent: this._cameraIntent, key: paper.contextKey(this.data.state) };
     try {
@@ -268,18 +268,21 @@ Page({
       if (typeof wx.getPrivacySetting !== 'function' || typeof wx.authorize !== 'function') throw new Error('当前微信版本不支持本页隐私授权，请更新微信或使用手工录入。');
       const privacy = await new Promise((resolve, reject) => wx.getPrivacySetting({ success: resolve, fail: () => reject(new Error('未能核对隐私授权，相机未开启。')) }));
       if (!this.cameraAllowed(consent)) return;
+      if (!privacy || typeof privacy.needAuthorization !== 'boolean') throw new Error('未能核对隐私授权，相机未开启。');
       if (privacy.needAuthorization) { this._consent = consent; this.setData({ privacyNeeded: true }); return; }
       await this.authorizeCamera(consent);
-    } catch (error) { if (this.current()) ui.fail(this, error); }
-    finally { this.setData({ cameraOpening: false }); }
+    } catch (error) { if (this.cameraAllowed(consent)) ui.fail(this, error); }
+    finally { if (this._cameraIntent === consent.intent) this.setData({ cameraOpening: false }); }
   },
   async agreeCameraPrivacy() {
     if (this.data.cameraOpening) return;
     const consent = this._consent;
     if (!this.cameraAllowed(consent)) { this.stopCamera(); return; }
     this.setData({ cameraOpening: true });
-    try { await this.authorizeCamera(consent); } catch (error) { if (this.current()) ui.fail(this, error); }
-    finally { this.setData({ cameraOpening: false }); }
+    try { await this.authorizeCamera(consent); } catch (error) { if (this.cameraAllowed(consent)) ui.fail(this, error); }
+    finally {
+      if (this._cameraIntent === consent.intent) { this._consent = null; this.setData({ cameraOpening: false, privacyNeeded: false }); }
+    }
   },
   async authorizeCamera(consent) {
     if (!this.cameraAllowed(consent)) return;

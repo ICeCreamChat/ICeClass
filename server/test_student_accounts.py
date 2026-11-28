@@ -72,6 +72,71 @@ class StudentAccountsTests(CardQuizHttpCase):
             self.assertTrue(service.verify_password(credential['password'], row['password_hash']))
         await self.signin(created['credentials'][0])
 
+    async def example_card(self):
+        self.db.run('UPDATE classes SET name=? WHERE id=?', ('高一（9）班', self.cid))
+        with patch('student_accounts.today', return_value='2026-11-26'), patch('student_accounts.secrets.randbelow', return_value=42):
+            card, other = (await self.number_cards())['credentials']
+        backup = {**card, 'password': '003419'}
+        self.db.run('INSERT INTO student_report_demo_access(account_id,password_hash) VALUES(?,?)',
+                    (card['accountId'], service.hash_password(backup['password'])))
+        return card, backup, other
+
+    async def test_example_password_opens_only_prepared_report(self):
+        card, backup, other = await self.example_card()
+        self.assertEqual(card['username'], '26110901')
+        demo = await self.signin(backup)
+        self.assertEqual(self.db.one('SELECT COUNT(*) n FROM student_sessions')['n'], 0)
+        for path in ('/student', '/student/?from=card', '/card-quiz/student.html'):
+            redirect = await self.client.get(path, headers=demo, allow_redirects=False)
+            self.assertEqual((redirect.status, redirect.headers['Location']), (302, '/card-quiz/student-example.html'))
+            self.assertEqual(redirect.headers['Cache-Control'], 'no-store')
+        page = await self.client.get('/card-quiz/student-example.html', headers=demo)
+        self.assertEqual(page.status, 200)
+        html = await page.text()
+        self.assertIn('正在读取课后报告…', html)
+        response, example = await self.student('GET', '/report-example', headers=demo)
+        self.assertEqual(response.headers['Cache-Control'], 'no-store')
+        self.assertEqual((example['username'], example['className'], example['lesson']['title']),
+                         ('26110901', '高一（9）班', '对数的概念'))
+        self.assertEqual([q['chosen'] == q['answer'] for q in example['lesson']['questions']], [True, False, True, True, True])
+        for method, route in [('GET', '/report'), ('GET', '/images/test-image'), ('POST', '/card'), ('PUT', '/password')]:
+            await self.student(method, route, headers=demo, status=401)
+        for headers in ({}, self.admin, {**demo, **self.dh}):
+            _, denied = await self.student('GET', '/report-example', headers=headers, status=401)
+            self.assertEqual(denied['error'], '请用备用密码登录后查看课后报告。')
+        await self.assert_invalid_login(other['username'], backup)
+        await self.assert_invalid_login(card['username'], {'password': '654321'})
+        real = await self.signin(card)
+        self.assertEqual(real['Cookie'].split('=')[0], demo['Cookie'].split('=')[0])
+        self.assertEqual((await self.student('GET', '/report', headers=real))[1]['records'], [])
+        await self.student('GET', '/report-example', headers=real, status=401)
+        response = await self.client.get('/card-quiz/student-example.html', headers=real, allow_redirects=False)
+        self.assertEqual((response.status, response.headers.get('Location')), (302, '/student'))
+        await self.student('POST', '/card', {'password': backup['password']}, headers=real, status=401)
+        await self.student('POST', '/logout', headers={'Cookie': demo['Cookie']}, status=403)
+        await self.student('POST', '/logout', headers=demo)
+        await self.student('GET', '/report-example', headers=demo, status=401)
+        await self.student('GET', '/report', headers=real)
+
+    async def test_example_expiry_revocation_and_card_reissue(self):
+        card, backup, _ = await self.example_card()
+        with patch('student_accounts.secrets.randbelow', return_value=int(backup['password'])):
+            fresh = (await self.number_cards(1, 1, reset=True))['credentials'][0]
+        self.assertNotIn(fresh['password'], {card['password'], backup['password']})
+        await self.signin(fresh)
+        demo = await self.signin(backup)
+        self.db.run('UPDATE student_report_demo_sessions SET expires_at=0')
+        await self.student('GET', '/report-example', headers=demo, status=401)
+        demo = await self.signin(backup)
+        for table, key in [('classes', self.cid), ('student_accounts', card['accountId'])]:
+            self.db.run('UPDATE ' + table + ' SET enabled=0 WHERE id=?', (key,))
+            await self.student('POST', '/login', backup, status=401)
+            await self.student('GET', '/report-example', headers=demo, status=401)
+            self.db.run('UPDATE ' + table + ' SET enabled=1 WHERE id=?', (key,))
+        self.db.run('DELETE FROM student_report_demo_access WHERE account_id=?', (card['accountId'],))
+        await self.student('GET', '/report-example', headers=demo, status=401)
+        await self.assert_invalid_login(card['username'], backup)
+
     async def test_student_login_is_separate_and_card_requires_current_password(self):
         credential = (await self.generate())['credentials'][0]
         auth = await self.signin(credential)
@@ -713,6 +778,46 @@ class StudentAccountsTests(CardQuizHttpCase):
         self.assertEqual(own['records'][-1]['tags'], [])
         self.assertEqual(own['knowledge'][0]['samples'], 1)
 
+    async def test_followups_match_this_cards_latest_official_mistake_and_bank_version(self):
+        cards = (await self.number_cards())['credentials']
+        one, two = [await self.signin(card) for card in cards]
+        bank = await self.new_question(options=['甲', '乙', '丙'], answer='C', tags=['对数的定义'])
+        deck = await self.api('POST', '/decks', {'title': '对数', 'questionIds': [bank['id']]})
+        await self.api('POST', f'/decks/{deck["id"]}/publish', {'revision': 1, 'classId': self.cid})
+        drill = {'id': 'a', 'tag': '对数的定义', 'text': '求指数', 'options': ['一', '二'],
+                 'answer': 'A', 'explanation': '由定义换写', 'forAnswers': ['A']}
+        drills = [drill, {**drill, 'id': 'b', 'forAnswers': ['B']}, {**drill, 'id': 'other', 'tag': '其他'}]
+        self.db.run('INSERT INTO card_quiz_followups VALUES(?,?,?)', (bank['id'], 1, json.dumps(drills)))
+
+        def op(action, **payload):
+            return {'action': action, 'payload': payload}
+
+        def lesson(sid, start, operations):
+            return self.batch(self.journal(operations, sid=sid, started=start, card_mode='scanned'))
+
+        q = op('add_question', **bank)
+        end = op('end_round')
+        await self.sync(lesson('followups', STAMP, [
+            q, op('start_round'), op('answer', cardNumber=1, option='B'), end,
+            op('start_round'), op('answer', cardNumber=1, option='A'), op('answer', cardNumber=2, option='C'), end,
+            op('start_round', practice=True), op('answer', cardNumber=1, option='B'), end,
+            q, op('start_round'), op('answer', cardNumber=2, option='B'), end, op('end_session')]))
+        _, report = await self.student('GET', '/report', headers=one)
+        matches = [(r['status'], [e['id'] for e in r.get('exercises', [])]) for r in report['records']]
+        self.assertEqual(matches, [('wrong', []), ('wrong', ['a']), ('practice', []), ('abstained', [])])
+        self.assertNotIn('forAnswers', report['records'][1]['exercises'][0])
+        _, report = await self.student('GET', '/report', headers=two)
+        self.assertEqual([(r['status'], [e['id'] for e in r.get('exercises', [])])
+                          for r in report['records'] if r['isOfficial']], [('correct', []), ('wrong', ['b'])])
+        updated = await self.api('PUT', '/questions/' + bank['id'], {'revision': 1, 'value': {**bank, 'text': '新版'}})
+        await self.api('POST', f'/decks/{deck["id"]}/publish', {'revision': 1, 'classId': self.cid})
+        await self.sync(lesson('followups-next', STAMP + 60000, [op('add_question', **updated), op('start_round'),
+                             op('answer', cardNumber=2, option='A'), end, op('end_session')]))
+        _, absent = await self.student('GET', '/report', headers=one)
+        self.assertEqual(absent['records'], [])
+        _, latest = await self.student('GET', '/report', headers=two)
+        self.assertEqual([(r['status'], r.get('exercises')) for r in latest['records']], [('wrong', None)])
+
     async def test_latest_published_question_answer_is_counted_once(self):
         credential = (await self.generate())['credentials'][0]
         auth = await self.signin(credential)
@@ -724,6 +829,167 @@ class StudentAccountsTests(CardQuizHttpCase):
         _, own = await self.student('GET', '/report', headers=auth)
         self.assertEqual(own['totals']['samples'], 1)
         self.assertEqual([r['counted'] for r in own['records']], [False, True])
+
+    async def test_report_title_uses_class_publication_and_only_unambiguous_legacy_decks(self):
+        auth = await self.signin((await self.generate())['credentials'][0])
+        bank = await self.new_question()
+
+        async def publish(title, cid):
+            deck = await self.api('POST', '/decks', {'title': title, 'questionIds': [bank['id']]})
+            return await self.api('POST', f'/decks/{deck["id"]}/publish', {'revision': 1, 'classId': cid})
+
+        first = await publish('第一份题单', self.cid)
+        await self.sync(self.session(sid='legacy', bank=bank))
+        _, report = await self.student('GET', '/report', headers=auth)
+        self.assertEqual(report['sessions'][0]['title'], '第一份题单')
+        second = await publish('第二份题单', self.cid)
+        batch = {**self.session(sid='linked', bank=bank), 'publicationId': second['id']}
+        foreign = await publish('别班题单', await self.other_class())
+        await self.sync({**batch, 'publicationId': foreign['id']}, 403)
+        await self.sync(batch)
+        await self.sync({**batch, 'publicationId': first['id']}, 409)
+        await self.sync(batch)
+        await self.api('DELETE', '/publications/' + second['id'])
+        await self.sync(self.session(sid='impromptu'))
+        _, report = await self.student('GET', '/report', headers=auth)
+        self.assertEqual({s['id']: s['title'] for s in report['sessions']},
+                         {'linked': '第二份题单', 'legacy': '', 'impromptu': ''})
+
+    async def enable_report_model(self):
+        response = await self.client.put('/api/banban/settings', headers=self.admin, json={
+            'enabled': True, 'baseUrl': 'https://api.deepseek.com', 'model': 'deepseek-fixture',
+            'apiKey': 'fixture-private-school-key'})
+        self.assertEqual(response.status, 200, await response.text())
+
+    async def test_analysis_scopes_evidence_and_reuses_each_students_result_after_restart(self):
+        await self.enable_report_model()
+        cards = (await self.generate())['credentials']
+        one, two, exempt, abstained = [await self.signin(c) for c in cards]
+        ops = [{'action':'add_question','payload':question(answer='B')}, {'action':'start_round'},
+               {'action':'answer','payload':{'cardNumber':1,'option':'B'}}, {'action':'end_round'},
+               {'action':'start_round'}, {'action':'answer','payload':{'cardNumber':1,'option':'A'}},
+               {'action':'answer','payload':{'cardNumber':2,'option':'B'}},
+               {'action':'set_exempt','payload':{'studentId':'s3','exempt':True}}, {'action':'end_round'},
+               {'action':'start_round','payload':{'practice':True}},
+               {'action':'answer','payload':{'cardNumber':1,'option':'B'}}, {'action':'end_round'},
+               {'action':'add_question','payload':question(answer=None, tags=[], text='未判分题目')},
+               {'action':'start_round'}, {'action':'answer','payload':{'cardNumber':1,'option':'A'}},
+               {'action':'end_session'}]
+        await self.sync(self.batch(self.journal(ops)))
+        path = '/report/session-1/analysis'
+        async def analyze(auth, **kwargs):
+            return (await self.student('POST', path, {}, headers=auth, **kwargs))[1]
+        await analyze(self.admin, status=401)
+        await analyze({'Cookie':one['Cookie']}, status=403)
+        await self.student('POST', path, {'accountId':cards[1]['accountId'], 'prompt':'替换数据'}, headers=one, status=400)
+        await self.student('POST', '/report/missing/analysis', {}, headers=one, status=404)
+        delay = asyncio.Event()
+        async def complete(cfg, messages):
+            await delay.wait()
+            evidence = json.loads(messages[-1]['content'])
+            self.assertEqual(cfg['model'], 'deepseek-fixture')
+            self.assertEqual(len(evidence['questions']), 1)
+            for secret in [cards[0]['username'], cards[0]['accountId'], self.students[0]['name'], self.device['deviceId'],
+                           cards[0]['password'], 'fixture-private-school-key', '未判分题目']:
+                self.assertNotIn(secret, messages[-1]['content'])
+            if evidence['questions'][0]['given'] == 'A':
+                self.assertEqual(evidence['totals'], {'wrong':1,'ungraded':1})
+            return json.dumps({'strengths':'第1题', 'review':'核对题意', 'nextStep':'写出依据',
+                               'explanations':{'1':'所选项与条件不符。','9':'多余的题号'}})
+        with patch('banban.Banban.complete', side_effect=complete) as model:
+            self.assertEqual((await analyze(exempt))['status'], 'insufficient')
+            self.assertEqual((await analyze(abstained))['status'], 'insufficient')
+            model.assert_not_called()
+            with patch('student_lesson_analysis.POLL_WAIT_SECONDS', .01):
+                pending = await asyncio.gather(*(analyze(one, status=202) for _ in range(6)))
+            self.assertTrue(all(r['status']=='pending' for r in pending))
+            self.assertEqual(model.await_count, 1)
+            delay.set()
+            wrong, correct = await asyncio.gather(analyze(one), analyze(two))
+            self.assertEqual(model.await_count, 2)
+            self.assertEqual(wrong['explanations'], {'1':'所选项与条件不符。'})
+            self.assertEqual(correct['explanations'], {})
+            self.assertIn('全部答对', correct['analysis']['review'])
+            self.assertEqual(wrong['accountId'], cards[0]['accountId'])
+            self.assertEqual((await analyze(one)), wrong)
+            await self.restart_accounts_service()
+            self.assertEqual((await analyze(two)), correct)
+            self.assertEqual(model.await_count, 2)
+        self.assertEqual(self.db.one('SELECT kind,subject_id,used FROM banban_quota_usage'),
+                         {'kind':'device','subject_id':self.device['deviceId'],'used':2})
+
+    async def test_analysis_failure_is_visible_after_poll_until_explicit_retry_and_review_invalidates(self):
+        await self.enable_report_model()
+        auth = await self.signin((await self.generate())['credentials'][0])
+        await self.sync()
+        path = '/report/session-1/analysis'
+        delay = asyncio.Event()
+        valid = json.dumps({'strengths':'读懂了题意', 'review':'核对条件', 'nextStep':'重做一道变式', 'explanations':{}})
+        async def slow_failure(cfg, messages):
+            await delay.wait()
+            return 'not JSON'
+        with patch('banban.Banban.complete', side_effect=slow_failure) as model:
+            with patch('student_lesson_analysis.POLL_WAIT_SECONDS', .01):
+                await self.student('POST', path, {'revision':1}, headers=auth, status=202)
+            delay.set()
+            for _ in range(2):
+                _, failure = await self.student('POST', path, {'revision':1}, headers=auth, status=502)
+                self.assertEqual(failure['code'], 'analysis_response')
+            self.assertEqual(model.await_count, 1)
+            model.side_effect = None
+            model.return_value = valid
+            _, answer = await self.student('POST', path, {'revision':1,'retry':True}, headers=auth)
+            self.assertEqual(answer['status'], 'ready')
+            await self.student('POST', path, {'revision':1,'retry':True}, headers=auth)
+            self.assertEqual(model.await_count, 2)
+            await self.api('PUT','/sessions/session-1',{'revision':1, 'questions':[{'id':'q1','answer':'B'}]})
+            _, stale = await self.student('POST', path, {'revision':1}, headers=auth, status=409)
+            self.assertEqual(stale['code'], 'analysis_changed')
+            _, revised = await self.student('POST', path, {'revision':2}, headers=auth)
+            self.assertEqual(revised['revision'], 2)
+            self.assertEqual(json.loads(model.await_args.args[1][-1]['content'])['totals'], {'wrong':1})
+            self.assertEqual(model.await_count, 3)
+
+    async def test_new_scanned_lesson_hides_inflight_analysis_for_reused_cards(self):
+        await self.enable_report_model()
+        one, two = [await self.signin(c) for c in (await self.number_cards())['credentials']]
+        def lesson(sid, number, started):
+            ops = [{'action':'add_question','payload':question()}, {'action':'start_round'},
+                   {'action':'answer','payload':{'cardNumber':number, 'option':'A'}}, {'action':'end_session'}]
+            return self.batch(self.journal(ops, sid=sid, started=started, card_mode='scanned'))
+        await self.sync(lesson('old-card', 1, STAMP))
+        path = '/report/old-card/analysis'
+        await self.student('POST', path, {}, headers=two, status=404)
+        entered, finish = asyncio.Event(), asyncio.Event()
+        async def delayed(cfg, messages):
+            entered.set()
+            await finish.wait()
+            return '{"strengths":"已判定","review":"复习","nextStep":"练习","explanations":{}}'
+        with patch('banban.Banban.complete', side_effect=delayed):
+            prior = asyncio.create_task(self.student('POST', path, {}, headers=one, status=404))
+            await asyncio.wait_for(entered.wait(), timeout=3)
+            await self.sync(lesson('new-card', 2, STAMP+20000))
+            finish.set()
+            await prior
+            await self.student('POST', path, {}, headers=one, status=404)
+            await self.student('POST', '/report/new-card/analysis', {}, headers=one, status=404)
+        self.assertIsNone(self.db.one('SELECT result FROM student_lesson_analyses WHERE result IS NOT NULL'))
+
+    async def test_analysis_respects_school_connection_and_originating_device_limit(self):
+        auth = await self.signin((await self.generate())['credentials'][0])
+        await self.sync()
+        path = '/report/session-1/analysis'
+        with patch('banban.Banban.complete') as model:
+            with patch('banban.Banban.config', return_value={'enabled':False}):
+                await self.student('POST', path, {}, headers=auth, status=503)
+            with patch('banban.Banban.config', return_value={
+                'enabled':True, 'apiKey':'fixture', 'model':'other', 'baseUrl':'https://example.com'}):
+                await self.student('POST', path, {}, headers=auth, status=503)
+            await self.enable_report_model()
+            self.db.run('UPDATE banban_quota_policy SET device_limit=0 WHERE id=1')
+            _, error = await self.student('POST', path, {}, headers=auth, status=429)
+            self.assertEqual(error['code'], 'banban_quota_exhausted')
+            model.assert_not_called()
 
     async def test_student_image_access_requires_own_ended_classroom_reference(self):
         import base64
@@ -761,7 +1027,12 @@ class StudentAccountsTests(CardQuizHttpCase):
         self.assertEqual(response.status, 400)
 
     async def test_student_short_path_preserves_query_and_api_responses_are_not_cached(self):
-        response = await self.client.get('/student?from=card', allow_redirects=False)
+        for path in ('/student?from=card', '/student/', '/card-quiz/student.html'):
+            response = await self.client.get(path, allow_redirects=False)
+            self.assertEqual((response.status, response.headers.get('Location')), (302, '/?login=student'))
+            self.assertEqual(response.headers['Cache-Control'], 'no-store')
+        auth = await self.signin((await self.generate())['credentials'][0])
+        response = await self.client.get('/student?from=card', headers=auth, allow_redirects=False)
         self.assertEqual(response.status, 302)
         self.assertEqual(response.headers['Location'], '/card-quiz/student.html?from=card')
         response, _ = await self.student('GET', '/session')

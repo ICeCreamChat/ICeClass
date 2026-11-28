@@ -7,6 +7,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
 using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
@@ -35,8 +36,7 @@ try
     foreach (var phone in new[] { false, true })
     {
         var state = new CardQuizCameraPreview(phone ? "phone-session" : "board-session", phone, false);
-        lens.Update(state);
-        Layout();
+        UpdatePreview(state);
         var image = lens.GetVisualDescendants().OfType<Image>().Single();
         var device = phone ? "手机" : "电脑";
         var other = phone ? "电脑" : "手机";
@@ -110,8 +110,7 @@ try
         fold.Focus();
         KeyStroke(PhysicalKey.Space);
         Expect("preview-fold", state.Key);
-        lens.Update(state with { Folded = true });
-        Layout();
+        UpdatePreview(state with { Folded = true });
         var dock = ButtonNamed("展开取景，正在扫码");
         lens.ShowFrame(state.Key, wideFrame);
         lens.ShowFrame(state.Key, squareFrame);
@@ -121,8 +120,7 @@ try
             "折叠清帧后可从圆形扫描图标恢复，焦点和触控范围有效");
         Touch(dock);
         Expect("preview-open", state.Key);
-        lens.Update(state);
-        Layout();
+        UpdatePreview(state);
         lens.ShowFrame(state.Key, wideFrame);
         Require(fold.IsFocused && image.Source is not null, "展开恢复画面及收起按钮焦点");
         if (phone)
@@ -133,16 +131,24 @@ try
             lens.ShowFrame(state.Key, squareFrame);
             Require(image.Source is not null, "同一连接来帧后恢复");
         }
-        lens.Update(null);
+        UpdatePreview(null);
         lens.ShowFrame(state.Key, wideFrame);
         Require(!lens.IsVisible && image.Source is null && !lens.ContainsInteractive(new Point(50, 20)), "撤去取景后忽略迟到帧并穿透");
         Console.WriteLine("PASS " + device + "取景、触控、键盘、命令与帧生命周期");
     }
     CheckPlacement();
     foreach (var dpi in new[] { 1d, 1.5, 2 })
-        CheckScaledPreview(dpi, wideFrame, squareFrame);
+    foreach (var wheelPercent in new[] { 80, 100, 200 })
+        CheckScaledPreview(dpi, wheelPercent, wideFrame, squareFrame);
 }
 finally { window.Close(); }
+
+void UpdatePreview(CardQuizCameraPreview? state)
+{
+    lens.Update(state);
+    lens.SetFootprint(lens.Footprint); // Unconstrained layout at the default wheel zoom.
+    Layout();
+}
 
 void Layout()
 {
@@ -192,43 +198,60 @@ void Expect(string action, string key)
 
 static void CheckPlacement()
 {
+    static PixelPoint ScreenPoint(PixelPoint origin, Point local, double dpi) =>
+        new(origin.X + (int)Math.Round(local.X * dpi), origin.Y + (int)Math.Round(local.Y * dpi));
+    static bool CenterFits(int actual, int requested, int start, int end, int low, int high) =>
+        Math.Abs(actual - requested) <= 1 || (actual > requested ? Math.Abs(start - low) : Math.Abs(end - high)) <= 1;
+
     const double rest = 100, petScale = .8;
+    var wheelSize = new Size(BanbanClassroomWheel.Diameter, BanbanClassroomWheel.Diameter);
     var full = BanbanCameraLens.PreviewSize;
+    var roomy = new PixelRect(-2600, -2100, 2400, 2000);
     foreach (var dpi in new[] { 1d, 1.5, 2 })
+    foreach (var wheelPercent in new[] { 80, 100, 200 })
     foreach (var right in new[] { false, true })
-    foreach (var work in new[] { new PixelRect(-1200, -800, 1200, 800), new PixelRect(30, 20, 320, 240),
+    foreach (var work in new[] { roomy, new PixelRect(-1200, -800, 1200, 800), new PixelRect(30, 20, 320, 240),
         new PixelRect(30, 20, 270, 1024) })
     foreach (int y in new[] { work.Y + 3, work.Y + work.Height / 2, work.Bottom - 3 })
     {
         var pet = new PixelPoint(right ? work.Right - 22 : work.X + 22, y);
-        var initial = BanbanPetWindow.FitClassroom(pet, work, dpi, rest, petScale, right);
-        var centerY = initial.Position.Y + (int)Math.Round(120 * initial.Scale * dpi);
-        var open = BanbanPetWindow.FitClassroom(pet, work, dpi, rest, petScale, right, full, centerY);
-        var disc = new Rect(open.Wheel, new Size(240, 240) * open.Scale);
-        var preview = new Rect(open.Lens, full * open.Scale);
-        var bounds = new Rect(open.Size);
-        var petBounds = new Rect(right ? disc.Right : disc.Left - rest * open.Scale, open.PetTop,
-            rest * open.Scale, Math.Max(44, 130 * petScale) * open.Scale);
-        Require(work.Contains(new PixelRect(open.Position, PixelSize.FromSize(open.Size, dpi))) &&
-            bounds.Inflate(.001).Contains(preview) && bounds.Inflate(.001).Contains(disc) && bounds.Inflate(.001).Contains(petBounds) &&
-            Math.Abs(disc.Center.X - preview.Center.X) < .001 && Math.Abs(disc.Top - preview.Bottom - 8 * open.Scale) < .001,
-            $"上下布局越界或偏心 {work} {dpi} {right} {y}");
-        if (open.Scale == initial.Scale)
-        {
-            var oldTop = initial.Position.Y;
-            var newTop = open.Position.Y + open.Wheel.Y * dpi;
-            Require(Math.Abs(newTop - Math.Max(oldTop, work.Y + (full.Height + 8) * dpi * open.Scale)) <= 1,
-                "开镜头仅按上方空间缺口移动圆盘");
-        }
-        var currentY = open.Position.Y + (int)Math.Round(disc.Center.Y * dpi);
-        var petAnchor = new PixelPoint(open.Position.X + (int)Math.Round(petBounds.Center.X * dpi), pet.Y);
+        var context = $"{work} @ {dpi:P0} DPI，圆盘 {wheelPercent}%，右停靠 {right}，锚点 {pet}";
+        var initial = BanbanPetWindow.FitClassroom(pet, work, dpi, rest, petScale, right, wheelSizePercent: wheelPercent);
+        var initialDisc = new Rect(initial.Wheel, wheelSize * initial.Scale);
+        var initialCenter = ScreenPoint(initial.Position, initialDisc.Center, dpi);
+        var open = BanbanPetWindow.FitClassroom(pet, work, dpi, rest, petScale, right, full, initialCenter, wheelPercent);
+        var disc = new Rect(open.Wheel, wheelSize * open.Scale);
+        var preview = new Rect(open.Lens, open.LensSize);
+        var bounds = new Rect(open.Size).Inflate(.001);
+        var window = new PixelRect(open.Position, PixelSize.FromSize(open.Size, dpi));
+        var petWidth = rest * open.CompanionScale;
+        var petBounds = new Rect(right ? disc.Right : disc.Left - petWidth, open.PetTop,
+            petWidth, Math.Max(44, 130 * petScale) * open.CompanionScale);
+        var video = BanbanCameraLens.VideoSize * open.Scale;
+        Require(open.CompanionScale is > 0 and <= 1 && (work != roomy || open.CompanionScale == 1) &&
+            Math.Abs(open.Scale - open.CompanionScale * wheelPercent / 100) < .001 &&
+            Math.Abs(preview.Width - video.Width) < .001 && Math.Abs(preview.Height - video.Height - BanbanCameraLens.ToolbarHeight) < .001,
+            $"圆盘、画面及操作条尺寸异常 {context}");
+        Require(work.Contains(window) && bounds.Contains(preview) && bounds.Contains(disc) && bounds.Contains(petBounds) &&
+            Math.Abs(disc.Center.X - preview.Center.X) < .001 && Math.Abs(disc.Top - preview.Bottom - 8 * open.CompanionScale) < .001,
+            $"上下布局越界或偏心 {context}");
+        var openCenter = ScreenPoint(open.Position, disc.Center, dpi);
+        Require(CenterFits(openCenter.X, initialCenter.X, window.X, window.Right, work.X, work.Right) &&
+            CenterFits(openCenter.Y, initialCenter.Y, window.Y, window.Bottom, work.Y, work.Bottom),
+            $"开镜头仅按工作区边缘移动圆心 {initialCenter} -> {openCenter}，{context}");
+        var petAnchor = ScreenPoint(open.Position, petBounds.Center, dpi);
         var dock = BanbanCameraLens.DockSize;
-        var folded = BanbanPetWindow.FitClassroom(petAnchor, work, dpi, rest, petScale, right, dock, currentY);
-        Require(folded.Scale == open.Scale && Math.Abs(folded.Position.Y + (folded.Wheel.Y + 120 * folded.Scale) * dpi - currentY) <= 1 &&
-            Math.Abs(folded.Position.X + (folded.Wheel.X + 120 * folded.Scale) * dpi - (open.Position.X + disc.Center.X * dpi)) <= 1 &&
-            Math.Abs(folded.Lens.X + dock.Width * folded.Scale / 2 - (folded.Wheel.X + 120 * folded.Scale)) < .001, "折叠保持圆心与缩放");
+        var folded = BanbanPetWindow.FitClassroom(petAnchor, work, dpi, rest, petScale, right, dock, openCenter, wheelPercent);
+        var foldedDisc = new Rect(folded.Wheel, wheelSize * folded.Scale);
+        var foldedDock = new Rect(folded.Lens, folded.LensSize);
+        var foldedCenter = ScreenPoint(folded.Position, foldedDisc.Center, dpi);
+        Require(work.Contains(new PixelRect(folded.Position, PixelSize.FromSize(folded.Size, dpi))) &&
+            new Rect(folded.Size).Inflate(.001).Contains(foldedDock) && foldedDock.Size == dock &&
+            Math.Abs(foldedDock.Center.X - foldedDisc.Center.X) < .001 && folded.Scale == open.Scale &&
+            Math.Abs(foldedCenter.X - openCenter.X) <= 1 && Math.Abs(foldedCenter.Y - openCenter.Y) <= 1,
+            $"折叠保持圆心与缩放 {openCenter} -> {foldedCenter}，{context}");
     }
-    Console.WriteLine("PASS 双侧停靠、负坐标、顶底边缘与 100% / 150% / 200% 缩放");
+    Console.WriteLine("PASS 双侧停靠、负坐标、边缘限位、80% / 100% / 200% 圆盘与三档 DPI");
 }
 
 static string MakeJpeg(int width, int height)
@@ -249,13 +272,16 @@ static string MakeJpeg(int width, int height)
     return "data:image/jpeg;base64," + Convert.ToBase64String(jpeg.AsSpan());
 }
 
-static void CheckScaledPreview(double dpi, string wideFrame, string squareFrame)
+static void CheckScaledPreview(double dpi, int wheelPercent, string wideFrame, string squareFrame)
 {
     var lens = new BanbanCameraLens();
     lens.Update(new("scaled", false, false));
     var wheel = new BanbanClassroomWheel { IsVisible = true };
     var fit = BanbanPetWindow.FitClassroom(new PixelPoint(1000, 600), new PixelRect(0, 0, 1600, 1200),
-        dpi, 78, .6, right: true, lens: lens.Footprint);
+        dpi, 78, .6, right: true, lens: lens.Footprint, wheelSizePercent: wheelPercent);
+    lens.SetFootprint(fit.LensSize);
+    wheel.RenderTransformOrigin = RelativePoint.TopLeft;
+    wheel.RenderTransform = new ScaleTransform(fit.Scale, fit.Scale);
     Canvas.SetLeft(lens, fit.Lens.X);
     Canvas.SetTop(lens, fit.Lens.Y);
     Canvas.SetLeft(wheel, fit.Wheel.X);
@@ -265,21 +291,33 @@ static void CheckScaledPreview(double dpi, string wideFrame, string squareFrame)
     using var root = new EmbeddableControlRoot(surface) { Content = scene };
     root.Prepare();
     root.UpdateLayout();
-    PixelRect SurfaceBounds(Control control) => new(PixelPoint.FromPoint(control.Bounds.TopLeft, dpi),
-        PixelPoint.FromPoint(control.Bounds.BottomRight, dpi));
+    PixelRect SurfaceBounds(Control control)
+    {
+        var topLeft = control.TranslatePoint(default, scene)!.Value;
+        var bottomRight = control.TranslatePoint(new Point(control.Bounds.Width, control.Bounds.Height), scene)!.Value;
+        return new PixelRect(PixelPoint.FromPoint(topLeft, dpi), PixelPoint.FromPoint(bottomRight, dpi));
+    }
     var frame = SurfaceBounds(lens);
     var disc = SurfaceBounds(wheel);
-    var size = lens.Footprint;
-    Require(Math.Abs(frame.Width - size.Width * dpi) <= 1 && Math.Abs(frame.Height - size.Height * dpi) <= 1 &&
-        frame.Width > disc.Width && Math.Abs(frame.Center.X - disc.Center.X) <= 1 &&
-        Math.Abs(disc.Y - frame.Bottom - 8 * dpi) <= 1, $"{dpi:P0} 取景 {frame}、圆盘 {disc}、布局 {lens.Bounds}");
-    var gap = new Point(fit.Lens.X + size.Width / 2, fit.Lens.Y + size.Height + 4);
-    Require(lens.ContainsInteractive(new Point(20, 3)), $"{dpi:P0} 取景框内侧应接收点击");
+    var size = lens.Bounds.Size;
+    var video = BanbanCameraLens.VideoSize * fit.Scale;
+    var previewHeight = video.Height + BanbanCameraLens.ToolbarHeight;
+    var gapHeight = 8 * fit.CompanionScale;
+    var context = $"{dpi:P0} DPI，圆盘 {wheelPercent}%";
+    // Layout rounds the preview bottom and the wheel top to physical pixels independently.
+    Require(Math.Abs(frame.Width - video.Width * dpi) <= 1 &&
+        Math.Abs(frame.Height - previewHeight * dpi) <= 1 &&
+        Math.Abs(disc.Width - BanbanClassroomWheel.Diameter * fit.Scale * dpi) <= 1 &&
+        frame.Width > disc.Width && Math.Abs(frame.Center.X - disc.Center.X) <= 1 && disc.Y > frame.Bottom &&
+        Math.Abs(disc.Y - frame.Y - (previewHeight + gapHeight) * dpi) <= 1,
+        $"{context} 取景 {frame}、圆盘 {disc}、布局 {lens.Bounds}");
+    var gap = new Point(frame.Center.X / dpi, (frame.Bottom + disc.Y) / (2 * dpi));
+    Require(lens.ContainsInteractive(new Point(20, 3)), $"{context} 取景框内侧应接收点击");
     foreach (var corner in new[] { new Point(1, 1), new Point(size.Width - 1, 1),
         new Point(1, size.Height - 1), new Point(size.Width - 1, size.Height - 1) })
-        Require(!lens.ContainsInteractive(corner), $"{dpi:P0} 取景圆角 {corner} 应穿透");
+        Require(!lens.ContainsInteractive(corner), $"{context} 取景圆角 {corner} 应穿透");
     Require(!lens.ContainsInteractive(scene.TranslatePoint(gap, lens)!.Value) &&
-        !wheel.ContainsInteractive(scene.TranslatePoint(gap, wheel)!.Value), $"{dpi:P0} 盘间空隙应穿透");
+        !wheel.ContainsInteractive(scene.TranslatePoint(gap, wheel)!.Value), $"{context} 盘间空隙应穿透");
     foreach (var (data, wide) in new[] { (wideFrame, true), (squareFrame, false) })
     {
         lens.ShowFrame("scaled", data);
@@ -287,13 +325,13 @@ static void CheckScaledPreview(double dpi, string wideFrame, string squareFrame)
         CheckPicture(lens, wide, dpi);
     }
     lens.Update(null);
-    Console.WriteLine($"PASS {dpi:P0} 离屏取景 {frame.Width} × {frame.Height} px，盘间 {disc.Y - frame.Bottom} px，横帧和旧方帧");
+    Console.WriteLine($"PASS {context} 离屏取景 {frame.Width} × {frame.Height} px，盘间 {disc.Y - frame.Bottom} px，横帧和旧方帧");
 }
 
 static void CheckPicture(Visual scene, bool wide, double dpi = 1)
 {
-    var size = BanbanCameraLens.PreviewSize;
-    var video = BanbanCameraLens.VideoSize;
+    var size = scene.Bounds.Size;
+    var video = new Size(size.Width, size.Width * 9 / 16);
     using var target = new RenderTargetBitmap(PixelSize.FromSize(new Size(size.Width, size.Height + 8), dpi),
         new Vector(96 * dpi, 96 * dpi));
     target.Render(scene);

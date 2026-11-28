@@ -57,13 +57,14 @@
   $('sidebarClose').onclick = () => closeNav(true);
   $('navBackdrop').onclick = () => closeNav(true);
   const drafts = new Map();
-  let leavingDocument = false, confirming = false, refreshConsent = null, contextRevision = 0;
+  let leavingDocument = false, activeConfirmation = null, refreshConsent = null, contextRevision = 0;
   const dialog = $('workbenchConfirm');
   const dialogText = $('workbenchConfirmText'), dialogError = $('workbenchConfirmError');
   const accept = $('workbenchConfirmAccept'), cancel = $('workbenchConfirmCancel'), extra = $('workbenchConfirmExtra');
-  function ask({title, message, acceptLabel = '确认', cancelLabel = '取消', danger = false, additional}) {
-    if (dialog.open || confirming) return Promise.resolve(false);
-    confirming = true;
+  async function ask({title, message, acceptLabel = '确认', cancelLabel = '取消', danger = false, additional}) {
+    // close() clears open before the close event delivers the previous decision.
+    while (activeConfirmation && !dialog.open) await activeConfirmation;
+    if (dialog.open) return false;
     $('workbenchConfirmTitle').textContent = title;
     dialogText.textContent = message;
     dialogError.textContent = '';
@@ -75,11 +76,11 @@
     extra.textContent = additional?.label || '';
     const controls = [...dialog.querySelectorAll('button')];
     const onCancel = event => { if (extra.disabled) event.preventDefault(); };
-    return new Promise(resolve => {
+    activeConfirmation = new Promise(resolve => {
       dialog.addEventListener('cancel', onCancel);
       dialog.addEventListener('close', () => {
         dialog.removeEventListener('cancel', onCancel);
-        confirming = false; accept.onclick = extra.onclick = null;
+        activeConfirmation = null; accept.onclick = extra.onclick = null;
         resolve(dialog.returnValue === 'accept');
       }, {once:true});
       accept.onclick = () => dialog.close('accept');
@@ -100,6 +101,7 @@
       dialog.returnValue = '';
       dialog.showModal(); cancel.focus();
     });
+    return activeConfirmation;
   }
   function leaveState({exclude, only} = {}) {
     const dirty = [], busy = [];

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#e5f0f8"><title>课后报告 · ICeClass 班伴</title>
+  <link rel="icon" href="/favicon.ico?v=5">
+  <link rel="stylesheet" href="../assets/typography.css"><link rel="stylesheet" href="student.css">
+  <link rel="stylesheet" href="student-example.css"><link rel="stylesheet" href="../assets/control-focus.css">
+  <script src="student-math.js?v=1" defer></script><script src="student-example.js" defer></script>
+</head>
+<body class="student-page report-example">
+  <a class="student-skip" href="#main">跳到主要内容</a>
+  <header class="example-header"><div>
+    <a class="student-brand" href="/student">ICeClass 班伴</a><span>课后报告</span>
+    <button id="logout" type="button" hidden>退出登录</button>
+  </div></header>
+  <main id="main" class="student-main" tabindex="-1">
+    <p id="status" role="status" aria-live="polite">正在读取课后报告…</p>
+    <button id="retry" type="button" hidden>重新载入</button>
+    <article id="report" hidden>
+      <section class="student-panel" aria-labelledby="lesson">
+        <h1 id="lesson"></h1><p id="identity" class="example-meta"></p>
+        <p id="counts" class="example-counts"></p>
+        <div id="mistake"></div>
+        <section class="example-drill" aria-labelledby="exercise-heading">
+          <div class="example-line"><h2 id="exercise-heading" tabindex="-1">针对练习</h2><span id="progress"></span></div>
+          <div id="exercise"></div>
+          <p id="verdict" role="status" aria-live="polite"></p>
+          <div class="example-actions"><button id="back" type="button" hidden>上一题</button><button id="next" class="primary" type="button">下一题</button></div>
+        </section>
+      </section>
+      <details class="student-panel" id="all-answers">
+        <summary>查看全部作答</summary><div id="answers"></div>
+      </details>
+      <section class="student-panel" aria-labelledby="ai">
+        <h2 id="ai" tabindex="-1">AI 学情报告</h2><dl id="analysis"></dl>
+      </section>
+    </article>
+  </main>
+</body></html>

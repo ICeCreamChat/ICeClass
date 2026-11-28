@@ -1,4 +1,5 @@
-<view class="page theme-{{appearance}}">
+<block wx:if="{{sessionExpired}}"><include src="../../templates/login-required.wxml" /></block>
+<view wx:else class="page theme-{{appearance}}">
   <view class="page-header">
     <view class="title">班级作业管理</view>
     <view class="subtitle">学生名单与学期作业预设</view>
@@ -17,7 +18,6 @@
     <view wx:if="{{cachedDraftCount > 1 || (cachedDraftCount && !dirty)}}" class="muted">当前页面共保留 {{cachedDraftCount}} 个班级的未保存草稿，切回对应班级后可继续保存。</view>
   </view>
   <view wx:if="{{error}}" class="error" aria-role="alert">{{error}}</view>
-  <view wx:if="{{sessionExpired}}" class="status"><view>登录已失效，当前页面草稿已保留。</view><button class="primary" bindtap="relogin" aria-label="重新登录并保留作业设置草稿">重新登录</button></view>
   <view wx:if="{{conflict}}" class="status">设置已被其他老师修改。草稿已保留，请重新载入核对后再保存。</view>
   <view wx:if="{{uncertain}}" class="status">上次保存结果未确认，已停止重复提交。草稿已保留，请重新载入服务器最新设置核对。</view>
   <view wx:if="{{notice}}" class="status" aria-live="polite">{{notice}}</view>

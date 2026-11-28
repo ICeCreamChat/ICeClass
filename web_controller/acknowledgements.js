@@ -79,7 +79,7 @@
     });
     updatePreview();
   }
-  function adopt(value) { saved = value; draft = structuredClone(value.sections); conflict = false; render(); }
+  function adopt(value) { saved = value; draft = value.sections.map(section => ({...section})); conflict = false; render(); }
   async function load() {
     if (busy || !allowed()) return;
     const current = ++generation, account = identity(); busy = true; controls(); status('正在载入致谢…');

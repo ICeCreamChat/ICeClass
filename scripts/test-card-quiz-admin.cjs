@@ -44,7 +44,10 @@ async function setup(t,width=1280){
     if(relative.endsWith('/publish')){const p={id:'publication1',classId:'c1',title:fixture.decks[0].title,questions:fixture.decks[0].questionIds.map(id=>copy(fixture.questions.find(q=>q.id===id)))};fixture.publications.push(p);return{json:p};}
     if(relative==='/classes/c1/publications')return{json:{publications:copy(fixture.publications)}};
     if(relative==='/publications/publication1'&&method==='DELETE'){fixture.publications=[];return{json:{ok:true}};}
-    if(relative==='/report')return{json:{sessions:[{...fixture.detail.session,questionCount:1}],students:fixture.detail.report.students,knowledge:fixture.knowledge||[{subjectId:'math',tag:'集合',questionCount:1,answers:1,...count}]}};
+    if(relative==='/report'||relative==='/sessions'){
+      const history=fixture.historyPage?fixture.historyPage(url):{sessions:[{...fixture.detail.session,questionCount:1}]};
+      return{json:relative==='/sessions'?history:{...history,students:fixture.detail.report.students,knowledge:fixture.knowledge||[{subjectId:'math',tag:'集合',questionCount:1,answers:1,...count}]}};
+    }
     if(relative==='/sessions/session1'){
       if(body){fixture.detail.revision++;if(body.teacherId)fixture.detail.session.teacherId=body.teacherId;for(const q of body.questions||[]){Object.assign(fixture.detail.session.questions[0],q);Object.assign(fixture.detail.report.questions[0],q);}}
       return{json:copy(fixture.detail)};
@@ -89,6 +92,51 @@ test('文字图片题保存、版本冲突保留草稿，题单按序发布和�
   await page.locator('[data-cq-action=save-deck]').click();await page.locator('[data-cq-action=publish]').click();await page.locator('#workbenchConfirm[open] #workbenchConfirmAccept').click();
   await page.locator('.cq-panel details.cq-item summary').click();await page.locator('[data-cq-action=withdraw]').waitFor();assert.deepEqual(fixture.decks[0].questionIds,['q2','q1']);assert.equal(fixture.publications[0].questions[0].text,'新建图文题');
   await page.locator('[data-cq-action=withdraw]').click();await page.locator('#workbenchConfirm[open] #workbenchConfirmAccept').click();await page.locator('[data-cq-action=withdraw]').waitFor({state:'hidden'});assert.equal(fixture.publications.length,0);
+});
+test('课堂翻页保留全班统计，往期课堂可打开并返回原页，切学科回到首页',async t=>{
+  const {page,fixture}=await setup(t,390);
+  const reads=[];
+  fixture.historyPage=url=>{
+    reads.push(new URL(url));
+    const summary={...fixture.detail.session,questionCount:1};
+    if(url.searchParams.get('subjectId')==='history')return {sessions:[{...summary,id:'history-lesson',subjectId:'history'}],nextCursor:null,total:1};
+    if(url.searchParams.get('beforeId')==='recent')return {sessions:[summary],nextCursor:null,total:21};
+    const sessions=Array.from({length:20},(_,i)=>({...summary,id:i===0?'recent':'recent-'+i,startedAt:summary.startedAt+i}));
+    return {sessions,nextCursor:{beforeId:'recent',beforeStartedAt:summary.startedAt},total:21};
+  };
+  await page.getByRole('button',{name:'课堂报告'}).click();
+  await page.locator('[data-cq-action=open-session][data-id=recent]').waitFor();
+  const next=page.getByRole('button',{name:'下一页课堂',exact:true});
+  const previous=page.getByRole('button',{name:'上一页课堂',exact:true});
+  assert.equal(await next.count(),1);
+  assert.equal(await previous.isDisabled(),true);
+  assert.equal(reads.length,1);
+  await page.route('**/api/card-quiz/sessions?*',route=>route.fulfill({status:503,json:{error:'课堂读取中断'}}),{times:1});
+  await next.press('Enter');
+  await page.locator('.cq-feedback.cq-error').waitFor();
+  assert.match(await page.locator('.cq-feedback').innerText(),/课堂读取中断/);
+  assert.equal(await page.locator('[data-cq-action=open-session][data-id=recent]').isVisible(),true);
+  await next.press('Enter');
+  const older=page.locator('[data-cq-action=open-session][data-id=session1]');
+  await older.waitFor();
+  assert.equal(await page.locator('.cq-feedback.cq-error').isVisible(),false);
+  assert.equal(await next.isDisabled(),true);
+  assert.match(await page.locator('#cardQuizRoot').innerText(),/学生甲/);
+  assert.deepEqual(reads.map(url=>url.pathname),['/api/card-quiz/report','/api/card-quiz/sessions']);
+  assert.equal(reads[1].searchParams.get('classId'),'c1');
+  assert.equal(reads[1].searchParams.get('beforeStartedAt'),String(fixture.detail.session.startedAt));
+  await older.click();
+  await page.getByRole('button',{name:'返回报告'}).click();
+  await older.waitFor();
+  await previous.press('Enter');
+  await page.locator('[data-cq-action=open-session][data-id=recent]').waitFor();
+  await next.press('Enter');
+  await older.waitFor();
+  await page.locator('#cq-subject').selectOption('history');
+  await page.locator('[data-cq-action=open-session][data-id=history-lesson]').waitFor();
+  assert.equal(reads.at(-1).searchParams.has('beforeId'),false);
+  assert.equal(await next.count(),0);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
 });
 test('教师报告展示样本和未答，课后修订及本人认领、CSV下载',async t=>{
   const{page,fixture}=await setup(t,390);

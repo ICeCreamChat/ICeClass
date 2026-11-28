@@ -10,27 +10,27 @@
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=5">
   <title>ICeClass 班伴</title>
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/typography.css">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=22">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-admin.css?v=32">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/island-ribbon.css?v=8">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-calendar.css?v=2">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/reading-ranking.css?v=5">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ideas-admin.css?v=3">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/homework-admin.css?v=3">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/card-quiz-admin.css?v=5">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/self-study-admin.css?v=6">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-quota.css?v=1">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban.css?v=12">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-workspace.css?v=35">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-voice.css?v=2">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/banban-operations.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/ui.css?v=23">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="island" data-href="/island-admin.css?v=32">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="island" data-href="/island-ribbon.css?v=8">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="workbench" data-href="/reading-calendar.css?v=2">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="workbench" data-href="/reading-ranking.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="ideas" data-href="/ideas-admin.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="homework" data-href="/homework-admin.css?v=3">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="card-quiz" data-href="/card-quiz-admin.css?v=5">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="workbench" data-href="/self-study-admin.css?v=7">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="settings" data-href="/banban-quota.css?v=1">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="banban" data-href="/banban.css?v=12">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="banban" data-href="/banban-workspace.css?v=35">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="banban" data-href="/banban-voice.css?v=2">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="banban" data-href="/banban-operations.css?v=5">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/classroom-glass.css">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/classroom-banban-glass.css">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="banban" data-href="/classroom-banban-glass.css">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-liquid-glass.css?v=20">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-header.css?v=5">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/account-settings.css?v=8">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="workbench" data-href="/teacher-header.css?v=7">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="settings" data-href="/account-settings.css?v=9">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-workbench.css?v=6">
-  <link nonce="__CSP_NONCE__" rel="stylesheet" href="/teacher-notices.css?v=4">
+  <link nonce="__CSP_NONCE__" rel="stylesheet" data-style-group="workbench" data-href="/teacher-notices.css?v=4">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/auth.css?v=10">
   <link nonce="__CSP_NONCE__" rel="stylesheet" href="/assets/control-focus.css?v=2">
   <script nonce="__CSP_NONCE__" defer src="/assets/classroom-glass.js?v=5"></script>
@@ -74,7 +74,10 @@
     <symbol id="settings-i-camera" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M8 6l2-3h4l2 3"/></symbol>
     <symbol id="settings-i-moon" viewBox="0 0 24 24"><path d="M20.8 14.1A9 9 0 0 1 9.9 3.2a9 9 0 1 0 10.9 10.9Z"/></symbol>
   </svg>
-  <div id="loading" class="app-loading"><div class="spinner" aria-label="正在加载"></div></div>
+  <div id="loading" class="app-loading">
+    <div id="loadingSpinner" class="spinner" aria-label="正在加载"></div>
+    <div id="workbenchLoadError" class="list-feedback" hidden><p role="alert">工作台资源未能载入，请检查连接后重试。</p><button id="retryWorkbench" class="btn" type="button">重新载入工作台</button></div>
+  </div>
 
   <section id="authPage" class="auth-page hidden">
     <div class="auth-layout">
@@ -149,22 +152,22 @@
         <div class="header-tools" aria-label="工作台工具">
           <button id="teacherRefresh" class="btn header-refresh" type="button" data-header-native="teacher.refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5M20 7l-3-3"/></svg><span>刷新页面</span></button>
           <button class="btn header-settings" type="button" data-header-native="teacher.settings.open" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-2v-3l2-2-1-3-3-1-1-3Z"/><circle cx="11" cy="11" r="3"/></svg><span>桌面设置</span></button>
-          <button id="headerToolsToggle" class="btn header-more" type="button" popovertarget="headerToolsMenu" aria-haspopup="menu" aria-expanded="false" aria-label="更多工作台工具"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>更多</span></button>
+          <button id="headerToolsToggle" class="btn header-more" type="button" aria-controls="headerToolsMenu" aria-haspopup="menu" aria-expanded="false" aria-label="更多工作台工具"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>更多</span></button>
         </div>
-        <button id="headerAccount" class="btn header-account" type="button" popovertarget="headerAccountMenu" aria-haspopup="menu" aria-expanded="false" aria-label="账号菜单"><span id="userAvatar" class="user-avatar" aria-hidden="true">师</span><span class="user-meta"><strong id="userDisplayName"></strong><span id="userRole"></span></span><svg class="header-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button id="headerAccount" class="btn header-account" type="button" aria-controls="headerAccountMenu" aria-haspopup="menu" aria-expanded="false" aria-label="账号菜单"><span id="userAvatar" class="user-avatar" aria-hidden="true">师</span><span class="user-meta"><strong id="userDisplayName"></strong><span id="userRole"></span></span><svg class="header-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       </div>
-      <div id="headerToolsMenu" class="teacher-header-menu" popover="auto" role="menu" aria-label="工作台工具">
-        <button class="header-menu-row compact-refresh" type="button" role="menuitem" data-header-native="teacher.refresh">刷新页面</button>
-        <button class="header-menu-row compact-settings" type="button" role="menuitem" data-header-native="teacher.settings.open" hidden>桌面设置</button>
-        <button class="header-menu-row" type="button" role="menuitem" data-header-native="teacher.about" hidden>关于班伴</button>
-        <button class="header-menu-row" type="button" role="menuitem" data-header-native="teacher.feedback" hidden>使用反馈</button>
+      <div id="headerToolsMenu" class="teacher-header-menu" role="menu" aria-label="工作台工具" hidden>
+        <button class="header-menu-row compact-refresh" type="button" role="menuitem" tabindex="-1" data-header-native="teacher.refresh">刷新页面</button>
+        <button class="header-menu-row compact-settings" type="button" role="menuitem" tabindex="-1" data-header-native="teacher.settings.open" hidden>桌面设置</button>
+        <button class="header-menu-row" type="button" role="menuitem" tabindex="-1" data-header-native="teacher.about" hidden>关于班伴</button>
+        <button class="header-menu-row" type="button" role="menuitem" tabindex="-1" data-header-native="teacher.feedback" hidden>使用反馈</button>
       </div>
-      <div id="headerAccountMenu" class="teacher-header-menu" popover="auto" role="menu" aria-label="账号菜单">
+      <div id="headerAccountMenu" class="teacher-header-menu" role="menu" aria-label="账号菜单" hidden>
         <div class="header-menu-identity"><strong id="headerAccountName"></strong><span id="headerAccountRole"></span></div>
-        <button class="header-menu-row" type="button" role="menuitem" data-header-account="settings">账号设置</button>
-        <button class="header-menu-row" type="button" role="menuitem" data-header-account="password">修改密码</button>
+        <button class="header-menu-row" type="button" role="menuitem" tabindex="-1" data-header-account="settings">账号设置</button>
+        <button class="header-menu-row" type="button" role="menuitem" tabindex="-1" data-header-account="password">修改密码</button>
         <div class="header-menu-divider" role="separator"></div>
-        <button id="logoutButton" class="header-menu-row" type="button" role="menuitem">退出账号</button>
+        <button id="logoutButton" class="header-menu-row" type="button" role="menuitem" tabindex="-1">退出账号</button>
       </div>
     </header>
     <button id="navBackdrop" class="nav-backdrop" type="button" tabindex="-1" aria-label="关闭功能菜单"></button>
@@ -191,6 +194,7 @@
     <main id="mainContent" tabindex="-1">
       <p id="previewNotice" class="preview-notice hidden">本地验收 · 当前展示演示数据。</p>
       <div id="sessionExpired" class="list-feedback" hidden><p role="alert">登录已过期。您可以先复制未保存的内容。</p><button id="signInAgain" class="btn" type="button">重新登录</button></div>
+      <div id="banbanLoadError" class="list-feedback" hidden><p role="alert">班班未能载入。</p><button id="retryBanban" class="btn" type="button">重新载入班班</button></div>
       <section id="view-homework" class="view hidden" aria-label="作业统计"><div id="homeworkAdminRoot" tabindex="-1"></div></section>
       <section id="view-card-quiz" class="view hidden" aria-label="纸卡答题"><div id="cardQuizRoot" tabindex="-1"></div></section>
       <section id="view-self-study" class="view hidden" aria-label="自习管理"><div id="selfStudyRoot" tabindex="-1"></div></section>
@@ -477,7 +481,7 @@
           <div id="userPagination" class="users-pagination"><span>每页 12 位</span><div><button id="userPrevPage" class="btn" type="button">上一页</button><span id="userPageLabel" aria-live="polite"></span><button id="userNextPage" class="btn" type="button">下一页</button></div></div>
         </section>
         <details class="user-permission-guide"><summary>身份与权限说明</summary><dl><div><dt>校长</dt><dd>全校功能、用户、班级、设备与学校设置。</dd></div><div><dt>主任</dt><dd>高一、高二、高三的班级、设备、数据与下级账号管理。</dd></div><div><dt>年级部</dt><dd>所负责年级的班级、设备、数据与教师账号管理。</dd></div><div><dt>班主任</dt><dd>管理带班班级的课表、浮岛、通知、来音与教室控制。</dd></div><div><dt>任课老师</dt><dd>查看任教班级，发送通知、控制教室；课表与浮岛只读，不接收来音。</dd></div></dl><p class="hint">同一账号可分别分配带班班级和任教班级。全校规则由校长或超级管理员维护。</p></details>
-        <div id="userActionsPopover" class="user-actions-popover" popover="auto" aria-label="用户操作"></div>
+        <div id="userActionsPopover" class="user-actions-popover" role="menu" hidden></div>
       </section>
 
       <section id="view-settings" class="view account-settings hidden">
@@ -685,8 +689,9 @@
   <script nonce="__CSP_NONCE__">
     (() => {
       "use strict";
-      const scriptNonce = document.currentScript.nonce;
-      let islandEditor;
+      const pageNonce = document.currentScript.nonce;
+      let script, styles;
+      let navigationRequest = 0;
       const state = { user: null, csrf: "", sessionExpired: false, classes: [], teachers: [], devices: [], history: [], historyOffset: 0, historyHasMore: false, recent: [], classroomVoice: [], classroomVoiceTimer: null, quietSchedule: { periods: [], activePeriod: null }, quietScheduleDirty: false, selectedShoutId: null, selectedShoutClassId: null, deliveryTimer: null, presenceTimer: null, quietTimer: null, durationManuallySet: false, inputMode: "text", voiceBlob: null, voiceObjectUrl: "", voiceDurationSec: 0, voiceStream: null, mediaRecorder: null, voiceBusy: false, classGradeFilter: "all" };
       const $ = id => document.getElementById(id);
       const nativeClassroom = window.ICeClassVoiceHost?.classroomAccount === true && Boolean(window.chrome?.webview);
@@ -703,14 +708,6 @@
       const isSchoolAdmin = () => ["superadmin", "principal"].includes(state.user?.role);
       const isManager = () => ["superadmin", "principal", "director", "grade_leader"].includes(state.user?.role);
       const canReviewIdeas = () => state.user?.role === "superadmin" && !nativeClassroom;
-      let ideasAdminOwner = "";
-      function prepareIdeasAdmin() {
-        if (!window.ICeClassIdeasAdmin || !canReviewIdeas()) return;
-        if (ideasAdminOwner === state.user.id) return;
-        window.ICeClassIdeasAdmin.init({root: $("ideasAdminRoot"), api});
-        ideasAdminOwner = state.user.id;
-      }
-      document.addEventListener("DOMContentLoaded", prepareIdeasAdmin);
       const statusLabels = { offline: "教室离线", sent: "已发往教室", received: "教室已收到", displayed: "已展示，待知晓", acknowledged: "教室已知晓", failed: "处理失败" };
       const deliveryStatus = item => item.acknowledged_at ? "acknowledged" : item.status;
       const statusIcons = {checking: "clock", offline: "monitor", sent: "send", received: "inbox", displayed: "eye", acknowledged: "checks", failed: "alert", enabled: "check", disabled: "close"};
@@ -910,14 +907,34 @@
         if (resetDuration || !state.durationManuallySet) $("displayDuration").value = String(meta.duration);
       }
 
+      async function withReadTimeout(parent, read) {
+        const controller = new AbortController();
+        const cancel = () => controller.abort(parent.reason);
+        if (parent?.aborted) cancel();
+        else parent?.addEventListener("abort", cancel, { once: true });
+        let timedOut = false;
+        const timer = setTimeout(() => {
+          if (!controller.signal.aborted) {
+            timedOut = true;
+            controller.abort();
+          }
+        }, 15000);
+        try {
+          return await read(controller.signal);
+        } catch (error) {
+          if (timedOut) throw new DOMException("读取超时，请检查连接后重试。", "TimeoutError");
+          throw error;
+        } finally {
+          clearTimeout(timer);
+          parent?.removeEventListener("abort", cancel);
+        }
+      }
+
       async function api(path, options = {}) {
         const headers = new Headers(options.headers || {});
         if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
         if (state.csrf && (nativeClassroom && path !== "/api/session" || !["GET", "HEAD"].includes(options.method || "GET"))) headers.set("X-CSRF-Token", state.csrf);
-        const controller = ["GET", "HEAD"].includes(options.method || "GET") ? new AbortController() : null;
-        const signal = controller ? (options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal) : options.signal;
-        const timeout = controller && setTimeout(() => controller.abort(), 15000);
-        try {
+        const request = async signal => {
           const response = await fetch(path, { credentials: "same-origin", ...options, headers, signal });
           if (path === "/api/session") state.preview = response.headers.get("X-ICeClass-Preview") === "1";
           const type = response.headers.get("Content-Type") || "";
@@ -928,6 +945,7 @@
               location.reload();
             } else if (state.user && !sessionEnding && !state.sessionExpired) {
               state.sessionExpired = true;
+              $("banbanLoadError").hidden = true;
               $("sessionExpired").hidden = false;
               window.dispatchEvent(new Event("iceclass-session-expired"));
             }
@@ -942,25 +960,73 @@
             throw error;
           }
           return data;
-        } catch (error) {
-          if (controller?.signal.aborted && !options.signal?.aborted) throw new Error("读取超时，请检查连接后重试。");
-          throw error;
-        } finally { if (timeout) clearTimeout(timeout); }
+        };
+        return ["GET", "HEAD"].includes(options.method || "GET")
+          ? withReadTimeout(options.signal, request) : request(options.signal);
       }
 
-      function loadIslandEditor() {
-        if (!islandEditor) islandEditor = new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "/island-admin.js?v=35";
-          script.nonce = scriptNonce;
-          script.onload = () => resolve();
-          script.onerror = () => {
-            script.remove(); islandEditor = null;
-            reject(new Error("浮岛管理未能载入，请重新进入本页重试。"));
-          };
-          document.head.append(script);
-        });
-        return islandEditor;
+      async function loadWorkbench() {
+        if (!window.ICeClassAssets) {
+          await new Promise((resolve, reject) => {
+            const loader = document.createElement("script");
+            loader.nonce = pageNonce;
+            loader.src = "/assets/page-assets.js?v=2";
+            loader.onload = resolve;
+            loader.onerror = () => { loader.remove(); reject(new Error("工作台资源未能载入，请检查连接后重试。")); };
+            document.head.append(loader);
+          });
+        }
+        ({script, styles} = window.ICeClassAssets);
+        // These modules also handle background notifications, the initial reading view and settings links.
+        const scripts = [
+          "/teacher-header.js?v=5", "/self-study-admin.js?v=9",
+          "/reading-calendar.js?v=4", "/reading-ranking.js?v=4", "/reading-admin.js?v=15",
+          "/management.js?v=4", "/account-settings.js?v=5"
+        ];
+        return Promise.all([styles("workbench"), ...scripts.map(script)]);
+      }
+
+      async function loadBanban() {
+        const user = state.user, retry = $("retryBanban"), feedback = $("banbanLoadError");
+        const current = () => user && state.user === user && !sessionEnding && !state.sessionExpired;
+        if (!current() || retry.getAttribute("aria-disabled") === "true") return;
+        retry.setAttribute("aria-disabled", "true");
+        try {
+          const scripts = ["/banban-rig.js?v=2", "/banban-motion.js?v=4", "/banban-operations.js?v=10",
+            "/banban-voice.js?v=7", "/banban.js?v=54"];
+          await Promise.all([styles("banban"), ...scripts.map(script)]);
+          if (!current()) return;
+          window.ICeClassBanban.init();
+          if (document.activeElement === retry) $("bbLauncher").focus();
+          feedback.hidden = true;
+        } catch {
+          if (!current()) return;
+          if (nativeClassroom) throw new Error("班班未能载入，请重新连接。");
+          feedback.hidden = false;
+        } finally { retry.removeAttribute("aria-disabled"); }
+      }
+      const viewAssets = {
+        teachers: () => script("/users.js?v=20261128.1"),
+        settings: () => Promise.all([styles("settings"), script("/client-diagnostics.js?v=3"),
+          script("/acknowledgements.js?v=5"), script("/banban-quota.js?v=5")]),
+        ideas: () => Promise.all([styles("ideas"), script("/ideas-admin.js?v=4")]),
+        homework: () => Promise.all([styles("homework"), script("/homework-admin.js?v=4")]),
+        "card-quiz": () => Promise.all([styles("card-quiz"), script("/card-quiz/model.js?v=2.5.24"),
+          script("/card-quiz/question-import.js?v=1")]).then(() => script("/card-quiz-admin.js?v=11")),
+        island: () => styles("island")
+      };
+
+      async function loadIslandEditor() {
+        if (window.ICeClassIslandAdmin) return;
+        try {
+          await Promise.all([script("/island-ribbon.js?v=11"), script("/island-schedule.js?v=5")]);
+          await script("/island-admin.js?v=36");
+        } catch {
+          if (viewVisible("island")) {
+            $("islandError").textContent = "浮岛管理未能载入，请重新进入教室浮岛重试。";
+            toast($("islandError").textContent);
+          }
+        }
       }
 
       async function start() {
@@ -974,7 +1040,7 @@
             expired: "学生登录已失效，请重新登录。"
           };
           const reason = url.searchParams.get("notice");
-          if (Object.hasOwn(notices, reason)) {
+          if (Object.prototype.hasOwnProperty.call(notices, reason)) {
             $("loginNotice").textContent = notices[reason];
             $("loginNotice").hidden = false;
             $("loginNotice").focus({preventScroll: true});
@@ -1006,6 +1072,7 @@
           try {
             const boot = await api("/api/bootstrap");
             showAuth(Boolean(boot.required));
+            $("loginError").textContent = failure.message;
           } catch (error) {
             showAuth(false);
             $("loginError").textContent = error.message;
@@ -1064,6 +1131,16 @@
       }
 
       async function enterApp(user) {
+        try { await loadWorkbench(); }
+        catch (error) {
+          if (nativeClassroom) throw error;
+          $("authPage").classList.add("hidden");
+          $("loading").classList.remove("hidden");
+          $("loadingSpinner").hidden = true;
+          $("workbenchLoadError").hidden = false;
+          $("retryWorkbench").focus();
+          return;
+        }
         state.user = user;
         state.csrf = user.csrfToken;
         $("loading").classList.add("hidden");
@@ -1083,8 +1160,10 @@
         $("appShell").classList.remove("hidden");
         try { await loadClasses(); }
         catch (error) { toast("班级载入失败，请刷新工作台后重试：" + error.message); }
-        prepareIdeasAdmin();
+        if (sessionEnding || state.sessionExpired || state.user !== user) return;
         window.dispatchEvent(new Event("iceclass-ready"));
+        const banban = loadBanban();
+        if (nativeClassroom) await banban;
         updatePresence();
         clearInterval(state.presenceTimer);
         state.presenceTimer = setInterval(() => { if (viewVisible('console')) void updatePresence(); }, 15000);
@@ -1332,10 +1411,11 @@
             status.textContent = "正在加载语音…";
             try {
               if (!audio.hasAttribute("src")) {
-                const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]);
-                const response = await fetch(item.audio_url, {credentials:"same-origin", cache:"no-store", signal});
-                if (!response.ok) throw new Error(response.status === 404 || response.status === 410 ? "录音已不可用，请刷新列表。" : "语音载入失败，请重试。");
-                const blob = await response.blob();
+                const blob = await withReadTimeout(controller.signal, async signal => {
+                  const response = await fetch(item.audio_url, {credentials:"same-origin", cache:"no-store", signal});
+                  if (!response.ok) throw new Error(response.status === 404 || response.status === 410 ? "录音已不可用，请刷新列表。" : "语音载入失败，请重试。");
+                  return response.blob();
+                });
                 if (!node.isConnected || controller.signal.aborted) return;
                 audio.src = URL.createObjectURL(blob);
                 audio.classList.remove("hidden");
@@ -1919,16 +1999,24 @@
       async function selectView(button) {
         const view = button.dataset.view;
         if (button.classList.contains("hidden") || view === "ideas" && !canReviewIdeas()) return false;
+        const request = ++navigationRequest;
         const active = $("mainNav").querySelector('[aria-current="page"]') || $("mainNav").querySelector('.active');
         if (button === active) {
           if (view === 'settings') window.ICeClassSettings?.activate();
+          if (view === 'island') void loadIslandEditor();
           window.dispatchEvent(new Event('iceclass-view-changed'));
           return true;
         }
         const current = active?.dataset.view;
+        if (viewAssets[view]) {
+          try { await viewAssets[view](); }
+          catch (error) { if (request === navigationRequest) toast(error.message); return false; }
+          if (request !== navigationRequest || sessionEnding || state.sessionExpired) return false;
+        }
         const editor = {reading:window.ICeClassReadingAdmin, homework:window.ICeClassHomeworkAdmin, island:window.ICeClassIslandAdmin,
           'card-quiz':window.ICeClassCardQuiz, 'self-study':window.ICeClassSelfStudy, ideas:window.ICeClassIdeasAdmin}[current];
         if (editor && !await editor.canLeave()) return false;
+        if (request !== navigationRequest) return false;
         if (current === 'console') {
           cancelNoticePreparation();
           if ($("confirmDialog").open) $("confirmDialog").close();
@@ -1946,17 +2034,19 @@
         if (view === 'history') void loadHistory().catch(error => toast(error.message));
         if (view === 'classroom-voice') void loadClassroomVoice();
         if (view === 'quiet') void loadQuietHours().catch(error => toast(error.message));
-        if (view === 'ideas') { prepareIdeasAdmin(); window.ICeClassIdeasAdmin?.load().catch(error => toast(error.message)); }
+        if (view === 'ideas') window.ICeClassIdeasAdmin.load().catch(error => toast(error.message));
         if (view === 'homework') window.ICeClassHomeworkAdmin?.load().catch(error => toast(error.message));
         if (view === 'card-quiz') window.ICeClassCardQuiz?.load().catch(error => toast(error.message));
         if (view === 'self-study') window.ICeClassSelfStudy?.load().catch(error => toast(error.message));
         if (view === 'settings') window.ICeClassSettings?.activate();
-        if (view === 'island') void loadIslandEditor().catch(error => toast(error.message));
+        if (view === 'island') void loadIslandEditor();
         window.dispatchEvent(new Event('iceclass-view-changed'));
         return true;
       }
 
       function bindEvents() {
+        $("retryWorkbench").addEventListener("click", () => location.reload());
+        $("retryBanban").addEventListener("click", loadBanban);
         $("loginRoles").addEventListener("change", event => {
           setLoginRole(event.target.value);
           const url = new URL(location.href);
@@ -2216,7 +2306,7 @@
         toastTimers.set(node, setTimeout(() => { toastTimers.delete(node); node.remove(); }, 3500));
       }
 
-      window.ICeClass = { state, api, toast, classGrade, loadDevices, selectView, refreshManagement: async () => {
+      window.ICeClass = { state, api, withReadTimeout, toast, classGrade, loadDevices, selectView, refreshManagement: async () => {
         await loadClasses();
         await Promise.all([loadTeachers(), loadDevices(), loadHistory(), loadRecent(), loadClassroomVoice()]);
         window.dispatchEvent(new Event('iceclass-classes-changed'));
@@ -2225,33 +2315,10 @@
       window.addEventListener("iceclass-settings-ready", renderDevices);
       bindEvents();
       updateLevelPresentation(true);
-      start();
+      document.addEventListener("DOMContentLoaded", start, {once:true});
     })();
   </script>
-  <script nonce="__CSP_NONCE__" src="/ui.js?v=16" defer></script>
-  <script nonce="__CSP_NONCE__" src="/users.js?v=20261101.3" defer></script>
-  <script nonce="__CSP_NONCE__" src="/teacher-header.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/ideas-admin.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/homework-admin.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/card-quiz/model.js?v=2.5.24" defer></script>
-  <script nonce="__CSP_NONCE__" src="/card-quiz/question-import.js?v=1" defer></script>
-  <script nonce="__CSP_NONCE__" src="/card-quiz-admin.js?v=10" defer></script>
-  <script nonce="__CSP_NONCE__" src="/self-study-admin.js?v=8" defer></script>
-  <script nonce="__CSP_NONCE__" src="/client-diagnostics.js?v=3" defer></script>
-  <script nonce="__CSP_NONCE__" src="/acknowledgements.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-quota.js?v=4" defer></script>
+  <script nonce="__CSP_NONCE__" src="/ui.js?v=17" defer></script>
   <script nonce="__CSP_NONCE__" src="/auth-mascot.js?v=6" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-calendar.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-ranking.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/reading-admin.js?v=15" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-ribbon.js?v=11" defer></script>
-  <script nonce="__CSP_NONCE__" src="/island-schedule.js?v=5" defer></script>
-  <script nonce="__CSP_NONCE__" src="/management.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/account-settings.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-rig.js?v=2" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-motion.js?v=4" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-operations.js?v=10" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban-voice.js?v=7" defer></script>
-  <script nonce="__CSP_NONCE__" src="/banban.js?v=52" defer></script>
 </body>
 </html>
