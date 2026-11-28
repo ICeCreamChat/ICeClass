@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ICeClass.Updates;
@@ -15,6 +16,10 @@ internal static class ClassroomWebViewPackage
     private static readonly string[] RequiredFiles =
         ["msedgewebview2.exe", "msedge.dll", "icudtl.dat", "resources.pak", "locales/zh-CN.pak", "EBWebView/x64/EmbeddedBrowserWebView.dll"];
     private const string Marker = ".iceclass-cab-sha256";
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLink(string link, string existing, IntPtr securityAttributes);
 
     internal static string Version => Package.Version;
 
@@ -36,32 +41,47 @@ internal static class ClassroomWebViewPackage
             var cab = installerCab ?? IncrementalUpdates.SafePath(installDirectory, UpdatePath);
             if (!File.Exists(cab))
                 throw new FileNotFoundException("找不到白板网页组件。", cab);
-            // Keep out writers until expand.exe finishes reading the verified cabinet.
-            await using var cabinet = File.OpenRead(cab);
-            if (cabinet.Length != Package.Size ||
-                !Convert.ToHexString(await SHA256.HashDataAsync(cabinet, token)).Equals(Package.Sha256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("白板网页组件缺失或未通过完整性检查。");
-            if (Ready(target)) return target;
-
             var root = Path.GetDirectoryName(target)!;
             Directory.CreateDirectory(root);
             var lockFile = IncrementalUpdates.SafePath(root, ".install.lock");
             using var installLock = new FileStream(lockFile, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
-            if (Ready(target)) return target;
-            token.ThrowIfCancellationRequested();
+            if (installerCab is null && Ready(target)) return target;
 
             // Publish a complete runtime by renaming a directory on the installation volume.
             var incoming = Path.Combine(root, "stage-" + Guid.NewGuid().ToString("N"));
             var previous = Path.Combine(root, "previous-" + Guid.NewGuid().ToString("N"));
             try
             {
-                Directory.CreateDirectory(incoming);
-                await RunAsync("expand.exe", cab, "-F:*", incoming);
-                var expanded = Path.Combine(incoming, $"Microsoft.WebView2.FixedVersionRuntime.{Package.Version}.x64");
+                const string localCab = "WebView2-x64.cab";
+                const string output = "expanded";
+                // Keep out writers while expand.exe reads the verified cabinet.
+                await using (var cabinet = File.OpenRead(cab))
+                {
+                    if (cabinet.Length != Package.Size ||
+                        !Convert.ToHexString(await SHA256.HashDataAsync(cabinet, token)).Equals(Package.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("白板网页组件缺失或未通过完整性检查。");
+                    if (Ready(target)) return target;
+                    token.ThrowIfCancellationRequested();
+
+                    Directory.CreateDirectory(Path.Combine(incoming, output));
+                    var stagedCab = Path.Combine(incoming, localCab);
+                    // expand.exe takes ANSI arguments. Pass ASCII names relative to its Unicode working directory.
+                    if (!CreateHardLink(stagedCab, cab, IntPtr.Zero))
+                    {
+                        cabinet.Position = 0;
+                        await using var copy = new FileStream(stagedCab, FileMode.CreateNew, FileAccess.Write,
+                            FileShare.None, 1024 * 1024, FileOptions.Asynchronous);
+                        await cabinet.CopyToAsync(copy, token);
+                    }
+                    await RunAsync("expand.exe", incoming, localCab, "-F:*", output);
+                }
+                var expandedName = Path.Combine(output, $"Microsoft.WebView2.FixedVersionRuntime.{Package.Version}.x64");
+                var expanded = Path.Combine(incoming, expandedName);
                 if (!Complete(expanded) || FileVersionInfo.GetVersionInfo(Path.Combine(expanded, RequiredFiles[0])).ProductVersion != Package.Version)
                     throw new InvalidDataException("白板网页组件内容与锁定版本不符。");
                 // Allow the WebView2 sandbox identities to read and execute the private runtime.
-                await RunAsync("icacls.exe", expanded, "/grant", "*S-1-15-2-2:(OI)(CI)(RX)", "*S-1-15-2-1:(OI)(CI)(RX)");
+                await RunAsync("icacls.exe", incoming, expandedName, "/grant",
+                    "*S-1-15-2-2:(OI)(CI)(RX)", "*S-1-15-2-1:(OI)(CI)(RX)");
 
                 File.WriteAllText(Path.Combine(expanded, Marker), Package.Sha256);
                 if (Directory.Exists(target)) Directory.Move(target, previous);
@@ -88,10 +108,11 @@ internal static class ClassroomWebViewPackage
         return File.Exists(marker) && File.ReadAllText(marker) == Package.Sha256 && Complete(directory);
     }
 
-    private static async Task RunAsync(string program, params string[] arguments)
+    private static async Task RunAsync(string program, string workingDirectory, params string[] arguments)
     {
         var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, program))
         {
+            WorkingDirectory = workingDirectory,
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true,
         };
         foreach (var argument in arguments) info.ArgumentList.Add(argument);

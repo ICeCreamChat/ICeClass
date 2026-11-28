@@ -10,9 +10,9 @@
 
 | 组件 | 源码版本 | 技术 |
 | --- | --- | --- |
-| Windows 教室端 | 2.5.31 | .NET 8 / Avalonia / WebView2 |
-| Windows 教师端 | 2.5.31 | .NET 8 / Avalonia / WebView2 |
-| 学校服务 | 2.5.31 | Python / aiohttp / SQLite / WebSocket |
+| Windows 教室端 | 2.5.32 | .NET 8 / Avalonia / WebView2 |
+| Windows 教师端 | 2.5.32 | .NET 8 / Avalonia / WebView2 |
+| 学校服务 | 2.5.32 | Python / aiohttp / SQLite / WebSocket |
 | 视频展台插件 | 1.0.0 | .NET 10 / Windows Forms / WebView2 |
 
 本仓库包含教室端创意工坊中的视频展台和纸卡答题。源码、Release 附件和学校服务器分别更新，公开下载入口以实际发布内容为准。
@@ -202,7 +202,7 @@ dotnet run --project tests/ReceiverOfflineChecks/ReceiverOfflineChecks.csproj -c
 
 构建校验语音资源，模型二进制不进入 Git。打包默认重新构建两端，复用已验收产物时使用 scripts/package-release.ps1 的 -SkipBuild。插件单独通过 scripts/package-video-booth-plugin.ps1 生成 x64 / x86 ZIP，需显式提供 .NET 10 SDK 与对应架构的完整固定 WebView2 目录。
 
-旧白板首次安装教室端时，完整解压教室端离线包，运行“安装或升级.cmd”。支持文件级更新的教室端从 2.5.31 起也可随更新取得同一份 WebView2。系统组件不可用时，教室内嵌页使用经校验的本地组件，沿用已有班级绑定。构建完整交付包时读取 `scripts/classroom-webview2.json` 固定的微软 x64 CAB，也可以用 `-WebView2Cab` 指定同一文件的本地副本。更新该组件时同步核对微软数字签名、版本、大小和 SHA-256。
+旧白板首次安装教室端时，完整解压教室端离线包，运行“安装或升级.cmd”。支持文件级更新的教室端从 2.5.32 起也可随更新取得同一份 WebView2。系统组件不可用时，教室内嵌页使用经校验的本地组件，沿用已有班级绑定。构建完整交付包时读取 `scripts/classroom-webview2.json` 固定的微软 x64 CAB，也可以用 `-WebView2Cab` 指定同一文件的本地副本。更新该组件时同步核对微软数字签名、版本、大小和 SHA-256。
 
 GitHub Actions 的 **Publish release** 在推送 v* 标签或手动运行时检查、构建和发布；普通分支推送只更新源码。发布步骤见[GitHub 自动发布](docs/GitHub自动发布.md)。
 

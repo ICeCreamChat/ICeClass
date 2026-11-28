@@ -150,11 +150,11 @@ async def update(server, installation, checks, dotnet, previous_version):
 
 def verify(args, work):
     directory = args.directory.resolve()
-    full = unpack(directory / f'ICeClass-{args.version}-classroom-offline.zip', work / 'complete') / PACKAGE
+    full = unpack(directory / f'ICeClass-{args.version}-classroom-offline.zip', work / '完整 \U0001f680') / PACKAGE
     previous = unpack(args.previous.resolve(), work / 'previous') / PACKAGE
     previous_version = json.loads((previous / 'program-manifest.json').read_text('utf-8-sig'))['version']
     runtime = json.loads((full / 'program-manifest.json').read_text('utf-8-sig'))['webView2']
-    fresh, upgraded = work / '安装 验收', work / '升级 验收'
+    fresh, upgraded = work / '安装 \U0001f680', work / '升级 \U0001f680'
     install(full, fresh, verify=True)
     install(previous, upgraded)
     for target in (fresh, upgraded):
