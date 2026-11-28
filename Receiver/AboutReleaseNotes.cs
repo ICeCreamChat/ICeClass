@@ -3,7 +3,7 @@ namespace ICeClass.Receiver;
 internal static class AboutReleaseNotes
 {
     internal const string Text = """
-        2.5.32 · 2026-11-28
+        2.5.33 · 2026-11-28
         旧白板网页组件
         · 教室端更新会携带白板网页组件。系统组件过旧或初始化失败时，使用经校验的随包组件。
         · 修复英文 Windows 使用中文目录安装或更新时的组件解压问题。

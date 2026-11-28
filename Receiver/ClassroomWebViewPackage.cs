@@ -42,10 +42,6 @@ internal static class ClassroomWebViewPackage
             if (!File.Exists(cab))
                 throw new FileNotFoundException("找不到白板网页组件。", cab);
             var root = Path.GetDirectoryName(target)!;
-            Directory.CreateDirectory(root);
-            var lockFile = IncrementalUpdates.SafePath(root, ".install.lock");
-            using var installLock = new FileStream(lockFile, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
-            if (installerCab is null && Ready(target)) return target;
 
             // Publish a complete runtime by renaming a directory on the installation volume.
             var incoming = Path.Combine(root, "stage-" + Guid.NewGuid().ToString("N"));
@@ -55,26 +51,29 @@ internal static class ClassroomWebViewPackage
                 const string localCab = "WebView2-x64.cab";
                 const string output = "expanded";
                 // Keep out writers while expand.exe reads the verified cabinet.
-                await using (var cabinet = File.OpenRead(cab))
-                {
-                    if (cabinet.Length != Package.Size ||
-                        !Convert.ToHexString(await SHA256.HashDataAsync(cabinet, token)).Equals(Package.Sha256, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("白板网页组件缺失或未通过完整性检查。");
-                    if (Ready(target)) return target;
-                    token.ThrowIfCancellationRequested();
+                await using var cabinet = File.OpenRead(cab);
+                if (cabinet.Length != Package.Size ||
+                    !Convert.ToHexString(await SHA256.HashDataAsync(cabinet, token)).Equals(Package.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("白板网页组件缺失或未通过完整性检查。");
+                if (Ready(target)) return target;
 
-                    Directory.CreateDirectory(Path.Combine(incoming, output));
-                    var stagedCab = Path.Combine(incoming, localCab);
-                    // expand.exe takes ANSI arguments. Pass ASCII names relative to its Unicode working directory.
-                    if (!CreateHardLink(stagedCab, cab, IntPtr.Zero))
-                    {
-                        cabinet.Position = 0;
-                        await using var copy = new FileStream(stagedCab, FileMode.CreateNew, FileAccess.Write,
-                            FileShare.None, 1024 * 1024, FileOptions.Asynchronous);
-                        await cabinet.CopyToAsync(copy, token);
-                    }
-                    await RunAsync("expand.exe", incoming, localCab, "-F:*", output);
+                Directory.CreateDirectory(root);
+                var lockFile = IncrementalUpdates.SafePath(root, ".install.lock");
+                using var installLock = new FileStream(lockFile, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+                if (Ready(target)) return target;
+                token.ThrowIfCancellationRequested();
+
+                Directory.CreateDirectory(Path.Combine(incoming, output));
+                var stagedCab = Path.Combine(incoming, localCab);
+                // expand.exe takes ANSI arguments. Pass ASCII names relative to its Unicode working directory.
+                if (!CreateHardLink(stagedCab, cab, IntPtr.Zero))
+                {
+                    cabinet.Position = 0;
+                    await using var copy = new FileStream(stagedCab, FileMode.CreateNew, FileAccess.Write,
+                        FileShare.None, 1024 * 1024, FileOptions.Asynchronous);
+                    await cabinet.CopyToAsync(copy, token);
                 }
+                await RunAsync("expand.exe", incoming, localCab, "-F:*", output);
                 var expandedName = Path.Combine(output, $"Microsoft.WebView2.FixedVersionRuntime.{Package.Version}.x64");
                 var expanded = Path.Combine(incoming, expandedName);
                 if (!Complete(expanded) || FileVersionInfo.GetVersionInfo(Path.Combine(expanded, RequiredFiles[0])).ProductVersion != Package.Version)
